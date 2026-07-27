@@ -1,0 +1,489 @@
+{
+  "dsl_version": "SSP-DSL-1.0",
+  "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+  "name": "补贴/基金承担互斥与选择（4050 vs 岗位补贴 vs 大龄领金养老费承担）",
+  "module": "subsidy",
+  "status": "published",
+  "priority": 540,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "互斥规则必须由 Admin 可配置：互斥矩阵、比较维度（净成本/养老金影响/医保连续性）、以及经办口径备注。",
+  "inputs": [
+    {
+      "key": "calc.subsidy.4050_eligible",
+      "type": "boolean",
+      "required": false
+    },
+    {
+      "key": "calc.subsidy.job_eligible",
+      "type": "boolean",
+      "required": false
+    },
+    {
+      "key": "calc.subsidy.older_ui_pension_fund_eligible",
+      "type": "boolean",
+      "required": false
+    },
+    {
+      "key": "calc.subsidy.4050_amount_est",
+      "type": "number",
+      "required": false
+    },
+    {
+      "key": "calc.subsidy.job_amount_est",
+      "type": "number",
+      "required": false
+    },
+    {
+      "key": "user.objective",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_only_4050",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.4050_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.job_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.older_ui_pension_fund_eligible"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.selected_option",
+              "value": "4050"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_only_job",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.job_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.4050_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.older_ui_pension_fund_eligible"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.selected_option",
+              "value": "job_subsidy"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_only_older_ui",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.older_ui_pension_fund_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.4050_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.job_eligible"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.selected_option",
+              "value": "older_ui_pension_fund"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_4_none",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.4050_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.job_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.older_ui_pension_fund_eligible"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.selected_option",
+              "value": "none"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_5_conflict_min_cost_choose_job",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.objective"
+                },
+                "min_cost"
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.4050_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.job_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.4050_amount_est"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.job_amount_est"
+                },
+                null
+              ]
+            },
+            {
+              ">": [
+                {
+                  "var": "calc.subsidy.job_amount_est"
+                },
+                {
+                  "var": "calc.subsidy.4050_amount_est"
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.selected_option",
+              "value": "job_subsidy"
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-SUBSIDY-CHOICE",
+                "text": "同时符合4050与岗位补贴窗口，按“最低净成本”目标选择补贴金额更高的岗位补贴（估算）。请以经办互斥口径确认。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_6_conflict_min_cost_choose_4050",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.objective"
+                },
+                "min_cost"
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.4050_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.job_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.4050_amount_est"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.subsidy.job_amount_est"
+                },
+                null
+              ]
+            },
+            {
+              "<=": [
+                {
+                  "var": "calc.subsidy.job_amount_est"
+                },
+                {
+                  "var": "calc.subsidy.4050_amount_est"
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.selected_option",
+              "value": "4050"
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-SUBSIDY-CHOICE",
+                "text": "同时符合4050与岗位补贴窗口，按“最低净成本”目标选择补贴金额更高/相当的4050（估算）。请以经办互斥口径确认。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_7_conflict_need_agent",
+        "when": {
+          "or": [
+            {
+              "and": [
+                {
+                  "==": [
+                    {
+                      "var": "calc.subsidy.4050_eligible"
+                    },
+                    true
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "calc.subsidy.job_eligible"
+                    },
+                    true
+                  ]
+                }
+              ]
+            },
+            {
+              "and": [
+                {
+                  "==": [
+                    {
+                      "var": "calc.subsidy.4050_eligible"
+                    },
+                    true
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "calc.subsidy.older_ui_pension_fund_eligible"
+                    },
+                    true
+                  ]
+                }
+              ]
+            },
+            {
+              "and": [
+                {
+                  "==": [
+                    {
+                      "var": "calc.subsidy.job_eligible"
+                    },
+                    true
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "calc.subsidy.older_ui_pension_fund_eligible"
+                    },
+                    true
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.selected_option",
+              "value": "conflict"
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-SUBSIDY-CONFLICT",
+                "text": "你可能同时落入多个补贴/基金承担窗口（例如4050与岗位补贴互斥）。请确认你的目标（省钱/多缴/医保连续性）并补充：基数下限、最低工资、是否已领失业金等，以便对比方案。",
+                "field": "user.objective"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.subsidy.selected_option",
+      "type": "string"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    },
+    {
+      "key": "calc.warnings",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "min_cost 且 job金额>4050 -> 选job",
+      "input": {
+        "user": {
+          "objective": "min_cost"
+        },
+        "calc": {
+          "subsidy": {
+            "4050_eligible": true,
+            "job_eligible": true,
+            "4050_amount_est": 700,
+            "job_amount_est": 1200
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "selected_option": "job_subsidy"
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

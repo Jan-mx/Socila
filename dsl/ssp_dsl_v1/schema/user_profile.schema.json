@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UserProfile Schema (Simplified) v1",
+  "type": "object",
+  "properties": {
+    "basic": {
+      "type": "object",
+      "properties": {
+        "birth_year_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "birth_year": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "birth_month": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "birth_day": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "birth_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "gender": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "male",
+            "female",
+            null
+          ]
+        },
+        "female_retire_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "worker50",
+            "cadre55",
+            "unknown",
+            null
+          ]
+        },
+        "target_city": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "social": {
+      "type": "object",
+      "properties": {
+        "pension_contrib_months": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "medical_contrib_months": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "unemployment_insurance_years": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "base_lower_amount_per_month": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "min_wage_amount_per_month": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "paid_months_in_year": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "status": {
+      "type": "object",
+      "properties": {
+        "employment_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "employed",
+            "unemployed",
+            "flexible",
+            "retired",
+            "unknown",
+            null
+          ]
+        },
+        "on_unemployment_benefit": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "unemployment_benefit_months_used": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "unemployment_benefit_months_remaining": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "subsidy": {
+      "type": "object",
+      "properties": {
+        "has_employment_difficulty_cert": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "months_to_legal_retire": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "mi": {
+      "type": "object",
+      "properties": {
+        "prev_end_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "enroll_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        }
+      }
+    },
+    "objective": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "min_cost",
+        "max_pension",
+        "keep_medical",
+        "balanced",
+        null
+      ]
+    }
+  }
+}

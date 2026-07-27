@@ -1,0 +1,195 @@
+{
+  "dsl_version": "SSP-DSL-1.0",
+  "rule_id": "R-010-PARSE-BIRTH-YEAR",
+  "name": "解析出生年份（支持“73年=1973”）",
+  "module": "normalization",
+  "status": "published",
+  "priority": 10,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "内置 parse_birth_year：两位数>=30按1900+；两位数<30默认2000+，若上下文存在年龄>=30则按1900+（可在内置函数中实现）。",
+  "inputs": [
+    {
+      "key": "user.basic.birth_year",
+      "type": "number",
+      "required": false,
+      "desc": "出生年份（若用户已填）"
+    },
+    {
+      "key": "user.basic.birth_year_text",
+      "type": "string",
+      "required": false,
+      "desc": "用户输入的出生年份文本（如“73年”“1973”“73”）"
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_provided",
+        "when": {
+          "!=": [
+            {
+              "var": "user.basic.birth_year"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.normalization.birth_year_source",
+              "value": "provided"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_parse_text",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.birth_year"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.basic.birth_year_text"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "call",
+              "fn": "parse_birth_year",
+              "args": {
+                "text": {
+                  "var": "user.basic.birth_year_text"
+                }
+              },
+              "into": "user.basic.birth_year"
+            },
+            {
+              "type": "set",
+              "path": "calc.normalization.birth_year_source",
+              "value": "parsed_from_text"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_missing",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.birth_year"
+                },
+                null
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.basic.birth_year_text"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-BIRTH-YEAR",
+                "text": "请提供出生年份（例如：1973，或写“73年”代表1973年）",
+                "field": "user.basic.birth_year"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "user.basic.birth_year",
+      "type": "number",
+      "desc": "标准化后的出生年份"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean",
+      "desc": "是否需要 Agent 补问"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array",
+      "desc": "需要追问的问题列表（累加）"
+    }
+  ],
+  "examples": [
+    {
+      "name": "73年 -> 1973",
+      "input": {
+        "user": {
+          "basic": {
+            "birth_year": null,
+            "birth_year_text": "73年"
+          }
+        }
+      },
+      "expected": {
+        "user": {
+          "basic": {
+            "birth_year": 1973
+          }
+        },
+        "calc": {
+          "normalization": {
+            "birth_year_source": "parsed_from_text"
+          }
+        }
+      }
+    },
+    {
+      "name": "1973 -> 1973",
+      "input": {
+        "user": {
+          "basic": {
+            "birth_year": null,
+            "birth_year_text": "1973"
+          }
+        }
+      },
+      "expected": {
+        "user": {
+          "basic": {
+            "birth_year": 1973
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

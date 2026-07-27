@@ -1,0 +1,182 @@
+{
+  "dsl_version": "SSP-DSL-1.0",
+  "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+  "name": "女性50/55口径确认（女工50 / 女干部55）",
+  "module": "retirement",
+  "status": "published",
+  "priority": 20,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "",
+  "inputs": [
+    {
+      "key": "user.basic.gender",
+      "type": "string",
+      "required": true,
+      "desc": "male/female"
+    },
+    {
+      "key": "user.basic.female_retire_type",
+      "type": "string",
+      "required": false,
+      "desc": "worker50/cadre55/unknown"
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_male_set_na",
+        "when": {
+          "==": [
+            {
+              "var": "user.basic.gender"
+            },
+            "male"
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "user.basic.female_retire_type",
+              "value": "na"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_female_known",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.gender"
+                },
+                "female"
+              ]
+            },
+            {
+              "in": [
+                {
+                  "var": "user.basic.female_retire_type"
+                },
+                [
+                  "worker50",
+                  "cadre55"
+                ]
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.retirement.female_retire_type_status",
+              "value": "confirmed"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_female_unknown",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.gender"
+                },
+                "female"
+              ]
+            },
+            {
+              "!": {
+                "in": [
+                  {
+                    "var": "user.basic.female_retire_type"
+                  },
+                  [
+                    "worker50",
+                    "cadre55"
+                  ]
+                ]
+              }
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-FEMALE-RETIRE-TYPE",
+                "text": "请确认女性退休口径：女工一般50岁、女干部/管理岗一般55岁（以你本人档案/参保口径为准）。",
+                "field": "user.basic.female_retire_type"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "user.basic.female_retire_type",
+      "type": "string"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "女性未填口径 -> 追问",
+      "input": {
+        "user": {
+          "basic": {
+            "gender": "female",
+            "female_retire_type": null
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "needs_agent": true
+        }
+      }
+    },
+    {
+      "name": "男性 -> na",
+      "input": {
+        "user": {
+          "basic": {
+            "gender": "male"
+          }
+        }
+      },
+      "expected": {
+        "user": {
+          "basic": {
+            "female_retire_type": "na"
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

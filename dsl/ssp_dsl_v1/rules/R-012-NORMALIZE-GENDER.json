@@ -1,0 +1,193 @@
+{
+  "dsl_version": "SSP-DSL-1.0",
+  "rule_id": "R-012-NORMALIZE-GENDER",
+  "name": "标准化性别输入",
+  "module": "normalization",
+  "status": "published",
+  "priority": 12,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "normalize_gender：支持 男/女/男性/女性/m/f 等映射；无法识别则 needs_agent + question。",
+  "inputs": [
+    {
+      "key": "user.basic.gender",
+      "type": "string",
+      "required": false,
+      "desc": "性别（可能是“男/女/male/female”）"
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_already_norm",
+        "when": {
+          "or": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.gender"
+                },
+                "male"
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.basic.gender"
+                },
+                "female"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.normalization.gender_source",
+              "value": "provided_normalized"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_try_normalize",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.basic.gender"
+                },
+                null
+              ]
+            },
+            {
+              "!": {
+                "or": [
+                  {
+                    "==": [
+                      {
+                        "var": "user.basic.gender"
+                      },
+                      "male"
+                    ]
+                  },
+                  {
+                    "==": [
+                      {
+                        "var": "user.basic.gender"
+                      },
+                      "female"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "call",
+              "fn": "normalize_gender",
+              "args": {
+                "text": {
+                  "var": "user.basic.gender"
+                }
+              },
+              "into": "user.basic.gender"
+            },
+            {
+              "type": "set",
+              "path": "calc.normalization.gender_source",
+              "value": "normalized_from_text"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_missing",
+        "when": {
+          "==": [
+            {
+              "var": "user.basic.gender"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-GENDER",
+                "text": "请确认性别（男/女）。退休年龄与补贴资格会因此不同。",
+                "field": "user.basic.gender"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "user.basic.gender",
+      "type": "string"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "男 -> male",
+      "input": {
+        "user": {
+          "basic": {
+            "gender": "男"
+          }
+        }
+      },
+      "expected": {
+        "user": {
+          "basic": {
+            "gender": "male"
+          }
+        }
+      }
+    },
+    {
+      "name": "female 保持",
+      "input": {
+        "user": {
+          "basic": {
+            "gender": "female"
+          }
+        }
+      },
+      "expected": {
+        "user": {
+          "basic": {
+            "gender": "female"
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

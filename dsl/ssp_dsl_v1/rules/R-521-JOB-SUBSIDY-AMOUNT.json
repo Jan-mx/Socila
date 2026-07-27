@@ -1,0 +1,199 @@
+{
+  "dsl_version": "SSP-DSL-1.0",
+  "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+  "name": "大龄岗位补贴金额估算（最低工资 * 比例）",
+  "module": "subsidy",
+  "status": "published",
+  "priority": 521,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "",
+  "inputs": [
+    {
+      "key": "calc.subsidy.job_eligible",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "key": "user.social.min_wage_amount_per_month",
+      "type": "number",
+      "required": false
+    },
+    {
+      "key": "params.P-SH-JOB-SUBSIDY-RATE-MINWAGE",
+      "type": "number",
+      "required": true
+    }
+  ],
+  "parameter_refs": [
+    {
+      "param_id": "P-SH-JOB-SUBSIDY-RATE-MINWAGE"
+    }
+  ],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_not_eligible",
+        "when": {
+          "or": [
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.job_eligible"
+                },
+                false
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.job_eligible"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_amount_est",
+              "value": 0
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_missing_minwage",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.job_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.min_wage_amount_per_month"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_amount_est",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-MIN-WAGE",
+                "text": "请提供当期最低工资（月），用于估算岗位补贴金额。",
+                "field": "user.social.min_wage_amount_per_month"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_compute",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.subsidy.job_eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.min_wage_amount_per_month"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_amount_est",
+              "value": {
+                "*": [
+                  {
+                    "var": "user.social.min_wage_amount_per_month"
+                  },
+                  {
+                    "var": "params.P-SH-JOB-SUBSIDY-RATE-MINWAGE"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.subsidy.job_amount_est",
+      "type": "number"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "最低工资2690，比例50% -> 1345",
+      "input": {
+        "calc": {
+          "subsidy": {
+            "job_eligible": true
+          }
+        },
+        "user": {
+          "social": {
+            "min_wage_amount_per_month": 2690
+          }
+        },
+        "params": {
+          "P-SH-JOB-SUBSIDY-RATE-MINWAGE": 0.5
+        }
+      },
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "job_amount_est": 1345
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

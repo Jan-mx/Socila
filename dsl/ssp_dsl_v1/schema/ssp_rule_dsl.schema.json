@@ -1,0 +1,198 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SSP Rule DSL Schema v1",
+  "type": "object",
+  "required": [
+    "dsl_version",
+    "rule_id",
+    "name",
+    "status",
+    "priority",
+    "effective_from",
+    "inputs",
+    "parameter_refs",
+    "decision_table",
+    "outputs",
+    "examples"
+  ],
+  "properties": {
+    "dsl_version": {
+      "type": "string"
+    },
+    "rule_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "module": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "published",
+        "retired"
+      ]
+    },
+    "priority": {
+      "type": "integer"
+    },
+    "effective_from": {
+      "type": "string",
+      "format": "date"
+    },
+    "effective_to": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date"
+    },
+    "supersedes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "type",
+          "required"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "desc": {
+            "type": "string"
+          },
+          "enum": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "parameter_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "param_id"
+        ],
+        "properties": {
+          "param_id": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "decision_table": {
+      "type": "object",
+      "required": [
+        "hit_policy",
+        "rows"
+      ],
+      "properties": {
+        "hit_policy": {
+          "type": "string",
+          "enum": [
+            "first",
+            "all"
+          ]
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "row_id",
+              "when",
+              "then"
+            ],
+            "properties": {
+              "row_id": {
+                "type": "string"
+              },
+              "when": {
+                "type": "object"
+              },
+              "then": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "type"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "desc": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "input",
+          "expected"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "input": {
+            "type": "object"
+          },
+          "params": {
+            "type": "object"
+          },
+          "expected": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

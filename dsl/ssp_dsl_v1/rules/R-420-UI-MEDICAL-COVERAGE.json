@@ -1,0 +1,114 @@
+{
+  "dsl_version": "SSP-DSL-1.0",
+  "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+  "name": "失业金期间医保由基金代缴提示（规划成本口径）",
+  "module": "unemployment",
+  "status": "published",
+  "priority": 420,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "",
+  "inputs": [
+    {
+      "key": "user.status.on_unemployment_benefit",
+      "type": "boolean",
+      "required": false
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_on_benefit",
+        "when": {
+          "==": [
+            {
+              "var": "user.status.on_unemployment_benefit"
+            },
+            true
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.mi.paid_by_unemployment_fund",
+              "value": true
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-UI-MI-PAID",
+                "text": "失业金期间，医保通常由失业保险基金代缴（以经办口径为准）。规划现金流时请不要重复计算医保个人缴费。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_not_on_benefit_or_unknown",
+        "when": {
+          "or": [
+            {
+              "==": [
+                {
+                  "var": "user.status.on_unemployment_benefit"
+                },
+                false
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.status.on_unemployment_benefit"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.mi.paid_by_unemployment_fund",
+              "value": false
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.mi.paid_by_unemployment_fund",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.warnings",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "正在领取失业金 -> 医保基金代缴提示",
+      "input": {
+        "user": {
+          "status": {
+            "on_unemployment_benefit": true
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "mi": {
+            "paid_by_unemployment_fund": true
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

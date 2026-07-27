@@ -1,0 +1,156 @@
+{
+  "dsl_version": "SSP-DSL-1.0",
+  "rule_id": "R-500-4050-ELIGIBILITY",
+  "name": "4050灵活就业社保补贴资格初判（就业困难认定）",
+  "module": "subsidy",
+  "status": "published",
+  "priority": 500,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "真实4050还受年龄、参保基数下限、补贴年限等影响；建议在 Admin 中扩展细分规则。",
+  "inputs": [
+    {
+      "key": "user.subsidy.has_employment_difficulty_cert",
+      "type": "boolean",
+      "required": false,
+      "desc": "是否已认定就业困难人员"
+    },
+    {
+      "key": "user.status.employment_status",
+      "type": "string",
+      "required": true
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_cert_true",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.subsidy.has_employment_difficulty_cert"
+                },
+                true
+              ]
+            },
+            {
+              "in": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                [
+                  "unemployed",
+                  "flexible"
+                ]
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.4050_eligible",
+              "value": true
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_cert_false",
+        "when": {
+          "==": [
+            {
+              "var": "user.subsidy.has_employment_difficulty_cert"
+            },
+            false
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.4050_eligible",
+              "value": false
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_cert_unknown",
+        "when": {
+          "==": [
+            {
+              "var": "user.subsidy.has_employment_difficulty_cert"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.4050_eligible",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-EMPLOYMENT-DIFF",
+                "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+                "field": "user.subsidy.has_employment_difficulty_cert"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.subsidy.4050_eligible",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "已认定就业困难 + 灵活就业 -> eligible",
+      "input": {
+        "user": {
+          "subsidy": {
+            "has_employment_difficulty_cert": true
+          },
+          "status": {
+            "employment_status": "flexible"
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "4050_eligible": true
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

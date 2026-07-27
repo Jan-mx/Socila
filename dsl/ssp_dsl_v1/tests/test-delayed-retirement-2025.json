@@ -1,0 +1,216 @@
+[
+  {
+    "test_id": "DR-001",
+    "name": "Male 1965-01 delayed retirement: 60y1m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1965,
+          "birth_month": 1,
+          "birth_date": "1965-01-15"
+        }
+      }
+    },
+    "expected": {
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 60,
+          "legal_retire_age_months": 1
+        }
+      }
+    },
+    "notes": "First affected male cohort, +1mo delay"
+  },
+  {
+    "test_id": "DR-002",
+    "name": "Male 1964-12 no delay: 60y0m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1964,
+          "birth_month": 12,
+          "birth_date": "1964-12-15"
+        }
+      }
+    },
+    "expected": {
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 60,
+          "legal_retire_age_months": 0
+        }
+      }
+    },
+    "notes": "Last unaffected male cohort"
+  },
+  {
+    "test_id": "DR-003",
+    "name": "Male 1977+ max delay: 63y0m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1977,
+          "birth_month": 6,
+          "birth_date": "1977-06-15"
+        }
+      }
+    },
+    "expected": {
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 63,
+          "legal_retire_age_months": 0
+        }
+      }
+    },
+    "notes": "Post-transition male, full 63y"
+  },
+  {
+    "test_id": "DR-004",
+    "name": "Female worker 1975-01 delayed: 50y1m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "worker50",
+          "birth_year": 1975,
+          "birth_month": 1,
+          "birth_date": "1975-01-15"
+        }
+      }
+    },
+    "expected": {
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 50,
+          "legal_retire_age_months": 1
+        }
+      }
+    },
+    "notes": "First affected female worker, +1mo/2mo-birth"
+  },
+  {
+    "test_id": "DR-005",
+    "name": "Female worker 1985+ max delay: 55y0m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "worker50",
+          "birth_year": 1985,
+          "birth_month": 6,
+          "birth_date": "1985-06-15"
+        }
+      }
+    },
+    "expected": {
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 55,
+          "legal_retire_age_months": 0
+        }
+      }
+    },
+    "notes": "Post-transition female worker, full 55y"
+  },
+  {
+    "test_id": "DR-006",
+    "name": "Female cadre 1970-01 delayed: 55y1m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "cadre55",
+          "birth_year": 1970,
+          "birth_month": 1,
+          "birth_date": "1970-01-15"
+        }
+      }
+    },
+    "expected": {
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 55,
+          "legal_retire_age_months": 1
+        }
+      }
+    },
+    "notes": "First affected female cadre"
+  },
+  {
+    "test_id": "DR-007",
+    "name": "Female cadre 1969-12 no delay: 55y0m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "cadre55",
+          "birth_year": 1969,
+          "birth_month": 12,
+          "birth_date": "1969-12-15"
+        }
+      }
+    },
+    "expected": {
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 55,
+          "legal_retire_age_months": 0
+        }
+      }
+    },
+    "notes": "Last unaffected female cadre"
+  },
+  {
+    "test_id": "DR-008",
+    "name": "Male medical lifetime gap - 25yr requirement",
+    "input": {
+      "user": {
+        "basic": { "gender": "male" },
+        "social": { "medical_contrib_months": 200 }
+      }
+    },
+    "expected": {
+      "calc": { "mi": { "lifetime_gap_months": 100 } }
+    },
+    "notes": "Male needs 25y=300mo, has 200mo, gap=100mo"
+  },
+  {
+    "test_id": "DR-009",
+    "name": "Female medical lifetime gap - 20yr requirement",
+    "input": {
+      "user": {
+        "basic": { "gender": "female" },
+        "social": { "medical_contrib_months": 200 }
+      }
+    },
+    "expected": {
+      "calc": { "mi": { "lifetime_gap_months": 40 } }
+    },
+    "notes": "Female needs 20y=240mo, has 200mo, gap=40mo"
+  },
+  {
+    "test_id": "DR-010",
+    "name": "Flexible retirement - earliest for male 1970",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1970,
+          "birth_month": 6,
+          "birth_date": "1970-06-15",
+          "retire_preference": "earliest"
+        }
+      }
+    },
+    "expected_condition": "calc.retirement.legal_retire_age_years >= 60",
+    "notes": "Earliest cannot go below original age 60"
+  }
+]

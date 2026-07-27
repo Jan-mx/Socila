@@ -1,0 +1,112 @@
+{
+  "workflow_id": "WF-RULE-PUBLISH-DEFAULT",
+  "name": "默认规则/参数发布工作流（可配置）",
+  "version": "1.0",
+  "stages": [
+    {
+      "stage": "draft",
+      "description": "编辑与自测阶段",
+      "allowed_roles": [
+        "policy_editor",
+        "policy_admin"
+      ],
+      "allowed_actions": [
+        "edit",
+        "save",
+        "validate_schema",
+        "run_examples",
+        "simulate"
+      ]
+    },
+    {
+      "stage": "staging",
+      "description": "预发布回归阶段",
+      "allowed_roles": [
+        "policy_admin",
+        "qa"
+      ],
+      "entry_gates": [
+        {
+          "gate_id": "G-SCHEMA",
+          "type": "schema_validation",
+          "required": true
+        },
+        {
+          "gate_id": "G-EXAMPLES",
+          "type": "rule_examples_pass_rate",
+          "min_pass_rate": 1.0
+        },
+        {
+          "gate_id": "G-DEPENDENCY",
+          "type": "dependency_check",
+          "required": true
+        }
+      ],
+      "allowed_actions": [
+        "run_regression",
+        "approve",
+        "promote_to_prod",
+        "reject"
+      ]
+    },
+    {
+      "stage": "prod",
+      "description": "线上生效阶段",
+      "allowed_roles": [
+        "policy_admin"
+      ],
+      "entry_gates": [
+        {
+          "gate_id": "G-STAGING_APPROVED",
+          "type": "approval",
+          "required": true,
+          "approvers": [
+            "policy_admin",
+            "qa"
+          ]
+        },
+        {
+          "gate_id": "G-REGRESSION",
+          "type": "regression_pass_rate",
+          "min_pass_rate": 0.95
+        }
+      ],
+      "allowed_actions": [
+        "rollback",
+        "hotfix_new_version",
+        "canary_release"
+      ]
+    }
+  ],
+  "rollback_policy": {
+    "strategy": "rollback_to_previous_published_version",
+    "requires_reason": true,
+    "requires_ticket": false
+  },
+  "canary": {
+    "supported": true,
+    "strategies": [
+      {
+        "type": "user_id_hash",
+        "percent_range": [
+          1,
+          100
+        ]
+      },
+      {
+        "type": "channel",
+        "allowed_channels": [
+          "internal",
+          "beta",
+          "all"
+        ]
+      }
+    ]
+  },
+  "audit": {
+    "record_diff": true,
+    "record_test_report": true,
+    "record_actor": true,
+    "record_timestamp": true
+  }
+}

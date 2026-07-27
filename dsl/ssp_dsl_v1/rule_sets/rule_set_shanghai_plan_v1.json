@@ -1,0 +1,36 @@
+{
+  "rule_set_id": "RS-SHANGHAI-PLAN-V1",
+  "description": "上海社保规划主规则集（示例）",
+  "status": "published",
+  "effective_from": "2024-01-01",
+  "rules": [
+    "R-010-PARSE-BIRTH-YEAR",
+    "R-011-BUILD-BIRTH-DATE",
+    "R-012-NORMALIZE-GENDER",
+    "R-020-FEMALE-RETIRE-TYPE",
+    "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "R-115-FLEXIBLE-RETIREMENT",
+    "R-120-COMPUTE-RETIRE-DATE",
+    "R-200-MIN-PENSION-YEARS",
+    "R-210-PENSION-GAP",
+    "R-220-MEDICAL-LIFETIME-GAP",
+    "R-300-MI-GAP-MONTHS",
+    "R-310-MI-WAITING-PERIOD",
+    "R-400-UNEMPLOYMENT-ELIGIBILITY",
+    "R-410-UNEMPLOYMENT-DURATION",
+    "R-420-UI-MEDICAL-COVERAGE",
+    "R-500-4050-ELIGIBILITY",
+    "R-510-4050-AMOUNT",
+    "R-520-JOB-SUBSIDY-ELIGIBILITY",
+    "R-521-JOB-SUBSIDY-AMOUNT",
+    "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+    "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+    "R-600-PAY-GAP-REMINDER",
+    "R-700-PLAN-TEMPLATE",
+    "R-900-FINAL-GATE"
+  ],
+  "conflict_resolution": {
+    "same_rule_id_multiple_versions": "latest_effective_from",
+    "policy_params": "latest_effective_from"
+  }
+}

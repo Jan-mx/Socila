@@ -1,0 +1,187 @@
+{
+  "dsl_version": "SSP-DSL-1.0",
+  "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+  "name": "大龄岗位补贴（俗称4757）资格初判（距退休≤36个月）",
+  "module": "subsidy",
+  "status": "published",
+  "priority": 520,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "岗位补贴通常按最低工资的一定比例发放，并要求就业/签合同/社保缴纳等条件；本规则只做窗口期初判。",
+  "inputs": [
+    {
+      "key": "user.subsidy.months_to_legal_retire",
+      "type": "number",
+      "required": false,
+      "desc": "距法定退休月数（可由引擎算出或用户填）"
+    },
+    {
+      "key": "user.subsidy.has_employment_difficulty_cert",
+      "type": "boolean",
+      "required": false
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_missing_months",
+        "when": {
+          "==": [
+            {
+              "var": "user.subsidy.months_to_legal_retire"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_eligible",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-MONTHS-TO-RETIRE",
+                "text": "缺少“距退休月数”，无法判断是否进入大龄岗位补贴窗口（≤36个月）。",
+                "field": "user.subsidy.months_to_legal_retire"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_not_difficulty",
+        "when": {
+          "==": [
+            {
+              "var": "user.subsidy.has_employment_difficulty_cert"
+            },
+            false
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_eligible",
+              "value": false
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_eligible",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.subsidy.months_to_legal_retire"
+                },
+                null
+              ]
+            },
+            {
+              "<=": [
+                {
+                  "var": "user.subsidy.months_to_legal_retire"
+                },
+                36
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.subsidy.has_employment_difficulty_cert"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_eligible",
+              "value": true
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_4_not_eligible",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.subsidy.months_to_legal_retire"
+                },
+                null
+              ]
+            },
+            {
+              ">": [
+                {
+                  "var": "user.subsidy.months_to_legal_retire"
+                },
+                36
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_eligible",
+              "value": false
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.subsidy.job_eligible",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    }
+  ],
+  "examples": [
+    {
+      "name": "距退休30个月且就业困难 -> eligible",
+      "input": {
+        "user": {
+          "subsidy": {
+            "months_to_legal_retire": 30,
+            "has_employment_difficulty_cert": true
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "job_eligible": true
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

@@ -1,0 +1,207 @@
+{
+  "dsl_version": "SSP-DSL-1.0",
+  "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+  "name": "失业金领取资格初判（简化：失业状态+失业险年限）",
+  "module": "unemployment",
+  "status": "published",
+  "priority": 400,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "仅做初判；真实资格还涉及非本人意愿中断就业、求职登记、年龄等条件，应在 Admin 中配置补充规则或标记需人工核对。",
+  "inputs": [
+    {
+      "key": "user.status.employment_status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "user.social.unemployment_insurance_years",
+      "type": "number",
+      "required": false
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_not_unemployed",
+        "when": {
+          "!=": [
+            {
+              "var": "user.status.employment_status"
+            },
+            "unemployed"
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.eligible",
+              "value": false
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_missing_years",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "unemployed"
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.unemployment_insurance_years"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.eligible",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-UI-YEARS",
+                "text": "请提供失业保险累计缴费年限（用于核算可领失业金月数）。",
+                "field": "user.social.unemployment_insurance_years"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_years_ge_1",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "unemployed"
+              ]
+            },
+            {
+              ">=": [
+                {
+                  "var": "user.social.unemployment_insurance_years"
+                },
+                1
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.eligible",
+              "value": true
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_4_years_lt_1",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "unemployed"
+              ]
+            },
+            {
+              "<": [
+                {
+                  "var": "user.social.unemployment_insurance_years"
+                },
+                1
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.eligible",
+              "value": false
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-UI-NOT-ELIGIBLE",
+                "text": "失业险缴费年限不足1年，可能无法领取失业金（需以经办核定为准）。"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.unemployment.eligible",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    },
+    {
+      "key": "calc.warnings",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "失业且失业险2年 -> eligible",
+      "input": {
+        "user": {
+          "status": {
+            "employment_status": "unemployed"
+          },
+          "social": {
+            "unemployment_insurance_years": 2
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

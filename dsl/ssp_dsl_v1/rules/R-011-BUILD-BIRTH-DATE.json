@@ -1,0 +1,280 @@
+{
+  "dsl_version": "SSP-DSL-1.0",
+  "rule_id": "R-011-BUILD-BIRTH-DATE",
+  "name": "组装出生日期（年/月/日 -> YYYY-MM-DD）",
+  "module": "normalization",
+  "status": "published",
+  "priority": 11,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "make_date 需校验日期合法性；非法日期应 emit_warning 并 needs_agent。",
+  "inputs": [
+    {
+      "key": "user.basic.birth_date",
+      "type": "date",
+      "required": false,
+      "desc": "出生日期"
+    },
+    {
+      "key": "user.basic.birth_year",
+      "type": "number",
+      "required": false,
+      "desc": "出生年份（已标准化）"
+    },
+    {
+      "key": "user.basic.birth_month",
+      "type": "number",
+      "required": false,
+      "desc": "出生月份(1-12)"
+    },
+    {
+      "key": "user.basic.birth_day",
+      "type": "number",
+      "required": false,
+      "desc": "出生日期(1-31)"
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_already_have",
+        "when": {
+          "!=": [
+            {
+              "var": "user.basic.birth_date"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.normalization.birth_date_source",
+              "value": "provided"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_build",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.birth_date"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.basic.birth_year"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.basic.birth_month"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.basic.birth_day"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "call",
+              "fn": "make_date",
+              "args": {
+                "year": {
+                  "var": "user.basic.birth_year"
+                },
+                "month": {
+                  "var": "user.basic.birth_month"
+                },
+                "day": {
+                  "var": "user.basic.birth_day"
+                }
+              },
+              "into": "user.basic.birth_date"
+            },
+            {
+              "type": "set",
+              "path": "calc.normalization.birth_date_source",
+              "value": "built_from_fields"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2b_default_month_day",
+        "when": {
+          "and": [
+            {
+              "==": [
+                { "var": "user.basic.birth_date" },
+                null
+              ]
+            },
+            {
+              "!=": [
+                { "var": "user.basic.birth_year" },
+                null
+              ]
+            },
+            {
+              "or": [
+                { "==": [{ "var": "user.basic.birth_month" }, null] },
+                { "==": [{ "var": "user.basic.birth_day" }, null] }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "user.basic.birth_month",
+              "value": {
+                "if": [
+                  { "==": [{ "var": "user.basic.birth_month" }, null] },
+                  1,
+                  { "var": "user.basic.birth_month" }
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "user.basic.birth_day",
+              "value": {
+                "if": [
+                  { "==": [{ "var": "user.basic.birth_day" }, null] },
+                  1,
+                  { "var": "user.basic.birth_day" }
+                ]
+              }
+            },
+            {
+              "type": "call",
+              "fn": "make_date",
+              "args": {
+                "year": { "var": "user.basic.birth_year" },
+                "month": { "var": "user.basic.birth_month" },
+                "day": { "var": "user.basic.birth_day" }
+              },
+              "into": "user.basic.birth_date"
+            },
+            {
+              "type": "set",
+              "path": "calc.normalization.birth_date_source",
+              "value": "defaulted_month_day"
+            },
+            {
+              "type": "emit_caveat",
+              "value": {
+                "caveat_id": "C-BIRTH-MONTH-DEFAULT",
+                "text": "出生月份未提供，默认为1月。实际退休日期可能相差数月，建议补充准确出生月份。",
+                "confidence": "medium"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_4_missing_year",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.birth_date"
+                },
+                null
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.basic.birth_year"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-BIRTH-YEAR",
+                "text": "请提供出生年份（例如：1973）",
+                "field": "user.basic.birth_year"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "user.basic.birth_date",
+      "type": "date",
+      "desc": "标准化出生日期"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "有年/月/日可组装",
+      "input": {
+        "user": {
+          "basic": {
+            "birth_date": null,
+            "birth_year": 1973,
+            "birth_month": 5,
+            "birth_day": 12
+          }
+        }
+      },
+      "expected": {
+        "user": {
+          "basic": {
+            "birth_date": "1973-05-12"
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

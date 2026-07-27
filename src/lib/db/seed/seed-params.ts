@@ -1,0 +1,143 @@
+import fs from "fs";
+import path from "path";
+import { db } from "@/lib/db";
+import { params } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
+
+const PARAMS_FILE = path.join(
+  process.cwd(),
+  "dsl/ssp_dsl_v1/params/policy_params_shanghai_base.json",
+);
+
+interface ScalarParamEntry {
+  param_id: string;
+  type: "number" | "boolean" | "string" | "array";
+  value: unknown;
+  unit?: string;
+  effective_from?: string;
+  source?: string;
+}
+
+interface TableParamEntry {
+  param_id: string;
+  type: "table" | "timeline";
+  effective_from?: string;
+  key_fields: string[];
+  value_fields: string[];
+  rows: unknown[];
+  note?: string;
+  source?: string;
+}
+
+interface PolicyPackFile {
+  policy_pack_id: string;
+  as_of: string;
+  params: ScalarParamEntry[];
+  tables: TableParamEntry[];
+}
+
+export async function seedParams() {
+  const raw = fs.readFileSync(PARAMS_FILE, "utf-8");
+  const pack: PolicyPackFile = JSON.parse(raw);
+  const policyPackId = pack.policy_pack_id;
+
+  console.log(`Seeding params for policy pack: ${policyPackId}...`);
+
+  // Seed scalar params
+  for (const p of pack.params) {
+    const existing = await db
+      .select({ id: params.id })
+      .from(params)
+      .where(
+        and(
+          eq(params.paramId, p.param_id),
+          eq(params.policyPackId, policyPackId),
+          eq(params.version, 1),
+        ),
+      )
+      .limit(1);
+
+    const data = {
+      policyPackId,
+      paramId: p.param_id,
+      type: p.type,
+      value: p.value,
+      unit: p.unit ?? null,
+      effectiveFrom: p.effective_from ?? pack.as_of,
+      source: p.source ?? null,
+      keyFields: null,
+      valueFields: null,
+      rows: null,
+      note: null,
+      version: 1,
+      status: "published",
+    };
+
+    if (existing.length > 0) {
+      await db
+        .update(params)
+        .set({ ...data, updatedAt: new Date() })
+        .where(
+          and(
+            eq(params.paramId, p.param_id),
+            eq(params.policyPackId, policyPackId),
+            eq(params.version, 1),
+          ),
+        );
+      console.log(`  Updated param: ${p.param_id}`);
+    } else {
+      await db.insert(params).values(data);
+      console.log(`  Inserted param: ${p.param_id}`);
+    }
+  }
+
+  // Seed table params
+  for (const t of pack.tables) {
+    const existing = await db
+      .select({ id: params.id })
+      .from(params)
+      .where(
+        and(
+          eq(params.paramId, t.param_id),
+          eq(params.policyPackId, policyPackId),
+          eq(params.version, 1),
+        ),
+      )
+      .limit(1);
+
+    const data = {
+      policyPackId,
+      paramId: t.param_id,
+      type: t.type,
+      value: null,
+      unit: null,
+      effectiveFrom: t.effective_from ?? pack.as_of,
+      source: t.source ?? null,
+      keyFields: t.key_fields,
+      valueFields: t.value_fields,
+      rows: t.rows,
+      note: t.note ?? null,
+      version: 1,
+      status: "published",
+    };
+
+    if (existing.length > 0) {
+      await db
+        .update(params)
+        .set({ ...data, updatedAt: new Date() })
+        .where(
+          and(
+            eq(params.paramId, t.param_id),
+            eq(params.policyPackId, policyPackId),
+            eq(params.version, 1),
+          ),
+        );
+      console.log(`  Updated table param: ${t.param_id}`);
+    } else {
+      await db.insert(params).values(data);
+      console.log(`  Inserted table param: ${t.param_id}`);
+    }
+  }
+
+  console.log("Params seeded.");
+}
