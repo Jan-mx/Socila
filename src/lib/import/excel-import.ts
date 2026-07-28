@@ -112,6 +112,31 @@ function parseBoolean(value: unknown, rowNumber: number): boolean {
   throw new Error(`Row ${rowNumber}: expected_needs_agent must be a boolean`);
 }
 
+function parseRegressionExpected(
+  row: SpreadsheetRow,
+  rowNumber: number,
+): Record<string, unknown> {
+  if (hasValue(row.expected_needs_agent)) {
+    return {
+      calc: {
+        needs_agent: parseBoolean(row.expected_needs_agent, rowNumber),
+      },
+    };
+  }
+
+  const expected = parseRequiredObject(row.expected, rowNumber, "expected");
+  const allowedNamespaces = new Set(["user", "calc", "plan"]);
+  const invalidField = Object.keys(expected).find(
+    (field) => !allowedNamespaces.has(field),
+  );
+  if (invalidField) {
+    throw new Error(
+      `Row ${rowNumber}: expected contains invalid top-level field '${invalidField}'`,
+    );
+  }
+  return expected;
+}
+
 function addUniqueKey(keys: Set<string>, value: string, rowNumber: number, label: string): void {
   if (keys.has(value)) {
     throw new Error(`Row ${rowNumber}: duplicate ${label} business key '${value}'`);
@@ -158,9 +183,7 @@ export function parseRegressionTestRows(rows: SpreadsheetRow[]): ImportedRegress
     const sourceCaseUid = requireText(row.source_case_uid, rowNumber, "source case ID");
     addUniqueKey(testNames, name, rowNumber, "test");
     const input = parseRequiredObject(row.profile_json ?? row.input, rowNumber, "input");
-    const expected = hasValue(row.expected_needs_agent)
-      ? { needs_agent: parseBoolean(row.expected_needs_agent, rowNumber) }
-      : parseRequiredObject(row.expected, rowNumber, "expected");
+    const expected = parseRegressionExpected(row, rowNumber);
 
     return {
       name,

@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "npx tsx src/lib/db/seed/index.ts",
+    "migrate:regression-test-expectations": "tsx scripts/migrate-regression-test-expectations.ts",
     "seed:showcase:offline": "tsx scripts/generate-showcase-cases.ts --fallback-only"
   },
   "dependencies": {
