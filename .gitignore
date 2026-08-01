@@ -46,3 +46,6 @@ next-env.d.ts
 test-results/
 /.git.previous-before-socila-reset/
 /.claude/
+# Offline policy-evaluation build and timestamped reports
+/.evaluation-tmp/
+/evaluation-reports/
