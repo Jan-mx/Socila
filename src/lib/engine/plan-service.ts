@@ -10,8 +10,10 @@
  * subsidy 富化，导致同样的输入经不同入口得到的结果不一致。这里统一口径。
  */
 
-import { orchestrate } from "./orchestrator";
+import { orchestrate, orchestrateInMemory } from "./orchestrator";
 import type { OrchestratorResult } from "./orchestrator";
+import type { TraceEntry } from "@/types/engine";
+import type { RuleDefinition } from "@/types/engine";
 import { buildScenarios, type Scenario } from "./scenario-builder";
 import { adviseSubsidies, type SubsidyRecommendation } from "./subsidy-advisor";
 import { getDeep } from "./actions";
@@ -50,6 +52,83 @@ export interface ComputePlanServiceResult {
   plan: Record<string, unknown>;
   calc: Record<string, unknown>;
   meta: OrchestratorResult["meta"];
+  trace: TraceEntry[];
+}
+
+export type PlanOrchestrator = (input: {
+  user: Record<string, unknown>;
+  as_of_date?: string;
+  rule_set_id?: string;
+  policy_pack_id?: string;
+}) => Promise<OrchestratorResult>;
+
+export interface ComputePlanServiceDependencies {
+  orchestrate: PlanOrchestrator;
+  savePlan: typeof savePlan;
+}
+
+/** Builds the plan service for production and deterministic offline evaluators. */
+export function createComputePlanService(dependencies: ComputePlanServiceDependencies) {
+  return async function computePlanService(
+    input: ComputePlanServiceInput,
+  ): Promise<ComputePlanServiceResult> {
+    const result = await dependencies.orchestrate({
+      user: input.user,
+      as_of_date: input.asOfDate,
+      rule_set_id: input.ruleSetId,
+      policy_pack_id: input.policyPackId,
+    });
+
+    const needsAgent = extractNeedsAgent(result.calc);
+    const questions = extractQuestions(result.calc);
+    const warnings = extractWarnings(result.calc);
+    const caveats = extractCaveats(result.calc);
+    const enrichedCalc = enrichCalc(result, input.user, needsAgent);
+
+    let planId: string | null = null;
+    if (input.persist ?? true) {
+      const saved = await dependencies.savePlan({
+        userInput: input.user as Record<string, unknown>,
+        calcResult: enrichedCalc as Record<string, unknown>,
+        planOutput: result.plan as Record<string, unknown>,
+        trace: result.trace as unknown[],
+        ruleSetVersion: result.meta.rule_set_id,
+        policyPackVersion: result.meta.policy_pack_id,
+        asOfDate: result.meta.as_of_date,
+        sessionId: input.sessionId,
+      });
+      planId = saved?.id ?? null;
+    }
+
+    return { planId, needsAgent, questions, warnings, caveats, plan: result.plan, calc: enrichedCalc, meta: result.meta, trace: result.trace };
+  };
+}
+
+/** Repository-backed, database-free counterpart of the production orchestrator. */
+export function createRepositoryOrchestrator(repository: {
+  rules: RuleDefinition[];
+  params: Record<string, unknown>;
+  ruleSetId?: string;
+  policyPackId?: string;
+}): PlanOrchestrator {
+  return async (input) => {
+    const asOfDate = input.as_of_date ?? new Date().toISOString().slice(0, 10);
+    const activeRules = repository.rules.filter((rule) =>
+      rule.effective_from <= asOfDate && (rule.effective_to == null || rule.effective_to >= asOfDate),
+    );
+    const result = orchestrateInMemory(activeRules, repository.params, input.user, asOfDate);
+    return {
+      ...result,
+      meta: {
+        rule_set_id: input.rule_set_id ?? repository.ruleSetId ?? "RS-SHANGHAI-PLAN-V1",
+        policy_pack_id: input.policy_pack_id ?? repository.policyPackId ?? "SHANGHAI_BASE",
+        as_of_date: asOfDate,
+        rules_executed: activeRules.length,
+      },
+      effectiveRules: activeRules,
+      flatParams: structuredClone(repository.params),
+    };
+  };
 }
 
 // ─── 主入口 ─────────────────────────────────────────────────────────────────
@@ -57,49 +136,7 @@ export interface ComputePlanServiceResult {
 /**
  * 计算社保规划方案：统一的编排 + 富化 + 落库流程。
  */
-export async function computePlanService(
-  input: ComputePlanServiceInput,
-): Promise<ComputePlanServiceResult> {
-  const result = await orchestrate({
-    user: input.user,
-    as_of_date: input.asOfDate,
-    rule_set_id: input.ruleSetId,
-    policy_pack_id: input.policyPackId,
-  });
-
-  const needsAgent = extractNeedsAgent(result.calc);
-  const questions = extractQuestions(result.calc);
-  const warnings = extractWarnings(result.calc);
-  const caveats = extractCaveats(result.calc);
-
-  const enrichedCalc = enrichCalc(result, input.user, needsAgent);
-
-  let planId: string | null = null;
-  if (input.persist ?? true) {
-    const saved = await savePlan({
-      userInput: input.user as Record<string, unknown>,
-      calcResult: enrichedCalc as Record<string, unknown>,
-      planOutput: result.plan as Record<string, unknown>,
-      trace: result.trace as unknown[],
-      ruleSetVersion: result.meta.rule_set_id,
-      policyPackVersion: result.meta.policy_pack_id,
-      asOfDate: result.meta.as_of_date,
-      sessionId: input.sessionId,
-    });
-    planId = saved?.id ?? null;
-  }
-
-  return {
-    planId,
-    needsAgent,
-    questions,
-    warnings,
-    caveats,
-    plan: result.plan,
-    calc: enrichedCalc,
-    meta: result.meta,
-  };
-}
+export const computePlanService = createComputePlanService({ orchestrate, savePlan });
 
 // ─── 富化：场景对比 + 补贴建议 ────────────────────────────────────────────────
 

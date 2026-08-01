@@ -7,7 +7,7 @@
 
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import { computePlanService } from "@/lib/engine/plan-service";
+import { computePlanService, type ComputePlanServiceInput, type ComputePlanServiceResult } from "@/lib/engine/plan-service";
 
 // ─── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ interface AgentQuestion {
 
 // ─── Zod Schemas ──────────────────────────────────────────────────────────────
 
-const computePlanSchema = z.object({
+export const computePlanSchema = z.object({
   basic: z.object({
     birth_year: z
       .number()
@@ -145,7 +145,7 @@ const computePlanSchema = z.object({
     ),
 });
 
-const validateFieldSchema = z.object({
+export const validateFieldSchema = z.object({
   field: z
     .string()
     .describe(
@@ -156,83 +156,46 @@ const validateFieldSchema = z.object({
     .describe("用户提供的字段值"),
 });
 
-type ComputePlanInput = z.infer<typeof computePlanSchema>;
+export type ComputePlanInput = z.infer<typeof computePlanSchema>;
+type ComputePlanToolOutput = Awaited<ReturnType<ReturnType<typeof createComputePlanToolAdapter>["execute"]>>;
 type ValidateFieldInput = z.infer<typeof validateFieldSchema>;
 
 // ─── Tool 1: computePlan ─────────────────────────────────────────────────────
 
-export const computePlanTool = tool<
-  ComputePlanInput,
-  Awaited<ReturnType<typeof computePlanExecute>>
->({
-  description:
-    "调用社保规则引擎，根据用户参数计算社保规划方案。当用户提供了足够的个人信息后调用此工具。如果引擎返回 needs_agent=true，说明仍有缺失字段，需要继续追问用户。",
-  inputSchema: zodSchema(computePlanSchema),
-  execute: computePlanExecute,
-});
+const COMPUTE_PLAN_DESCRIPTION =
+  "调用社保规则引擎，根据用户参数计算社保规划方案。当用户提供了足够的个人信息后调用此工具。如果引擎返回 needs_agent=true，说明仍有缺失字段，需要继续追问用户。";
 
-async function computePlanExecute(
-  params: ComputePlanInput,
-  options?: { experimental_context?: unknown },
+export function createComputePlanToolAdapter(
+  service: (input: ComputePlanServiceInput) => Promise<ComputePlanServiceResult>,
+  options: { asOfDate?: string; persist?: boolean; captureResult?: (result: ComputePlanServiceResult) => void } = {},
 ) {
-  const ctx = options?.experimental_context as { sessionId?: unknown } | undefined;
-  const sessionId = typeof ctx?.sessionId === "string" ? ctx.sessionId : undefined;
-  try {
-    const userInput = {
-      basic: params.basic,
-      social: params.social,
-      status: params.status,
-      subsidy: params.subsidy,
-      mi: params.mi,
-      objective: params.objective,
-    };
-
-    const result = await computePlanService({ user: userInput, sessionId });
-
-    return {
-      success: true as const,
-      plan_id: result.planId,
-      needs_agent: result.needsAgent,
-      questions: result.questions,
-      warnings: result.warnings,
-      caveats: result.caveats,
-      plan: result.plan,
-      calc: result.calc,
-      meta: result.meta,
-    };
-  } catch (error) {
-    return {
-      success: false as const,
-      error:
-        error instanceof Error
-          ? error.message
-          : "计算服务暂时不可用，请稍后重试",
-      needs_agent: false,
-      questions: [] as AgentQuestion[],
-      warnings: [] as string[],
-      plan: {} as Record<string, unknown>,
-      calc: {} as Record<string, unknown>,
-      meta: null,
-    };
-  }
+  return {
+    parse(input: unknown) {
+      return computePlanSchema.safeParse(input);
+    },
+    async execute(params: ComputePlanInput, context?: { experimental_context?: unknown }) {
+      const ctx = context?.experimental_context as { sessionId?: unknown } | undefined;
+      const sessionId = typeof ctx?.sessionId === "string" ? ctx.sessionId : undefined;
+      try {
+        const userInput = { basic: params.basic, social: params.social, status: params.status, subsidy: params.subsidy, mi: params.mi, objective: params.objective };
+        const result = await service({ user: userInput, sessionId, asOfDate: options.asOfDate, persist: options.persist });
+        options.captureResult?.(result);
+        return { success: true as const, plan_id: result.planId, needs_agent: result.needsAgent, questions: result.questions, warnings: result.warnings, caveats: result.caveats, plan: result.plan, calc: result.calc, meta: result.meta };
+      } catch (error) {
+        return { success: false as const, error: error instanceof Error ? error.message : "计算服务暂时不可用，请稍后重试", needs_agent: false, questions: [] as AgentQuestion[], warnings: [] as string[], plan: {} as Record<string, unknown>, calc: {} as Record<string, unknown>, meta: null };
+      }
+    },
+  };
 }
 
 // ─── Tool 2: validateField ───────────────────────────────────────────────────
 
-export const validateFieldTool = tool<
-  ValidateFieldInput,
-  ReturnType<typeof validateFieldValue>
->({
-  description:
-    "校验用户输入的字段值格式是否正确。在调用 computePlan 之前用于预校验单个字段，避免因格式错误导致计算失败。",
-  inputSchema: zodSchema(validateFieldSchema),
-  execute: async ({ field, value }: ValidateFieldInput) =>
-    validateFieldValue(field, value),
-});
+const VALIDATE_FIELD_DESCRIPTION =
+  "校验用户输入的字段值格式是否正确。在调用 computePlan 之前用于预校验单个字段，避免因格式错误导致计算失败。";
 
 // ─── Tool 3: updateProfile ──────────────────────────────────────────────────
 
-const updateProfileSchema = z.object({
+export const updateProfileSchema = z.object({
   basic: z
     .object({
       birth_year: z.number().int().optional(),
@@ -259,23 +222,38 @@ const updateProfileSchema = z.object({
 
 type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
-export const updateProfileTool = tool<
-  UpdateProfileInput,
-  { updated: true; profile: UpdateProfileInput }
->({
-  description:
-    "当从用户对话中提取到新的个人信息时调用此工具，将结构化的用户画像数据发送给客户端。每轮对话最多调用一次，并把该轮识别到的新增字段合并后一次提交。",
-  inputSchema: zodSchema(updateProfileSchema),
-  execute: async (params) => ({ updated: true, profile: params }),
-});
+const UPDATE_PROFILE_DESCRIPTION =
+  "当从用户对话中提取到新的个人信息时调用此工具，将结构化的用户画像数据发送给客户端。每轮对话最多调用一次，并把该轮识别到的新增字段合并后一次提交。";
 
 // ─── 工具集导出 ──────────────────────────────────────────────────────────────
 
-export const tools = {
-  computePlan: computePlanTool,
-  validateField: validateFieldTool,
-  updateProfile: updateProfileTool,
-};
+export function createAgentTools(
+  service: (input: ComputePlanServiceInput) => Promise<ComputePlanServiceResult>,
+  options: { asOfDate?: string; persist?: boolean; captureResult?: (result: ComputePlanServiceResult) => void } = {},
+) {
+  return {
+    computePlan: tool<ComputePlanInput, ComputePlanToolOutput>({
+      description: COMPUTE_PLAN_DESCRIPTION,
+      inputSchema: zodSchema(computePlanSchema),
+      execute: createComputePlanToolAdapter(service, options).execute,
+    }),
+    validateField: tool<ValidateFieldInput, ReturnType<typeof validateFieldValue>>({
+      description: VALIDATE_FIELD_DESCRIPTION,
+      inputSchema: zodSchema(validateFieldSchema),
+      execute: async ({ field, value }: ValidateFieldInput) => validateFieldValue(field, value),
+    }),
+    updateProfile: tool<UpdateProfileInput, { updated: true; profile: UpdateProfileInput }>({
+      description: UPDATE_PROFILE_DESCRIPTION,
+      inputSchema: zodSchema(updateProfileSchema),
+      execute: async (params) => ({ updated: true, profile: params }),
+    }),
+  };
+}
+
+export const tools = createAgentTools(computePlanService);
+export const computePlanTool = tools.computePlan;
+export const validateFieldTool = tools.validateField;
+export const updateProfileTool = tools.updateProfile;
 
 // ─── 内部辅助函数 ─────────────────────────────────────────────────────────────
 

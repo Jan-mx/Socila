@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PlanComputeRequestSchema } from "@/lib/validators/plan-input";
 import { computePlanService } from "@/lib/engine/plan-service";
+import { createPlanComputeAdapter } from "@/lib/plan/compute-adapter";
 import {
   attachAnonymousSessionCookie,
   ensureAnonymousSession,
@@ -16,6 +16,8 @@ export const dynamic = "force-dynamic";
 const PLAN_RATE_LIMIT = 12;
 const PLAN_RATE_WINDOW_MS = 60_000;
 const MAX_REQUEST_BYTES = 64 * 1024;
+
+const planComputeAdapter = createPlanComputeAdapter(computePlanService);
 
 export async function POST(req: NextRequest) {
   const { sessionId, isNewSession } = ensureAnonymousSession(req);
@@ -48,43 +50,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json();
-    const parsed = PlanComputeRequestSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return respondJson(
-        { error: "输入内容无效", details: parsed.error.flatten() },
-        { status: 400 },
-      );
-    }
-
-    const {
-      user,
-      as_of_date,
-      rule_set_id = "RS-SHANGHAI-PLAN-V1",
-      policy_pack_id = "SHANGHAI_BASE",
-    } = parsed.data;
-
-    const asOfDate = as_of_date ?? new Date().toISOString().slice(0, 10);
-
-    const result = await computePlanService({
-      user: user as Record<string, unknown>,
-      asOfDate,
-      ruleSetId: rule_set_id,
-      policyPackId: policy_pack_id,
-      sessionId,
-    });
-
-    return respondJson({
-      plan_id: result.planId,
-      plan: result.plan,
-      calc: result.calc,
-      meta: result.meta,
-      needs_agent: result.needsAgent,
-      questions: result.questions,
-      warnings: result.warnings,
-      caveats: result.caveats,
-    });
+    const result = await planComputeAdapter.handle(await req.json(), sessionId);
+    return respondJson(result.body, { status: result.status });
   } catch {
     return respondJson({ error: "计算规划方案失败" }, { status: 500 });
   }

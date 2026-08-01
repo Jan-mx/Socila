@@ -6,7 +6,7 @@
 
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, stepCountIs } from "ai";
-import type { ModelMessage } from "ai";
+import type { LanguageModel, ModelMessage } from "ai";
 import { SYSTEM_PROMPT, buildContextPrompt } from "./prompts";
 import type { AgentQuestion, UserProfileSummary } from "./prompts";
 import { tools } from "./tools";
@@ -46,6 +46,47 @@ export type { ModelMessage as ChatMessage } from "ai";
  * return stream.toUIMessageStreamResponse();
  * ```
  */
+type StreamTextFunction = (options: Parameters<typeof streamText>[0]) => ReturnType<typeof streamText>;
+
+export function createAgentRuntime(dependencies: {
+  model: LanguageModel;
+  tools: typeof tools;
+  streamText?: StreamTextFunction;
+}) {
+  const runStreamText = dependencies.streamText ?? streamText;
+  return {
+    createChatStream(
+      messages: ModelMessage[],
+      context?: ChatContext,
+      onFinish?: (result: { text: string }) => void | Promise<void>,
+    ) {
+      const contextPrompt = context
+        ? buildContextPrompt(context.questions ?? [], context.userProfile)
+        : "";
+      const systemPrompt = contextPrompt
+        ? `${SYSTEM_PROMPT}\n\n${contextPrompt}`
+        : SYSTEM_PROMPT;
+
+      return runStreamText({
+        model: dependencies.model,
+        system: systemPrompt,
+        messages,
+        providerOptions: {
+          openai: {
+            // 中转网关可能默认不持久化 responses item，显式关闭 store 避免 item_reference 丢失。
+            store: false,
+          },
+        },
+        tools: dependencies.tools,
+        experimental_context: { sessionId: context?.sessionId },
+        stopWhen: stepCountIs(8),
+        temperature: 0.1,
+        onFinish,
+      });
+    },
+  };
+}
+
 export function createChatStream(
   messages: ModelMessage[],
   context?: ChatContext,
@@ -53,32 +94,9 @@ export function createChatStream(
 ) {
   const { apiKey, baseURL, model } = getOpenAIConfig();
   const openai = createOpenAI({ apiKey, baseURL });
-
-  const contextPrompt = context
-    ? buildContextPrompt(context.questions ?? [], context.userProfile)
-    : "";
-
-  const systemPrompt = contextPrompt
-    ? `${SYSTEM_PROMPT}\n\n${contextPrompt}`
-    : SYSTEM_PROMPT;
-
-  return streamText({
-    model: openai(model),
-    system: systemPrompt,
+  return createAgentRuntime({ model: openai(model), tools }).createChatStream(
     messages,
-    providerOptions: {
-      openai: {
-        // 中转网关可能默认不持久化 responses item，显式关闭 store 避免 item_reference 丢失。
-        store: false,
-      },
-    },
-    tools,
-    // 把会话 id 透传给工具的 execute（AI SDK v6：execute 第二参 experimental_context）。
-    experimental_context: { sessionId: context?.sessionId },
-    // 增加步数上限，避免复杂对话里在输出结论前提前截断。
-    stopWhen: stepCountIs(8),
-    // 低温度：本 Agent 的职责是确定性的字段抽取 + 工具调用，尽量减少行为方差。
-    temperature: 0.1,
+    context,
     onFinish,
-  });
+  );
 }

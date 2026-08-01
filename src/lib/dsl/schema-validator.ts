@@ -1,7 +1,11 @@
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
+import { createRequire } from "node:module";
 import { rules } from "@/lib/db/schema";
-import ruleDslSchema from "../../../dsl/ssp_dsl_v1/schema/ssp_rule_dsl.schema.json";
+import type { RuleDefinition } from "@/types/engine";
+
+const require = createRequire(import.meta.url);
+const ruleDslSchema = require("../../../dsl/ssp_dsl_v1/schema/ssp_rule_dsl.schema.json");
 
 /**
  * DSL JSON-Schema 校验。
@@ -57,6 +61,15 @@ export function validateRuleAgainstSchema(
   if (rule.effectiveTo) dsl.effective_to = rule.effectiveTo;
   if (rule.notes) dsl.notes = rule.notes;
 
+  return validateDslRule(dsl);
+}
+
+/** Validates an in-memory DSL rule with the same Ajv instance used by publish. */
+export function validateRuleDefinitionAgainstSchema(rule: RuleDefinition): SchemaValidationResult {
+  return validateDslRule(rule as unknown as Record<string, unknown>);
+}
+
+function validateDslRule(dsl: Record<string, unknown>): SchemaValidationResult {
   const ok = validateRuleFn(dsl);
   return {
     valid: Boolean(ok),

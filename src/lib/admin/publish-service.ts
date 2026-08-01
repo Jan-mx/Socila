@@ -1,18 +1,11 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { params, ruleSets, rules } from "@/lib/db/schema";
-import { getRule, insertPublish, listTests } from "@/lib/db/queries";
-import { validateRuleAgainstSchema } from "@/lib/dsl/schema-validator";
+import { getRule, insertPublish, listParams, listTests } from "@/lib/db/queries";
 import { runDbTestSuite, dbRuleToDefinition } from "@/lib/engine/test-runner";
+import { evaluatePublishGate, summarizeRegressionSuite, transitionRollbackState, type PublishEntityType, type PublishStage } from "./publish-gates";
 
-export type PublishEntityType = "rule" | "param" | "rule_set";
-export type PublishStage = "draft" | "staging" | "production";
-
-interface GateCheckResult {
-  passed: boolean;
-  reason?: string;
-  results: Record<string, unknown>;
-}
+export type { PublishEntityType, PublishStage } from "./publish-gates";
 
 interface LatestEntity {
   entityType: PublishEntityType;
@@ -136,63 +129,18 @@ async function checkPromoteGates(
   entityId: string,
   fromStage: PublishStage,
   toStage: PublishStage,
-): Promise<GateCheckResult> {
+): Promise<ReturnType<typeof evaluatePublishGate>> {
   if (fromStage === "draft" && toStage === "staging") {
     if (entityType !== "rule") {
-      return {
-        passed: true,
-        results: {
-          checks: [{ name: "draft_to_staging", passed: true }],
-        },
-      };
+      return evaluatePublishGate({ entityType, fromStage, toStage });
     }
 
     const rule = await getRule(entityId);
     if (!rule) {
-      return {
-        passed: false,
-        reason: "未找到规则",
-        results: { checks: [{ name: "rule_exists", passed: false }] },
-      };
+      return evaluatePublishGate({ entityType, fromStage, toStage });
     }
-
-    const examples = (rule.examples as unknown[]) ?? [];
-    // 用 ajv + 完整 DSL JSON-Schema 做结构校验（替代此前仅检查 ruleId/name/rows 的浅检查）。
-    const schemaResult = validateRuleAgainstSchema(rule);
-    const schemaValid = schemaResult.valid;
-    const examplesValid = examples.length > 0;
-
-    if (!schemaValid || !examplesValid) {
-      return {
-        passed: false,
-        reason: schemaValid
-          ? "Examples check failed"
-          : `Schema validation failed: ${schemaResult.errors.slice(0, 3).join("; ")}`,
-        results: {
-          checks: [
-            {
-              name: "schema",
-              passed: schemaValid,
-              detail: schemaResult.errors.slice(0, 5).join("; ") || undefined,
-            },
-            { name: "examples", passed: examplesValid },
-          ],
-          schema_valid: schemaValid,
-          schema_errors: schemaResult.errors.slice(0, 10),
-          examples_valid: examplesValid,
-        },
-      };
-    }
-
-    return {
-      passed: true,
-      results: {
-        checks: [
-          { name: "schema", passed: true },
-          { name: "examples", passed: true },
-        ],
-      },
-    };
+    const parameterRows = await listParams();
+    return evaluatePublishGate({ entityType, fromStage, toStage, candidateRule: dbRuleToDefinition(rule), knownParameterIds: parameterRows.map((parameter) => parameter.paramId) });
   }
 
   if (fromStage === "staging" && toStage === "production") {
@@ -202,16 +150,7 @@ async function checkPromoteGates(
 
     const total = tests.length;
     if (total === 0) {
-      return {
-        passed: false,
-        reason: "未找到回归测试",
-        results: {
-          checks: [{ name: "regression", passed: false, detail: "没有可运行的测试" }],
-          total: 0,
-          passed: 0,
-          pass_rate: 0,
-        },
-      };
+      return evaluatePublishGate({ entityType, fromStage, toStage });
     }
 
     // 把正在晋升的 staging 规则叠加进有效规则集——getEffectiveRules 只取 published，
@@ -238,69 +177,18 @@ async function checkPromoteGates(
         { overrideRules },
       );
     } catch (err) {
-      return {
-        passed: false,
-        reason: `回归测试运行失败：${err instanceof Error ? err.message : String(err)}`,
-        results: {
-          checks: [{ name: "regression", passed: false, detail: "运行出错" }],
-          total,
-          passed: 0,
-          pass_rate: 0,
-        },
-      };
+      return evaluatePublishGate({ entityType, fromStage, toStage, regression: { total, passed: 0, failedTests: [], candidateIncluded: entityType !== "rule", exception: err instanceof Error ? err.message : String(err) } });
     }
 
-    const passed = suite.passed;
-    const passRate = suite.pass_rate;
-    const failedNames = suite.results
-      .filter((r) => !r.pass)
-      .map((r) => r.name);
-
-    if (passRate < 0.8) {
-      return {
-        passed: false,
-        reason: `Regression pass rate ${(passRate * 100).toFixed(1)}% is below 80% threshold`,
-        results: {
-          checks: [
-            {
-              name: "regression",
-              passed: false,
-              detail: `通过率 ${(passRate * 100).toFixed(1)}%，低于 80%`,
-            },
-          ],
-          total,
-          passed,
-          pass_rate: passRate,
-          failed_tests: failedNames.slice(0, 10),
-        },
-      };
-    }
-
-    return {
-      passed: true,
-      results: {
-        checks: [
-          {
-            name: "regression",
-            passed: true,
-            detail: `通过率 ${(passRate * 100).toFixed(1)}%（重新运行 ${total} 个测试）`,
-          },
-        ],
-        total,
-        passed,
-        pass_rate: passRate,
-        failed_tests: failedNames.slice(0, 10),
-      },
-    };
+    return evaluatePublishGate({
+      entityType,
+      fromStage,
+      toStage,
+      regression: summarizeRegressionSuite(suite, entityType, entityId),
+    });
   }
 
-  return {
-    passed: false,
-    reason: "不支持此发布阶段转换",
-    results: {
-      checks: [{ name: "transition", passed: false }],
-    },
-  };
+  return evaluatePublishGate({ entityType, fromStage, toStage });
 }
 
 function nextStageFromCurrent(current: PublishStage): PublishStage | null {
@@ -401,7 +289,7 @@ export async function rollbackEntity(options: {
       `不支持的实体状态：${entity.status}`,
     );
   }
-  if (fromStage !== "production") {
+  if (!transitionRollbackState(fromStage).allowed) {
     throw new PublishServiceError(400, "只能回滚生产阶段的实体");
   }
 

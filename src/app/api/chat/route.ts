@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createChatStream } from "@/lib/ai/agent";
-import type { ChatContext } from "@/lib/ai/agent";
-import type { UIMessage } from "ai";
-import { convertToModelMessages } from "ai";
+import { createChatRequestHandler, type ConversationRecord } from "@/lib/ai/chat-handler";
 import { createRequestLogger } from "@/lib/logging";
 import {
   createConversation,
@@ -190,68 +188,45 @@ export async function POST(req: NextRequest) {
       ? metadataCustom.questions
       : undefined;
 
-  const context: ChatContext = {
-    questions: questions as ChatContext["questions"],
-    userProfile: userProfile as ChatContext["userProfile"],
-    sessionId,
-  };
-
   logger.info("chat.request", {
     message_count: rawMessages.length,
     session_id: sessionId,
   });
 
   try {
-    const conversation = requestedConversationId
-      ? await getConversation(requestedConversationId).then(async (existing) => {
-          if (existing) {
-            if (!existing.sessionId || existing.sessionId !== sessionId) {
-              return null;
-            }
-            return existing;
-          }
-
-          return createConversation({
-            id: requestedConversationId,
-            sessionId,
-          });
-        })
-      : await createConversation({ sessionId });
-
-    if (requestedConversationId && conversation === null) {
-      return respondJson({ error: "无权限访问该会话" }, { status: 403 });
+    const handler = createChatRequestHandler({
+      conversationStore: {
+        async get(id) {
+          return asConversationRecord(await getConversation(id));
+        },
+        async create(data) {
+          return asConversationRecord(await createConversation(data));
+        },
+        async update(id, data) {
+          return asConversationRecord(await updateConversation(id, data));
+        },
+      },
+      streamFactory: createChatStream,
+      logger,
+    });
+    const handled = await handler.handle({
+      rawMessages,
+      requestedConversationId,
+      sessionId,
+      userProfile,
+      questions: questions as Parameters<typeof handler.handle>[0]["questions"],
+    });
+    if (handled.status !== 200) {
+      return respondJson({ error: handled.error }, { status: handled.status });
     }
-
-    if (!conversation) {
-      return respondJson({ error: "无法创建会话" }, { status: 500 });
-    }
-
-    const uiMessages = rawMessages as UIMessage[];
-
-    // 先保存本轮输入快照，避免流式中断时会话完全丢失。
-    try {
-      await updateConversation(conversation.id, {
-        messages: uiMessages as unknown[],
-        userProfile,
-      });
-    } catch (persistErr) {
-      logger.warn("chat.persist_snapshot_failed", {
-        error_message:
-          persistErr instanceof Error ? persistErr.message : String(persistErr),
-        conversation_id: conversation.id,
-      });
-    }
-
-    const messages = await convertToModelMessages(uiMessages);
-    const result = createChatStream(messages, context);
 
     // token / 成本 / 步数观测：用 after() 注册到响应之后执行，确保 serverless 函数
     // 在挂起前 flush 这些日志（裸 fire-and-forget 可能随函数冻结而丢失）。
     after(async () => {
       try {
-        const usage = await result.totalUsage;
+        const usage = await handled.totalUsage as { inputTokens?: number; outputTokens?: number; totalTokens?: number };
         logger.info("chat.usage", {
-          conversation_id: conversation.id,
+          conversation_id: handled.conversationId,
           input_tokens: usage.inputTokens,
           output_tokens: usage.outputTokens,
           total_tokens: usage.totalTokens,
@@ -260,9 +235,9 @@ export async function POST(req: NextRequest) {
         // 流式中断时 totalUsage 可能 reject，忽略。
       }
       try {
-        const steps = await result.steps;
+        const steps = await handled.steps;
         logger.info("chat.steps", {
-          conversation_id: conversation.id,
+          conversation_id: handled.conversationId,
           step_count: steps.length,
         });
       } catch {
@@ -270,33 +245,9 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    const response = result.toUIMessageStreamResponse({
-      originalMessages: uiMessages,
-      onFinish: async ({ messages: persistedMessages }) => {
-        try {
-          await updateConversation(conversation.id, {
-            messages: persistedMessages as unknown[],
-            userProfile,
-          });
-        } catch (persistErr) {
-          logger.warn("chat.persist_finish_failed", {
-            error_message:
-              persistErr instanceof Error ? persistErr.message : String(persistErr),
-            conversation_id: conversation.id,
-          });
-        }
-      },
-      onError: (streamErr) => {
-        logger.warn("chat.stream_error", {
-          error_message:
-            streamErr instanceof Error ? streamErr.message : String(streamErr),
-          conversation_id: conversation.id,
-        });
-        return "抱歉，回复中断了。请发送“继续”，我会接着回答。";
-      },
-    });
+    const response = handled.response;
     response.headers.set("x-request-id", logger.requestId);
-    response.headers.set("x-conversation-id", conversation.id);
+    response.headers.set("x-conversation-id", handled.conversationId);
     applyRateLimitHeaders(response, rateLimit, CHAT_RATE_LIMIT);
     if (isNewSession) {
       attachAnonymousSessionCookie(response, sessionId);
@@ -327,4 +278,15 @@ export async function POST(req: NextRequest) {
     });
     return respondJson({ error: "服务器内部错误" }, { status: 500 });
   }
+}
+
+function asConversationRecord(value: unknown): ConversationRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  return {
+    id: String(record.id),
+    sessionId: typeof record.sessionId === "string" ? record.sessionId : null,
+    messages: Array.isArray(record.messages) ? record.messages : [],
+    userProfile: isObjectRecord(record.userProfile) ? record.userProfile : {},
+  };
 }

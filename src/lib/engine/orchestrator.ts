@@ -150,10 +150,11 @@ export function orchestrateInMemory(
   user: Record<string, unknown>;
   trace: TraceEntry[];
 } {
+  const resolvedAsOfDate = asOfDate ?? new Date().toISOString().split("T")[0];
   const ctx: any = {
     user: structuredClone(userInput),
     params: structuredClone(params),
-    calc: {},
+    calc: { _today: resolvedAsOfDate },
     plan: {},
   };
 
@@ -167,7 +168,7 @@ export function orchestrateInMemory(
     if (rule.rule_id === "R-120-COMPUTE-RETIRE-DATE") {
       autoComputeMonthsToRetire(
         ctx,
-        asOfDate ?? new Date().toISOString().split("T")[0],
+        resolvedAsOfDate,
       );
     }
   }
