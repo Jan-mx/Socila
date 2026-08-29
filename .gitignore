@@ -46,3 +46,7 @@ next-env.d.ts
 test-results/
 /.git.previous-before-socila-reset/
 /.claude/
+
+# evaluation artifacts
+/.evaluation-tmp/
+/evaluation-reports/
