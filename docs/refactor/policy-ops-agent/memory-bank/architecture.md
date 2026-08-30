@@ -1,0 +1,206 @@
+# PolicyOps Agent 目标架构
+
+> 用途：维护系统当前目标结构、模块职责、数据所有权、调用方向和部署边界。写实现代码前必须阅读；实现改变架构事实后同步更新，不记录任务流水账。
+
+## 系统上下文
+
+```mermaid
+flowchart LR
+    User[规划用户] --> Proxy[反向代理]
+    Admin[管理员] --> Proxy
+    Proxy --> Next[Next.js Full-stack Core]
+    Next --> CoreDB[(PostgreSQL core)]
+    Next --> AgentAPI[FastAPI Agent Control Plane]
+    AgentAPI --> Queue[(Redis)]
+    Beat[Celery Beat] --> Queue
+    Queue --> Worker[Celery / LangGraph Workers]
+    Worker --> AgentDB[(PostgreSQL agent/langgraph)]
+    Worker --> Objects[(MinIO)]
+    Worker --> SiliconFlow[SiliconFlow Embedding/Rerank/LLM]
+    Worker -->|approved draft bundle| Next
+```
+
+浏览器只访问反向代理和Next。FastAPI、PostgreSQL、Redis和MinIO仅在内部容器网络中可达。
+
+## 单机部署
+
+```mermaid
+flowchart TB
+    subgraph Host[企业内网Linux服务器]
+        RP[Reverse Proxy]
+        NW[Next Web/Core]
+        FA[FastAPI]
+        CW[Celery Worker]
+        CB[Celery Beat]
+        PG[(PostgreSQL 17 + pgvector)]
+        RD[(Redis)]
+        MO[(MinIO)]
+        RP --> NW
+        NW --> PG
+        NW --> FA
+        FA --> RD
+        CW --> RD
+        CB --> RD
+        CW --> PG
+        CW --> MO
+    end
+    PG -.加密备份.-> Offsite[另一物理设备/NAS]
+    MO -.对象备份.-> Offsite
+```
+
+单机部署降低运维成本，但不提供节点级高可用。容器重启可恢复服务，主机级故障依赖离机备份恢复。
+
+## Next Core边界
+
+- `identity`：用户、Session、角色和资源所有权。
+- `jurisdiction`：国家、省、市、区县层级和继承链。
+- `policy`：政策包、版本、来源引用和发布快照。
+- `rules`：JSON DSL、参数、规则集、测试和纯规则引擎。
+- `planning`：规划计算、场景和方案持久化。
+- `conversation`：聊天、用户画像和AI SDK流。
+- `publishing`：draft、staging、production和回滚门禁。
+- `audit`：用户与政策操作审计。
+- `agent-integration`：只读上下文和draft bundle导入。
+
+Route Handler不包含领域规则，领域模块不导入 `next/server`。
+
+## 数据所有权
+
+```mermaid
+erDiagram
+    JURISDICTION ||--o{ POLICY_VERSION : scopes
+    POLICY_VERSION ||--o{ DOCUMENT_VERSION : evidenced_by
+    POLICY_SNAPSHOT ||--o{ RULE_VERSION : contains
+    POLICY_SNAPSHOT ||--o{ PARAM_VERSION : contains
+    RULE_VERSION ||--o{ TEST_VERSION : verified_by
+    DOCUMENT_VERSION ||--o{ DOCUMENT_CHUNK : splits_into
+    DOCUMENT_CHUNK ||--o{ EMBEDDING : indexed_as
+    AGENT_RUN ||--o{ PROPOSAL : produces
+    PROPOSAL ||--o{ CITATION : supported_by
+    PROPOSAL ||--o| REVIEW : waits_for
+```
+
+- `core`：用户、地区、正式政策、规则、参数、测试、发布和规划。
+- `agent`：来源、原始文档元数据、DocumentTree、Chunk、Embedding、Run、Proposal和Review。
+- `langgraph`：Checkpoint和线程状态。
+- MinIO：原始文件、页面图、OCR结果和解析资源。
+
+不同Schema使用不同数据库角色；Agent角色不拥有Core表权限。
+
+## PostgreSQL JSON模型
+
+规则使用关系字段与JSONB组合：
+
+```text
+rule_versions
+  id
+  rule_id
+  jurisdiction_id
+  version
+  status
+  effective_from / effective_to
+  definition jsonb
+  source_document_version_id
+  content_hash
+```
+
+PostgreSQL保证JSON语法，AJV保证DSL Schema。published版本不可更新，只能创建新版本。
+
+## 文档三层模型
+
+```mermaid
+flowchart LR
+    Raw[原始HTML/PDF/Office/图片/JSON] --> Tree[DocumentTree JSON]
+    Tree --> Preview[派生Markdown预览]
+    Tree --> Chunks[父子Chunks]
+    Chunks --> Vector[SiliconFlow Embedding]
+    Vector --> PGV[(pgvector)]
+```
+
+- 原始文件是审计来源。
+- DocumentTree是权威解析结构。
+- Markdown是人类与模型可读副本，不是唯一输入。
+- Chunk保留文号、地区、有效期、条款路径、页码、坐标和父节点。
+
+## RAG数据流
+
+```mermaid
+flowchart LR
+    Q[查询] --> Filter[地区/日期/状态过滤]
+    Filter --> Exact[文号/年份/金额精确检索]
+    Filter --> FTS[全文Top20]
+    Filter --> Dense[pgvector Top20]
+    FTS --> RRF[RRF融合]
+    Dense --> RRF
+    Exact --> RRF
+    RRF --> Rerank[SiliconFlow Rerank]
+    Rerank --> Parent[父条款回填 Top5-8]
+    Parent --> Cite[引用完整性检查]
+```
+
+新旧政策变化使用DocumentTree完整Diff，RAG只用于搜索既有政策、规则、参数和测试。
+
+## PolicyOpsGraph
+
+```mermaid
+stateDiagram-v2
+    [*] --> Extract
+    Extract --> Diff
+    Diff --> RetrieveImpact
+    RetrieveImpact --> Draft
+    Draft --> Verify
+    Verify --> Correct: 可自动修正且未超过重试
+    Correct --> Verify
+    Verify --> HumanReview: 校验通过或需人工判断
+    HumanReview --> HumanReview: interrupt等待
+    HumanReview --> MaterializeDraft: 批准/编辑后批准
+    HumanReview --> Rejected: 驳回
+    MaterializeDraft --> [*]
+    Rejected --> [*]
+```
+
+所有副作用节点必须幂等。恢复节点不得重复下载、重复收费或重复创建draft。
+
+## SiliconFlow边界
+
+- Base URL和路径来自被忽略的本地配置。
+- 密钥不进入数据库、日志、Prompt或Git。
+- 只发送公开政策和去标识化规则元数据。
+- 401/403不重试；429/503和网络超时有限退避重试。
+- 记录trace ID、模型、Token和延迟，不记录完整向量。
+- 模型或维度变化创建新的Embedding索引版本。
+
+## 安全控制
+
+- 抓取域名和路径白名单，解析DNS后阻止内网地址。
+- 限制重定向、文件大小、页数、解压量、解析时间和MIME。
+- 文档正文作为不可信数据，不能影响系统指令和工具授权。
+- Agent没有任意SQL、Shell或开放URL工具。
+- Core导入端重新执行Zod、AJV、权限和状态校验。
+- 所有审核与发布保留不可删除审计记录。
+
+## 可观测性
+
+- 所有请求、任务和Agent Run使用关联ID。
+- 记录采集成功率、解析失败、OCR低置信度、队列延迟和死信。
+- 记录检索候选、过滤条件、模型版本、Token、引用和管理员决策。
+- 不记录密钥、Authorization Header、完整向量或个人资料。
+
+## 迁移与回退
+
+1. 在演练环境从migration建立空本地数据库。
+2. 从Neon导出并导入，校验记录数、哈希、序列、UUID、日期和JSONB。
+3. 运行全部测试、黄金规划和历史政策回放。
+4. 至少完成两次演练后进入维护窗口。
+5. 正式切换后保留Neon只读回退窗口。
+6. 主机故障通过离机PostgreSQL、MinIO和Checkpoint备份恢复。
+
+## 架构决策摘要
+
+- 保留Next.js Core，不引入NestJS。
+- Python Agent独立为FastAPI + Celery + LangGraph。
+- 本地PostgreSQL代替Neon，JSON DSL继续使用JSONB。
+- 使用pgvector而非独立向量数据库。
+- 使用SiliconFlow托管Embedding和Rerank，真实模型待安全验证。
+- 采用国家基线加地区overlay。
+- Agent只能创建draft。

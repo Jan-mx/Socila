@@ -50,3 +50,6 @@ test-results/
 # evaluation artifacts
 /.evaluation-tmp/
 /evaluation-reports/
+
+/docs/interview/
+/docs/refactor/policy-ops-agent/config/*.local.env
