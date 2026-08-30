@@ -13,9 +13,9 @@
 
 ## 当前阶段与步骤
 
-- 当前阶段：Stage 02 Next Core——**02.1～02.10 全部完成，验收报告 PASS**（`reports/stage-02/acceptance-report.md`）。
-- 当前步骤：阶段提交推送（`refactor: 完成Next Core领域模块化`），随后进入 Stage 03。
-- 步骤证据（汇总）：02.1 骨架+边界扫描；02.2 五模块只读仓储（23函数，对账12/12）；02.3 写仓储/事务（19函数，CRUD/回滚/并发）+BLOCKER-001 migration 0001；02.4 pg.Pool 驱动切换（无Neon依赖）；02.5 owner_user_id 所有权（矩阵7/7+真机）；02.6 用例层（规划/会话/发布+Agent端口，Fake单测）；02.7 路由瘦身（22路由+1页面，src/app零db导入自动化门禁）；02.8 引擎输入隔离（复用输入零漂移）；02.9 queries.ts/plan-service 删除（零引用）；02.10 真机验收（AC-002/003/005 现场复现，146测试全绿）。
+- 当前阶段：Stage 03 政策模型——**03.1～03.9 全部完成，验收报告 PASS**（`reports/stage-03/acceptance-report.md`）。
+- 当前步骤：阶段提交推送（`feat: 建立全国政策基线与地区覆盖模型`），随后进入 Stage 04。
+- 步骤证据（汇总）：03.1 地区树（migration 0003+树不变量）；03.2 版本化实体（0004：地区/业务键/有效期约束/回填）；03.3 overlay合并器（四操作+版本更替+跨包冲突，7测试）；03.4 冲突模型（policy_conflicts+阻断）；03.5 不可变快照（DB触发器+事务写入+哈希）；03.6 影响查询（ListImpactedOverlays）；03.7 上海迁移对账（legacy vs 快照重放一致）；03.8 粤川示例（隔离3测试）；03.9 验收（POL-AC-001~006 全PASS，158测试全绿）。
 - **安全事件（已闭环）**：2026-08-30 16:33 一次seed因shell环境丢失+dotenv回退误写Neon（v1规则24行同内容重写，无数据丢失，实测确认）；整改：`src/lib/db/guard.ts` 本地库门禁接入seed/migrate/showcase脚本，远程需 ALLOW_REMOTE_DATABASE=1（留待阶段07授权迁移）。
 - 执行环境实测：Node v22.23.1、npm 11.7.0、Python 3.11.9+uv 0.12.7、Docker 29.4.0（守护进程已启动）。
 - 演练库：`infra/dev/docker-compose.dev.yml`（PostgreSQL 17.11 @ localhost:5433，容器 ssp-pg-dev，凭据经 gitignored `infra/dev/.env`）。
@@ -64,7 +64,7 @@
 
 ## 精确下一步
 
-1. 执行阶段02提交 `refactor: 完成Next Core领域模块化` 并推送（提交前候选Secret扫描+staged diff审阅）。
-2. 进入 Stage 03 政策模型，步骤 03.1 建立地区树（POL-FR-001～002）。
-3. 依序 03.2～03.9；阶段03验收 PASS 后提交 `feat: 完成全国政策模型与快照` 并推送（以阶段03 PRD DoD 预写文案为准）。
-4. 阶段03 期间同步关注：BLOCKER-001 生产应用仍挂起至阶段07。
+1. 执行阶段03提交 `feat: 建立全国政策基线与地区覆盖模型` 并推送。
+2. 进入 Stage 04 Agent Runtime，步骤 04.1 建立 FastAPI 控制面（Python/uv 环境）。
+3. 依序 04.2～04.9（Celery/Redis、Agent Schema 角色隔离、LangGraph+Checkpoint、interrupt、幂等、全 Fake 验证）。
+4. 阶段04验收 PASS 后提交推送（04 PRD DoD 预写文案），进入 Stage 05。

@@ -46,6 +46,8 @@ export async function seedRules() {
 
     const data = {
       ruleId: rule.rule_id,
+      jurisdictionCode: "310000",
+      businessKey: rule.rule_id,
       name: rule.name,
       module: rule.module ?? "",
       dslVersion: rule.dsl_version,

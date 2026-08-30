@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 01 Foundation | FND-FR-001～010 | 01.1～01.7 | FND-AC-001～005 | `src/lib/api/contracts.ts`、`drizzle/0000_thick_dorian_gray.sql`、`scripts/run-migrations.mjs`、`scripts/scan-secrets.mjs`、`scripts/validate-siliconflow.mjs`、`scripts/schema-inventory.sql`、`.github/workflows/ci.yml`、`src/lib/engine/__tests__/golden-fixtures.ts`、`golden-snapshot.test.ts` | `docs/refactor/policy-ops-agent/reports/stage-01/acceptance-report.md` |
 | 02 Next Core | CORE-FR-001～010 | 02.1～02.10 | CORE-AC-001～006 | `src/server/modules/*`、`src/lib/db/index.ts`（pg.Pool）、`src/lib/api/route-errors.ts`、`src/lib/engine/test-runner.ts` | `docs/refactor/policy-ops-agent/reports/stage-02/acceptance-report.md` |
-| 03 Policy Model | POL-FR-001～012 | 03.1～03.9 | POL-AC-001～006 | 待实现 | 待生成 |
+| 03 Policy Model | POL-FR-001～012 | 03.1～03.9 | POL-AC-001～006 | `src/server/modules/{jurisdiction,policy}/*`、`drizzle/0003~0005`、`src/lib/db/seed/seed-regional.ts`、`legacy-bridge.ts` | `docs/refactor/policy-ops-agent/reports/stage-03/acceptance-report.md` |
 | 04 Agent Runtime | AGT-FR-001～012 | 04.1～04.9 | AGT-AC-001～006 | 待实现 | 待生成 |
 | 05 Ingestion/RAG | RAG-FR-001～016 | 05.1～05.11 | RAG-AC-001～007 | 待实现 | 待生成 |
 | 06 Drafting | DRF-FR-001～014 | 06.1～06.9 | DRF-AC-001～007 | 待实现 | 待生成 |

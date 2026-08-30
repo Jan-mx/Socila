@@ -22,6 +22,27 @@
       "when": 1788077698818,
       "tag": "0002_resource_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788081899417,
+      "tag": "0003_jurisdictions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788082118792,
+      "tag": "0004_policy_versioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788083042590,
+      "tag": "0005_conflicts_snapshots",
+      "breakpoints": true
     }
   ]
 }

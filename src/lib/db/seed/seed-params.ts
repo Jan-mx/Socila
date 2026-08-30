@@ -59,6 +59,8 @@ export async function seedParams() {
 
     const data = {
       policyPackId,
+      jurisdictionCode: "310000",
+      businessKey: p.param_id,
       paramId: p.param_id,
       type: p.type,
       value: p.value,
@@ -107,6 +109,8 @@ export async function seedParams() {
 
     const data = {
       policyPackId,
+      jurisdictionCode: "310000",
+      businessKey: t.param_id,
       paramId: t.param_id,
       type: t.type,
       value: null,

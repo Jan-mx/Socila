@@ -4,6 +4,7 @@ import { assertLocalDatabaseUrl } from "@/lib/db/guard";
 import { seedRules } from "./seed-rules";
 import { seedParams } from "./seed-params";
 import { seedMisc } from "./seed-misc";
+import { seedRegionalExamples } from "./seed-regional";
 import { importCases, importRegressionTests } from "@/lib/import/excel-import";
 
 async function main() {
@@ -22,6 +23,9 @@ async function main() {
 
     // Phase 3: Rule sets, workflows, example tests
     await seedMisc();
+
+    // Phase 3.5: 粤川区域示例（POL-AC-002）
+    await seedRegionalExamples();
 
     // Phase 4: Excel imports (cases + regression tests)
     await importCases();

@@ -55,6 +55,7 @@ export async function seedMisc() {
     .limit(1);
 
   const ruleSetData = {
+    jurisdictionCode: "310000",
     ruleSetId: ruleSet.rule_set_id,
     description: ruleSet.description ?? null,
     status: ruleSet.status,
