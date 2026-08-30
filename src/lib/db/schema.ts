@@ -127,6 +127,8 @@ export const plans = pgTable("plans", {
   asOfDate: date("as_of_date"),
   // 归属会话：保存时记录创建者的匿名 session，读取时据此校验归属（旧数据为 null = 不限制）。
   sessionId: text("session_id"),
+  // 归属用户（CORE-FR-009）：认证用户出现后写入，优先于 sessionId 参与归属校验。
+  ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -135,6 +137,8 @@ export const plans = pgTable("plans", {
 export const conversations = pgTable("conversations", {
   id: uuid("id").primaryKey().defaultRandom(),
   sessionId: text("session_id"),
+  // 归属用户（CORE-FR-009）：认证用户出现后写入，优先于 sessionId 参与归属校验。
+  ownerUserId: text("owner_user_id"),
   messages: jsonb("messages").notNull().default([]),
   userProfile: jsonb("user_profile").default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),

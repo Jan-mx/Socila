@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mapRouteError } from "@/lib/api/route-errors";
 import { PlanComputeRequestSchema } from "@/lib/validators/plan-input";
-import { computePlanService } from "@/lib/engine/plan-service";
+import { computePlan } from "@/server/modules/planning/application/compute-plan.use-case";
 import {
   attachAnonymousSessionCookie,
   ensureAnonymousSession,
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     const asOfDate = as_of_date ?? new Date().toISOString().slice(0, 10);
 
-    const result = await computePlanService({
+    const result = await computePlan({
       user: user as Record<string, unknown>,
       asOfDate,
       ruleSetId: rule_set_id,
@@ -85,7 +86,8 @@ export async function POST(req: NextRequest) {
       warnings: result.warnings,
       caveats: result.caveats,
     });
-  } catch {
-    return respondJson({ error: "计算规划方案失败" }, { status: 500 });
+  } catch (err) {
+    const mapped = mapRouteError(err, { operation: "plan.compute" });
+    return respondJson(mapped.body, { status: mapped.status });
   }
 }

@@ -1,5 +1,10 @@
+import { conversationReads } from "@/server/modules/conversation/application";
+import { mapRouteError } from "@/lib/api/route-errors";
+import { conversationWrites } from "@/server/modules/conversation/application";
+import {
+  deleteOwnedConversation,
+} from "@/server/modules/conversation/application/conversation.use-case";
 import { NextRequest, NextResponse } from "next/server";
-import { deleteConversation, getConversation } from "@/lib/db/queries";
 import {
   attachAnonymousSessionCookie,
   ensureAnonymousSession,
@@ -28,18 +33,22 @@ export async function DELETE(
   };
 
   try {
-    const conv = await getConversation(conversationId);
-    if (!conv) {
+    const result = await deleteOwnedConversation(
+      { read: conversationReads, write: conversationWrites },
+      conversationId,
+      { sessionId },
+    );
+    // 归属判定在 conversation 用例层（CORE-FR-005/009）；
+    // legacy（无归属列）与会话不匹配都映射为 403，存在性缺失为 404。
+    if (result === "not-found") {
       return respondJson({ error: "会话不存在" }, { status: 404 });
     }
-
-    if (!conv.sessionId || conv.sessionId !== sessionId) {
+    if (result === "forbidden") {
       return respondJson({ error: "无权限删除该会话" }, { status: 403 });
     }
-
-    await deleteConversation(conversationId);
     return respondJson({ success: true });
-  } catch {
-    return respondJson({ error: "服务器内部错误" }, { status: 500 });
+  } catch (err) {
+    const mapped = mapRouteError(err, { operation: "conversation.delete" });
+    return respondJson(mapped.body, { status: mapped.status });
   }
 }

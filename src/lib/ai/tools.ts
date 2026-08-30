@@ -7,7 +7,7 @@
 
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import { computePlanService } from "@/lib/engine/plan-service";
+import { computePlan } from "@/server/modules/planning/application/compute-plan.use-case";
 
 // ─── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -187,7 +187,7 @@ async function computePlanExecute(
       objective: params.objective,
     };
 
-    const result = await computePlanService({ user: userInput, sessionId });
+    const result = await computePlan({ user: userInput, sessionId });
 
     return {
       success: true as const,

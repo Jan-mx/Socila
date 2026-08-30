@@ -1,5 +1,6 @@
+import { conversationReads } from "@/server/modules/conversation/application";
+import { mapRouteError } from "@/lib/api/route-errors";
 import { NextRequest, NextResponse } from "next/server";
-import { listConversations } from "@/lib/db/queries";
 import {
   attachAnonymousSessionCookie,
   ensureAnonymousSession,
@@ -27,9 +28,10 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    const rows = await listConversations(sessionId);
+    const rows = await conversationReads.listConversations(sessionId);
     return respondJson({ conversations: rows });
-  } catch {
-    return respondJson({ error: "服务器内部错误" }, { status: 500 });
+  } catch (err) {
+    const mapped = mapRouteError(err, { operation: "conversation.list" });
+    return respondJson(mapped.body, { status: mapped.status });
   }
 }

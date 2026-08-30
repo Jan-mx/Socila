@@ -1,7 +1,8 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { params, ruleSets, rules } from "@/lib/db/schema";
-import { getRule, insertPublish, listTests } from "@/lib/db/queries";
+import { rulesReads } from "@/server/modules/rules/application";
+import { publishWrites } from "@/server/modules/publishing/application";
 import { validateRuleAgainstSchema } from "@/lib/dsl/schema-validator";
 import { runDbTestSuite, dbRuleToDefinition } from "@/lib/engine/test-runner";
 
@@ -147,7 +148,7 @@ async function checkPromoteGates(
       };
     }
 
-    const rule = await getRule(entityId);
+    const rule = await rulesReads.getRule(entityId);
     if (!rule) {
       return {
         passed: false,
@@ -196,7 +197,7 @@ async function checkPromoteGates(
   }
 
   if (fromStage === "staging" && toStage === "production") {
-    const tests = await listTests(
+    const tests = await rulesReads.listTests(
       entityType === "rule" ? { ruleId: entityId } : undefined,
     );
 
@@ -219,7 +220,7 @@ async function checkPromoteGates(
     // 注：param / rule_set 晋升暂只跑 published 规则 + 全量用例（见 docs 已知限制）。
     const overrideRules =
       entityType === "rule"
-        ? await getRule(entityId).then((r) =>
+        ? await rulesReads.getRule(entityId).then((r) =>
             r ? [dbRuleToDefinition(r)] : [],
           )
         : [];
@@ -360,7 +361,7 @@ export async function promoteEntity(options: {
   const newStatus = statusFromStage(allowedToStage);
   await updateEntityStatus(options.entityType, entity.rowId, newStatus);
 
-  const publish = await insertPublish({
+  const publish = await publishWrites.insertPublish({
     entityType: options.entityType,
     entityId: entity.entityId,
     fromStage,
@@ -408,7 +409,7 @@ export async function rollbackEntity(options: {
   const toStage: PublishStage = "staging";
   await updateEntityStatus(options.entityType, entity.rowId, "staging");
 
-  const publish = await insertPublish({
+  const publish = await publishWrites.insertPublish({
     entityType: options.entityType,
     entityId: entity.entityId,
     fromStage,

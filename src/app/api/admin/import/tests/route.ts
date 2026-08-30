@@ -1,5 +1,5 @@
+import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { insertTests } from "@/lib/db/queries";
 import * as XLSX from "xlsx";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       source: "import",
     }));
 
-    const inserted = await insertTests(testData);
+    const inserted = await rulesWrites.insertTests(testData);
     return NextResponse.json({ inserted: inserted.length, tests: inserted });
   } catch {
     return NextResponse.json(

@@ -1,5 +1,6 @@
+import { rulesReads } from "@/server/modules/rules/application";
+import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { listParams, insertParam } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
     const type = searchParams.get("type") ?? undefined;
     const status = searchParams.get("status") ?? undefined;
 
-    const paramsData = await listParams({ policyPackId, type, status });
+    const paramsData = await rulesReads.listParams({ policyPackId, type, status });
     return NextResponse.json({ params: paramsData });
   } catch {
     return NextResponse.json(
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     // Force draft on create; publishing goes through the publish pipeline (no gate skip).
-    const param = await insertParam({ ...body, status: "draft" });
+    const param = await rulesWrites.insertParam({ ...body, status: "draft" });
     return NextResponse.json({ param }, { status: 201 });
   } catch {
     return NextResponse.json(

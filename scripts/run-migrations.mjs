@@ -21,6 +21,25 @@ if (!url) {
   process.exit(1);
 }
 
+// 门禁：迁移执行默认只允许本地库，防止 dotenv 回退误连远程生产库。
+{
+  let host;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    console.error("[db-guard] DATABASE_URL is not a valid URL");
+    process.exit(1);
+  }
+  const isLocal = ["localhost", "127.0.0.1", "::1"].includes(host);
+  if (!isLocal && process.env.ALLOW_REMOTE_DATABASE !== "1") {
+    console.error(
+      `[db-guard] DATABASE_URL 指向非本机主机 (${host})。迁移默认只允许本地库；` +
+        `确需远程（如阶段07获授权的生产迁移）请显式设置 ALLOW_REMOTE_DATABASE=1。`,
+    );
+    process.exit(1);
+  }
+}
+
 const pool = new pg.Pool({ connectionString: url, max: 1 });
 try {
   await migrate(drizzle(pool), { migrationsFolder: "./drizzle" });

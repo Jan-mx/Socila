@@ -1,20 +1,16 @@
 /**
- * 规划计算服务（单一编排入口）
+ * 规划计算用例（CORE-FR-005，步骤02.6 自 src/lib/engine/plan-service.ts 正位迁移）。
  *
- * 把"跑规则引擎 → 抽取追问/警告/提示 → 补充场景对比与补贴建议 → 落库"这条主链路
- * 收敛到一个函数 `computePlanService`，供两个调用方共用：
- * - AI 工具 `computePlan`（`src/lib/ai/tools.ts`）
- * - HTTP 接口 `/api/plan/compute`（`src/app/api/plan/compute/route.ts`）
- *
- * 此前这两条路径各自调用 `orchestrate` + `savePlan`，但只有工具路径做了 scenarios /
- * subsidy 富化，导致同样的输入经不同入口得到的结果不一致。这里统一口径。
+ * 归属 planning 模块：编排规则引擎（rules 域）→ 抽取追问/警告/提示 → 场景与补贴富化
+ * → 经 PlanningWriteRepository 落库并绑定归属（ownerUserId/sessionId）。
+ * 引擎端口与落库端口可注入——单元测试无需框架与数据库（CORE-AC-006 前置）。
+ * 旧入口 `src/lib/engine/plan-service.ts` 在 02.9 清理前作为垫片转发到本用例。
  */
 
-import { orchestrate } from "./orchestrator";
-import type { OrchestratorResult } from "./orchestrator";
-import { buildScenarios, type Scenario } from "./scenario-builder";
-import { adviseSubsidies, type SubsidyRecommendation } from "./subsidy-advisor";
-import { getDeep } from "./actions";
+import { orchestrate, type OrchestratorResult } from "@/lib/engine/orchestrator";
+import { buildScenarios, type Scenario } from "@/lib/engine/scenario-builder";
+import { adviseSubsidies, type SubsidyRecommendation } from "@/lib/engine/subsidy-advisor";
+import { getDeep } from "@/lib/engine/actions";
 import {
   extractNeedsAgent,
   extractQuestions,
@@ -22,14 +18,13 @@ import {
   extractCaveats,
   type AgentQuestion,
   type Caveat,
-} from "./calc-extractors";
-import { savePlan } from "@/lib/db/queries";
+} from "@/lib/engine/calc-extractors";
+import type { PlanningWriteRepository } from "./write-ports";
+import { DrizzlePlanningWriteRepository } from "../infrastructure/drizzle/planning-write.repository";
 
-// ─── 类型 ───────────────────────────────────────────────────────────────────
+export type { AgentQuestion, Caveat } from "@/lib/engine/calc-extractors";
 
-export type { AgentQuestion, Caveat } from "./calc-extractors";
-
-export interface ComputePlanServiceInput {
+export interface ComputePlanInput {
   /** 规范化后的用户画像（basic/social/status/subsidy/mi/objective） */
   user: Record<string, unknown>;
   asOfDate?: string;
@@ -39,9 +34,11 @@ export interface ComputePlanServiceInput {
   persist?: boolean;
   /** 创建者匿名会话 id，落库后用于 /api/plan/[id] 的归属校验 */
   sessionId?: string;
+  /** 认证用户 id（CORE-FR-009）：存在时优先于 sessionId 参与归属校验 */
+  ownerUserId?: string | null;
 }
 
-export interface ComputePlanServiceResult {
+export interface ComputePlanResult {
   planId: string | null;
   needsAgent: boolean;
   questions: AgentQuestion[];
@@ -52,15 +49,26 @@ export interface ComputePlanServiceResult {
   meta: OrchestratorResult["meta"];
 }
 
-// ─── 主入口 ─────────────────────────────────────────────────────────────────
+export interface ComputePlanDeps {
+  runEngine?: typeof orchestrate;
+  savePlan?: PlanningWriteRepository["savePlan"];
+}
 
 /**
  * 计算社保规划方案：统一的编排 + 富化 + 落库流程。
  */
-export async function computePlanService(
-  input: ComputePlanServiceInput,
-): Promise<ComputePlanServiceResult> {
-  const result = await orchestrate({
+export async function computePlan(
+  input: ComputePlanInput,
+  deps: ComputePlanDeps = {},
+): Promise<ComputePlanResult> {
+  const runEngine = deps.runEngine ?? orchestrate;
+  const savePlan =
+    deps.savePlan ??
+    new DrizzlePlanningWriteRepository().savePlan.bind(
+      new DrizzlePlanningWriteRepository(),
+    );
+
+  const result = await runEngine({
     user: input.user,
     as_of_date: input.asOfDate,
     rule_set_id: input.ruleSetId,
@@ -85,6 +93,7 @@ export async function computePlanService(
       policyPackVersion: result.meta.policy_pack_id,
       asOfDate: result.meta.as_of_date,
       sessionId: input.sessionId,
+      ownerUserId: input.ownerUserId ?? null,
     });
     planId = saved?.id ?? null;
   }

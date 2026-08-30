@@ -1,5 +1,6 @@
+import { rulesReads } from "@/server/modules/rules/application";
+import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { getRule, updateRule } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function PUT(
     const version = parseInt(versionId, 10);
     const body = await req.json();
 
-    const existing = await getRule(ruleId, version);
+    const existing = await rulesReads.getRule(ruleId, version);
     if (!existing) {
       return NextResponse.json(
         { error: "未找到规则版本" },
@@ -27,7 +28,7 @@ export async function PUT(
       );
     }
 
-    const updated = await updateRule(existing.id, body);
+    const updated = await rulesWrites.updateRule(existing.id, body);
     return NextResponse.json({ rule: updated });
   } catch {
     return NextResponse.json(
@@ -51,7 +52,7 @@ export async function POST(
       return NextResponse.json({ error: "未知操作" }, { status: 400 });
     }
 
-    const existing = await getRule(ruleId, version);
+    const existing = await rulesReads.getRule(ruleId, version);
     if (!existing) {
       return NextResponse.json(
         { error: "未找到规则版本" },

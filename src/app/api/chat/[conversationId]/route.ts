@@ -1,5 +1,5 @@
+import { conversationReads } from "@/server/modules/conversation/application";
 import { NextRequest, NextResponse } from "next/server";
-import { getConversation } from "@/lib/db/queries";
 import {
   attachAnonymousSessionCookie,
   ensureAnonymousSession,
@@ -25,7 +25,7 @@ export async function GET(
   };
 
   try {
-    const conv = await getConversation(conversationId);
+    const conv = await conversationReads.getConversation(conversationId);
     if (!conv) {
       return respondJson({ error: "会话不存在" }, { status: 404 });
     }

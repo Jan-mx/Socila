@@ -1,5 +1,5 @@
+import { rulesReads } from "@/server/modules/rules/application";
 import { NextResponse } from "next/server";
-import { listParams, listRules, listRuleSets } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -44,9 +44,9 @@ function dedupeLatest<T extends { version: number }>(
 export async function GET() {
   try {
     const [rules, params, ruleSets] = await Promise.all([
-      listRules(),
-      listParams(),
-      listRuleSets(),
+      rulesReads.listRules(),
+      rulesReads.listParams(),
+      rulesReads.listRuleSets(),
     ]);
 
     const pipeline: Pipeline = {

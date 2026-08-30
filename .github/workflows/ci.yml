@@ -33,3 +33,35 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: node scripts/scan-secrets.mjs --all
+
+  # 步骤02.3/02.4：仓储层门禁——在 CI 自带的 PostgreSQL 17 服务上执行
+  # migration + seed，跑新旧对账与写仓储（CRUD/回滚/并发）集成测试。
+  repository-gates:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ssp_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ssp_ci
+      SSP_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ssp_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npm run seed
+      - run: npx vitest run src/server/modules/__tests__/write-repository.test.ts src/server/modules/identity/__tests__/ownership.test.ts

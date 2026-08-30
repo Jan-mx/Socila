@@ -1,5 +1,6 @@
+import { rulesReads } from "@/server/modules/rules/application";
+import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { getRule, listRuleVersions, updateRule } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ async function handleUpdate(
     const { ruleId } = await params;
     const body = await req.json();
 
-    const existing = await getRule(ruleId);
+    const existing = await rulesReads.getRule(ruleId);
     if (!existing) {
       return NextResponse.json({ error: "未找到规则" }, { status: 404 });
     }
@@ -23,7 +24,7 @@ async function handleUpdate(
       );
     }
 
-    const updated = await updateRule(existing.id, body);
+    const updated = await rulesWrites.updateRule(existing.id, body);
     return NextResponse.json({ rule: updated });
   } catch {
     return NextResponse.json(
@@ -39,13 +40,13 @@ export async function GET(
 ) {
   try {
     const { ruleId } = await params;
-    const rule = await getRule(ruleId);
+    const rule = await rulesReads.getRule(ruleId);
 
     if (!rule) {
       return NextResponse.json({ error: "未找到规则" }, { status: 404 });
     }
 
-    const versions = await listRuleVersions(ruleId);
+    const versions = await rulesReads.listRuleVersions(ruleId);
     return NextResponse.json({ rule, versions });
   } catch {
     return NextResponse.json(

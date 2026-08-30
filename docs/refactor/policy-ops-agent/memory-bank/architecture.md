@@ -52,6 +52,8 @@ flowchart TB
 
 ## Next Core边界
 
+阶段02落地：九模块位于 `src/server/modules/<module>/{domain,application,infrastructure,contracts}`，数据库运行时为 `src/lib/db/index.ts` 的本地 PostgreSQL `pg.Pool`（惰性初始化）；集中式 `queries.ts` 已删除，数据访问只经模块仓储。
+
 - `identity`：用户、Session、角色和资源所有权。
 - `jurisdiction`：国家、省、市、区县层级和继承链。
 - `policy`：政策包、版本、来源引用和发布快照。

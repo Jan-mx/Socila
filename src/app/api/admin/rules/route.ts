@@ -1,5 +1,6 @@
+import { rulesReads } from "@/server/modules/rules/application";
+import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { listRules, insertRule } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
     const ruleModule = searchParams.get("module") ?? undefined;
     const status = searchParams.get("status") ?? undefined;
 
-    const rules = await listRules({ module: ruleModule, status });
+    const rules = await rulesReads.listRules({ module: ruleModule, status });
     return NextResponse.json({ rules });
   } catch {
     return NextResponse.json(
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     // New entities always start as draft; promotion to published goes through the
     // publish pipeline. Forcing status here stops a create from skipping that gate.
-    const rule = await insertRule({ ...body, status: "draft" });
+    const rule = await rulesWrites.insertRule({ ...body, status: "draft" });
     return NextResponse.json({ rule }, { status: 201 });
   } catch {
     return NextResponse.json(

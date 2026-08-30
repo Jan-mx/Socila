@@ -1,4 +1,5 @@
 import "@/lib/env/load-environment";
+import { assertLocalDatabaseUrl } from "@/lib/db/guard";
 
 import { seedRules } from "./seed-rules";
 import { seedParams } from "./seed-params";
@@ -9,6 +10,10 @@ async function main() {
   console.log("=== SSP Seed Runner ===");
 
   try {
+    // 门禁：seed 默认只允许本地库，防止 dotenv 回退误写远程生产库。
+    const guardedUrl = assertLocalDatabaseUrl();
+    console.log(`Database host guard: OK (${new URL(guardedUrl).hostname})`);
+
     // Phase 1: Rules
     await seedRules();
 

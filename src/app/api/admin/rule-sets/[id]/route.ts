@@ -1,8 +1,5 @@
+import { rulesReads, rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { ruleSets } from "@/lib/db/schema";
-import { desc, eq } from "drizzle-orm";
-import { updateRuleSet } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -14,18 +11,12 @@ async function handleUpdate(
     const { id } = await paramsPromise;
     const body = await req.json();
 
-    const rows = await db
-      .select()
-      .from(ruleSets)
-      .where(eq(ruleSets.ruleSetId, id))
-      .orderBy(desc(ruleSets.version))
-      .limit(1);
+    const existing = await rulesReads.getLatestRuleSetVersion(id);
 
-    if (rows.length === 0) {
+    if (!existing) {
       return NextResponse.json({ error: "未找到规则集" }, { status: 404 });
     }
 
-    const existing = rows[0];
     if (existing.status !== "draft") {
       return NextResponse.json(
         { error: "只能更新草稿状态的规则集" },
@@ -52,7 +43,7 @@ async function handleUpdate(
       );
     }
 
-    const updated = await updateRuleSet(existing.id, payload);
+    const updated = await rulesWrites.updateRuleSet(existing.id, payload);
     return NextResponse.json({ rule_set: updated });
   } catch {
     return NextResponse.json(

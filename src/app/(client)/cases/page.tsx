@@ -1,4 +1,4 @@
-import { listShowcaseCases } from "@/lib/db/queries";
+import { planningReads } from "@/server/modules/planning/application";
 import { CaseGrid } from "./CaseGrid";
 import { MarketingNav } from "@/components/layout/MarketingNav";
 import { MarketingFooter } from "@/components/layout/MarketingFooter";
@@ -12,7 +12,7 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function CasesPage() {
-  const dbCases = await listShowcaseCases();
+  const dbCases = await planningReads.listShowcaseCases();
 
   const cases = dbCases.map((c) => ({
     id: String(c.id),

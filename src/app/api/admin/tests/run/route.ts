@@ -1,10 +1,6 @@
+import { rulesReads } from "@/server/modules/rules/application";
+import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import {
-  listTests,
-  updateTestResult,
-  getEffectiveRules,
-  getEffectiveParams,
-} from "@/lib/db/queries";
 import { runTestCase } from "@/lib/engine/test-runner";
 import type { RuleDefinition } from "@/types/engine";
 
@@ -32,15 +28,15 @@ export async function POST(req: NextRequest) {
     if (scope === "examples") filters.source = "example";
     else if (scope === "regression") filters.source = "regression";
 
-    const tests = await listTests(filters);
+    const tests = await rulesReads.listTests(filters);
 
     const asOfDate = new Date().toISOString().slice(0, 10);
     const DEFAULT_RULE_SET = "RS-SHANGHAI-PLAN-V1";
     const DEFAULT_POLICY_PACK = "SHANGHAI_BASE";
 
     const [{ rules: ruleRows }, paramRows] = await Promise.all([
-      getEffectiveRules(DEFAULT_RULE_SET, asOfDate),
-      getEffectiveParams(DEFAULT_POLICY_PACK, asOfDate),
+      rulesReads.getEffectiveRules(DEFAULT_RULE_SET, asOfDate),
+      rulesReads.getEffectiveParams(DEFAULT_POLICY_PACK, asOfDate),
     ]);
 
     const allRules = ruleRows.map((r) => ({
@@ -87,7 +83,7 @@ export async function POST(req: NextRequest) {
         baseParams,
       );
 
-      await updateTestResult(test.id, result);
+      await rulesWrites.updateTestResult(test.id, result);
 
       if (result.pass) {
         passed++;

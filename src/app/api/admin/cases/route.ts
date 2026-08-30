@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { cases } from "@/lib/db/schema";
-import { or, ilike, sql, desc } from "drizzle-orm";
+import { planningReads } from "@/server/modules/planning/application";
 
 export const dynamic = "force-dynamic";
 
@@ -15,46 +13,13 @@ export async function GET(req: NextRequest) {
 
     const page = Math.max(1, parseInt(pageStr, 10));
     const pageSize = Math.min(200, Math.max(1, parseInt(pageSizeStr, 10)));
-    const offset = (page - 1) * pageSize;
 
-    const whereClauses = [];
-
-    if (q) {
-      whereClauses.push(
-        or(
-          ilike(cases.caseUid, `%${q}%`),
-          ilike(cases.caseText, `%${q}%`),
-          ilike(cases.creator, `%${q}%`),
-        ),
-      );
-    }
-
-    if (topic) {
-      whereClauses.push(sql`${cases.topics}::text ilike ${"%" + topic + "%"}`);
-    }
-
-    const whereExpr =
-      whereClauses.length === 0
-        ? undefined
-        : whereClauses.length === 1
-          ? whereClauses[0]
-          : or(...whereClauses);
-
-    const [rows, totalRows] = await Promise.all([
-      db
-        .select()
-        .from(cases)
-        .where(whereExpr)
-        .orderBy(desc(cases.updatedAt))
-        .limit(pageSize)
-        .offset(offset),
-      db
-        .select({ total: sql<number>`count(*)` })
-        .from(cases)
-        .where(whereExpr),
-    ]);
-
-    const total = Number(totalRows[0]?.total ?? 0);
+    const { rows, total } = await planningReads.searchCases({
+      q,
+      topic,
+      page,
+      pageSize,
+    });
 
     return NextResponse.json({
       cases: rows,

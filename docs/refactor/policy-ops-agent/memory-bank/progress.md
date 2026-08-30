@@ -13,9 +13,10 @@
 
 ## 当前阶段与步骤
 
-- 当前阶段：Stage 01 Foundation——**01.1～01.7 全部完成，验收报告 PASS**（`reports/stage-01/acceptance-report.md`）。
-- 当前步骤：阶段提交推送（`docs: 完善基础工程基线与交付门禁`），随后进入 Stage 02。
-- 步骤证据（汇总）：01.1 版本/命令基线（四命令退出码0）；01.2 黄金快照28条零漂移；01.3 版本化migration+空库可重复（哈希一致）+BLOCKER-001；01.4 API契约模块+9测试；01.5 Secret门禁（扫描/验证脚本+ignore规则）；01.6 CI六步门禁（干净clone全过）；01.7 五个验收场景 FND-AC-001～005 全PASS（AC-001哈希新鲜比对一致；AC-002为17文件/123测试——原112项全保持通过）。
+- 当前阶段：Stage 02 Next Core——**02.1～02.10 全部完成，验收报告 PASS**（`reports/stage-02/acceptance-report.md`）。
+- 当前步骤：阶段提交推送（`refactor: 完成Next Core领域模块化`），随后进入 Stage 03。
+- 步骤证据（汇总）：02.1 骨架+边界扫描；02.2 五模块只读仓储（23函数，对账12/12）；02.3 写仓储/事务（19函数，CRUD/回滚/并发）+BLOCKER-001 migration 0001；02.4 pg.Pool 驱动切换（无Neon依赖）；02.5 owner_user_id 所有权（矩阵7/7+真机）；02.6 用例层（规划/会话/发布+Agent端口，Fake单测）；02.7 路由瘦身（22路由+1页面，src/app零db导入自动化门禁）；02.8 引擎输入隔离（复用输入零漂移）；02.9 queries.ts/plan-service 删除（零引用）；02.10 真机验收（AC-002/003/005 现场复现，146测试全绿）。
+- **安全事件（已闭环）**：2026-08-30 16:33 一次seed因shell环境丢失+dotenv回退误写Neon（v1规则24行同内容重写，无数据丢失，实测确认）；整改：`src/lib/db/guard.ts` 本地库门禁接入seed/migrate/showcase脚本，远程需 ALLOW_REMOTE_DATABASE=1（留待阶段07授权迁移）。
 - 执行环境实测：Node v22.23.1、npm 11.7.0、Python 3.11.9+uv 0.12.7、Docker 29.4.0（守护进程已启动）。
 - 演练库：`infra/dev/docker-compose.dev.yml`（PostgreSQL 17.11 @ localhost:5433，容器 ssp-pg-dev，凭据经 gitignored `infra/dev/.env`）。
 
@@ -63,7 +64,7 @@
 
 ## 精确下一步
 
-1. 执行阶段01提交 `docs: 完善基础工程基线与交付门禁` 并推送 `origin/refactor/policy-ops-agent-platform`（提交前候选Secret扫描+staged diff审阅）。
-2. 进入 Stage 02 Next Core，步骤 02.1 建立领域骨架（依赖规则：domain 无 next/server 依赖）。
-3. 依序 02.2～02.10；阶段02验收 PASS 后提交 `refactor: 完成Next Core领域模块化` 并推送。
-4. BLOCKER-001 的显式修复 migration 优先安排在 Stage 02 的 migration 相关步骤（02.3）。
+1. 执行阶段02提交 `refactor: 完成Next Core领域模块化` 并推送（提交前候选Secret扫描+staged diff审阅）。
+2. 进入 Stage 03 政策模型，步骤 03.1 建立地区树（POL-FR-001～002）。
+3. 依序 03.2～03.9；阶段03验收 PASS 后提交 `feat: 完成全国政策模型与快照` 并推送（以阶段03 PRD DoD 预写文案为准）。
+4. 阶段03 期间同步关注：BLOCKER-001 生产应用仍挂起至阶段07。

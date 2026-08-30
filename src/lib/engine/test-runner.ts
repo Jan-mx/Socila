@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { RuleDefinition, TraceEntry } from "@/types/engine";
 import { executeSingleRuleInMemory, orchestrateInMemory } from "./orchestrator";
-import { getEffectiveRules, getEffectiveParams } from "@/lib/db/queries";
+import { rulesReads } from "@/server/modules/rules/application";
 
 export interface TestCase {
   rule_id?: string | null;
@@ -48,27 +48,25 @@ export function runTestCase(
   const testName =
     testCase.example_name ?? testCase.name ?? testCase.rule_id ?? "unnamed";
 
-  // Build merged params
-  const mergedParams = { ...baseParams };
-
-  // Merge input.params if present
+  // CORE-FR-007 输入隔离：深拷贝后再并入规则写入（setDeep 直写 ctx），
+  // 保证复用同一输入对象跨调用重复执行时结果确定且输入不被污染。
+  // 浅拷贝会让 params 内嵌表行数组与调用方共享引用，规则写 params.* 路径时会穿透。
+  const mergedParams = structuredClone(baseParams);
   if (testCase.input.params && typeof testCase.input.params === "object") {
-    Object.assign(mergedParams, testCase.input.params);
+    Object.assign(mergedParams, structuredClone(testCase.input.params));
   }
-
-  // Merge params_override if present and non-null
   if (
     testCase.params_override &&
     typeof testCase.params_override === "object"
   ) {
-    Object.assign(mergedParams, testCase.params_override);
+    Object.assign(mergedParams, structuredClone(testCase.params_override));
   }
 
   // Build user input (remove params from input to avoid confusion)
   const userInput: Record<string, any> = {};
   for (const [key, value] of Object.entries(testCase.input)) {
     if (key !== "params") {
-      userInput[key] = value;
+      userInput[key] = structuredClone(value);
     }
   }
 
@@ -266,8 +264,8 @@ export async function loadEffectiveEngine(asOfDate?: string): Promise<{
   const policyPackId = "SHANGHAI_BASE";
 
   const [{ ruleSet, rules: dbRules }, dbParams] = await Promise.all([
-    getEffectiveRules(ruleSetId, date),
-    getEffectiveParams(policyPackId, date),
+    rulesReads.getEffectiveRules(ruleSetId, date),
+    rulesReads.getEffectiveParams(policyPackId, date),
   ]);
 
   let allRules: RuleDefinition[] = dbRules.map(dbRuleToDefinition);

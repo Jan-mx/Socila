@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { RuleDefinition, TraceEntry } from "@/types/engine";
-import { getEffectiveRules, getEffectiveParams } from "@/lib/db/queries";
+import { rulesReads } from "@/server/modules/rules/application";
 import { executeRule } from "./executor";
 import { getDeep, setDeep } from "./actions";
 
@@ -52,8 +52,8 @@ export async function orchestrate(
   // Load rule set, rules, and params from DB
   const [{ ruleSet, rules: effectiveRules }, effectiveParams] =
     await Promise.all([
-      getEffectiveRules(ruleSetId, asOfDate),
-      getEffectiveParams(policyPackId, asOfDate),
+      rulesReads.getEffectiveRules(ruleSetId, asOfDate),
+      rulesReads.getEffectiveParams(policyPackId, asOfDate),
     ]);
 
   // Flatten params into a params namespace

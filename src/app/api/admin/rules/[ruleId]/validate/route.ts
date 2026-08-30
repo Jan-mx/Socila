@@ -1,5 +1,5 @@
+import { rulesReads } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { getRule } from "@/lib/db/queries";
 import { validateRuleAgainstSchema } from "@/lib/dsl/schema-validator";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export async function POST(
 ) {
   try {
     const { ruleId } = await params;
-    const rule = await getRule(ruleId);
+    const rule = await rulesReads.getRule(ruleId);
 
     if (!rule) {
       return NextResponse.json({ error: "未找到规则" }, { status: 404 });

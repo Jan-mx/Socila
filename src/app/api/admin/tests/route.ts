@@ -1,11 +1,11 @@
+import { rulesReads } from "@/server/modules/rules/application";
 import { NextResponse } from "next/server";
-import { listTests } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const tests = await listTests();
+    const tests = await rulesReads.listTests();
 
     const normalized = tests.map((test) => {
       const result = test.lastRunResult as Record<string, unknown> | null;

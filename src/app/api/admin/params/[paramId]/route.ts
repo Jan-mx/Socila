@@ -1,5 +1,5 @@
+import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { updateParam } from "@/lib/db/queries";
 import {
   resolveParamRecord,
   validateParamRecord,
@@ -27,7 +27,7 @@ async function handleUpdate(
       );
     }
 
-    const updated = await updateParam(existing.id, body);
+    const updated = await rulesWrites.updateParam(existing.id, body);
     return NextResponse.json({ param: updated });
   } catch {
     return NextResponse.json(

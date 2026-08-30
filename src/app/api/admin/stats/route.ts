@@ -1,15 +1,16 @@
+import { rulesReads } from "@/server/modules/rules/application";
+import { publishReads } from "@/server/modules/publishing/application";
 import { NextResponse } from "next/server";
-import { countRules, countParams, listTests, listPublishes } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const [ruleCount, paramCount, allTests, recentPublishes] = await Promise.all([
-      countRules(),
-      countParams(),
-      listTests(),
-      listPublishes(30),
+      rulesReads.countRules(),
+      rulesReads.countParams(),
+      rulesReads.listTests(),
+      publishReads.listPublishes(30),
     ]);
 
     const now = new Date();

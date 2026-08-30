@@ -1,5 +1,5 @@
+import { rulesReads } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { getRule, getEffectiveParams } from "@/lib/db/queries";
 import { runTestCase } from "@/lib/engine/test-runner";
 import type { RuleDefinition } from "@/types/engine";
 
@@ -34,7 +34,7 @@ export async function POST(
       );
     }
 
-    const rule = await getRule(ruleId);
+    const rule = await rulesReads.getRule(ruleId);
     if (!rule) {
       return NextResponse.json({ error: "未找到规则" }, { status: 404 });
     }
@@ -47,7 +47,7 @@ export async function POST(
     }
 
     const asOfDate = new Date().toISOString().slice(0, 10);
-    const paramsRows = await getEffectiveParams("SHANGHAI_BASE", asOfDate);
+    const paramsRows = await rulesReads.getEffectiveParams("SHANGHAI_BASE", asOfDate);
     const baseParams: Record<string, unknown> = {};
 
     for (const p of paramsRows) {

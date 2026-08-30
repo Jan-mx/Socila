@@ -4,11 +4,8 @@ import type { ChatContext } from "@/lib/ai/agent";
 import type { UIMessage } from "ai";
 import { convertToModelMessages } from "ai";
 import { createRequestLogger } from "@/lib/logging";
-import {
-  createConversation,
-  getConversation,
-  updateConversation,
-} from "@/lib/db/queries";
+import { conversationReads } from "@/server/modules/conversation/application";
+import { conversationWrites } from "@/server/modules/conversation/application";
 import {
   attachAnonymousSessionCookie,
   ensureAnonymousSession,
@@ -203,7 +200,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const conversation = requestedConversationId
-      ? await getConversation(requestedConversationId).then(async (existing) => {
+      ? await conversationReads.getConversation(requestedConversationId).then(async (existing) => {
           if (existing) {
             if (!existing.sessionId || existing.sessionId !== sessionId) {
               return null;
@@ -211,12 +208,12 @@ export async function POST(req: NextRequest) {
             return existing;
           }
 
-          return createConversation({
+          return conversationWrites.createConversation({
             id: requestedConversationId,
             sessionId,
           });
         })
-      : await createConversation({ sessionId });
+      : await conversationWrites.createConversation({ sessionId });
 
     if (requestedConversationId && conversation === null) {
       return respondJson({ error: "无权限访问该会话" }, { status: 403 });
@@ -230,7 +227,7 @@ export async function POST(req: NextRequest) {
 
     // 先保存本轮输入快照，避免流式中断时会话完全丢失。
     try {
-      await updateConversation(conversation.id, {
+      await conversationWrites.updateConversation(conversation.id, {
         messages: uiMessages as unknown[],
         userProfile,
       });
@@ -274,7 +271,7 @@ export async function POST(req: NextRequest) {
       originalMessages: uiMessages,
       onFinish: async ({ messages: persistedMessages }) => {
         try {
-          await updateConversation(conversation.id, {
+          await conversationWrites.updateConversation(conversation.id, {
             messages: persistedMessages as unknown[],
             userProfile,
           });
