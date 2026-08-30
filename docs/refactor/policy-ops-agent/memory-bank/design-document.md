@@ -47,6 +47,16 @@
 - 仅在管理员批准后调用Core draft导入接口。
 - 无权直连Core生产规则表。
 
+## 身份与会话设计
+
+- NextAuth v5负责登录、退出、安全Cookie和服务端`auth()`。
+- Session策略为JWT，最长有效期1小时。
+- 用户、role、active状态和authVersion保存于PostgreSQL。
+- JWT只携带userId、role、authVersion；禁止携带画像、方案和个人资料。
+- 密码重置、角色变化或账号禁用时递增authVersion。
+- 管理员审核、规则发布和资源写操作查询数据库校验active状态与authVersion。
+- Next到FastAPI使用5分钟HS256服务JWT；浏览器不得持有该Token。
+
 ## 主要用户旅程
 
 ### 来源登记与监测
@@ -55,7 +65,7 @@
 
 ### OCR校对
 
-扫描件经PaddleOCR生成文本、布局和置信度。低置信度页面暂停流程，管理员对照原图校对后恢复。
+文本PDF由PyMuPDF提取原生文本并与OCR-VL版面结果合并；扫描件逐页发送SiliconFlow PaddleOCR-VL-1.5。文号、日期、金额、比例冲突或仅来自扫描识别时暂停流程，管理员对照原图校对后恢复。
 
 ### 提案审核
 
@@ -113,9 +123,17 @@
 - 用户内容与政策运营数据物理/逻辑隔离。
 - 文档内容不进入系统指令层，不能请求工具或权限。
 - 外部模型仅接收公开政策文本和去标识化规则元数据。
+- OCR、Embedding和Rerank禁止接收用户身份、画像、会话和方案。
 - 真实密钥只存在被忽略的本地配置或生产Secret中。
 - 所有服务和数据库角色最小权限。
 - 审核、导入和发布形成不可删除审计记录。
+
+## 当前运行Profile
+
+- 当前为Personal Demo：4核4GB、总用户≤100、并发≤5。
+- 不承诺正式SLA、RPO或RTO，但必须每日离机备份并在公开Demo前完成恢复验证。
+- 后台解析和OCR任务并发固定为1；资源告警触发时暂停后台任务，优先保证用户规划。
+- Future Production的资源和可靠性升级条件见 `operational-baseline.md`。
 
 ## 验收标准
 

@@ -52,6 +52,8 @@
 - **AGT-FR-010** Agent使用独立数据库角色，不能读写Core Schema。
 - **AGT-FR-011** 对Core的调用使用服务身份、超时、trace ID和稳定错误映射。
 - **AGT-FR-012** 所有模型调用可替换为确定性Fake用于测试和重放。
+- **AGT-FR-013** Next签发5分钟HS256服务JWT，FastAPI校验issuer、audience、subject、jti、iat、exp和30秒时钟偏差。
+- **AGT-FR-014** 服务JWT支持current/previous双Secret轮换；审核与draft物化使用jti短期重放保护。
 
 ## 6. 组件设计
 
@@ -106,6 +108,8 @@ Agent application service
 - Agent工具白名单固定，参数通过Pydantic校验。
 - 日志不包含API Key、Authorization、完整文档、向量或个人资料。
 - 生产数据库凭据按服务分别配置，权限由数据库GRANT验证。
+- 服务JWT只在Docker内部网络传输，浏览器不得获取；Secret只来自部署Secret或被忽略的local env。
+- 单机Demo不启用mTLS；多机部署或更高安全等级通过新ADR复审。
 
 ## 11. 可观测、重试与失败模式
 
@@ -144,6 +148,8 @@ Agent application service
 - **AGT-AC-004** GivenAgent数据库凭据，When查询Core规则表，Then数据库拒绝。
 - **AGT-AC-005** Given模型503，When未超过重试次数，Then退避重试；超过后Run进入failed并可见。
 - **AGT-AC-006** Given401或Schema错误，When节点失败，Then不重试并记录安全错误。
+- **AGT-AC-007** Given过期、错误issuer/audience或重复jti的服务JWT，When访问FastAPI敏感接口，Then请求被拒绝且不执行副作用。
+- **AGT-AC-008** Given服务Secret轮换，When使用current或previous密钥签发的未过期Token，Then过渡期均可验证且旧密钥可按计划撤销。
 
 ## 15. 回退与停止条件
 
@@ -154,8 +160,8 @@ Agent application service
 
 ## 16. Definition of Done
 
-- AGT-FR-001～012全部实现并有证据。
-- AGT-AC-001～006全部通过。
+- AGT-FR-001～014全部实现并有证据。
+- AGT-AC-001～008全部通过。
 - 固定Fake工作流完成创建、暂停、恢复、批准和驳回闭环。
 - 服务、数据库和网络权限验证通过。
 - architecture、OpenAPI、implementation-plan和progress同步。

@@ -52,7 +52,7 @@
 ## 4. Next.js Core工程Agent
 
 ```text
-负责阶段02 Next.js Core。完整读取阶段02 PRD及memory-bank。保留Next全栈形态，不引入NestJS，不改变规则结果。
+负责阶段02 Next.js Core。完整读取阶段02 PRD、ADR-0004及memory-bank。保留Next全栈形态，不引入NestJS，不改变规则结果。认证采用NextAuth JWT，用户/role/authVersion存数据库；敏感写操作必须复核active状态和authVersion。
 
 按implementation-plan逐步拆分领域、Repository、事务和Route Handler，切换到标准PostgreSQL驱动。每步运行相关单元、Repository、权限和契约测试。禁止业务模块依赖next/server，禁止Route Handler直连Drizzle。
 
@@ -64,7 +64,7 @@
 ```text
 负责阶段04 Agent Runtime。完整读取阶段04 PRD、跨服务契约和安全边界。
 
-实现内部FastAPI、Celery/Redis、LangGraph State与PostgreSQL Checkpoint。使用固定Fake节点证明创建、失败重试、interrupt、跨重启恢复、批准/驳回和幂等物化。FastAPI不得承载用户业务，Agent数据库角色不得访问Core Schema。
+实现内部FastAPI、Celery/Redis、LangGraph State与PostgreSQL Checkpoint。使用固定Fake节点证明创建、失败重试、interrupt、跨重启恢复、批准/驳回和幂等物化。Next到FastAPI采用Docker内网+5分钟HS256服务JWT，验证issuer/audience/jti并支持双Secret轮换。FastAPI不得承载用户业务，Agent数据库角色不得访问Core Schema。
 
 验证全部AGT-AC场景，更新文档和验收报告，创建阶段提交并推送。真实模型或生产凭据缺失时使用Fake，不伪造真实验证。
 ```
@@ -72,9 +72,9 @@
 ## 6. 文档解析与RAG工程Agent
 
 ```text
-负责阶段05采集与RAG。读取阶段05 PRD、DocumentTree、地区元数据和SiliconFlow安全规范。
+负责阶段05采集与RAG。读取阶段05 PRD、operational-baseline、quality-gates、official-source-registry、ADR-0003/0006、DocumentTree、地区元数据和SiliconFlow安全规范。
 
-实现白名单采集、MinIO原件、Docling、PaddleOCR、Excel解析、DocumentTree、父子分片、全文/pgvector/RRF/Rerank和引用。输入不限Markdown；原件和DocumentTree是事实源。
+实现白名单采集、MinIO原件、HTML/DOCX/XLSX/JSON/Markdown原生解析、PyMuPDF逐页处理、SiliconFlow PaddleOCR-VL-1.5、DocumentTree、父子分片、全文/pgvector/RRF/Rerank和引用。Demo服务器不常驻Docling或本地VLM；输入不限Markdown，原件和DocumentTree是事实源。
 
 先用Fake Embedding/Rerank完成确定性测试。只有轮换后的新密钥安全存在local env时才真实调用SiliconFlow，并只记录模型、维度、用量和trace ID。验证格式、安全、地区/日期过滤和黄金查询后提交并推送阶段分支。
 ```
@@ -102,9 +102,9 @@
 ## 9. 单机部署与恢复Agent
 
 ```text
-负责阶段07的单机Docker Compose、网络、资源、Secret、监控、备份和恢复设计与演练。
+负责阶段07的Personal Demo单机Docker Compose、网络、4核4GB资源、Secret、监控、备份和恢复设计与演练。完整读取operational-baseline和ADR-0002/0004/0005。
 
-只允许反向代理对外；PostgreSQL、Redis、MinIO和FastAPI必须内部可达。备份必须离开生产主机。执行两次Neon迁移演练、空服务器恢复和回退演练。
+只允许反向代理对外；PostgreSQL、Redis、MinIO和FastAPI必须内部可达。后台并发固定1，资源阈值触发时暂停后台任务。每日pg_dump与MinIO备份必须离开Demo主机并保留14天；公开Demo前执行恢复验证。Future Production的正式RPO/RTO不属于当前DoD。
 
 生产停写、最终迁移和入口切换必须获得用户明确授权；未授权时最多完成ready-to-release验收，不得宣称生产上线。
 ```

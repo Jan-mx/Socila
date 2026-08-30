@@ -45,10 +45,12 @@
 - **RAG-FR-001** 支持HTML、PDF、扫描PDF、DOC/DOCX、XLS/XLSX、Markdown、TXT、JPG/PNG/TIFF和JSON。
 - **RAG-FR-002** 每个输入适配器验证MIME、大小、哈希、来源和允许的重定向。
 - **RAG-FR-003** 原始字节保存到MinIO，数据库保存对象键、哈希、HTTP元数据和抓取证据。
-- **RAG-FR-004** Docling作为统一解析器，输出结构化文档模型、资源和Markdown预览。
-- **RAG-FR-005** PaddleOCR / PP-Structure处理中文扫描件、布局和表格。
-- **RAG-FR-006** openpyxl处理Excel参数表并保留工作表、单元格、合并区域和数据类型。
+- **RAG-FR-004** HTML使用httpx+lxml、DOCX使用python-docx、XLSX使用openpyxl只读模式、JSON使用json/ijson、Markdown/TXT使用行式解析，统一映射到DocumentTree。
+- **RAG-FR-005** PDF使用PyMuPDF逐页检测文本层、提取原生文本并渲染扫描页面。
+- **RAG-FR-006** 扫描或复杂视觉页面使用SiliconFlow `PaddlePaddle/PaddleOCR-VL-1.5`；Demo服务器不加载本地OCR/VLM。
 - **RAG-FR-007** 解析器、OCR、分片器和模型版本必须随DocumentVersion记录。
+- **RAG-FR-008** 解析Worker concurrency=1、prefetch=1、内存上限768MB，并执行各格式文件和行数限制。
+- **RAG-FR-009** 文本PDF关键字段优先原生文本；原生文本与OCR结果冲突时创建OcrDiscrepancy并进入人工校对。
 
 ## 6. 来源监测
 
@@ -57,6 +59,7 @@
 - 重定向后域名必须仍在白名单，DNS解析到内网、环回或链路本地地址时拒绝。
 - 下载限制文件大小、页数、解压量、响应时间和重定向次数。
 - 相同内容的多个URL共享DocumentVersion，但保留所有来源关系。
+- 首期自动来源以 `sources/official-source-registry.md` 为唯一白名单，覆盖国家和三地的政府、人社、医保域名。
 
 ## 7. 文档三层模型
 
@@ -88,12 +91,28 @@ JSON树保存标题、章、节、条、款、项、列表、脚注、附件、�
 ## 9. SiliconFlow配置与验证
 
 - Base URL候选：`https://api.siliconflow.cn/v1`。
-- 路径候选：`GET /models`、`POST /embeddings`、`POST /rerank`。
-- 模型候选：`BAAI/bge-m3`、`BAAI/bge-reranker-v2-m3`。
+- 路径候选：`GET /models`、`POST /embeddings`、`POST /rerank`、`POST /chat/completions`。
+- 模型候选：`BAAI/bge-m3`、`BAAI/bge-reranker-v2-m3`、`PaddlePaddle/PaddleOCR-VL-1.5`。
 - 新密钥必须由用户轮换后写入被Git忽略的local env。
 - 首次验证只使用公开测试句子，不输出密钥或完整向量。
 - 实测模型可见性和向量维度决定最终pgvector Schema。
 - 更换Embedding模型或维度时创建新索引版本，不混写旧向量。
+- `/models`已确认OCR-VL-1.5对当前账号可见；OCR推理仍需公开政策页面样本验证。
+
+## 9.1 OCR流程
+
+- 文本PDF：PyMuPDF原生文本 + OCR-VL版面结果合并。
+- 扫描PDF：逐页发送OCR-VL识别，关键数字默认人工确认。
+- 混合PDF：逐页路由，不整份文档一次性加载或发送。
+- 文号、日期、金额、比例原生文本优先；标题、顺序、表格和图片文字OCR优先。
+- 每页独立Checkpoint和页面哈希缓存；模型下线时暂停，不自动切换未知模型。
+
+## 9.2 资源和格式限制
+
+- HTML≤5MB，DOCX≤25MB，XLSX≤20MB/10万行，JSON≤20MB，Markdown/TXT≤10MB，PDF≤50MB/200页。
+- `.doc`、`.xls`和超限文件在开发机转换或离线处理。
+- Demo服务器不常驻Playwright和完整Docling流水线；Docling仅开发机辅助。
+- 具体内存与告警遵循 `memory-bank/operational-baseline.md`。
 
 ## 10. 检索设计
 
@@ -143,7 +162,7 @@ query normalization
 ## 14. 交付物
 
 - 四地区来源注册与适配器。
-- Docling、PaddleOCR、Excel和通用文本处理流水线。
+- 原生格式解析、PyMuPDF、SiliconFlow OCR-VL和人工校对流水线。
 - MinIO、DocumentTree、Chunk、Embedding和审计Schema。
 - SiliconFlow安全验证报告与确定的模型/维度。
 - 混合检索API、索引和RAG评测集。
@@ -161,6 +180,8 @@ query normalization
 | API | SiliconFlow成功和错误 | 路径、模型、维度、重试符合规范 |
 | 评测 | 黄金问题集 | 达到已批准阈值 |
 
+质量阈值以 `memory-bank/quality-gates.md` 为准，包括Precision≥0.85、Recall≥0.90、Faithfulness≥0.95、引用覆盖100%、错地区/日期为0和OCR关键字段100%。
+
 ## 16. 验收场景
 
 - **RAG-AC-001** Given支持列表中的每种格式，When采集解析，Then保存原件、DocumentTree和派生Markdown。
@@ -170,6 +191,8 @@ query normalization
 - **RAG-AC-005** Given同一文档重复采集，When哈希相同，Then不创建重复版本和向量。
 - **RAG-AC-006** Given轮换后密钥，When执行验证，Then `/models`、`/embeddings`、`/rerank` 成功且报告不含密钥。
 - **RAG-AC-007** Given命中子Chunk，When组装上下文，Then返回父条款和准确页码/条款引用。
+- **RAG-AC-008** Given文本、扫描和混合PDF，When执行OCR流程，Then逐页路由正确且关键字段冲突进入人工校对。
+- **RAG-AC-009** Given各原生格式达到允许上限，When串行解析，ThenWorker不超过资源上限；超限文件被拒绝或转离线处理。
 
 ## 17. 回退与停止条件
 
@@ -181,7 +204,7 @@ query normalization
 ## 18. Definition of Done
 
 - RAG-FR-001～016全部实现并有证据。
-- RAG-AC-001～007全部通过。
+- RAG-AC-001～009全部通过。
 - 四地区真实样本、RAG黄金集和安全测试通过。
 - SiliconFlow模型和向量维度经安全真实请求确认。
 - tech-stack、architecture、implementation-plan和progress同步。

@@ -1,5 +1,7 @@
 # 最快并行开发计划
 
+> 状态：被 [ADR-0001](./adr/ADR-0001-单分支串行执行模型.md) 暂时取代。当前单Goal Agent按同一重构分支串行执行；恢复多人/多Agent时再启用本文。
+
 ## 目标与约束
 
 目标是在4～6名工程人员、七个Goal对话和独立工作树条件下，缩短关键路径，同时避免共享Schema、OpenAPI和memory-bank的并发冲突。
@@ -87,7 +89,7 @@ gantt
 ### 波次3：Policy Model与Ingestion/RAG
 
 - Stage03从G2开始，独占Core政策Schema租约。
-- Stage05A在G4后开始来源、Docling、OCR、MinIO和DocumentTree，不等待Stage03全部完成。
+- Stage05A在G4后开始来源、原生格式解析、PyMuPDF、远程OCR、MinIO和DocumentTree，不等待Stage03全部完成。
 - Stage03先交付Jurisdiction、有效期和PolicyContext元数据契约；集成Agent冻结后，Stage05B开始索引和过滤。
 - Gate G3：国家基线/overlay/快照通过；Gate G5：RAG和引用评测通过。
 

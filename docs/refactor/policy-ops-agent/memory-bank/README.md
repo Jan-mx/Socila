@@ -19,6 +19,9 @@ memory-bank是PolicyOps Agent重构的长期事实源，用于让不同Agent、�
 | `agent-prompts.md` | 如何把上述规则交给其他Agent执行？ | 真实密钥和生产数据 |
 | `traceability.md` | 每个需求由哪个步骤、实现和验收证据覆盖？ | 没有实际覆盖的泛化链接 |
 | `documentation-acceptance-report.md` | 本轮文档深化是否通过及证据是什么？ | 尚未执行的验证结果 |
+| `operational-baseline.md` | 当前Demo资源、任务并发、备份和升级条件是什么？ | 企业生产承诺 |
+| `quality-gates.md` | RAG、OCR和引用的最低门禁是什么？ | 未经批准降低的临时阈值 |
+| `../sources/official-source-registry.md` | 哪些官方域名允许自动抓取？ | 未审核网络来源 |
 
 ## 3. 事实源优先级
 

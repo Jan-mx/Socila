@@ -13,7 +13,7 @@
 
 ## 1. 背景与现状
 
-当前应用运行于Vercel并使用Neon HTTP PostgreSQL。目标环境是单台企业内网Linux服务器，运行Next、FastAPI、Celery、Redis、PostgreSQL和MinIO。单机部署降低成本但存在主机级单点，因此迁移、离机备份、恢复和回退是上线阻断条件。
+当前应用运行于Vercel并使用Neon HTTP PostgreSQL。当前目标是4核4GB单机Personal Demo，运行Next、FastAPI、Celery、Redis、PostgreSQL和MinIO，不承诺正式SLA/RPO/RTO。单机仍需离机备份和至少一次恢复验证，Future Production另行升级。
 
 ## 2. 目标
 
@@ -45,11 +45,13 @@
 - **REL-FR-005** 迁移通过版本化migration创建目标Schema后再导入数据。
 - **REL-FR-006** 导入后校验记录数、主键、序列、哈希、JSONB、UUID、日期和引用完整性。
 - **REL-FR-007** PostgreSQL基础备份、WAL和MinIO对象备份写到另一物理设备/NAS。
-- **REL-FR-008** 记录RPO、RTO、备份保留、加密和恢复负责人。
+- **REL-FR-008** Personal Demo记录实际恢复点、恢复耗时、备份保留、加密和负责人；正式RPO/RTO留待Future Production。
 - **REL-FR-009** 提供应用、数据库、队列、对象存储和外部API健康监控。
 - **REL-FR-010** 切换前冻结写入并记录一致性时间点。
 - **REL-FR-011** 切换失败可以恢复旧应用和Neon只读连接。
 - **REL-FR-012** 回退窗口结束前不删除Neon项目和导出备份。
+- **REL-FR-013** Personal Demo按4核4GB资源预算运行，后台Worker并发1；资源安全阈值触发时暂停后台任务。
+- **REL-FR-014** Demo上线前完成NextAuth JWT+authVersion、user/admin权限和敏感写操作数据库复核。
 
 ## 6. 单机部署设计
 
@@ -85,20 +87,20 @@
 
 ## 8. 备份与恢复
 
-- 每日逻辑备份用于跨版本和选择性恢复。
-- 基础备份加WAL用于时间点恢复。
-- MinIO执行版本化和离机增量同步。
+- Personal Demo每日执行pg_dump和MinIO离机增量同步，保留14天。
+- 备份保存到开发机、NAS或个人云存储，不得只在Demo服务器。
 - Redis视为可重建队列，不作为唯一业务事实源；必要任务状态写PostgreSQL。
 - Checkpoint随PostgreSQL备份恢复，并验证workflowVersion兼容性。
-- 每月执行恢复演练，至少每季度执行空服务器全栈恢复。
+- 公开Demo前至少执行一次PostgreSQL与MinIO恢复验证；不承诺正式RPO/RTO。
+- Future Production再引入连续WAL、正式RPO/RTO、备用恢复资源和定期空机演练。
 
 ## 9. 容量与性能
 
-- 使用代表性100名用户、并发规划、后台查询和采集任务测试。
-- OCR、批量Embedding和HNSW构建使用低优先队列和维护窗口。
+- Personal Demo按总用户≤100、并发≤5进行基础容量观察，不设置P95上线门禁。
+- OCR、批量Embedding和HNSW构建不得与migration并行，均使用单Worker低优先队列。
 - 监控PostgreSQL连接、慢查询、缓存命中、磁盘、WAL和表膨胀。
 - 监控Redis内存、队列深度、任务时长和死信。
-- 预留数据库和MinIO增长空间；达到阈值前告警而非自动扩容。
+- 内存>90%、磁盘>80%、连接池>80%或队列>50时暂停后台任务。
 
 ## 10. 安全
 
@@ -136,7 +138,7 @@
 | 业务 | 用户、后台、规划、Agent | 冒烟与黄金结果通过 |
 | 容量 | 代表性并发和后台任务 | 无资源耗尽和不可接受延迟 |
 | 安全 | 端口、角色、镜像、Secret | 无高危阻断项 |
-| 恢复 | PostgreSQL/MinIO/Checkpoint/空机 | 达到记录的RPO/RTO |
+| 恢复 | PostgreSQL/MinIO/Checkpoint | 数据完整并记录实际恢复点与耗时 |
 | 回退 | 新系统故障 | 可恢复旧入口和Neon只读数据 |
 
 ## 14. 验收场景
@@ -145,9 +147,10 @@
 - **REL-AC-002** Given两次独立迁移演练，When比较结果，Then记录数、哈希和黄金输出一致。
 - **REL-AC-003** Given任一数据服务端口，When从非授权网络访问，Then连接被拒绝。
 - **REL-AC-004** GivenOCR和批量索引运行，When用户执行规划，Then服务不发生资源耗尽。
-- **REL-AC-005** Given正式切换冒烟失败，When触发回退，Then在约定RTO内恢复旧入口。
-- **REL-AC-006** Given主机永久损坏，When从离机备份恢复，Then达到已批准RPO。
+- **REL-AC-005** GivenDemo切换冒烟失败，When触发回退，Then恢复旧入口并记录实际耗时。
+- **REL-AC-006** GivenDemo数据目录不可用，When从离机备份恢复，Then关键数据完整并记录实际恢复点与耗时。
 - **REL-AC-007** Given回退窗口尚未结束，When检查Neon，Then数据保持只读可用且未删除。
+- **REL-AC-008** Given普通用户、管理员和旧authVersion JWT，When访问资源和敏感写接口，Then权限、归属和版本校验符合设计。
 
 ## 15. 生产停止条件
 
@@ -159,8 +162,8 @@
 
 ## 16. Definition of Done
 
-- REL-FR-001～012全部实现并有证据。
-- REL-AC-001～007全部通过。
+- REL-FR-001～014全部实现并有证据。
+- REL-AC-001～008全部通过。
 - 两次迁移演练、空机恢复和回退演练完成。
 - 用户显式授权后完成正式切换；若未授权，阶段保持ready-to-release而非伪报完成。
 - architecture、tech-stack、implementation-plan和progress反映生产真实状态。

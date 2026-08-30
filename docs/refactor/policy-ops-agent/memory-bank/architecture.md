@@ -181,6 +181,48 @@ stateDiagram-v2
 - 记录trace ID、模型、Token和延迟，不记录完整向量。
 - 模型或维度变化创建新的Embedding索引版本。
 
+## 身份与服务鉴权
+
+- NextAuth使用JWT Session；用户和role存PostgreSQL，JWT携带userId、role、authVersion。
+- 敏感写操作校验数据库active状态和authVersion，角色或密码变化后递增版本。
+- Next签发5分钟HS256服务JWT给FastAPI，校验issuer、audience、subject、jti、iat和exp。
+- 允许30秒时钟偏差；审核与draft物化的jti写入Redis短期集合防止重放。
+- current/previous两个Secret支持轮换；Secret不进入Git、日志或浏览器。
+- 多机部署时再评估mTLS，当前单机以Docker内部网络为第一层隔离。
+
+## 格式解析与OCR数据流
+
+```mermaid
+flowchart LR
+    Input[HTML / DOCX / XLSX / JSON / MD / PDF / Image] --> Route{格式路由}
+    Route -->|HTML| Html[httpx + lxml]
+    Route -->|DOCX| Docx[python-docx]
+    Route -->|XLSX| Xlsx[openpyxl read_only]
+    Route -->|JSON/MD| Text[json/ijson/markdown-it]
+    Route -->|PDF| Pdf[PyMuPDF逐页]
+    Pdf --> Kind{文本层}
+    Kind -->|文本/混合| Native[原生文本]
+    Kind -->|扫描/版面| Ocr[SiliconFlow OCR-VL-1.5]
+    Native --> Merge[差异校验与合并]
+    Ocr --> Merge
+    Html --> Tree[DocumentTree JSON]
+    Docx --> Tree
+    Xlsx --> Tree
+    Text --> Tree
+    Merge --> Tree
+```
+
+- Demo服务器不常驻Docling或本地OCR/VLM；Docling仅开发机离线辅助。
+- Parser/Celery concurrency=1、prefetch=1、内存上限768MB。
+- 原始文件是审计源，DocumentTree是权威解析结构，Markdown仅派生预览。
+
+## Personal Demo资源边界
+
+- 4核4GB、总用户≤100、并发≤5，无正式性能SLA。
+- Next 512MB、FastAPI 384MB、Worker 768MB、PostgreSQL 768MB、Redis 128MB、MinIO 256MB、反向代理64MB，约1GB留给系统。
+- 内存>90%、磁盘>80%、连接池>80%或队列>50时暂停后台任务。
+- 每日pg_dump与MinIO离机同步，保留14天；公开Demo前执行一次恢复验证。
+
 ## 安全控制
 
 - 抓取域名和路径白名单，解析DNS后阻止内网地址。

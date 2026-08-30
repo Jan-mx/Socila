@@ -15,7 +15,10 @@
 9. [Agent 提示词](./memory-bank/agent-prompts.md)
 10. [需求追踪矩阵](./memory-bank/traceability.md)
 11. [文档验收报告](./memory-bank/documentation-acceptance-report.md)
-12. 对应阶段 PRD
+12. [运行基线](./memory-bank/operational-baseline.md)
+13. [质量门禁](./memory-bank/quality-gates.md)
+14. [官方来源注册表](./sources/official-source-registry.md)
+15. 对应阶段 PRD
 
 ## 阶段 PRD
 

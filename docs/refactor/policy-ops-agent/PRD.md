@@ -47,7 +47,7 @@
 ```mermaid
 flowchart LR
     Source[官方来源] --> Monitor[每周监测与哈希]
-    Monitor --> Parse[Docling解析 / PaddleOCR]
+    Monitor --> Parse[原生解析 / PyMuPDF / 远程OCR-VL]
     Parse --> Tree[DocumentTree JSON]
     Tree --> Diff[新旧条款树Diff]
     Diff --> Impact[影响规则/参数/测试检索]
@@ -175,7 +175,7 @@ flowchart LR
 | OCR或表格解析错误 | 置信度门禁、原图对照和人工校对 |
 | 模型生成无依据草案 | 强制引用、结构校验、历史回放和管理员审核 |
 | 地区政策冲突 | 显式冲突任务，禁止自动发布 |
-| 单机故障 | 离机备份、恢复演练和文档化RTO |
+| 单机故障 | 每日离机备份、公开Demo前恢复验证并记录实际耗时 |
 | 外部API下线或变更 | ModelGateway、模型列表验证和索引版本化 |
 
 ## 13. 总体Definition of Done

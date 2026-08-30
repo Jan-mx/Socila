@@ -3,6 +3,7 @@
 ## 文件说明
 
 - `siliconflow.env.example`：可跟踪的无密钥配置模板。
+- `runtime.env.example`：可跟踪的认证、Worker、格式限制和Demo资源模板。
 - `siliconflow.local.env`：本机真实配置，被 Git 忽略。
 - `siliconflow-validation.md`：可跟踪的验证结论，不包含密钥和完整向量。
 
@@ -19,7 +20,8 @@
 1. 请求 `GET /models`，确认账号可见的 Embedding 和 Reranker。
 2. 请求 `POST /embeddings`，记录模型和向量维度。
 3. 请求 `POST /rerank`，验证中文政策候选排序。
-4. 将不含敏感信息的结果写入 `siliconflow-validation.md`。
-5. 根据实测维度更新 `tech-stack.md` 和未来 pgvector migration。
+4. 使用一页公开政策图片验证 `PaddlePaddle/PaddleOCR-VL-1.5` 推理，不输出图片Base64。
+5. 将不含敏感信息的结果写入 `siliconflow-validation.md`。
+6. 根据实测维度和OCR响应更新 `tech-stack.md`、质量报告和未来 pgvector migration。
 
 在 `SILICONFLOW_API_KEY` 为空时不得发送真实请求，也不得把候选模型标记为已验证。
