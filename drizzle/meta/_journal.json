@@ -43,6 +43,13 @@
       "when": 1788083042590,
       "tag": "0005_conflicts_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788090723232,
+      "tag": "0007_agent_materializations",
+      "breakpoints": true
     }
   ]
 }

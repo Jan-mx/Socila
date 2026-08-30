@@ -159,7 +159,13 @@ def build_graph_nodes(
 
         if decision.get("decision") in ("approve", "edit-and-approve"):
             if decision.get("decision") == "edit-and-approve" and decision.get("patch") is not None:
-                proposal.draft_bundle = {**(proposal.draft_bundle or {}), "patch": decision["patch"]}
+                # AC-004：保留 Agent 原稿，另存管理员补丁版本用于 Core 物化。
+                agent_original = json.loads(json.dumps(proposal.draft_bundle, default=str))
+                proposal.draft_bundle = {
+                    **agent_original,
+                    "admin_patch": decision["patch"],
+                    "agent_original": agent_original,
+                }
                 proposals.update_status(proposal.id, "approved")
             else:
                 proposals.update_status(proposal.id, "approved")

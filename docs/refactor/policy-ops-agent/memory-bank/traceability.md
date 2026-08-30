@@ -11,7 +11,7 @@
 | 03 Policy Model | POL-FR-001～012 | 03.1～03.9 | POL-AC-001～006 | `src/server/modules/{jurisdiction,policy}/*`、`drizzle/0003~0005`、`src/lib/db/seed/seed-regional.ts`、`legacy-bridge.ts` | `docs/refactor/policy-ops-agent/reports/stage-03/acceptance-report.md` |
 | 04 Agent Runtime | AGT-FR-001～014 | 04.1～04.10 | AGT-AC-001～008 | 待实现 | 待生成 |
 | 05 Ingestion/RAG | RAG-FR-001～016 | 05.1～05.11 | RAG-AC-001～009 | 待实现 | 待生成 |
-| 06 Drafting | DRF-FR-001～014 | 06.1～06.9 | DRF-AC-001～007 | 待实现 | 待生成 |
+| 06 Drafting | DRF-FR-001～014 | 06.1～06.9 | DRF-AC-001～007 | `services/agent/agent/drafting/`、`src/server/modules/agent-integration/application/materialize.ts`、`src/app/admin/review/` | `docs/refactor/policy-ops-agent/reports/stage-06/acceptance-report.md` |
 | 07 Migration/Release | REL-FR-001～014 | 07.1～07.12 | REL-AC-001～008 | 待实现 | 待生成 |
 
 ## 总体需求映射

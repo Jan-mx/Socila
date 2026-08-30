@@ -200,6 +200,17 @@ export const policySnapshotMembers = pgTable("policy_snapshot_members", {
   provenance: jsonb("provenance").notNull(),
 });
 
+// ─── Agent 物化台账（阶段06，DRF-FR-013）────────────────────────────────────
+
+export const agentMaterializations = pgTable("agent_materializations", {
+  idempotencyKey: text("idempotency_key").primaryKey(),
+  proposalId: text("proposal_id").notNull(),
+  runId: text("run_id").notNull(),
+  status: text("status").notNull().default("draft"),
+  draftIds: jsonb("draft_ids").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // ─── Showcase Cases ────────────────────────────────────────────────────────
 
 export const showcaseCases = pgTable("showcase_cases", {

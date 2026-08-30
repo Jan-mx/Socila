@@ -17,6 +17,7 @@ export interface SnapshotReplayResult {
 }
 
 export function createLegacyBridge(deps: Pick<PolicySnapshotServiceDeps, "resolveChain">) {
+  void deps;
   const snapshotRepo = new DrizzlePolicySnapshotRepository();
 
   return {

@@ -75,11 +75,6 @@ describe.skipIf(!DRILL_URL)("Shanghai migration reconciliation (drill DB)", () =
     expect(replay.total).toBe(legacy.total);
     expect(replay.passed).toBe(legacy.passed);
     // 逐案结果一致
-    const legacyByName = new Map(
-      legacy.results.map((r) => [r.name, r.pass] as const),
-    );
-    const replayCases = cases.map((c) => c.name);
-    void replayCases;
     expect(legacy.passed).toBeGreaterThan(0);
     expect(replay.passRate).toBe(legacy.pass_rate);
     expect(replay.contentHash).toBeTruthy();
