@@ -64,6 +64,15 @@ flowchart TB
 
 Route Handler不包含领域规则，领域模块不导入 `next/server`。
 
+## 跨服务API契约约定（阶段01固定，FND-FR-004～007）
+
+- 契约源：`src/lib/api/contracts.ts`（Zod运行时校验源，框架无关）。Next公开与管理接口的错误体、请求上下文、幂等元数据从该模块派生；FastAPI侧在阶段04按同一约定实现，两端契约差异视为缺陷。
+- 统一错误体 `ApiError { code, message, requestId, details? }`；稳定业务码→HTTP状态固定映射，覆盖400/401/403/404/409/413/422/429/500/503。存量路由的 `{ error }` 旧形态在阶段02模块化时逐域替换，不一次性改写。
+- `RequestContext { requestId, actorId?, role?, sessionId?, source }`：requestId取 `X-Request-Id` 头（缺省生成UUID）并回写响应头；role ∈ user/admin/agent；source ∈ web/service/agent。身份由auth层传入，不接受客户端伪造。
+- 幂等：写接口以 `Idempotency-Key` 头声明幂等键；相同键重复提交要么返回首次结果，要么以 409 CONFLICT 拒绝（FND-AC-005），禁止部分执行或重复副作用。事务边界在application用例层（阶段02.6落地）。
+- 版本与兼容：公开API破坏性变更必须引入新版本前缀（如 `/api/v2/...`）并保留旧版本过渡期；内部服务接口固定 `/api/internal/v1/...` 前缀 + `X-Service-Name` 服务身份头，不接受浏览器Cookie作为唯一认证。
+- OpenAPI：Zod为运行时校验源，OpenAPI文档由Zod Schema派生生成（阶段04建立生成流程）；本阶段只固定约定，不迁移全部接口。
+
 ## 数据所有权
 
 ```mermaid

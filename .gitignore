@@ -53,3 +53,12 @@ test-results/
 
 /docs/interview/
 /docs/refactor/policy-ops-agent/config/*.local.env
+
+# secret gate（FND-FR-008/010）：密钥、私钥、凭据与备份不入库
+*.key
+id_rsa*
+credentials*.json
+secrets.*
+*.dump
+*.bak
+*.backup

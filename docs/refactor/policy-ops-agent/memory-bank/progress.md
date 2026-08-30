@@ -4,17 +4,20 @@
 
 ## 当前执行目标
 
-- 目标：深化七份PRD、建立Agent使用SOP与提示词、生成最快并行开发计划并完成文档验收。
-- Goal模式：未来实现Agent已获授权全阶段自主执行；本次文档启动未创建持久Goal。
+- 目标：按implementation-plan完成全部七个阶段并通过最终验收（58步、七份阶段验收报告PASS）。
+- Goal模式：已激活（2026-08-30，用户批准重构开发计划v2）；全阶段自主执行，一次一步，新鲜验证通过后自动继续。
+- 分支策略：单分支串行——直接在`refactor/policy-ops-agent-platform`开发，不建stage分支/工作树（用户指示，见`adr/ADR-0001-单分支串行执行模型.md`）。
 - 分支：`refactor/policy-ops-agent-platform`
-- 状态：文档验收通过，等待检查点提交和远端推送。
+- 状态：Stage 01 Foundation执行中。
 - 日期：2026-08-30
 
 ## 当前阶段与步骤
 
-- 当前阶段：文档Bootstrap / 实施前准备。
-- 当前步骤：Git敏感检查、staged diff审阅、提交与推送。
-- 下一实现阶段：Stage 01 Foundation，步骤01.1。
+- 当前阶段：Stage 01 Foundation——**01.1～01.7 全部完成，验收报告 PASS**（`reports/stage-01/acceptance-report.md`）。
+- 当前步骤：阶段提交推送（`docs: 完善基础工程基线与交付门禁`），随后进入 Stage 02。
+- 步骤证据（汇总）：01.1 版本/命令基线（四命令退出码0）；01.2 黄金快照28条零漂移；01.3 版本化migration+空库可重复（哈希一致）+BLOCKER-001；01.4 API契约模块+9测试；01.5 Secret门禁（扫描/验证脚本+ignore规则）；01.6 CI六步门禁（干净clone全过）；01.7 五个验收场景 FND-AC-001～005 全PASS（AC-001哈希新鲜比对一致；AC-002为17文件/123测试——原112项全保持通过）。
+- 执行环境实测：Node v22.23.1、npm 11.7.0、Python 3.11.9+uv 0.12.7、Docker 29.4.0（守护进程已启动）。
+- 演练库：`infra/dev/docker-compose.dev.yml`（PostgreSQL 17.11 @ localhost:5433，容器 ssp-pg-dev，凭据经 gitignored `infra/dev/.env`）。
 
 ## 已完成交付
 
@@ -46,25 +49,21 @@
 
 ## Git状态
 
-- 计划检查点提交：`docs: 深化PolicyOps实施文档与Agent工作流`
-- 提交状态：待创建。
-- 推送目标：`origin/refactor/policy-ops-agent-platform`。
-- 推送状态：待执行。
-- 自动PR/合并：禁止。
+- 检查点提交：`cba8cdc docs: 深化PolicyOps实施文档与Agent工作流`已创建并推送到`origin/refactor/policy-ops-agent-platform`（2026-08-30核实，本地与远端同步）。
+- 工作树：干净；worktree仅`F:/Socila`与`F:/Socila-eval-worktree`（后者属评测分支，与本Goal无关）。
+- 本次Goal提交策略：每阶段验收通过后一次提交并推送当前分支；不建PR、不合并main。
 
 ## 阻塞项
 
 ### SiliconFlow真实验证
 
-- 状态：blocked by secret safety gate。
-- 原因：此前密钥已暴露且不得继续使用；被忽略的local配置保持空值。
-- 解除条件：用户轮换密钥并安全写入 `config/siliconflow.local.env`。
-- 影响：Stage 05不能锁定最终模型和pgvector维度；不阻塞文档Bootstrap与Stage 01～04设计。
+- 状态：密钥已就位（用户2026-08-30写入`config/siliconflow.local.env`，已被`.gitignore:55`忽略，Git候选0命中，实测复核通过）。
+- 待办：步骤05.7用验证脚本真实验证（只输出状态/模型/维度/用量/trace，不读取、不输出密钥内容）。
+- 影响：Stage 01～04及05的Fake部分不受影响；05.7前可全程自主执行。
 
 ## 精确下一步
 
-1. 运行最终Markdown、需求追踪、Secret、ignore和Git diff检查。
-2. 检查全部staged候选内容，确认local env未被纳入。
-3. 创建文档检查点提交并推送当前重构分支。
-4. 从已推送检查点创建 `stage/01-foundation` 工作树。
-5. 使用agent-prompts中的全流程或Foundation专业提示词开始步骤01.1。
+1. 执行阶段01提交 `docs: 完善基础工程基线与交付门禁` 并推送 `origin/refactor/policy-ops-agent-platform`（提交前候选Secret扫描+staged diff审阅）。
+2. 进入 Stage 02 Next Core，步骤 02.1 建立领域骨架（依赖规则：domain 无 next/server 依赖）。
+3. 依序 02.2～02.10；阶段02验收 PASS 后提交 `refactor: 完成Next Core领域模块化` 并推送。
+4. BLOCKER-001 的显式修复 migration 优先安排在 Stage 02 的 migration 相关步骤（02.3）。

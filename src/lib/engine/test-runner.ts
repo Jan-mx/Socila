@@ -31,6 +31,9 @@ export interface DiffEntry {
 /**
  * Run a single test case.
  *
+ * `asOfDate` 省略时全量用例按"当天日期"执行（结果随日期漂移）；
+ * 黄金基线与回归比较必须显式传入固定日期。
+ *
  * CRITICAL dual params resolution:
  * 1. Start with baseParams from DB (or empty)
  * 2. Merge input.params on top (if present in test input)
@@ -40,6 +43,7 @@ export function runTestCase(
   testCase: TestCase,
   allRules: RuleDefinition[],
   baseParams: Record<string, unknown>,
+  asOfDate?: string,
 ): TestResult {
   const testName =
     testCase.example_name ?? testCase.name ?? testCase.rule_id ?? "unnamed";
@@ -113,7 +117,7 @@ export function runTestCase(
     };
   } else {
     // Full rule set test
-    resultCtx = orchestrateInMemory(allRules, mergedParams, userInput);
+    resultCtx = orchestrateInMemory(allRules, mergedParams, userInput, asOfDate);
   }
 
   // Build the actual result to compare against expected
@@ -144,6 +148,7 @@ export function runTestSuite(
   testCases: TestCase[],
   allRules: RuleDefinition[],
   baseParams: Record<string, unknown>,
+  asOfDate?: string,
 ): {
   total: number;
   passed: number;
@@ -151,7 +156,9 @@ export function runTestSuite(
   pass_rate: number;
   results: TestResult[];
 } {
-  const results = testCases.map((tc) => runTestCase(tc, allRules, baseParams));
+  const results = testCases.map((tc) =>
+    runTestCase(tc, allRules, baseParams, asOfDate),
+  );
   const passed = results.filter((r) => r.pass).length;
 
   return {
