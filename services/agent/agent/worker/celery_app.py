@@ -29,6 +29,10 @@ def make_celery(settings=None) -> Celery:
         task_acks_late=True,
         task_reject_on_worker_lost=True,
         worker_prefetch_multiplier=1,
+        worker_concurrency=1,
+        worker_max_tasks_per_child=20,
+        task_soft_time_limit=110,
+        task_time_limit=120,
         beat_schedule={
             "agent-heartbeat": {
                 "task": "agent.schedule.heartbeat",

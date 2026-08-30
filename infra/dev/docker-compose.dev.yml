@@ -1,11 +1,11 @@
-# 本地演练库：阶段01~06 的 migration 空库重建、集成测试与对账演练使用。
+# 本地演练环境：PostgreSQL 17 + pgvector、Redis、MinIO。
+# 阶段04 Agent / 阶段05 RAG / 阶段06 Drafting 的集成测试与演练库依赖本文件。
 # 生产单机 Compose 在阶段07按 REL-FR-001 另建，不复用本文件。
-# 凭据不落仓库：密码从同目录 .env 读取（.gitignore 的 .env* 已覆盖），
-# 首次启动前生成：SSP_PG_DEV_PASSWORD=$(openssl rand -hex 16) 写入 infra/dev/.env。
-# 端口固定映射 5433，避免与本机任何既有 PostgreSQL 冲突。
+# 凭据不落仓库：SSP_PG_DEV_PASSWORD 与 MINIO_ROOT_PASSWORD 从同目录 .env 读取
+# （.gitignore 的 .env* 已覆盖）；端口映射错开本机默认端口。
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: ssp-pg-dev
     environment:
       POSTGRES_USER: postgres
@@ -21,5 +21,35 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: ssp-redis-dev
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: ssp-minio-dev
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?需要在 infra/dev/.env 设置 MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?需要在 infra/dev/.env 设置 MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ssp-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   ssp-pg-dev-data:
+  ssp-minio-data:

@@ -10,6 +10,18 @@
   - `GET /models` 实测HTTP 200；当前账号可见 `PaddlePaddle/PaddleOCR-VL-1.5`。该结果仅证明模型可见，不证明OCR推理已通过。
 - 安全说明：此前在对话中暴露的旧密钥不得使用或写入本仓库；验证报告禁止记录 API Key、Authorization Header、完整向量或任何用户个人资料。
 
+## 05.7 真实验证结果（2026-08-30，scripts/validate_siliconflow.py）
+
+| 端点 | 状态 | 结果（只记允许字段） |
+| --- | --- | --- |
+| GET /models | 200 | 95 个模型可见；bge-m3 / bge-reranker-v2-m3 / PaddleOCR-VL-1.5 全部可见 |
+| POST /embeddings | 200 | 模型 BAAI/bge-m3；**向量维度实测 1024**（与候选一致）；usage: prompt_tokens=28；indexVersion=BAAI/bge-m3:1024 |
+| POST /rerank | 200 | 模型 BAAI/bge-reranker-v2-m3；排序 [0,0.9723]/[1,0.0398]/[2,0.0003]——相关文档显著居首 |
+| POST /chat/completions (OCR-VL-1.5) | 200 | 公开测试句子图片推理成功；关键字段（文号2025/金额36549/日期2025-07-01/比例16%）全部命中；trace_id=chatcmpl-28b077b8…；模型未输出 confidence 字段（适配器默认0.0→按门禁进入人工确认路径） |
+
+- pgvector Schema 锁定：**维度 1024**，indexVersion=BAAI/bge-m3:1024。
+- 全程未输出 API Key、Authorization、完整向量或图片 Base64。
+
 ## 官方候选配置
 
 | 能力 | 路径 | 候选模型 | 验证状态 |

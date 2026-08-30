@@ -13,8 +13,7 @@
 
 ## 当前阶段与步骤
 
-- 当前阶段：Stage 04 Agent Runtime——**04.1～04.9 全部完成，验收报告 PASS**（`reports/stage-04/acceptance-report.md`）。
-- 当前步骤：阶段提交推送（`feat: 建立可恢复的政策Agent运行时`），随后进入 Stage 05。
+- 当前阶段：Stage 05 采集与RAG——**全部 RAG-FR/AC 完成，验收报告 PASS**（`reports/stage-05/acceptance-report.md`），含 05.0 Gap Analysis 恢复校准。
 - 步骤证据（汇总）：03.1 地区树（migration 0003+树不变量）；03.2 版本化实体（0004：地区/业务键/有效期约束/回填）；03.3 overlay合并器（四操作+版本更替+跨包冲突，7测试）；03.4 冲突模型（policy_conflicts+阻断）；03.5 不可变快照（DB触发器+事务写入+哈希）；03.6 影响查询（ListImpactedOverlays）；03.7 上海迁移对账（legacy vs 快照重放一致）；03.8 粤川示例（隔离3测试）；03.9 验收（POL-AC-001~006 全PASS，158测试全绿）。
 - **安全事件（已闭环）**：2026-08-30 16:33 一次seed因shell环境丢失+dotenv回退误写Neon（v1规则24行同内容重写，无数据丢失，实测确认）；整改：`src/lib/db/guard.ts` 本地库门禁接入seed/migrate/showcase脚本，远程需 ALLOW_REMOTE_DATABASE=1（留待阶段07授权迁移）。
 - 执行环境实测：Node v22.23.1、npm 11.7.0、Python 3.11.9+uv 0.12.7、Docker 29.4.0（守护进程已启动）。
@@ -64,7 +63,7 @@
 
 ## 精确下一步
 
-1. 执行阶段04提交 `feat: 建立可恢复的政策Agent运行时` 并推送。
-2. 进入 Stage 05 采集与RAG：05.1 来源注册与安全抓取（Celery 队列已就绪）。
-3. 依序 05.2～05.11；05.7 用已轮换密钥做 SiliconFlow 真实验证（validate-siliconflow 流程）。
-4. 阶段05验收 PASS 后提交推送，进入 Stage 06。
+1. 执行阶段05提交 `feat: 建立政策采集与混合检索能力` 并推送。
+2. 进入 Stage 06 草案生成（06.1 条款树 Diff 起）。
+3. 依序 06.2～06.9；Faithfulness 评测在 06 verify 节点落地。
+4. 阶段06验收 PASS 后提交推送，进入 Stage 07。
