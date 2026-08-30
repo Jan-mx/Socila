@@ -75,6 +75,10 @@ Route Handler不包含领域规则，领域模块不导入 `next/server`。
 - 版本与兼容：公开API破坏性变更必须引入新版本前缀（如 `/api/v2/...`）并保留旧版本过渡期；内部服务接口固定 `/api/internal/v1/...` 前缀 + `X-Service-Name` 服务身份头，不接受浏览器Cookie作为唯一认证。
 - OpenAPI：Zod为运行时校验源，OpenAPI文档由Zod Schema派生生成（阶段04建立生成流程）；本阶段只固定约定，不迁移全部接口。
 
+## Agent Runtime（阶段04落地）
+
+Python 服务位于 `services/agent/`：FastAPI 控制面（/internal/v1，仅内部）+ Celery/Redis 队列（graph/schedule/dead）+ LangGraph PolicyOpsGraph（PostgresSaver Checkpoint）。Agent 数据位于 agent schema（runs/artifacts/proposals/reviews/events），专用角色 agent_app 对 core schema 零权限；对 Core 写入仅经 materialize 幂等端口（draft 导入）。
+
 ## 数据所有权
 
 ```mermaid

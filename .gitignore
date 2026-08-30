@@ -62,3 +62,8 @@ secrets.*
 *.dump
 *.bak
 *.backup
+
+# python agent runtime（阶段04）
+services/agent/.venv/
+services/agent/**/__pycache__/
+.pytest_cache/

@@ -13,8 +13,8 @@
 
 ## 当前阶段与步骤
 
-- 当前阶段：Stage 03 政策模型——**03.1～03.9 全部完成，验收报告 PASS**（`reports/stage-03/acceptance-report.md`）。
-- 当前步骤：阶段提交推送（`feat: 建立全国政策基线与地区覆盖模型`），随后进入 Stage 04。
+- 当前阶段：Stage 04 Agent Runtime——**04.1～04.9 全部完成，验收报告 PASS**（`reports/stage-04/acceptance-report.md`）。
+- 当前步骤：阶段提交推送（`feat: 建立可恢复的政策Agent运行时`），随后进入 Stage 05。
 - 步骤证据（汇总）：03.1 地区树（migration 0003+树不变量）；03.2 版本化实体（0004：地区/业务键/有效期约束/回填）；03.3 overlay合并器（四操作+版本更替+跨包冲突，7测试）；03.4 冲突模型（policy_conflicts+阻断）；03.5 不可变快照（DB触发器+事务写入+哈希）；03.6 影响查询（ListImpactedOverlays）；03.7 上海迁移对账（legacy vs 快照重放一致）；03.8 粤川示例（隔离3测试）；03.9 验收（POL-AC-001~006 全PASS，158测试全绿）。
 - **安全事件（已闭环）**：2026-08-30 16:33 一次seed因shell环境丢失+dotenv回退误写Neon（v1规则24行同内容重写，无数据丢失，实测确认）；整改：`src/lib/db/guard.ts` 本地库门禁接入seed/migrate/showcase脚本，远程需 ALLOW_REMOTE_DATABASE=1（留待阶段07授权迁移）。
 - 执行环境实测：Node v22.23.1、npm 11.7.0、Python 3.11.9+uv 0.12.7、Docker 29.4.0（守护进程已启动）。
@@ -64,7 +64,7 @@
 
 ## 精确下一步
 
-1. 执行阶段03提交 `feat: 建立全国政策基线与地区覆盖模型` 并推送。
-2. 进入 Stage 04 Agent Runtime，步骤 04.1 建立 FastAPI 控制面（Python/uv 环境）。
-3. 依序 04.2～04.9（Celery/Redis、Agent Schema 角色隔离、LangGraph+Checkpoint、interrupt、幂等、全 Fake 验证）。
-4. 阶段04验收 PASS 后提交推送（04 PRD DoD 预写文案），进入 Stage 05。
+1. 执行阶段04提交 `feat: 建立可恢复的政策Agent运行时` 并推送。
+2. 进入 Stage 05 采集与RAG：05.1 来源注册与安全抓取（Celery 队列已就绪）。
+3. 依序 05.2～05.11；05.7 用已轮换密钥做 SiliconFlow 真实验证（validate-siliconflow 流程）。
+4. 阶段05验收 PASS 后提交推送，进入 Stage 06。
