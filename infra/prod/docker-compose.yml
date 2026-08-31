@@ -1,0 +1,179 @@
+# PolicyOps 单机部署 Compose（阶段07.1，REL-FR-001～004）
+# Personal Demo Profile（ADR-0002）：4核4GB、总用户≤100、并发≤5。
+# 仅反向代理对外；PostgreSQL/Redis/MinIO/FastAPI 仅内部网络可达。
+# 凭据全部来自部署环境 Secret / local env（不落仓库）。
+
+services:
+  proxy:
+    image: caddy:2-alpine
+    container_name: policyops-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - edge
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - web
+    mem_limit: 64m
+
+  web:
+    image: policyops-web:latest
+    container_name: policyops-web
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      AGENT_INTERNAL_URL: http://agent:8100
+      AGENT_SERVICE_JWT_CURRENT: ${AGENT_SERVICE_JWT_CURRENT}
+      AGENT_SERVICE_JWT_PREVIOUS: ${AGENT_SERVICE_JWT_PREVIOUS}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL}
+    networks:
+      - edge
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: 1.5
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  agent:
+    image: policyops-agent:latest
+    container_name: policyops-agent
+    restart: unless-stopped
+    environment:
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
+      AGENT_REDIS_URL: redis://redis:6379/0
+      AGENT_CORE_BASE_URL: http://web:3000
+      AGENT_SERVICE_JWT_CURRENT: ${AGENT_SERVICE_JWT_CURRENT}
+      AGENT_SERVICE_JWT_PREVIOUS: ${AGENT_SERVICE_JWT_PREVIOUS}
+      AGENT_MINIO_ENDPOINT: minio:9000
+      AGENT_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      AGENT_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY}
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 384m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8100/internal/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    image: policyops-agent:latest
+    container_name: policyops-worker
+    restart: unless-stopped
+    command: celery -A agent.worker.celery_app.celery_app worker --loglevel=info --concurrency=1 --prefetch-multiplier=1 --max-tasks-per-child=20 --time-limit=120 --soft-time-limit=110
+    environment:
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
+      AGENT_REDIS_URL: redis://redis:6379/0
+      AGENT_CORE_BASE_URL: http://web:3000
+      AGENT_MINIO_ENDPOINT: minio:9000
+      AGENT_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      AGENT_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY}
+    networks:
+      - internal
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 768m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A agent.worker.celery_app.celery_app inspect ping -d celery@$$HOSTNAME"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  beat:
+    image: policyops-agent:latest
+    container_name: policyops-beat
+    restart: unless-stopped
+    command: celery -A agent.worker.celery_app.celery_app beat --loglevel=info
+    environment:
+      AGENT_REDIS_URL: redis://redis:6379/0
+    networks:
+      - internal
+    depends_on:
+      - redis
+    mem_limit: 128m
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: policyops-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - internal
+    mem_limit: 768m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: policyops-redis
+    restart: unless-stopped
+    networks:
+      - internal
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    # 版本固定：与演练环境一致的 MinIO RELEASE（不使用 latest，PRD §10 镜像固定）
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: policyops-minio
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    networks:
+      - internal
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  edge:
+  internal:
+    internal: true
+
+volumes:
+  caddy-data:
+  pg-data:
+  minio-data:
