@@ -36,6 +36,7 @@
 - 07.11 最终独立审查：初判 BLOCKED（CORE-AC-001 门禁回归：health route 直连 `@/lib/db`）→ 修复复验后 **APPROVED**。修复：探测下沉 `src/server/health.ts`、`.zcode/` 入 gitignore、next-auth `trustHost: true`（UntrustedHost 0 命中，登录 POST 302 拒绝流程正常）、progress 重复行清理；修复后 160 测试全绿 + tsc/build 通过。
 - 07.12 阶段验收：**PASS**（`reports/stage-07/acceptance-report.md`，REL-AC-001～008 全过、REL-FR-001～014 全覆盖、DoD 核对完成）。**Goal 七阶段全部验收 PASS。**
 - 运维维护（2026-08-31，用户要求）：生产容器更名 `socila-*`（小写，Docker 容器名不允许大写）、自建镜像更名 `web:latest`/`agent:latest`（去 policyops 前缀）；数据卷/网络/数据库名不变（卷经项目名 prod_ 前缀解析，重建后数据无损核验 rules=24）；Runbook/Dockerfile/restore-verify.sh 同步。dev 栈（ssp-*）保留用于日常测试。
+- 运维维护（2026-09-01，用户要求）：compose 显式 `name: socila`（项目名去 prod 化），网络更名 socila_edge/internal；数据卷显式命名 socila_pg-data/minio-data/caddy-data（停机 cp -a 迁移，数据核验 rules=24 后删除旧 prod_* 卷）。dev 栈（ssp-*）不再常驻：已 down（卷保留），测试前 `docker compose -f infra/dev/docker-compose.dev.yml up -d` 拉起。
 - Neon 只读导出授权：用户已批准（2026-08-30"允许以上请示"）；仅只读访问，不写 Neon；07.10 切换仍需单独显式授权。
 - 演练库：`infra/dev/docker-compose.dev.yml`（PostgreSQL 17.11 @ localhost:5433，容器 ssp-pg-dev，凭据经 gitignored `infra/dev/.env`）。
 

@@ -3,6 +3,8 @@
 # 仅反向代理对外；PostgreSQL/Redis/MinIO/FastAPI 仅内部网络可达。
 # 凭据全部来自部署环境 Secret / local env（不落仓库）。
 
+name: socila
+
 services:
   proxy:
     image: caddy:2-alpine
@@ -194,5 +196,8 @@ networks:
 
 volumes:
   caddy-data:
+    name: socila_caddy-data
   pg-data:
+    name: socila_pg-data
   minio-data:
+    name: socila_minio-data
