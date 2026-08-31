@@ -148,6 +148,11 @@ services:
       - pg-data:/var/lib/postgresql/data
     networks:
       - internal
+      # 开发机临时加入 edge 以使宿主端口发布生效（Compose 对纯 internal 网络容器的
+      # 端口发布不生效）；服务器部署时删除此网络与端口映射，恢复纯内网隔离
+      - edge
+    ports:
+      - "5432:5432"
     mem_limit: 768m
     cpus: 1.0
     healthcheck:
