@@ -62,12 +62,16 @@ def fake_app():
     deps = AppDeps(repos=repos, graph_runner=runner, settings=Settings(workflow_version="policyops-graph-v1"))
 
     def dispatch(run) -> None:
-        result = runner.start(run.id, run.thread_id, {"jurisdiction_code": "310000", "as_of_date": "2026-01-01"})
+        result = runner.start(run.id, run.thread_id, {
+            "jurisdiction_code": "310000",
+            "as_of_date": "2026-01-01",
+            "payload": {},
+        })
         # 有 interrupt 即 waiting_review；无则 completed。
 
     def resume_review(run_id: str, decision: dict) -> bool:
         run = repos.get(run_id)
-        return runner.resume(run_id, run.thread_id, decision)
+        return runner.resume(run_id, decision.get("thread_id", run.thread_id), decision)
 
     deps.dispatch = dispatch  # type: ignore[attr-defined]
     deps.resume_review = resume_review  # type: ignore[attr-defined]

@@ -46,6 +46,8 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
   session: {
     strategy: "jwt",
   },
+  // 反向代理后自托管（单机 Compose）必需：信任 proxy 转发的 Host/X-Forwarded-* 头
+  trustHost: true,
   pages: {
     signIn: "/admin/login",
   },

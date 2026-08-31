@@ -24,7 +24,9 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 REPO = Path(__file__).resolve().parents[3]
-PG_HOST, PG_PORT = "localhost", 5433
+# 目标库连接（默认本地演练栈 5433；正式切换时经回环端口转发指向生产 postgres）
+PG_HOST = os.environ.get("DRILL_PG_HOST", "localhost")
+PG_PORT = os.environ.get("DRILL_PG_PORT", "5433")
 ROUND = os.environ.get("DRILL_ROUND", "1")
 NEON_RESTORE_DB = f"neon-restore-r{ROUND}"
 TARGET_DB = os.environ.get("DRILL_TARGET_DB", f"drill-target-{ROUND}")
@@ -91,39 +93,45 @@ def main() -> None:
     work.mkdir(parents=True, exist_ok=True)
     dump_path = work / f"neon-round{ROUND}.dump"
 
-    # 1) 只读导出 Neon（postgres:18 客户端，stdout → 本地文件）
-    out = sh(["docker", "run", "--rm", "postgres:18-alpine", "pg_dump", neon_url,
-              "--no-owner", "--no-privileges", "-Fc"], binary_out=True)
-    dump_path.write_bytes(out if isinstance(out, bytes) else out.encode())
-    report["steps"].append({"step": "neon-export(readonly)", "status": "ok", "bytes": len(out)})
-    print(f"[drill] neon export ok: {len(out)} bytes", flush=True)
+    # DRILL_SKIP_PREP=1（正式切换）：①导出②恢复③建库迁移由外部执行
+    if os.environ.get("DRILL_SKIP_PREP") == "1":
+        report["steps"].append({"step": "prep(skipped, external)", "status": "ok"})
+    else:
+        # 1) 只读导出 Neon（postgres:18 客户端，stdout → 本地文件）
+        out = sh(["docker", "run", "--rm", "postgres:18-alpine", "pg_dump", neon_url,
+                  "--no-owner", "--no-privileges", "-Fc"], binary_out=True)
+        dump_path.write_bytes(out if isinstance(out, bytes) else out.encode())
+        report["steps"].append({"step": "neon-export(readonly)", "status": "ok", "bytes": len(out)})
+        print(f"[drill] neon export ok: {len(out)} bytes", flush=True)
 
-    # 2) Neon 形状恢复：临时 postgres:18 容器（与数据源版本一致）
-    sh(["docker", "rm", "-f", "neon-restore-tmp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    sh(["docker", "run", "--rm", "-d", "--name", "neon-restore-tmp",
-        "-e", "POSTGRES_PASSWORD=restore-verify", "-p", "5434:5432", "postgres:18-alpine"])
-    time.sleep(8)
-    sh(["docker", "cp", str(dump_path), "neon-restore-tmp:/tmp/export.dump"])
-    sh(["docker", "exec", "neon-restore-tmp", "psql", "-U", "postgres",
-        "-c", f'CREATE DATABASE "{NEON_RESTORE_DB}"'])
-    sh(["docker", "exec", "neon-restore-tmp", "pg_restore", "-U", "postgres",
-        "-d", NEON_RESTORE_DB, "--no-owner", "--no-privileges", "/tmp/export.dump"])
-    report["steps"].append({"step": "neon-restore(pg18)", "status": "ok"})
-    print("[drill] neon restore ok (pg18 临时容器)", flush=True)
+        # 2) Neon 形状恢复：临时 postgres:18 容器（与数据源版本一致）
+        sh(["docker", "rm", "-f", "neon-restore-tmp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        sh(["docker", "run", "--rm", "-d", "--name", "neon-restore-tmp",
+            "-e", "POSTGRES_PASSWORD=restore-verify", "-p", "5434:5432", "postgres:18-alpine"])
+        time.sleep(8)
+        sh(["docker", "cp", str(dump_path), "neon-restore-tmp:/tmp/export.dump"])
+        sh(["docker", "exec", "neon-restore-tmp", "psql", "-U", "postgres",
+            "-c", f'CREATE DATABASE "{NEON_RESTORE_DB}"'])
+        sh(["docker", "exec", "neon-restore-tmp", "pg_restore", "-U", "postgres",
+            "-d", NEON_RESTORE_DB, "--no-owner", "--no-privileges", "/tmp/export.dump"])
+        report["steps"].append({"step": "neon-restore(pg18)", "status": "ok"})
+        print("[drill] neon restore ok (pg18 临时容器)", flush=True)
+
+        # 3) 目标库：空库 + core migrations（pgvector/pg17）
+        with pg_conn("postgres", autocommit=True) as conn:
+            conn.execute(f'DROP DATABASE IF EXISTS "{TARGET_DB}"')
+            conn.execute(f'CREATE DATABASE "{TARGET_DB}"')
+        env = dict(os.environ, DATABASE_URL=f"postgresql://postgres:{os.environ['SSP_PG_DEV_PASSWORD']}@{PG_HOST}:{PG_PORT}/{TARGET_DB}")
+        npm = shutil.which("npm")
+        if not npm:
+            raise RuntimeError("npm not found on PATH")
+        sh([npm, "run", "db:migrate", "--silent"], cwd=str(REPO), env=env)
+        report["steps"].append({"step": "target-migrations", "status": "ok"})
 
     def restore_conn():
-        return psycopg.connect(f"postgresql://postgres:restore-verify@localhost:5434/{NEON_RESTORE_DB}")
-
-    # 3) 目标库：空库 + core migrations（pgvector/pg17）
-    with pg_conn("postgres", autocommit=True) as conn:
-        conn.execute(f'DROP DATABASE IF EXISTS "{TARGET_DB}"')
-        conn.execute(f'CREATE DATABASE "{TARGET_DB}"')
-    env = dict(os.environ, DATABASE_URL=f"postgresql://postgres:{os.environ['SSP_PG_DEV_PASSWORD']}@{PG_HOST}:{PG_PORT}/{TARGET_DB}")
-    npm = shutil.which("npm")
-    if not npm:
-        raise RuntimeError("npm not found on PATH")
-    sh([npm, "run", "db:migrate", "--silent"], cwd=str(REPO), env=env)
-    report["steps"].append({"step": "target-migrations", "status": "ok"})
+        r_host = os.environ.get("DRILL_RESTORE_HOST", "localhost")
+        r_port = os.environ.get("DRILL_RESTORE_PORT", "5434")
+        return psycopg.connect(f"postgresql://postgres:restore-verify@{r_host}:{r_port}/{NEON_RESTORE_DB}")
 
     # 4) 映射复制（INSERT 与服务器版本无关）
     copied: dict[str, int] = {}

@@ -67,3 +67,4 @@ secrets.*
 services/agent/.venv/
 services/agent/**/__pycache__/
 .pytest_cache/
+.zcode/

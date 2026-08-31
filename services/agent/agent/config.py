@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     max_verify_retries: int = 2
     # 队列
     task_max_retries: int = 3
+    # 控制面监听（Dockerfile CMD 使用）
+    api_host: str = "0.0.0.0"
+    api_port: int = 8100
 
 
 def get_settings() -> Settings:

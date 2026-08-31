@@ -51,6 +51,7 @@ services:
     image: policyops-agent:latest
     container_name: policyops-agent
     restart: unless-stopped
+    command: uvicorn agent.api.main:app --host 0.0.0.0 --port 8100
     environment:
       AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
       AGENT_REDIS_URL: redis://redis:6379/0
@@ -71,7 +72,7 @@ services:
     mem_limit: 384m
     cpus: 1.0
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8100/internal/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://127.0.0.1:8100/internal/health', timeout=4)\""]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -114,6 +115,21 @@ services:
     depends_on:
       - redis
     mem_limit: 128m
+
+  # 一次性 Schema 迁移（agent schema；core drizzle 由 web 迁移任务承担）
+  migrate:
+    image: policyops-agent:latest
+    container_name: policyops-migrate
+    restart: "no"
+    command: python -m agent.migrate
+    environment:
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    mem_limit: 256m
 
   postgres:
     image: pgvector/pgvector:pg17

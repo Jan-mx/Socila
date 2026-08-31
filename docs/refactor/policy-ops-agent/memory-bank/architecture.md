@@ -50,6 +50,8 @@ flowchart TB
 
 单机部署降低运维成本，但不提供节点级高可用。容器重启可恢复服务，主机级故障依赖离机备份恢复。
 
+**生产状态（2026-08-31 切换完成）**：上述单机栈已在本机 Docker 运行为唯一生产事实源（`infra/prod/docker-compose.yml`，8 服务，仅 proxy 发布 80/443；postgres/redis/minio/agent 仅 internal 网络）。数据自 Neon 经三轮演练验证的映射复制路径迁入（1,574 行对账全一致，`reports/stage-07/cutover-report.md`）。web 镜像为 Next standalone 多阶段构建（根 `Dockerfile`），agent 镜像为 uv 同步的 python:3.11-slim（`services/agent/Dockerfile`，FastAPI 生产装配入口 `agent/api/main.py`）。健康端点：web `/api/health`（含数据库探测）、agent `/internal/health`。部署凭据经 gitignored `infra/prod/.env` 注入。Neon 已退役为历史数据源（零保留方针，最终 dump 归档于仓库外）。
+
 ## Next Core边界
 
 阶段02落地：九模块位于 `src/server/modules/<module>/{domain,application,infrastructure,contracts}`，数据库运行时为 `src/lib/db/index.ts` 的本地 PostgreSQL `pg.Pool`（惰性初始化）；集中式 `queries.ts` 已删除，数据访问只经模块仓储。
