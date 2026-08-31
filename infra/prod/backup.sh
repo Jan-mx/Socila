@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 每日备份（REL-FR-007/008）：pg_dump + MinIO mirror，离机保存 14 天。
-# 用法：BACKUP_TARGET=/mnt/nas/policyops-backup ./infra/prod/backup.sh
+# 用法：BACKUP_TARGET=/mnt/nas/socila-backup ./infra/prod/backup.sh
 # 演练覆盖（可选）：COMPOSE_FILE=infra/dev/docker-compose.dev.yml NETWORK=dev_default
 set -euo pipefail
 

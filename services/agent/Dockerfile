@@ -1,5 +1,5 @@
 # PolicyOps Agent Runtime（FastAPI + Celery 共用镜像，REL-FR-001）
-# 构建上下文=services/agent：docker build -f services/agent/Dockerfile -t policyops-agent:latest services/agent
+# 构建上下文=services/agent：docker build -f services/agent/Dockerfile -t agent:latest services/agent
 FROM python:3.11-slim AS build
 WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/

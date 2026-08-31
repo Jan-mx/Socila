@@ -1,5 +1,5 @@
 # PolicyOps Web（Next standalone，REL-FR-001）
-# 构建上下文=仓库根：docker build -f Dockerfile -t policyops-web:latest .
+# 构建上下文=仓库根：docker build -f Dockerfile -t web:latest .
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./

@@ -17,7 +17,7 @@
 ### 1. Web（Next）不可用
 ```bash
 docker compose -f infra/prod/docker-compose.yml restart web
-docker logs policyops-web --tail 100
+docker logs socila-web --tail 100
 ```
 - 反复 OOM：确认并发≤5；`docker stats` 观察 512MB 上限。
 
