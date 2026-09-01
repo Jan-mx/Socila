@@ -7,7 +7,7 @@
 - The user authorizes Goal-mode agents to execute and verify all stages autonomously. Execute one implementation-plan step at a time; after fresh verification passes, continue automatically.
 - Do not repeat steps already supported by valid evidence in `progress.md`.
 - Update `progress.md` after every step. Update `architecture.md` whenever components, data ownership, interfaces, deployment, or important file responsibilities change. Record major decisions with an ADR.
-- Complete every stage Definition of Done and create an acceptance report before committing.
+- Complete every stage Definition of Done and create an acceptance report before committing. Sync `traceability.md` rows for the stage (real implementation paths + acceptance report link) as part of the stage DoD.
 - Create one commit per accepted stage using `英文行为: 中文简短总结`, then push the stage branch. Do not create a PR or merge `main` automatically.
 - Before committing, inspect the full staged diff and scan candidate files for credentials, private keys, production data, and generated dependency directories.
 - Never commit `docs/refactor/policy-ops-agent/config/*.local.env`, any API key, production backup, or user data.
