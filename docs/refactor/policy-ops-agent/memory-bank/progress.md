@@ -37,6 +37,7 @@
 - 07.12 阶段验收：**PASS**（`reports/stage-07/acceptance-report.md`，REL-AC-001～008 全过、REL-FR-001～014 全覆盖、DoD 核对完成）。**Goal 七阶段全部验收 PASS。**
 - 运维维护（2026-08-31，用户要求）：生产容器更名 `socila-*`（小写，Docker 容器名不允许大写）、自建镜像更名 `web:latest`/`agent:latest`（去 policyops 前缀）；数据卷/网络/数据库名不变（卷经项目名 prod_ 前缀解析，重建后数据无损核验 rules=24）；Runbook/Dockerfile/restore-verify.sh 同步。dev 栈（ssp-*）保留用于日常测试。
 - 运维维护（2026-09-01，用户要求）：compose 显式 `name: socila`（项目名去 prod 化），网络更名 socila_edge/internal；数据卷显式命名 socila_pg-data/minio-data/caddy-data（停机 cp -a 迁移，数据核验 rules=24 后删除旧 prod_* 卷）。dev 栈（ssp-*）不再常驻：已 down（卷保留），测试前 `docker compose -f infra/dev/docker-compose.dev.yml up -d` 拉起。
+- 文档同步补漏（2026-09-01，用户指出）：traceability.md Stage 04/05/07 行此前仍标"待实现"（各阶段 DoD 未强制更新该表，执行中漏更），已补真实实现位置与验收报告链接；architecture.md 技术决策"SiliconFlow 待安全验证"为 05.7 验证前的旧描述漏更，已更新为已验证事实。历史快照文档（documentation-acceptance-report 等）中"未验证"为当时时点结论，按惯例不改写。
 - 运维维护（2026-09-01，用户要求）：PG/Redis/MinIO 密码统一改为用户指定值（PG 经 ALTER USER 同步现有卷；MinIO root env 轮换对现有卷生效；Redis 新增 requirepass），三服务端口映射宿主机（PG 5432/Redis **6380**（6379 被本机原生 redis-server.exe 服务占用）/MinIO 9000+9001 控制台）；宿主验证全部通过（rules=24/AUTH PING/buckets）。开发机坑位记录：本机 Docker Desktop 纯 internal 网络容器端口发布不生效需临时加入 edge；宿主系统代理(7897)会拦截 localhost 需 no_proxy。
 - Neon 只读导出授权：用户已批准（2026-08-30"允许以上请示"）；仅只读访问，不写 Neon；07.10 切换仍需单独显式授权。
 - 演练库：`infra/dev/docker-compose.dev.yml`（PostgreSQL 17.11 @ localhost:5433，容器 ssp-pg-dev，凭据经 gitignored `infra/dev/.env`）。

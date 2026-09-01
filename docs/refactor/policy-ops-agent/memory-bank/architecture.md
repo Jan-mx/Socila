@@ -260,6 +260,6 @@ flowchart LR
 - Python Agent独立为FastAPI + Celery + LangGraph。
 - 本地PostgreSQL代替Neon，JSON DSL继续使用JSONB。
 - 使用pgvector而非独立向量数据库。
-- 使用SiliconFlow托管Embedding和Rerank，真实模型待安全验证。
+- 使用SiliconFlow托管Embedding/Rerank/OCR：已真实验证（BAAI/bge-m3 实测1024维、BAAI/bge-reranker-v2-m3、PaddlePaddle/PaddleOCR-VL-1.5；见 progress 05.7 与 stage-05 验收报告）。
 - 采用国家基线加地区overlay。
 - Agent只能创建draft。
