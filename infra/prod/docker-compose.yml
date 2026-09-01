@@ -59,7 +59,7 @@ services:
     command: uvicorn agent.api.main:app --host 0.0.0.0 --port 8100
     environment:
       AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
-      AGENT_REDIS_URL: redis://redis:6379/0
+      AGENT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       AGENT_CORE_BASE_URL: http://web:3000
       AGENT_SERVICE_JWT_CURRENT: ${AGENT_SERVICE_JWT_CURRENT}
       AGENT_SERVICE_JWT_PREVIOUS: ${AGENT_SERVICE_JWT_PREVIOUS}
@@ -89,7 +89,7 @@ services:
     command: celery -A agent.worker.celery_app.celery_app worker --loglevel=info --concurrency=1 --prefetch-multiplier=1 --max-tasks-per-child=20 --time-limit=120 --soft-time-limit=110
     environment:
       AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
-      AGENT_REDIS_URL: redis://redis:6379/0
+      AGENT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       AGENT_CORE_BASE_URL: http://web:3000
       AGENT_MINIO_ENDPOINT: minio:9000
       AGENT_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
@@ -114,7 +114,7 @@ services:
     restart: unless-stopped
     command: celery -A agent.worker.celery_app.celery_app beat --loglevel=info
     environment:
-      AGENT_REDIS_URL: redis://redis:6379/0
+      AGENT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
     networks:
       - internal
     depends_on:
@@ -165,21 +165,29 @@ services:
     image: redis:7-alpine
     container_name: socila-redis
     restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
     networks:
       - internal
+      # 开发机临时加入 edge 使宿主端口发布生效（服务器部署时移除并恢复纯内网）
+      - edge
+    ports:
+      # 宿主 6380（6379 已被本机原生 redis-server.exe 服务占用）
+      - "6380:6379"
     mem_limit: 128m
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
       interval: 10s
       timeout: 3s
       retries: 5
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
 
   minio:
     # 版本固定：与演练环境一致的 MinIO RELEASE（不使用 latest，PRD §10 镜像固定）
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: socila-minio
     restart: unless-stopped
-    command: server /data
+    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -187,6 +195,11 @@ services:
       - minio-data:/data
     networks:
       - internal
+      # 开发机临时加入 edge 使宿主端口发布生效（服务器部署时移除并恢复纯内网）
+      - edge
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     mem_limit: 256m
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
