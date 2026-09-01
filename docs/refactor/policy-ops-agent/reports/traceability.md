@@ -1,5 +1,9 @@
 # 需求追踪矩阵
 
+> Author: Jan
+> Status: Active
+> Updated: 2026-09-01
+
 ## 用途
 
 确保每个阶段需求都能映射到实施步骤和验收证据。实现中应把“实现位置”和“验收报告”列补充为真实链接；任何没有映射的需求都不能关闭阶段。
@@ -31,9 +35,15 @@
 | PRD-NFR-006 可测试 | 01、04、05、06 | Fake模型、黄金集和独立验收 |
 | PRD-NFR-007 兼容 | 01、02、03、07 | 112测试、黄金规划和迁移对账 |
 
+## 当前Work Item
+
+| Work Item | 规格 | 实现位置 | 测试路径 | 验收证据 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| WI-20260901-01 | `docs/work-items/WI-20260901-01-docs-reorganization.md` | `docs/README.md`、`docs/prd/`、`docs/standards/`、`docs/refactor/policy-ops-agent/`、`AGENTS.md`、`.gitignore` | 文档任务无新增业务测试文件；执行链接、状态、ignore、Secret和项目回归命令 | `docs/refactor/policy-ops-agent/PROGRESS.md` | Accepted |
+
 ## 更新规则
 
-- 步骤完成后填入实现文件、测试和提交链接。
-- 阶段验收后链接对应acceptance report。
-- 需求增加、删除或拆分时，同步更新总体PRD、阶段PRD、implementation-plan和本矩阵。
+- 任务完成后填入实现文件、实际测试路径、验证证据和提交链接。
+- PRD或Work Item验收后链接对应acceptance report或PROGRESS证据。
+- 需求增加、删除或拆分时，同步更新当前PRD、Work Item、架构和本矩阵。
 - 不允许用一个泛化测试链接替代未实际覆盖的需求。

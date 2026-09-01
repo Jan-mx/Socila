@@ -1,5 +1,9 @@
 # ADR-NNN：决策标题
 
+> Author: Jan
+> Status: Draft
+> Updated: YYYY-MM-DD
+
 - 状态：Proposed / Accepted / Superseded
 - 日期：YYYY-MM-DD
 - 决策者：

@@ -1,52 +1,65 @@
-# PolicyOps Agent 重构文档
+# PolicyOps Agent重构文档
 
-本目录定义社保规划助手从单城市规则管理工具升级为全国政策运营 Agent 平台的目标、架构和实施顺序。
+> Author: Jan
+> Status: Active
+> Updated: 2026-09-01
 
-## 阅读顺序
+## 当前状态
 
-1. [总体 PRD](./PRD.md)
-2. [Memory Bank 使用手册](./memory-bank/README.md)
-3. [设计文档](./memory-bank/design-document.md)
-4. [技术栈](./memory-bank/tech-stack.md)
-5. [目标架构](./memory-bank/architecture.md)
-6. [实施计划](./memory-bank/implementation-plan.md)
-7. [最快并行开发计划](./memory-bank/parallel-development-plan.md)
-8. [当前进度](./memory-bank/progress.md)
-9. [Agent 提示词](./memory-bank/agent-prompts.md)
-10. [需求追踪矩阵](./memory-bank/traceability.md)
-11. [文档验收报告](./memory-bank/documentation-acceptance-report.md)
-12. [运行基线](./memory-bank/operational-baseline.md)
-13. [质量门禁](./memory-bank/quality-gates.md)
-14. [官方来源注册表](./sources/official-source-registry.md)
-15. 对应阶段 PRD
+七个重构阶段已经完成并通过阶段验收。当前应用采用Next.js Core、FastAPI、Celery、LangGraph、本地PostgreSQL、pgvector、Redis和MinIO。
 
-## 阶段 PRD
+本机作为开发环境，后续工作以远程Demo部署、真实Agent闭环、首批政策采集和持续质量建设为主。
 
-| 阶段 | 文档 | 主要交付 |
-| --- | --- | --- |
-| 01 | [基础工程](./stages/01-foundation-prd.md) | 测试基线、迁移体系、契约和安全基线 |
-| 02 | [Next Core](./stages/02-next-core-prd.md) | 领域模块化和本地 PostgreSQL 适配 |
-| 03 | [全国政策模型](./stages/03-policy-model-prd.md) | 地区层级、国家基线、地方覆盖和发布快照 |
-| 04 | [Agent Runtime](./stages/04-agent-runtime-prd.md) | FastAPI、Celery、LangGraph 和人工中断 |
-| 05 | [采集与 RAG](./stages/05-ingestion-rag-prd.md) | 官方源、解析、OCR、分片和混合检索 |
-| 06 | [政策草案](./stages/06-policy-drafting-prd.md) | 影响分析、规则/参数/测试草案和审核 |
-| 07 | [迁移与发布](./stages/07-migration-release-prd.md) | Neon 迁移、单机部署、恢复演练和切换 |
+产品需求见：[PolicyOps Agent PRD](../../prd/09-01-policy-ops-agent.md)。
+
+## 开始工作
+
+所有Agent先读取：
+
+1. 仓库根`AGENTS.md`；
+2. 本README；
+3. `PROGRESS.md`；
+4. 根据任务类型读取下表中的对应文档。
+
+不要默认批量读取reports和archive。
+
+## 当前文档
+
+| 文件 | 用途 |
+| --- | --- |
+| `REFACTOR-PLAN.md` | 已完成的七阶段重构计划和结果摘要 |
+| `ROADMAP.md` | 未来开发方向和优先级 |
+| `PROGRESS.md` | 当前状态、阻塞和下一步 |
+| `ARCHITECTURE.md` | 当前组件、数据和调用边界 |
+| `TESTING.md` | TDD规则、测试命令和质量门禁 |
+| `OPERATIONS.md` | 部署、资源、备份、恢复和告警 |
+
+## 子目录
+
+| 目录 | 用途 |
+| --- | --- |
+| `config/` | PolicyOps和SiliconFlow配置模板及验证记录 |
+| `sources/` | 官方政策来源白名单 |
+| `reports/` | 阶段测试、验收、迁移和发布证据 |
+| `archive/` | 旧PRD、memory-bank、ADR和被替代计划 |
+
+## 阅读路由
+
+| 任务 | 读取 |
+| --- | --- |
+| 产品行为 | 产品PRD |
+| 接口、Schema、组件 | `ARCHITECTURE.md` |
+| 测试、OCR、RAG质量 | `TESTING.md` |
+| 部署、备份、恢复 | `OPERATIONS.md` |
+| 安排后续开发 | `ROADMAP.md` |
+| 查看当前状态 | `PROGRESS.md` |
+| 调查历史决策 | `archive/`中的对应文件 |
+| 核对执行证据 | `reports/`中的对应报告 |
 
 ## 不变量
 
-- 规则引擎是政策数值结论的唯一计算来源。
-- Agent 只能生成和导入 `draft`，不能自动发布。
-- 生产个人资料不得发送到政策 Embedding、Rerank 或 Agent 模型。
-- 数据库发布快照是运行时真源；Git DSL 用于种子、Schema 和黄金测试。
-- 目标生产环境是单台企业内网服务器；备份必须离机保存。
-
-## 当前架构基线
-
-现有系统说明保留在 [../../architecture.md](../../architecture.md)。本目录描述重构目标，不把当前实现与目标实现混写。
-
-## 模板
-
-- [阶段PRD模板](./templates/stage-prd-template.md)
-- [Agent交接模板](./templates/handoff-template.md)
-- [ADR模板](./templates/adr-template.md)
-- [阶段验收报告模板](./templates/acceptance-report-template.md)
+- 规则引擎是政策数字结论的唯一计算来源。
+- Agent只能创建draft，不能自动发布。
+- 生产个人资料不得发送到政策模型服务。
+- 原始政策文件和DocumentTree是审计事实源。
+- 已发布规则、政策和快照不可原地修改。

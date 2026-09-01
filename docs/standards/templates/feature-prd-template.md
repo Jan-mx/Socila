@@ -1,11 +1,16 @@
-# 阶段 NN：名称 PRD
+# Feature / Stage PRD标题
+
+> Author: Jan
+> Status: Draft
+> Updated: YYYY-MM-DD
 
 ## 文档元数据
 
 | 字段 | 值 |
 | --- | --- |
-| 阶段 | NN / English Name |
-| 状态 | Draft / Ready / In progress / Accepted |
+| PRD文件 | `MM-DD-name.md` |
+| 类型 | Product / Feature / Stage |
+| 状态 | Draft / Approved / Active / Superseded / Archived |
 | 前置依赖 | 明确阶段、接口和数据 |
 | 可并行阶段 | 无或具体阶段 |
 | 后续消费者 | 具体阶段 |
@@ -78,8 +83,9 @@
 
 - 所有需求有实现与测试映射。
 - 所有验收场景有新鲜证据。
-- architecture、implementation-plan和progress同步。
-- 阶段提交和推送完成。
+- architecture、Work Item、traceability和progress按变化类型同步。
+- README状态与任务结果同步。
+- 提交和推送按仓库规则完成。
 
 ## 16. 下一阶段输入
 

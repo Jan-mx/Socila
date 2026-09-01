@@ -1,5 +1,9 @@
 # 阶段 NN 验收报告
 
+> Author: Jan
+> Status: Draft
+> Updated: YYYY-MM-DD
+
 ## 元数据
 
 - 阶段：
@@ -44,6 +48,12 @@
 - 提交：
 - 推送结果：
 - PR：不自动创建
+
+## README状态
+
+- 受影响README：
+- 验收后状态：Active / Superseded / Archived
+- Updated是否同步：
 
 ## 下一阶段输入
 

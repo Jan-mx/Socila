@@ -1,7 +1,7 @@
 /**
  * 阶段01.4 API 基础契约（FND-FR-004～007）。
  *
- * Zod 是运行时校验源；约定全文见 memory-bank/architecture.md「跨服务API契约约定」。
+ * Zod 是运行时校验源；当前跨服务边界见 docs/refactor/policy-ops-agent/ARCHITECTURE.md。
  * 本模块保持框架无关（不导入 next/server）：Route Handler 只做协议适配，
  * 领域与用例层可直接复用这些类型。
  *
