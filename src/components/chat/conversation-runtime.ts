@@ -20,7 +20,7 @@ export function createConversationTrackingFetch(
 
 export function getConversationRestoreErrorMessage(status: number): string {
   if (status === 403) {
-    return "这个对话不属于当前浏览器会话，已为你打开新对话。";
+    return "这个对话不属于当前账号，已为你打开新对话。";
   }
 
   if (status === 404) {
@@ -31,13 +31,12 @@ export function getConversationRestoreErrorMessage(status: number): string {
 }
 
 export function shouldRestoreConversationFromUrl(params: {
-  sessionId: string;
   conversationIdFromUrl: string | null;
   panelConversationId: string | null;
 }): boolean {
-  const { sessionId, conversationIdFromUrl, panelConversationId } = params;
+  const { conversationIdFromUrl, panelConversationId } = params;
 
-  if (!sessionId || !conversationIdFromUrl) {
+  if (!conversationIdFromUrl) {
     return false;
   }
 

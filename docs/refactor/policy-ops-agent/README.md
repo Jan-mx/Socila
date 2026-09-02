@@ -40,8 +40,9 @@
 | --- | --- |
 | `config/` | PolicyOps和SiliconFlow配置模板及验证记录 |
 | `sources/` | 官方政策来源白名单 |
+| `decisions/` | 当前生效的ADR（ADR-0007起；ADR-0001～0006在archive/decisions） |
 | `reports/` | 阶段测试、验收、迁移和发布证据 |
-| `archive/` | 旧PRD、memory-bank、ADR和被替代计划 |
+| `archive/` | 旧PRD、memory-bank、历史ADR和被替代计划 |
 
 ## 阅读路由
 

@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-02
 
 ## 当前结论
 
@@ -10,10 +10,11 @@
 - 当前分支：`refactor/policy-ops-agent-platform`。
 - 当前运行事实源：单机Docker Compose中的PostgreSQL、MinIO和Agent存储；Neon不再承接运行时读写。
 - 本机定位：开发机，生产Compose数据卷保留但不常驻；远程服务器部署列入路线图。
-- 当前任务：`WI-20260901-01-docs-reorganization`，状态**Accepted**。
+- 当前任务：`09-02-feature-user-admin-auth`（用户与管理员双角色登录注册鉴权，PRD `docs/prd/09-02-feature-user-admin-auth.md`），状态**Accepted**（验收证据：`reports/feature-09-02-auth/acceptance-report.md`）。
 
 ## 已完成能力
 
+- 用户与管理员双角色鉴权（09-02）：注册/统一登录/改密/刷新会话轮换/管理员用户管理/owner_user_id所有权/匿名入口关闭。
 - Next.js Core领域模块化、本地PostgreSQL和资源所有权。
 - 国家/省/市/区县模型、地方overlay、冲突和不可变快照。
 - FastAPI、Celery、LangGraph Checkpoint、人工interrupt和服务JWT。
@@ -38,7 +39,7 @@
 | 目录、相对链接、围栏 | PASS；目标结构存在，0断链、0围栏错误 |
 | README与PRD规范 | PASS；活跃README均为Active，PRD命名合规 |
 | Gitignore | PASS；interview和local env被忽略且未跟踪 |
-| Node测试 | PASS；160通过、18按环境跳过 |
+| Node测试 | PASS；230通过、25按环境跳过（含identity单元/契约/集成跳过组） |
 | Python测试 | PASS；37通过、6跳过 |
 | ESLint / TypeScript / Build | PASS；全部退出码0 |
 | Secret扫描 | PASS；475个候选文件无命中 |

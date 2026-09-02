@@ -29,7 +29,7 @@ const fakeEngineResult: OrchestratorResult = {
 };
 
 describe("ComputePlanUseCase (fake ports)", () => {
-  it("persists with owner binding and returns planId", async () => {
+  it("persists with owner_user_id only and keeps session_id NULL (09-02, AUTH-AC-008)", async () => {
     const savePlan = vi.fn(async (data) => ({
       id: "plan-1",
       createdAt: new Date(),
@@ -40,7 +40,6 @@ describe("ComputePlanUseCase (fake ports)", () => {
     const result = await computePlan(
       {
         user: { basic: { gender: "male" } },
-        sessionId: "sess-1",
         ownerUserId: "user-9",
       },
       {
@@ -52,7 +51,18 @@ describe("ComputePlanUseCase (fake ports)", () => {
     expect(result.needsAgent).toBe(false);
     const saved = savePlan.mock.calls[0][0] as Record<string, unknown>;
     expect(saved.ownerUserId).toBe("user-9");
-    expect(saved.sessionId).toBe("sess-1");
+    expect(saved.sessionId ?? null).toBeNull();
+  });
+
+  it("refuses to persist without owner_user_id (09-02, AUTH-FR-005)", async () => {
+    const savePlan = vi.fn();
+    await expect(
+      computePlan(
+        { user: { basic: { gender: "male" } } },
+        { runEngine: async () => fakeEngineResult, savePlan: savePlan as never },
+      ),
+    ).rejects.toThrow("owner_user_id");
+    expect(savePlan).not.toHaveBeenCalled();
   });
 
   it("persist:false skips saving and planId stays null", async () => {

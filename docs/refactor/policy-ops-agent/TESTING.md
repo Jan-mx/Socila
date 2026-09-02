@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-02
 
 ## 测试先行
 
@@ -37,6 +37,17 @@ uv run --project services/agent pytest -q
 ```
 
 Repository集成测试需要本地PostgreSQL；真实部署、恢复和切换按[OPERATIONS](./OPERATIONS.md)及对应报告执行。
+
+identity与鉴权专项（09-02）：
+
+```powershell
+# PostgreSQL集成（identity repository / 刷新并发 / 最后管理员），未设置时自动跳过
+$env:SSP_TEST_DATABASE_URL="postgresql://..."; npm test
+# Chromium E2E（前提：全新PG17库已完成migration、bootstrap-admin、seed；npm run build）
+bash scripts/run-auth-e2e.sh
+```
+
+管理员引导脚本验证：`node scripts/bootstrap-admin.mjs`（读ADMIN_USERNAME/ADMIN_PASSWORD_HASH；幂等，重复执行no-op，同名普通用户冲突失败，不输出凭据）。
 
 ## SiliconFlow
 

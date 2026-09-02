@@ -175,8 +175,8 @@ async function computePlanExecute(
   params: ComputePlanInput,
   options?: { experimental_context?: unknown },
 ) {
-  const ctx = options?.experimental_context as { sessionId?: unknown } | undefined;
-  const sessionId = typeof ctx?.sessionId === "string" ? ctx.sessionId : undefined;
+  const ctx = options?.experimental_context as { ownerUserId?: unknown } | undefined;
+  const ownerUserId = typeof ctx?.ownerUserId === "string" ? ctx.ownerUserId : undefined;
   try {
     const userInput = {
       basic: params.basic,
@@ -187,7 +187,8 @@ async function computePlanExecute(
       objective: params.objective,
     };
 
-    const result = await computePlan({ user: userInput, sessionId });
+    // 09-02：方案只落库到认证用户名下；无归属用户时拒绝持久化。
+    const result = await computePlan({ user: userInput, ownerUserId: ownerUserId! });
 
     return {
       success: true as const,

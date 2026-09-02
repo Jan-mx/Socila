@@ -12,6 +12,7 @@ export class DrizzleConversationWriteRepository
     data?: {
       id?: string;
       sessionId?: string;
+      ownerUserId?: string;
       messages?: unknown[];
       userProfile?: Record<string, unknown>;
     },
@@ -26,6 +27,7 @@ export class DrizzleConversationWriteRepository
     };
     if (data?.id) values.id = data.id;
     if (data?.sessionId) values.sessionId = data.sessionId;
+    if (data?.ownerUserId) values.ownerUserId = data.ownerUserId;
 
     const rows = await executor
       .insert(conversations)

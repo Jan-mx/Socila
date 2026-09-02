@@ -1,8 +1,9 @@
 "use client";
 
+import { useCallback, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import {
   LayoutDashboard,
   FileText,
@@ -12,10 +13,13 @@ import {
   TestTube,
   LogOut,
   Layers,
+  Users,
 } from "lucide-react";
+import { logoutAndClearSession } from "@/lib/client/logout";
 
 const navItems = [
   { href: "/admin", label: "概览", icon: LayoutDashboard },
+  { href: "/admin/users", label: "用户管理", icon: Users },
   { href: "/admin/cases", label: "案例库", icon: FileText },
   { href: "/admin/rules", label: "规则管理", icon: BookOpen },
   { href: "/admin/rule-sets", label: "规则集", icon: Layers },
@@ -30,8 +34,17 @@ export default function AdminLayoutClient({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const session = useSession();
-  const userName = session?.data?.user?.name ?? "管理员";
+  const { data: session, update: updateSession } = useSession();
+  const userName = session?.user?.name ?? "管理员";
+
+  useEffect(() => {
+    // 软导航进入管理后台时主动刷新客户端会话（登录后 SessionProvider 缓存可能为空）。
+    void updateSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const handleLogout = useCallback(async () => {
+    await logoutAndClearSession({ redirectTo: "/login" });
+  }, []);
 
   return (
     <div className="flex min-h-screen bg-slate-100/80 text-foreground">
@@ -85,7 +98,7 @@ export default function AdminLayoutClient({
             </p>
           </div>
           <button
-            onClick={() => signOut({ callbackUrl: "/admin/login" })}
+            onClick={() => void handleLogout()}
             className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-base text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           >
             <LogOut size={14} />

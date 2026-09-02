@@ -14,7 +14,6 @@ interface ConversationItem {
 }
 
 interface ConversationListProps {
-  sessionId: string;
   activeConversationId: string | null;
   onSelect: (conversation: ConversationItem) => void;
   onNewChat: () => void;
@@ -69,7 +68,6 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 export function ConversationList({
-  sessionId,
   activeConversationId,
   onSelect,
   onNewChat,
@@ -82,9 +80,7 @@ export function ConversationList({
 
   const fetchConversations = useCallback(async () => {
     try {
-      const res = await fetch(
-        `/api/conversations?sessionId=${encodeURIComponent(sessionId)}`,
-      );
+      const res = await fetch("/api/conversations");
       if (res.ok) {
         const data = (await res.json()) as {
           conversations: ConversationItem[];
@@ -99,7 +95,7 @@ export function ConversationList({
     } finally {
       setIsLoading(false);
     }
-  }, [sessionId]);
+  }, []);
 
   useEffect(() => {
     void fetchConversations();
@@ -127,9 +123,6 @@ export function ConversationList({
       try {
         const res = await fetch(`/api/conversations/${conversationId}`, {
           method: "DELETE",
-          headers: sessionId
-            ? { "x-legacy-session-id": sessionId }
-            : undefined,
         });
 
         if (!res.ok) {
@@ -146,7 +139,7 @@ export function ConversationList({
         setDeletingId(null);
       }
     },
-    [deletingId, onDelete, sessionId],
+    [deletingId, onDelete],
   );
 
   return (

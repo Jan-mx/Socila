@@ -1,31 +1,67 @@
-import { signIn } from "@/lib/auth";
+/**
+ * 统一登录页（09-02 §9.1，AUTH-FR-002，AUTH-AC-004/005）。
+ *
+ * user/admin 共用 /login；账号状态、角色、密码校验由数据库事实决定。
+ * 登录成功后跳转 /post-login 按角色与合法 callback 决定落点；
+ * 每IP登录限流 20 次/15 分钟（AUTH-NFR-003）。
+ */
 import { AuthError } from "next-auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { signIn } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { safeCallbackUrl } from "@/lib/auth/callback-url";
+
+export const dynamic = "force-dynamic";
+
 interface LoginPageProps {
-  searchParams: Promise<{ callbackUrl?: string; error?: string }>;
+  searchParams: Promise<{
+    callbackUrl?: string;
+    error?: string;
+    registered?: string;
+  }>;
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
-  // Only allow same-origin relative paths to prevent open-redirect via ?callbackUrl=
-  // (rejects absolute URLs, "//evil.com" protocol-relative, and "/\evil.com").
-  const rawCallbackUrl = params.callbackUrl || "/admin";
-  const callbackUrl = /^\/(?![/\\])/.test(rawCallbackUrl) ? rawCallbackUrl : "/admin";
+  const callbackUrl = safeCallbackUrl(params.callbackUrl);
   const error = params.error;
+  const registered = params.registered === "1";
 
   async function handleLogin(formData: FormData) {
     "use server";
+    const username = String(formData.get("username") ?? "").trim();
+    const password = String(formData.get("password") ?? "");
+
+    // 每IP登录限流（AUTH-NFR-003）：20次/15分钟
+    const h = await headers();
+    const ip =
+      h.get("x-real-ip") ??
+      h.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      "unknown";
+    const limit = checkRateLimit(`auth:login:ip:${ip}`, {
+      limit: 20,
+      windowMs: 15 * 60 * 1000,
+    });
+    if (!limit.allowed) {
+      redirect("/login?error=rate_limited");
+    }
+
+    const postLoginTarget = "/post-login" + (callbackUrl ? `?cb=${encodeURIComponent(callbackUrl)}` : "");
     try {
       await signIn("credentials", {
-        username: formData.get("username"),
-        password: formData.get("password"),
-        redirectTo: callbackUrl,
+        username,
+        password,
+        redirectTo: postLoginTarget,
       });
     } catch (err) {
       if (err instanceof AuthError) {
         redirect(
-          `/admin/login?error=InvalidCredentials&callbackUrl=${encodeURIComponent(callbackUrl)}`,
+          "/login?error=invalid" +
+            (callbackUrl
+              ? `&callbackUrl=${encodeURIComponent(callbackUrl)}`
+              : ""),
         );
       }
       throw err;
@@ -42,16 +78,30 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <div className="relative z-10 w-full max-w-lg">
         <div className="mb-10 text-center">
           <p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary/80">
-            系统管理
+            社保规划助手
           </p>
-          <h1 className="mt-4 font-display text-4xl font-bold text-foreground">管理后台登录</h1>
-          <p className="mt-3 text-base text-muted-foreground">请输入账号密码进入控制台</p>
+          <h1 className="mt-4 font-display text-4xl font-bold text-foreground">
+            登录
+          </h1>
+          <p className="mt-3 text-base text-muted-foreground">
+            登录后开始使用你的规划与对话
+          </p>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-10 shadow-lg sm:p-12">
-          {error && (
+          {registered && (
+            <div className="mb-7 rounded-xl border border-green-200 bg-green-50 px-4 py-3.5 text-base text-green-700">
+              注册成功，请使用新账号登录。
+            </div>
+          )}
+          {error === "invalid" && (
             <div className="mb-7 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-base text-red-700">
               用户名或密码错误
+            </div>
+          )}
+          {error === "rate_limited" && (
+            <div className="mb-7 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-base text-amber-700">
+              尝试过于频繁，请稍后再试。
             </div>
           )}
 
@@ -97,6 +147,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               登录
             </button>
           </form>
+
+          <p className="mt-6 text-center text-base text-muted-foreground">
+            还没有账号？{" "}
+            <a
+              href="/register"
+              className="font-medium text-primary hover:underline"
+            >
+              注册新账号
+            </a>
+          </p>
         </div>
       </div>
     </div>

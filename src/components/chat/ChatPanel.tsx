@@ -20,7 +20,6 @@ import type {
 } from "@assistant-ui/core/react";
 import { ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { getLegacySessionId } from "@/lib/client/session";
 import { ToolResultCard } from "./ToolResultCard";
 import { createConversationTrackingFetch } from "./conversation-runtime";
 import type { EmitQuestionAction } from "@/types/engine";
@@ -326,7 +325,6 @@ export function ChatPanel({
   const [conversationId] = useState(
     () => externalConversationId ?? crypto.randomUUID(),
   );
-  const [sessionId] = useState(() => getLegacySessionId());
   const [acknowledgedConversationId, setAcknowledgedConversationId] = useState<
     string | null
   >(() => externalConversationId ?? null);
@@ -362,7 +360,6 @@ export function ChatPanel({
               messageId: options.messageId,
               metadata: options.requestMetadata,
               conversationId,
-              sessionId,
               questions,
               userProfile: sessionProfile,
               planId,
@@ -375,7 +372,6 @@ export function ChatPanel({
       handleConversationReady,
       planId,
       questions,
-      sessionId,
       sessionProfile,
     ],
   );

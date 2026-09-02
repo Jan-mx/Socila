@@ -1,11 +1,7 @@
 import { planningReads } from "@/server/modules/planning/application";
 import { mapRouteError } from "@/lib/api/route-errors";
-import {
-  decideOwnership,
-  resolveOwnerKey,
-} from "@/server/modules/identity/domain/owner";
+import { requireActor } from "@/lib/auth/require-actor";
 import { NextRequest, NextResponse } from "next/server";
-import { readAnonymousSession } from "@/lib/security/anon-session";
 
 export const dynamic = "force-dynamic";
 
@@ -14,21 +10,17 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    // 09-02 AUTH-FR-003/005：规划详情只对 owner_user_id 本人可见；
+    // 旧匿名数据（无 owner_user_id）对新入口不可见（AUTH-AC-017）。
+    const gate = await requireActor();
+    if (!gate.ok) {
+      return gate.response;
+    }
+
     const { id } = await params;
     const plan = await planningReads.getPlan(id);
 
-    if (!plan) {
-      return NextResponse.json({ error: "未找到规划方案" }, { status: 404 });
-    }
-
-    // 归属校验在用例层语义上完成（CORE-FR-005/009）：owner_user_id 优先、其次
-    // session 绑定；旧数据两者皆空不限制。方案读取用 404 而非 403，避免泄露
-    // "该 id 存在"（CORE-AC-002 的不可枚举等价响应）。
-    const decision = decideOwnership(
-      plan,
-      resolveOwnerKey({ sessionId: readAnonymousSession(req) }),
-    );
-    if (decision.decision === "forbidden") {
+    if (!plan || plan.ownerUserId !== gate.actor.userId) {
       return NextResponse.json({ error: "未找到规划方案" }, { status: 404 });
     }
 

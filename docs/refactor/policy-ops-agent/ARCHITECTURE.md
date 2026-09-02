@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-02
 
 ## 上下文
 
@@ -26,10 +26,12 @@ flowchart TB
 ## Next.js Core
 
 - 浏览器唯一入口和BFF。
-- NextAuth v5 JWT会话，字段仅为userId、role和authVersion。
-- 用户、状态、角色和authVersion保存于PostgreSQL。
-- 规则、参数、测试、地区、快照、规划和发布归Core所有。
-- 管理员敏感写操作重新查询数据库校验active和authVersion。
+- 统一登录注册（09-02）：`/login`、`/register`公开页面；user与admin共用入口；`/admin/login` 308重定向到统一登录。
+- NextAuth v5 Credentials + 加密JWT Cookie保存15分钟授权声明（accessExpiresAt）与PostgreSQL刷新会话句柄；授权声明过期后由jwt callback经identity application验证并轮换刷新会话（行锁+HMAC确定性派生+30秒并发宽限，ADR-0007）。
+- 客户端Session只暴露AuthenticatedActor：userId、username、role、authVersion、mustChangePassword。
+- 用户、角色、状态、authVersion、刷新会话和安全审计事件保存于PostgreSQL（`users`、`auth_refresh_sessions`、`auth_audit_events`，migration 0008纯新增）。
+- 规则、参数、测试、地区、快照、规划和发布归Core所有；新建规划/对话只绑定owner_user_id，session_id恒为NULL，历史匿名数据不在新入口展示。
+- 服务端路由门禁（src/proxy.ts）执行固定双角色权限矩阵：匿名访问规划/对话/管理一律拒绝；管理敏感写操作经requireFreshAdmin重新查询数据库校验role、status和authVersion。
 - Agent集成只暴露PolicyContext只读端口和受限DraftMaterialization端口。
 
 依赖方向为`domain → application → infrastructure → route adapter`；Route Handler不得直接承载领域规则或越过Repository访问Drizzle。
@@ -113,6 +115,8 @@ Personal Demo使用单机Docker Compose：Caddy、Next.js、FastAPI、Celery Wor
 ## 已接受决策
 
 - 保留Next.js Core，不引入NestJS。
+- NextAuth 15分钟授权声明 + PostgreSQL刷新会话双层会话（ADR-0007）；固定双角色权限矩阵，不建立通用RBAC。
+- 决策记录见[decisions](./decisions/)目录（ADR-0007起）。
 - Python内部控制面使用FastAPI。
 - LangGraph用于可恢复、需要人工中断的政策运营流程。
 - PostgreSQL JSONB兼容现有JSON规则，pgvector与业务元数据同库。

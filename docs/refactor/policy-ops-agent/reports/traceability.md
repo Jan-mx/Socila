@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-02
 
 ## 用途
 
@@ -34,6 +34,14 @@
 | PRD-NFR-005 可观测 | 01、02、04、05、06、07 | 关联ID、指标、审计和告警 |
 | PRD-NFR-006 可测试 | 01、04、05、06 | Fake模型、黄金集和独立验收 |
 | PRD-NFR-007 兼容 | 01、02、03、07 | 112测试、黄金规划和迁移对账 |
+
+## Feature
+
+| Feature | 需求范围 | 实现位置 | 测试路径 | 验收证据 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 09-02 用户与管理员双角色鉴权 | AUTH-FR-001～013、AUTH-NFR-001～008、AUTH-AC-001～020 | `drizzle/0008_auth_identity.sql`、`src/server/modules/identity/*`、`src/lib/auth/*`、`src/proxy.ts`、`src/app/{login,register,account,admin/users}`、`src/app/api/{auth,account,admin/users}`、`src/app/api/{chat,conversations,plan}`、`src/lib/ai/{agent,tools}.ts`、`scripts/bootstrap-admin.mjs` | `src/server/modules/identity/__tests__/{domain,application,identity-repository.integration}.test.ts`、`__tests__/fakes.ts`、`src/server/modules/__tests__/use-cases.test.ts`、`e2e/auth.spec.ts`、`playwright.config.ts` | `docs/refactor/policy-ops-agent/reports/feature-09-02-auth/acceptance-report.md`；ADR：`docs/refactor/policy-ops-agent/decisions/ADR-0007-NextAuth授权窗口与PostgreSQL刷新会话.md` | Accepted |
+
+AUTH-AC 对应：AC-001/004/005/008/013/015/016/006/007 由 E2E 与单元覆盖；AC-002/003/010/011/012/014/018/019 由单元、集成与引导执行覆盖；AC-017 由集成（旧行不变）与路由 404 语义覆盖；AC-020 为门禁汇总（见验收报告 §4）。AC-009 由 15 分钟窗口单元（domain/application）与 NextAuth jwt 集成路径覆盖。
 
 ## 当前Work Item
 

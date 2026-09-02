@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-02
 
 ## 用途
 
@@ -19,6 +19,7 @@
 | `stage-05/` | 解析、OCR、RAG和SiliconFlow验收 |
 | `stage-06/` | Diff、草案、审核和物化验收 |
 | `stage-07/` | 部署、迁移、恢复、回退和切换验收 |
+| `feature-09-02-auth/` | 用户与管理员双角色鉴权Feature验收 |
 | `documentation/` | 文档体系和补充决策验收 |
 | `traceability.md` | 需求、实现、测试和报告追踪 |
 

@@ -32,10 +32,8 @@ export interface ComputePlanInput {
   policyPackId?: string;
   /** 是否落库（工具与 API 都需要；测试可关闭） */
   persist?: boolean;
-  /** 创建者匿名会话 id，落库后用于 /api/plan/[id] 的归属校验 */
-  sessionId?: string;
-  /** 认证用户 id（CORE-FR-009）：存在时优先于 sessionId 参与归属校验 */
-  ownerUserId?: string | null;
+  /** 归属用户 id（09-02 AUTH-FR-005）：持久化时必须提供；session_id 恒为 NULL */
+  ownerUserId?: string;
 }
 
 export interface ComputePlanResult {
@@ -84,6 +82,10 @@ export async function computePlan(
 
   let planId: string | null = null;
   if (input.persist ?? true) {
+    // 09-02 AUTH-FR-005：新建业务资源只绑定 owner_user_id，session_id 必须为 NULL。
+    if (!input.ownerUserId) {
+      throw new Error("owner_user_id is required to persist a plan");
+    }
     const saved = await savePlan({
       userInput: input.user as Record<string, unknown>,
       calcResult: enrichedCalc as Record<string, unknown>,
@@ -92,8 +94,7 @@ export async function computePlan(
       ruleSetVersion: result.meta.rule_set_id,
       policyPackVersion: result.meta.policy_pack_id,
       asOfDate: result.meta.as_of_date,
-      sessionId: input.sessionId,
-      ownerUserId: input.ownerUserId ?? null,
+      ownerUserId: input.ownerUserId,
     });
     planId = saved?.id ?? null;
   }

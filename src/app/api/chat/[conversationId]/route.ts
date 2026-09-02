@@ -1,41 +1,34 @@
 import { conversationReads } from "@/server/modules/conversation/application";
+import { requireActor } from "@/lib/auth/require-actor";
 import { NextRequest, NextResponse } from "next/server";
-import {
-  attachAnonymousSessionCookie,
-  ensureAnonymousSession,
-} from "@/lib/security/anon-session";
+import { mapRouteError } from "@/lib/api/route-errors";
 
+export const dynamic = "force-dynamic";
+
+/** GET /api/chat/:conversationId：归属受控读取（09-02，仅 owner_user_id 本人）。 */
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> },
 ) {
-  const legacySessionId = req.headers.get("x-legacy-session-id") ?? undefined;
-  const { sessionId, isNewSession } = ensureAnonymousSession(
-    req,
-    legacySessionId,
-  );
+  const gate = await requireActor();
+  if (!gate.ok) {
+    return gate.response;
+  }
   const { conversationId } = await params;
-
-  const respondJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    if (isNewSession) {
-      attachAnonymousSessionCookie(response, sessionId);
-    }
-    return response;
-  };
 
   try {
     const conv = await conversationReads.getConversation(conversationId);
     if (!conv) {
-      return respondJson({ error: "会话不存在" }, { status: 404 });
+      return NextResponse.json({ error: "会话不存在" }, { status: 404 });
+    }
+    // 不可枚举：他人会话（含旧匿名数据）与不存在一律 404（CORE-AC-002 语义）
+    if (conv.ownerUserId !== gate.actor.userId) {
+      return NextResponse.json({ error: "会话不存在" }, { status: 404 });
     }
 
-    if (!conv.sessionId || conv.sessionId !== sessionId) {
-      return respondJson({ error: "无权限访问该会话" }, { status: 403 });
-    }
-
-    return respondJson({ conversation: conv });
-  } catch {
-    return respondJson({ error: "服务器内部错误" }, { status: 500 });
+    return NextResponse.json({ conversation: conv });
+  } catch (err) {
+    const mapped = mapRouteError(err, { operation: "chat.read" });
+    return NextResponse.json(mapped.body, { status: mapped.status });
   }
 }

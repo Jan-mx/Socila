@@ -19,8 +19,8 @@ export interface ChatContext {
   questions?: AgentQuestion[];
   /** 当前已知的用户画像信息 */
   userProfile?: UserProfileSummary;
-  /** 当前匿名会话 id，透传给 computePlan 工具用于给方案打归属标记 */
-  sessionId?: string;
+  /** 归属用户 id，透传给 computePlan 工具用于给方案打 owner_user_id 归属标记（09-02） */
+  ownerUserId?: string;
 }
 
 // ─── 消息类型（Vercel AI SDK v6 使用 ModelMessage）─────────────────────────
@@ -73,8 +73,8 @@ export function createChatStream(
       },
     },
     tools,
-    // 把会话 id 透传给工具的 execute（AI SDK v6：execute 第二参 experimental_context）。
-    experimental_context: { sessionId: context?.sessionId },
+    // 把归属用户 id 透传给工具的 execute（AI SDK v6：execute 第二参 experimental_context）。
+    experimental_context: { ownerUserId: context?.ownerUserId },
     // 增加步数上限，避免复杂对话里在输出结论前提前截断。
     stopWhen: stepCountIs(8),
     // 低温度：本 Agent 的职责是确定性的字段抽取 + 工具调用，尽量减少行为方差。

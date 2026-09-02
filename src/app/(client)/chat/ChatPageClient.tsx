@@ -14,7 +14,8 @@ import {
 } from "lucide-react";
 import type { UIMessage } from "ai";
 import { cn } from "@/lib/utils/cn";
-import { getLegacySessionId } from "@/lib/client/session";
+import { useSession } from "next-auth/react";
+import { logoutAndClearSession } from "@/lib/client/logout";
 import {
   getConversationRestoreErrorMessage,
   shouldRestoreConversationFromUrl,
@@ -41,13 +42,10 @@ function replaceConversationIdInUrl(conversationId: string | null) {
   window.history.replaceState({}, "", url.toString());
 }
 
-function getSessionId(): string {
-  return getLegacySessionId();
-}
-
 export function ChatPageClient() {
   const searchParams = useSearchParams();
-  const [sessionId, setSessionId] = useState("");
+  const { data: session, update: updateSession } = useSession();
+  const username = session?.user?.username;
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     null,
   );
@@ -62,12 +60,14 @@ export function ChatPageClient() {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const conversationIdFromUrl = searchParams.get("conversationId");
 
-  // Initialize sessionId on client
   useEffect(() => {
-    setSessionId(getSessionId());
+    // 登录经服务端动作软导航进入本页时，SessionProvider 不重挂载，
+    // 主动刷新一次客户端会话，保证头部账号状态与登出入口正确显示。
+    void updateSession();
     if (window.matchMedia("(max-width: 639px)").matches) {
       setSidebarOpen(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -86,11 +86,7 @@ export function ChatPageClient() {
       if (!conversationId) return false;
 
       try {
-        const res = await fetch(`/api/chat/${conversationId}`, {
-          headers: sessionId
-            ? { "x-legacy-session-id": sessionId }
-            : undefined,
-        });
+        const res = await fetch(`/api/chat/${conversationId}`);
         if (!res.ok) {
           setRestoreError(getConversationRestoreErrorMessage(res.status));
           setActiveConversationId(null);
@@ -120,7 +116,7 @@ export function ChatPageClient() {
         return false;
       }
     },
-    [sessionId],
+    [],
   );
 
   useEffect(() => {
@@ -133,7 +129,6 @@ export function ChatPageClient() {
 
     if (
       !shouldRestoreConversationFromUrl({
-        sessionId,
         conversationIdFromUrl: targetConversationId,
         panelConversationId,
       })
@@ -146,7 +141,7 @@ export function ChatPageClient() {
         replaceConversationIdInUrl(null);
       }
     });
-  }, [conversationIdFromUrl, loadConversationById, panelConversationId, sessionId]);
+  }, [conversationIdFromUrl, loadConversationById, panelConversationId]);
 
   const handleSelectConversation = useCallback(
     async (conv: ConversationRow) => {
@@ -240,8 +235,29 @@ export function ChatPageClient() {
               <Library className="h-4 w-4" />
               <span className="hidden sm:inline">案例</span>
             </Link>
+            {username ? (
+              <>
+                <span className="hidden max-w-[120px] truncate rounded-lg bg-primary/10 px-2.5 py-1.5 text-sm text-primary sm:inline-block">
+                  {username}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void logoutAndClearSession({ redirectTo: "/login" })}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:text-base"
+                >
+                  退出
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:text-base"
+              >
+                登录
+              </Link>
+            )}
             <Link
-              href="/admin/login"
+              href="/login?callbackUrl=%2Fadmin"
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:text-base"
             >
               <Shield className="h-4 w-4" />
@@ -277,9 +293,8 @@ export function ChatPageClient() {
                 : "-translate-x-full sm:w-0 sm:translate-x-0 sm:border-r-0",
             )}
           >
-            {sidebarOpen && sessionId && (
+            {sidebarOpen && (
               <ConversationList
-                sessionId={sessionId}
                 activeConversationId={activeConversationId}
                 onSelect={handleSelectConversation}
                 onNewChat={handleNewChat}

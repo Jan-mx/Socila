@@ -8,7 +8,11 @@ import {
   timestamp,
   date,
   uuid,
+  check,
+  index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ─── Rules ──────────────────────────────────────────────────────────────────
 
@@ -263,3 +267,119 @@ export const tests = pgTable("tests", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// ─── Users（09-02 用户与管理员双角色鉴权，AUTH-FR-001～013）──────────────────
+// 固定双角色权限矩阵（非通用RBAC）：role 只允许 user/admin，直接保存在用户行上。
+
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // 展示用原始用户名；唯一性由 normalized_username 承担。
+    username: text("username").notNull(),
+    // trim + NFKC + lowercase 后的规范形（AUTH-FR-001/§10.1）。
+    normalizedUsername: text("normalized_username").notNull(),
+    // bcrypt cost 12 哈希；任何出口（API/日志/Session）不得返回本列。
+    passwordHash: text("password_hash").notNull(),
+    role: text("role").notNull(),
+    status: text("status").notNull().default("active"),
+    // 安全状态变化（改密/重置/禁用/角色变更）时递增（AUTH-FR-007/008/009/010）。
+    authVersion: integer("auth_version").notNull().default(1),
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
+    // 临时密码到期时间；非临时密码状态为 NULL（§8.1）。
+    temporaryPasswordExpiresAt: timestamp("temporary_password_expires_at", {
+      withTimezone: true,
+    }),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("users_normalized_username_key").on(table.normalizedUsername),
+    check(
+      "users_role_check",
+      sql`${table.role} IN ('user', 'admin')`,
+    ),
+    check(
+      "users_status_check",
+      sql`${table.status} IN ('active', 'disabled')`,
+    ),
+    check(
+      "users_auth_version_check",
+      sql`${table.authVersion} > 0`,
+    ),
+  ],
+);
+
+// ─── Auth Refresh Sessions（AUTH-FR-004，ADR-0007）──────────────────────────
+
+export const authRefreshSessions = pgTable(
+  "auth_refresh_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // 只保存 SHA-256(secret)，Secret 原文仅存于 NextAuth 加密 Cookie。
+    currentTokenHash: text("current_token_hash").notNull(),
+    // 并发刷新宽限（30秒）期间保留的前一哈希（§7.3）。
+    previousTokenHash: text("previous_token_hash"),
+    previousValidUntil: timestamp("previous_valid_until", { withTimezone: true }),
+    rotationCounter: integer("rotation_counter").notNull().default(0),
+    // 创建/刷新时的用户 authVersion；不匹配即失效。
+    authVersion: integer("auth_version").notNull(),
+    // 成功刷新后延长为 now+7天，不超过绝对期限。
+    idleExpiresAt: timestamp("idle_expires_at", { withTimezone: true })
+      .notNull(),
+    // 创建时固定 now+30天。
+    absoluteExpiresAt: timestamp("absolute_expires_at", { withTimezone: true })
+      .notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    // 稳定原因枚举（logout / password_changed / admin_action / reuse_detected /
+    // expired / superseded），不保存 Secret。
+    revokedReason: text("revoked_reason"),
+  },
+  (table) => [
+    uniqueIndex("auth_refresh_sessions_current_token_hash_key").on(
+      table.currentTokenHash,
+    ),
+    index("auth_refresh_sessions_user_id_idx").on(table.userId),
+    check(
+      "auth_refresh_sessions_rotation_counter_check",
+      sql`${table.rotationCounter} >= 0`,
+    ),
+  ],
+);
+
+// ─── Auth Audit Events（AUTH-FR-011）───────────────────────────────────────
+
+export const authAuditEvents = pgTable(
+  "auth_audit_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // 注册/系统操作可为 NULL（§8.3）。
+    actorUserId: uuid("actor_user_id"),
+    targetUserId: uuid("target_user_id"),
+    eventType: text("event_type").notNull(),
+    requestId: text("request_id"),
+    // 只保存脱敏枚举与变更前后状态，禁止密码/Secret/IP。
+    metadata: jsonb("metadata").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("auth_audit_events_created_at_idx").on(table.createdAt),
+    index("auth_audit_events_target_user_id_idx").on(table.targetUserId),
+  ],
+);

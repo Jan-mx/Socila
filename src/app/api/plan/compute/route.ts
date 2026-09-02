@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mapRouteError } from "@/lib/api/route-errors";
 import { PlanComputeRequestSchema } from "@/lib/validators/plan-input";
 import { computePlan } from "@/server/modules/planning/application/compute-plan.use-case";
-import {
-  attachAnonymousSessionCookie,
-  ensureAnonymousSession,
-} from "@/lib/security/anon-session";
+import { requireActor } from "@/lib/auth/require-actor";
 import {
   applyRateLimitHeaders,
   checkRateLimit,
@@ -19,7 +16,11 @@ const PLAN_RATE_WINDOW_MS = 60_000;
 const MAX_REQUEST_BYTES = 64 * 1024;
 
 export async function POST(req: NextRequest) {
-  const { sessionId, isNewSession } = ensureAnonymousSession(req);
+  // 09-02 AUTH-FR-003/006：规划 API 拒绝匿名；新方案只绑定 owner_user_id。
+  const gate = await requireActor();
+  if (!gate.ok) {
+    return gate.response;
+  }
   const clientIp = getClientIp(req);
   const rateLimit = checkRateLimit(`plan:${clientIp}`, {
     limit: PLAN_RATE_LIMIT,
@@ -29,9 +30,6 @@ export async function POST(req: NextRequest) {
   const respondJson = (body: unknown, init?: ResponseInit) => {
     const response = NextResponse.json(body, init);
     applyRateLimitHeaders(response, rateLimit, PLAN_RATE_LIMIT);
-    if (isNewSession) {
-      attachAnonymousSessionCookie(response, sessionId);
-    }
     return response;
   };
 
@@ -73,7 +71,7 @@ export async function POST(req: NextRequest) {
       asOfDate,
       ruleSetId: rule_set_id,
       policyPackId: policy_pack_id,
-      sessionId,
+      ownerUserId: gate.actor.userId,
     });
 
     return respondJson({

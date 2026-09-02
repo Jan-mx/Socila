@@ -10,7 +10,10 @@ const fixedInterfaceFiles = [
   "src/components/layout/MarketingFooter.tsx",
   "src/components/chat/ToolResultCard.tsx",
   "src/app/admin/AdminLayoutClient.tsx",
-  "src/app/admin/login/page.tsx",
+  "src/app/login/page.tsx",
+  "src/app/register/page.tsx",
+  "src/app/account/security/page.tsx",
+  "src/app/admin/users/page.tsx",
   "src/app/admin/page.tsx",
 ];
 

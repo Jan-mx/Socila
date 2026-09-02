@@ -1,37 +1,23 @@
 import { conversationReads } from "@/server/modules/conversation/application";
+import { requireActor } from "@/lib/auth/require-actor";
 import { mapRouteError } from "@/lib/api/route-errors";
-import { NextRequest, NextResponse } from "next/server";
-import {
-  attachAnonymousSessionCookie,
-  ensureAnonymousSession,
-} from "@/lib/security/anon-session";
+import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/conversations */
-export async function GET(req: NextRequest) {
-  const legacySessionId =
-    req.nextUrl.searchParams.get("sessionId") ??
-    req.headers.get("x-legacy-session-id") ??
-    undefined;
-  const { sessionId, isNewSession } = ensureAnonymousSession(
-    req,
-    legacySessionId,
-  );
-
-  const respondJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    if (isNewSession) {
-      attachAnonymousSessionCookie(response, sessionId);
-    }
-    return response;
-  };
+/** GET /api/conversations：认证用户列出本人会话（owner_user_id 过滤，09-02 AUTH-FR-005/006）。 */
+export async function GET() {
+  const gate = await requireActor();
+  if (!gate.ok) {
+    return gate.response;
+  }
 
   try {
-    const rows = await conversationReads.listConversations(sessionId);
-    return respondJson({ conversations: rows });
+    const rows = await conversationReads.listConversations();
+    const own = rows.filter((c) => c.ownerUserId === gate.actor.userId);
+    return NextResponse.json({ conversations: own });
   } catch (err) {
     const mapped = mapRouteError(err, { operation: "conversation.list" });
-    return respondJson(mapped.body, { status: mapped.status });
+    return NextResponse.json(mapped.body, { status: mapped.status });
   }
 }

@@ -34,16 +34,21 @@ function cleanupBuckets(now: number): void {
 }
 
 export function getClientIp(req: NextRequest): string {
+  return clientIpFromRequest(new Request("http://local", { headers: req.headers }));
+}
+
+/** 从标准 Headers 提取客户端 IP（NextAuth authorize 的 request 无 NextRequest 封装）。 */
+export function clientIpFromRequest(request: Request): string {
   // Prefer x-real-ip: on Vercel/edge the platform sets it to the true client IP.
   // x-forwarded-for is client-supplied and its first hop is spoofable (a forged
   // header would otherwise mint a fresh rate-limit bucket per request), so it is
   // only a fallback for environments that don't set x-real-ip.
-  const realIp = req.headers.get("x-real-ip");
+  const realIp = request.headers.get("x-real-ip");
   if (realIp) {
     return realIp.trim();
   }
 
-  const forwarded = req.headers.get("x-forwarded-for");
+  const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
     return forwarded.split(",")[0]?.trim() ?? "unknown";
   }
