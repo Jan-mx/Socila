@@ -1,8 +1,8 @@
 # 用户与管理员双角色登录注册鉴权 PRD
 
 > Author: Jan
-> Status: Approved
-> Updated: 2026-09-02
+> Status: Active
+> Updated: 2026-09-03
 
 ## 文档元数据
 
