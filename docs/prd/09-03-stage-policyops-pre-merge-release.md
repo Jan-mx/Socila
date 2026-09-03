@@ -1,4 +1,4 @@
-# PolicyOps P0 合并质量门禁与 v0.2.0 发布
+# PolicyOps P0 合并质量门禁与 v0.2.0 发布准备
 
 > Author: Jan
 > Status: Active
@@ -10,11 +10,11 @@
 | --- | --- |
 | PRD文件 | `09-03-stage-policyops-pre-merge-release.md` |
 | 类型 | Stage |
-| 状态 | Active（自动门禁已验收；人工合并与发布循环进行中，完成后方可记Accepted） |
+| 状态 | Active（开发分支发布准备已验收；PR、ruleset、merge、tag与Release属于未来人工发布） |
 | 前置依赖 | Stage 01～07 已验收；Auth Feature 已由提交 `71da7fc` 交付并推送至 `refactor/policy-ops-agent-platform` |
 | 可并行阶段 | Python质量修复与镜像加固可在测试契约固定后独立实施；数据库、E2E、文档收口和合并发布必须串行 |
 | 后续消费者 | `main` 主分支、Personal Demo部署、后续PolicyOps和身份功能开发 |
-| 退出门禁 | 六项CI、完整差异审阅、主分支保护、`v0.1.0 → v0.2.0` 标签与Release闭环全部取得可核验结果 |
+| 退出门禁 | 开发分支六类自动门禁可重复通过；GitHub Actions工作流通过actionlint静态校验；`origin/main...开发分支HEAD`完整差异完成审阅；验收报告、traceability、PROGRESS和README状态同步；Web/Agent版本元数据为0.2.0 |
 | 对应总体需求 | FND-FR-009～010、CORE-AC-002、AUTH-AC-020、PRD-NFR-001～007 |
 
 ## 1. 背景与现状
@@ -51,8 +51,8 @@ Auth E2E假阳性及配置缺口也会随版本发布，后续Agent还会继续�
 - 在全新pgvector PostgreSQL 17上验证Core、Auth和Agent migration、seed、管理员引导、角色隔离及全部数据库行为。
 - 构建并冒烟Web与Agent镜像，验证生产Compose配置和健康检查。
 - 对完整Git历史执行Secret扫描，对运行镜像执行可修复HIGH/CRITICAL漏洞扫描。
-- 建立六个GitHub必需状态检查和禁止直接/强推`main`的人工合并流程。
-- 将当前`main`标记为`v0.1.0`基线，将合并后的PolicyOps+Auth版本发布为`v0.2.0`。
+- 交付六个GitHub必需状态检查和禁止直接/强推`main`的人工合并流程的配置规范与操作清单（外部动作执行属于未来人工发布）。
+- 将Web与Agent版本元数据统一为0.2.0；`v0.1.0`基线与`v0.2.0`标签/Release由未来人工发布创建和发布。
 - 清理活动文档中的过期状态和统计，保留archive与历史报告原貌。
 
 ## 3. 非目标
@@ -206,6 +206,10 @@ Auth E2E假阳性及配置缺口也会随版本发布，后续Agent还会继续�
 
 ### 5.8 主分支与发布治理
 
+以下需求定义主分支与发布的治理设计。本阶段只交付ruleset配置规范、操作清单和强制暂停点，
+不要求Agent执行任何外部动作（配置ruleset、创建/合并PR、创建/推送tag、发布Release）。
+未来人工发布完成后，另建docs-only任务记录PR、merge SHA、tag和Release链接。
+
 - **PMG-FR-037 完整差异审阅**：提交后以固定的`origin/main...HEAD`范围审阅全部代码、migration、
   权限、容器、文档和删除项，并在验收报告记录merge-base、head SHA、diff统计和结论。
 - **PMG-FR-038 主分支规则**：`main`必须启用Active ruleset：只允许PR合并、解决所有对话、
@@ -277,11 +281,17 @@ container runner  -> synthetic env          -> build images -> compose up -> hea
 
 ### 7.3 任务与提交边界
 
-本阶段是一个接受或拒绝整体门禁的Stage任务，最终只创建一个P0提交：
+本阶段是一个接受或拒绝整体门禁的Stage任务，提交边界为：
 
 ```text
-ci: 补齐鉴权后的合并门禁与发布流程
+ci: 补齐鉴权后的合并门禁与发布流程                 # P0提交
+fix: 修正开发分支门禁与验收闭环                   # 门禁与验收闭环修正
+fix: 对齐E2E管理员引导账号与测试规格              # 复验中发现的E2E管理员账号契约修正
+docs: 完成P0开发分支验收记录                      # docs-only验收记录
 ```
+
+docs-only验收记录提交只包含验收报告、PRD状态、traceability、PROGRESS和README状态同步，
+不得夹带代码变化。
 
 提交前必须检查完整staged diff和候选敏感文件。若实现中发现与本PRD无关的产品缺陷，
 停止并建立独立需求，不将其夹带进P0提交。
@@ -388,7 +398,7 @@ security-gates
 | Secret | PMG-FR-025/028 | 当前文件和完整Git历史 | 除5个精确业务键误报外0发现 |
 | 镜像漏洞 | PMG-FR-029～031 | Web/Agent最终运行镜像 | 可修复HIGH=0、CRITICAL=0，非root运行 |
 | 文档 | PMG-FR-034～036 | 状态、链接、统计、下一步、追踪 | 活动事实一致、0断链、无过期进度，历史证据未改写 |
-| 发布治理 | PMG-FR-037～041 | diff审阅、ruleset、PR、main复验、tag/Release | 所有人工证据存在且tag指向正确提交 |
+| 发布治理 | PMG-FR-037～041 | diff审阅、workflow静态校验、ruleset配置规范与人工清单 | `origin/main...修正提交HEAD`审阅完成，merge-base/SHA/统计与结论记录准确；PR、ruleset、tag与Release记入未来人工发布清单，本阶段不执行 |
 
 ## 15. 验收场景
 
@@ -402,10 +412,10 @@ security-gates
 - **PMG-AC-008** Given缺少或为空的`AUTH_REFRESH_PEPPER`，When执行Compose config或启动Web，Then配置失败；Given与NextAuth不同的合成值，Thenconfig通过。
 - **PMG-AC-009** Given新构建的Web和Agent镜像，When执行Compose冒烟和Trivy扫描，Then健康检查通过、临时资源删除、可修复HIGH/CRITICAL为0。
 - **PMG-AC-010** Given完整Git历史，When执行仓库Secret扫描和Gitleaks，Then除五个精确fingerprint外无发现，任何新发现都会阻断。
-- **PMG-AC-011** GivenPR指向`main`，When任一六项检查失败、分支落后或对话未解决，ThenGitHub禁止merge。
-- **PMG-AC-012** Given六项检查和完整人工审阅全部通过，When用户选择merge commit，Then`main`只增加经PR合并的重构历史，没有直接或force push。
-- **PMG-AC-013** Given当前main与最终merge commit，When人工发布，Then`v0.1.0`准确指向重构前main，`v0.2.0`准确指向main上的merge commit，两个Release均包含可追踪说明。
-- **PMG-AC-014** Given后续Agent读取活动文档，When检查当前任务、测试统计和下一步，Then不会看到文档重组、112项基线、旧演练执行中或失效授权描述。
+- **PMG-AC-011** Given六job的CI工作流，When用actionlint 1.7.7静态校验，Then退出码为0且零发现，六job名称、触发条件、token权限与timeout设置均正确。
+- **PMG-AC-012** Given生产Compose与合成环境，When执行全8服务冒烟，Then proxy/web/agent/worker/beat/postgres/redis/minio均存在且非exited，带健康检查的服务全部healthy；任何exited/dead/restarting/unhealthy状态都会使门禁失败并输出脱敏日志。
+- **PMG-AC-013** Given以最新修正提交为HEAD，When执行`origin/main...HEAD`完整差异审阅，Then merge-base、head SHA、文件数与行数统计准确，且代码审阅范围明确截止该修正提交。
+- **PMG-AC-014** Given后续Agent读取活动文档，When检查当前任务、测试统计和下一步，Then可见开发分支发布准备验收状态、实际门禁数据与未来人工发布动作清单，无过期状态、错误SHA或不正确的执行声称。
 
 ## 16. Definition of Done
 
@@ -415,18 +425,20 @@ security-gates
 - Node unit、Python unit、Node/Python数据库、Chromium、Docker/Compose、Secret和Trivy全部通过。
 - 每个自动job的环境skip为0；warning为0或在验收报告逐项解释且不属于安全、类型、弃用或缺配置问题。
 - Web和Agent最终镜像均无可修复HIGH/CRITICAL，继续使用非root运行。
-- 六个GitHub检查名称稳定并配置为main必需状态检查。
-- 完成`origin/main...HEAD`全量差异审阅，记录merge-base与head SHA。
+- 六个GitHub检查名称稳定，且工作流通过actionlint静态校验；本阶段不声称GitHub-hosted检查已运行。
+- 完成`origin/main...最新修正提交HEAD`全量差异审阅，记录merge-base、head SHA、文件数与行数统计。
 - 当前文档、traceability、PROGRESS、验收报告和相关README同步；完成时不存在Draft或Updating README。
 - Web与Agent版本统一为0.2.0，lock与manifest一致。
 - 提交前检查完整staged diff，扫描Secret、私钥、生产数据、用户数据和生成依赖目录。
-- 创建唯一提交`ci: 补齐鉴权后的合并门禁与发布流程`并推送当前upstream。
+- P0提交、门禁修正提交与docs-only验收记录提交`docs: 完成P0开发分支验收记录`均推送当前upstream；每个提交提交前分别检查完整staged diff与敏感文件。
 - Agent在PR、ruleset、main、tag、Release及生产动作前停止；只有用户明确授权后才可继续对应外部操作。
-- 用户人工完成`v0.1.0`基线、PR、ruleset、merge commit、main复验和`v0.2.0`Release后，本阶段方可在PROGRESS中记录Accepted。
+- 开发分支发布准备证据链（六类门禁、静态校验、差异审阅、文档同步）完成后，在PROGRESS记录`Accepted（开发分支发布准备）`；PR、ruleset、merge、tag与Release为未来人工动作，不阻塞本阶段验收。未来人工发布完成后另建docs-only任务记录PR、merge SHA、tag和Release链接。
 
-## 17. 人工合并与发布检查单
+## 17. 未来人工发布检查单
 
-### 17.1 分支完成后暂停
+以下动作均需用户另行授权并人工执行，本阶段一律不执行。
+
+### 17.1 开发分支验收完成，报告内容
 
 Agent必须向用户报告：
 
@@ -437,7 +449,7 @@ Agent必须向用户报告：
 - `origin/main...HEAD`完整diff统计与审阅结论；
 - 未执行的外部动作清单。
 
-### 17.2 用户人工动作
+### 17.2 未来人工动作（本阶段不执行）
 
 1. 确认`origin/main`未变化，在该提交创建并推送annotated tag `v0.1.0`，发布Pre-PolicyOps baseline。
 2. 人工创建Draft PR：`refactor/policy-ops-agent-platform → main`。
@@ -450,11 +462,10 @@ Agent必须向用户报告：
 
 ## 18. 下一阶段输入
 
-本阶段完成后提供：
+本阶段完成后，开发分支提供：
 
-- 受保护的`main`及六项稳定必需状态检查；
-- 可重复的Node、Python、PostgreSQL、Chromium和Docker质量入口；
-- 无Auth对话协议假阳性的v0.2.0代码基线；
-- 可审计的`v0.1.0`重构前基线与`v0.2.0`PolicyOps+Auth Release；
+- 可重复的Node、Python、PostgreSQL、Chromium和Docker质量入口，以及六个CI检查名称（workflow已通过actionlint静态校验）；
+- 无Auth对话协议假阳性的0.2.0版本元数据代码基线；
 - 后续功能可直接复用的CI job、测试数据库初始化和发布证据格式；
+- 未来人工发布检查单（§17）：用户人工完成PR、main ruleset、merge、`v0.1.0`/`v0.2.0`标签与Release后，`main`才获得受保护分支和版本锚点；
 - 仍需单独授权的远程Personal Demo部署、生产migration、Secret配置/轮换和入口切换。

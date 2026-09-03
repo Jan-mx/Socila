@@ -8,7 +8,7 @@
 
 七个重构阶段已经完成并通过阶段验收。当前应用采用Next.js Core、FastAPI、Celery、LangGraph、本地PostgreSQL、pgvector、Redis和MinIO。
 
-09-02用户与管理员双角色鉴权Feature已Accepted；09-03 P0合并质量门禁与v0.2.0发布准备的自动门禁已全部通过（六job CI工作流、镜像加固、Secret/Trivy/Gitleaks、`AUTH_REFRESH_PEPPER`必填、0.2.0版本元数据），分支`refactor/policy-ops-agent-platform`已推送，**等待用户人工合并与发布**（v0.1.0基线tag、Draft PR、main ruleset、merge commit、main复验、v0.2.0 Release；见`PROGRESS.md`精确下一步）。
+09-02用户与管理员双角色鉴权Feature已Accepted；09-03 P0合并质量门禁与v0.2.0发布准备**Accepted（开发分支发布准备）**：六类门禁全部本地新鲜复现（全部退出0、零skip），workflow经actionlint 1.7.7静态校验零发现，`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）；PR、main ruleset、merge与tag/Release为未来人工动作（见`PROGRESS.md`精确下一步与PRD §17）。
 
 本机作为开发环境，后续工作以远程Demo部署、真实Agent闭环、首批政策采集和持续质量建设为主。
 
