@@ -57,6 +57,13 @@
       "when": 1788365007219,
       "tag": "0008_auth_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788431784774,
+      "tag": "0009_service_jwt_replays",
+      "breakpoints": true
     }
   ]
 }

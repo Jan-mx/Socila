@@ -75,6 +75,24 @@ $env:AGENT_DB_PASSWORD="..."
 uv run pytest -m integration
 ```
 
+## 服务JWT跨语言契约（09-03 SJWT）
+
+`testdata/service-jwt-vectors.json` 保存非真实固定向量：同一组claims（固定`fixedNow`）由Node（`jose`）与Python（`PyJWT`）各自独立签名，两端测试套件互验对方签名令牌（iss/aud/sub/jti/iat/exp精确一致、current/previous命中分类），并对全部拒绝向量（`alg=none`、过期、跨方向）在两个方向复验失败；协议常量（HS256/300s/30s）漂移由守卫测试拦截。
+
+```powershell
+npm test                       # 含 service-jwt.test.ts 与 service-jwt-vectors.contract.test.ts
+uv run --project services/agent pytest -m "not integration"   # 含 test_service_jwt.py 与 test_service_jwt_vectors.py
+```
+
+## 服务JWT跨语言契约（09-03 SJWT）
+
+`testdata/service-jwt-vectors.json`保存非真实固定向量：同一组claims（固定`fixedNow`）由Node（`jose`）与Python（`PyJWT`）各自独立签名，两端测试套件互验对方签发的令牌（iss/aud/sub/jti/iat/exp精确一致、current/previous命中分类正确），并双向复验全部拒绝向量（`alg=none`、过期、跨方向）；协议常量（HS256/300s/30s）漂移由guard测试拦截。
+
+```powershell
+npm test                                   # 含 service-jwt.test.ts 与 service-jwt-vectors.contract.test.ts
+uv run --project services/agent pytest -m "not integration"   # 含 test_service_jwt.py 与 test_service_jwt_vectors.py
+```
+
 ## CI六项门禁（09-03 PMG-FR-020～025）
 
 `.github/workflows/ci.yml`：触发`pull_request`、`main` push与`workflow_dispatch`；同ref并发取消；job级timeout；默认token仅`contents: read`；第三方Action全部固定提交SHA。
@@ -85,7 +103,7 @@ uv run pytest -m integration
 | `agent-gates` | ruff、mypy、`pytest -m "not integration"`、pip-audit | 退出0；skip为0、未解释warning为0 |
 | `database-gates` | 全新PG17：migration×2、引导×2、seed、`npm run test:db`、`agent.migrate --with-roles`、`pytest -m integration` | 幂等no-op；集成skip为0 |
 | `e2e-gates` | `npm run test:e2e:auth`（standalone构建+mock模型+全新库） | 10项Auth流程与助手回复通过 |
-| `container-gates` | 构建web/agent镜像；合成env+临时卷`compose up`→健康检查→`down -v`；Trivy 0.74.0 | 健康通过、临时资源删除、可修复HIGH/CRITICAL为0 |
+| `container-gates` | 构建web/agent镜像；合成env+临时卷`compose up`→健康检查→SJWT-AC-017双向冒烟（合法双向调用200、伪造服务名/错误方向/重放401）→`down -v`；Trivy 0.74.0 | 健康通过、双向冒烟通过、临时资源删除、可修复HIGH/CRITICAL为0 |
 | `security-gates` | `node scripts/scan-secrets.mjs --all`；Gitleaks 8.29.1完整历史 | 除5个已核实fingerprint外0发现 |
 
 ## SiliconFlow

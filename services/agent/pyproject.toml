@@ -21,6 +21,7 @@ dependencies = [
     "pymupdf>=1.28.2",
     "ijson>=3.5.1",
     "jieba>=0.42.1",
+    "pyjwt>=2.10,<3",
 ]
 
 [dependency-groups]

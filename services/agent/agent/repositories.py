@@ -248,10 +248,22 @@ class InMemoryRepositories:
     def update_status(
         self, run_id: str, status: str, current_node: str | None = None, error: str | None = None
     ) -> None:
-        self.runs.update_status(run_id, status, current_node, error)
+        return self.runs.update_status(run_id, status, current_node, error)
 
     def list(self) -> list[AgentRun]:
         return self.runs.list()
+
+    # 接收方事务端口（SJWT §6.3）：conn为JTI同事务句柄；内存实现忽略（单步写入天然原子）。
+    def create_run_in_tx(self, conn, run: AgentRun) -> AgentRun:
+        return self.runs.create(run)
+
+    def find_review_by_idempotency_key(self, key: str) -> HumanReview | None:
+        return self.reviews.find_by_idempotency_key(key)
+
+    def create_review_in_tx(self, conn, review: HumanReview, run_id: str, run_status: str) -> HumanReview:
+        self.reviews.create(review)
+        self.runs.update_status(run_id, run_status)
+        return review
 
 
 def new_id() -> str:
@@ -396,3 +408,38 @@ class PostgresRepositories:
 
     def list(self) -> list[AgentRun]:
         return []
+
+    # 事务端口（SJWT §6.3）：在JTI同事务conn上执行业务写入，不自行commit（由guard事务统一提交/回滚）。
+    def create_run_in_tx(self, conn, run: AgentRun) -> AgentRun:
+        conn.execute(
+            """INSERT INTO agent.agent_runs (id, thread_id, workflow_version, input_hash, idempotency_key, status)
+               VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING""",
+            (run.id, run.thread_id, run.workflow_version, run.input_hash, run.idempotency_key, run.status),
+        )
+        return run
+
+    def find_review_by_idempotency_key(self, key: str) -> HumanReview | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT id, proposal_id, decision, patch, reason, actor_id, idempotency_key FROM agent.human_reviews WHERE idempotency_key=%s",
+                (key,),
+            ).fetchone()
+        if not row:
+            return None
+        return HumanReview(
+            id=str(row[0]), proposal_id=str(row[1]), decision=row[2], patch=row[3],
+            reason=row[4], actor_id=row[5], idempotency_key=row[6],
+        )
+
+    def create_review_in_tx(self, conn, review: HumanReview, run_id: str, run_status: str) -> HumanReview:
+        conn.execute(
+            """INSERT INTO agent.human_reviews (id, proposal_id, decision, patch, reason, actor_id, idempotency_key)
+               VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING""",
+            (
+                review.id, review.proposal_id, review.decision,
+                json.dumps(review.patch, default=str) if review.patch is not None else None,
+                review.reason, review.actor_id, review.idempotency_key,
+            ),
+        )
+        conn.execute("UPDATE agent.agent_runs SET status=%s, updated_at=now() WHERE id=%s", (run_status, run_id))
+        return review

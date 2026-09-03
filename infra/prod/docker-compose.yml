@@ -94,6 +94,10 @@ services:
       AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
       AGENT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       AGENT_CORE_BASE_URL: http://web:3000
+      # SJWT-FR-001：worker 调用 Core draft-import 时签发Agent身份令牌；
+      # 缺失/无效时进程启动失败（模块级校验，AC-010）。
+      AGENT_SERVICE_JWT_CURRENT: ${AGENT_SERVICE_JWT_CURRENT}
+      AGENT_SERVICE_JWT_PREVIOUS: ${AGENT_SERVICE_JWT_PREVIOUS}
       AGENT_MINIO_ENDPOINT: minio:9000
       AGENT_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       AGENT_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
@@ -118,6 +122,9 @@ services:
     command: celery -A agent.worker.celery_app.celery_app beat --loglevel=info
     environment:
       AGENT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      # beat 与worker共用tasks模块导入（含服务JWT模块级校验，AC-010）。
+      AGENT_SERVICE_JWT_CURRENT: ${AGENT_SERVICE_JWT_CURRENT}
+      AGENT_SERVICE_JWT_PREVIOUS: ${AGENT_SERVICE_JWT_PREVIOUS}
     networks:
       - internal
     depends_on:

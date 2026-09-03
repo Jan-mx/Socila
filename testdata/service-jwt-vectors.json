@@ -1,0 +1,70 @@
+{
+  "description": "09-03 SJWT双向契约向量：Node与Python互验（SJWT-FR-004~006/009）。testSecrets为测试专用固定值，非生产Secret；协议常量与实现模块同源。",
+  "protocol": {
+    "algorithm": "HS256",
+    "ttlSeconds": 300,
+    "clockSkewSeconds": 30
+  },
+  "identities": {
+    "nextToAgent": {
+      "iss": "ssp-next-core",
+      "aud": "policy-agent",
+      "sub": "next-core"
+    },
+    "agentToCore": {
+      "iss": "policy-agent",
+      "aud": "ssp-next-core",
+      "sub": "agent-runtime"
+    }
+  },
+  "testSecrets": {
+    "current": "contract-vector-current-secret-0123456789ab",
+    "previous": "contract-vector-previous-secret-0123456789ab"
+  },
+  "fixedNow": 1760000000,
+  "nodeSigned": {
+    "fixedNow": 1760000000,
+    "ttlSeconds": 300,
+    "generatedBy": "node",
+    "tokens": {
+      "nextCurrent": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzc3AtbmV4dC1jb3JlIiwiYXVkIjoicG9saWN5LWFnZW50Iiwic3ViIjoibmV4dC1jb3JlIiwianRpIjoiMTExMTIyMjItMzMzMy00NDQ0LTg1NTUtNjY2Njc3Nzc4ODg4IiwiaWF0IjoxNzYwMDAwMDAwLCJleHAiOjE3NjAwMDAzMDB9.412-xtevI_ZbMirDTh7Iyg1O6213us-2t4Ehw5Q2pBA",
+      "agentCurrent": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJwb2xpY3ktYWdlbnQiLCJhdWQiOiJzc3AtbmV4dC1jb3JlIiwic3ViIjoiYWdlbnQtcnVudGltZSIsImp0aSI6ImFhYmJjY2RkLWVlZmYtNDAxMi04MzQ1LTY3ODlhYmNkZWYwMSIsImlhdCI6MTc2MDAwMDAwMCwiZXhwIjoxNzYwMDAwMzAwfQ.Wf5r_Tqknlv3IdQ4KW6K8IOaV1eqGRVqwbvFfUqlZr0",
+      "nextPrevious": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzc3AtbmV4dC1jb3JlIiwiYXVkIjoicG9saWN5LWFnZW50Iiwic3ViIjoibmV4dC1jb3JlIiwianRpIjoiZmVkY2JhOTgtNzY1NC00MzIxLTgxMDEtMDk4NzY1NDMyMWFiIiwiaWF0IjoxNzYwMDAwMDAwLCJleHAiOjE3NjAwMDAzMDB9.Rk7poKduJQmx8lihaL-4N1v-jyFT1irOszXI2lAYM1g",
+      "agentPrevious": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJwb2xpY3ktYWdlbnQiLCJhdWQiOiJzc3AtbmV4dC1jb3JlIiwic3ViIjoiYWdlbnQtcnVudGltZSIsImp0aSI6IjBmMGUwZDBjLTBiMGEtNDkwOC04NzA2LTA1MDQwMzAyMDEwZiIsImlhdCI6MTc2MDAwMDAwMCwiZXhwIjoxNzYwMDAwMzAwfQ.UbrLBCzzO0EjHNJQT0IP5U66LPWhELSMDDG9LVOcvPM",
+      "noneToken": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJpc3MiOiJzc3AtbmV4dC1jb3JlIiwiYXVkIjoicG9saWN5LWFnZW50Iiwic3ViIjoibmV4dC1jb3JlIiwianRpIjoiZGVhZGJlZWYtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiaWF0IjoxNzYwMDAwMDAwLCJleHAiOjE3NjAwMDAzMDB9.",
+      "expiredToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzc3AtbmV4dC1jb3JlIiwiYXVkIjoicG9saWN5LWFnZW50Iiwic3ViIjoibmV4dC1jb3JlIiwianRpIjoiZGVhZGJlZWYtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiaWF0IjoxNzU5OTk5NjAwLCJleHAiOjE3NTk5OTk5MDB9.2rYTtOXxY-jkK_XA9x7U-UC6Xol4NeGkbGsNWSxuHEA"
+    },
+    "jtis": {
+      "nextCurrent": "11112222-3333-4444-8555-666677778888",
+      "agentCurrent": "aabbccdd-eeff-4012-8345-6789abcdef01",
+      "nextPrevious": "fedcba98-7654-4321-8101-0987654321ab",
+      "agentPrevious": "0f0e0d0c-0b0a-4908-8706-05040302010f",
+      "expired": "deadbeef-0000-4000-8000-000000000001"
+    }
+  },
+  "pythonSigned": {
+    "fixedNow": 1760000000,
+    "ttlSeconds": 300,
+    "generatedBy": "python",
+    "tokens": {
+      "nextCurrent": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzc3AtbmV4dC1jb3JlIiwiYXVkIjoicG9saWN5LWFnZW50Iiwic3ViIjoibmV4dC1jb3JlIiwianRpIjoiOWE4YjdjNmQtNWU0Zi00YTNiLThjMmQtMWUwZjlhOGI3YzZkIiwiaWF0IjoxNzYwMDAwMDAwLCJleHAiOjE3NjAwMDAzMDB9.HLMoXyxq72sd2Qb98M0u-peXl1QNfhxIkN3MFp07I_s",
+      "agentCurrent": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJwb2xpY3ktYWdlbnQiLCJhdWQiOiJzc3AtbmV4dC1jb3JlIiwic3ViIjoiYWdlbnQtcnVudGltZSIsImp0aSI6IjVlNGQzYzJiLTFhMDktNGY4ZS04ZDdjLTZiNWE0OTM4MjcxNiIsImlhdCI6MTc2MDAwMDAwMCwiZXhwIjoxNzYwMDAwMzAwfQ.fsyQhXzgaZ0SY_LkYAGOvvwkLb768rV3ccye3Z6Ds-w",
+      "nextPrevious": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzc3AtbmV4dC1jb3JlIiwiYXVkIjoicG9saWN5LWFnZW50Iiwic3ViIjoibmV4dC1jb3JlIiwianRpIjoiMmIxYTA5ZjgtZTdkNi00YzViLThhNDktMzgyNzE2MDU5NDgzIiwiaWF0IjoxNzYwMDAwMDAwLCJleHAiOjE3NjAwMDAzMDB9.JRLyGI84GiM628qmJDlr2TXUaswrmg5imDkuD3aFtI4",
+      "agentPrevious": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJwb2xpY3ktYWdlbnQiLCJhdWQiOiJzc3AtbmV4dC1jb3JlIiwic3ViIjoiYWdlbnQtcnVudGltZSIsImp0aSI6IjdmNmU1ZDRjLTNiMmEtNDE5OC04ODc2LTY1NTQ0MzMyMjExMCIsImlhdCI6MTc2MDAwMDAwMCwiZXhwIjoxNzYwMDAwMzAwfQ.1b5SLkjMi50jZwwgJTyhE2vW1t8d7hnQxLEtDx3jSeg",
+      "expiredToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzc3AtbmV4dC1jb3JlIiwiYXVkIjoicG9saWN5LWFnZW50Iiwic3ViIjoibmV4dC1jb3JlIiwianRpIjoiYmFkYmFkYmEtZGJhMC00YmFkLThiYWQtYmFkYmFkYmFkMDQyIiwiaWF0IjoxNzU5OTk5NjAwLCJleHAiOjE3NTk5OTk5MDB9.9GgvkRX-EknWwAsjC3MHUAGqbWUvmhdZfcTR1OwHdOI"
+    },
+    "jtis": {
+      "nextCurrent": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+      "agentCurrent": "5e4d3c2b-1a09-4f8e-8d7c-6b5a49382716",
+      "nextPrevious": "2b1a09f8-e7d6-4c5b-8a49-382716059483",
+      "agentPrevious": "7f6e5d4c-3b2a-4198-8876-655443322110",
+      "expired": "badbadba-dba0-4bad-8bad-badbadbad042"
+    }
+  },
+  "rejectVectors": {
+    "algNoneToken": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJpc3MiOiJzc3AtbmV4dC1jb3JlIiwiYXVkIjoicG9saWN5LWFnZW50Iiwic3ViIjoibmV4dC1jb3JlIiwianRpIjoiZGVhZGJlZWYtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiaWF0IjoxNzYwMDAwMDAwLCJleHAiOjE3NjAwMDAzMDB9.",
+    "expiredToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzc3AtbmV4dC1jb3JlIiwiYXVkIjoicG9saWN5LWFnZW50Iiwic3ViIjoibmV4dC1jb3JlIiwianRpIjoiYmFkYmFkYmEtZGJhMC00YmFkLThiYWQtYmFkYmFkYmFkMDQyIiwiaWF0IjoxNzU5OTk5NjAwLCJleHAiOjE3NTk5OTk5MDB9.9GgvkRX-EknWwAsjC3MHUAGqbWUvmhdZfcTR1OwHdOI",
+    "wrongDirectionAgentAsNext": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJwb2xpY3ktYWdlbnQiLCJhdWQiOiJzc3AtbmV4dC1jb3JlIiwic3ViIjoiYWdlbnQtcnVudGltZSIsImp0aSI6IjVlNGQzYzJiLTFhMDktNGY4ZS04ZDdjLTZiNWE0OTM4MjcxNiIsImlhdCI6MTc2MDAwMDAwMCwiZXhwIjoxNzYwMDAwMzAwfQ.fsyQhXzgaZ0SY_LkYAGOvvwkLb768rV3ccye3Z6Ds-w",
+    "wrongDirectionNextAsAgent": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzc3AtbmV4dC1jb3JlIiwiYXVkIjoicG9saWN5LWFnZW50Iiwic3ViIjoibmV4dC1jb3JlIiwianRpIjoiMTExMTIyMjItMzMzMy00NDQ0LTg1NTUtNjY2Njc3Nzc4ODg4IiwiaWF0IjoxNzYwMDAwMDAwLCJleHAiOjE3NjAwMDAzMDB9.412-xtevI_ZbMirDTh7Iyg1O6213us-2t4Ehw5Q2pBA"
+  }
+}

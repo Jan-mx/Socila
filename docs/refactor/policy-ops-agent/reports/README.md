@@ -22,6 +22,7 @@
 | `feature-09-02-auth/` | 用户与管理员双角色鉴权Feature验收 |
 | `stage-09-03-pre-merge-release/` | P0合并质量门禁与v0.2.0发布阶段验收（六job门禁、镜像加固、Secret/Trivy/Gitleaks、发布治理） |
 | `stage-09-03-runtime-config-remediation/` | 09-03本地运行配置与凭据整改阶段验收（环境加载统一、模板收口、一次性引导、新鲜备份+真实恢复对账、口令轮换与对账） |
+| `feature-09-03-service-jwt/` | Core与Agent双向服务JWT鉴权Feature验收（HS256双向、双Secret轮换、JTI同事务重放保护、401/503统一语义、跨语言契约向量、双向Compose冒烟） |
 | `documentation/` | 文档体系和补充决策验收 |
 | `traceability.md` | 需求、实现、测试和报告追踪 |
 

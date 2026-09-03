@@ -9,9 +9,13 @@ from ..config import get_settings
 from ..errors import classify_error
 from ..graph.runner import build_policyops_graph
 from ..repositories import PostgresRepositories
+from ..security.service_jwt import validate_service_jwt_secrets
 from .celery_app import celery_app
 
 _settings = get_settings()
+# SJWT-FR-001/AC-010：Worker/Beat 进程调用 Core 时签发Agent身份令牌；
+# Secret缺失/无效 → 模块导入失败 → 容器启动失败（绝不回退Header信任，NFR-004）。
+validate_service_jwt_secrets(_settings.service_jwt_current, _settings.service_jwt_previous or None)
 
 
 def _postgres_repos() -> PostgresRepositories:

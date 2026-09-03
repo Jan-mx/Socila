@@ -72,6 +72,19 @@ docker compose -f infra/prod/docker-compose.yml logs --tail 100 web agent worker
 6. 重建服务；Compose与宿主migration各执行两次确认幂等；`/api/health`、`/internal/health`与容器健康检查全部通过。
 7. 轮换后逐表行数对账必须与备份前基线一致；不一致即按恢复流程回滚并上报。
 
+### 服务JWT Secret轮换runbook（09-03 SJWT-FR-007）
+
+current/previous双Secret支持无中断轮换，严格串行，任何一步失败即停止并恢复原状：
+
+1. 生成新Secret（≥32随机字节、URL安全）只保存在私有env文件；任何日志、报告、argv不得出现明文；临时轮换文件用完即删。
+2. 更新全部四个消费者（web/agent/worker/beat）到同一组值：`AGENT_SERVICE_JWT_PREVIOUS`=旧current、`AGENT_SERVICE_JWT_CURRENT`=新Secret；不得有服务停留在旧值。
+3. 按依赖顺序重启服务（web、agent、worker、beat）；模块级校验（SJWT-AC-010）保证缺失或无效值时进程启动失败，不存在带病运行的服务。
+4. 重启后执行双向冒烟：`/internal/health`豁免可用、双向合法调用200、缺失/伪造/错误方向统一401、一次业务写JTI入台账；存量旧令牌在TTL 300秒+30秒偏差窗口内经`previous`继续通过验证。
+5. 旧令牌窗口完全过期（≥5.5分钟）后，清空`AGENT_SERVICE_JWT_PREVIOUS`并再次重启四个服务。
+6. `previous`命中只进入内部指标（签发/验证/401/重放计数），不向客户端输出；连续鉴权失败或重放在短窗口内超过阈值时按安全告警处理，不自动轮换Secret。
+
+重放表在消费时机会式清理过期行，无需独立维护任务；两端migration（drizzle/0009、agent 0007）均可安全重跑；`agent.migrate --with-roles`重跑会自动重建`agent_app`角色对`agent.service_jwt_replays`的最小读写授权。回退旧镜像时保留两个重放表，不得删表或清理已记录JTI（SJWT §9）。
+
 ## 故障处理
 
 | 故障 | 处理 |
@@ -85,9 +98,9 @@ docker compose -f infra/prod/docker-compose.yml logs --tail 100 web agent worker
 
 ## 服务器部署门禁
 
-1. 准备服务器Secret和离机备份目标；`AUTH_REFRESH_PEPPER`是Compose必填变量（`:?`插值，缺失即拒绝启动），且必须与`NEXTAUTH_SECRET`为不同值（应用启动时二次拒绝相同值，ADR-0007）。
+1. 准备服务器Secret和离机备份目标；`AUTH_REFRESH_PEPPER`是Compose必填变量（`:?`插值，缺失即拒绝启动），且必须与`NEXTAUTH_SECRET`为不同值（应用启动时二次拒绝相同值，ADR-0007）；`AGENT_SERVICE_JWT_CURRENT`在web/agent/worker/beat四个服务必填（≥32 UTF-8字节，缺失、无效或与previous相同即启动失败，SJWT-AC-010），`AGENT_SERVICE_JWT_PREVIOUS`可选（双窗口轮换）。
 2. 验证Compose配置（`docker compose --env-file .env config`）、镜像版本、网络、资源和健康检查。
-3. 执行migration（含0008_auth_identity），再执行`node scripts/bootstrap-admin.mjs`幂等引导Jan管理员，然后启动完整服务。
+3. 执行migration（含0008_auth_identity与0009_service_jwt_replays；Agent侧重放表由migrate服务随`agent.migrate --with-roles`应用0007并重建`agent_app`最小授权），再执行`node scripts/bootstrap-admin.mjs`幂等引导Jan管理员，然后启动完整服务。
 4. 运行登录、规划、Agent、RAG、Worker和Beat冒烟；登录冒烟使用引导账号经`/login`（数据库事实），环境凭据仅服务一次性引导。
 5. 执行一次备份及恢复验证。
 6. 记录域名、HTTPS、部署版本（当前代码基线v0.2.0：PolicyOps+Auth）、恢复点和实际耗时。

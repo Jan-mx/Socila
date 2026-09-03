@@ -10,13 +10,21 @@
  */
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
-import { db, withTransaction } from "@/lib/db";
+import { withTransaction } from "@/lib/db";
 import {
   agentMaterializations,
   params as paramsTable,
   rules as rulesTable,
   tests as testsTable,
 } from "@/lib/db/schema";
+import type { ServiceJwtClaims } from "@/lib/security/service-jwt";
+import {
+  JtiReplayConflictError,
+  ServiceAuthStoreUnavailableError,
+  consumeServiceJwtJti,
+} from "../infrastructure/drizzle/service-jwt-replay.repository";
+
+export { JtiReplayConflictError, ServiceAuthStoreUnavailableError };
 
 const CitationSchema = z.object({
   document_version_id: z.string().min(1),
@@ -99,10 +107,15 @@ export interface MaterializeResult {
   draft_ids: { rules: number[]; params: number[]; tests: number[] };
 }
 
-/** Core 物化（唯一允许的 Agent 写路径；只能创建 draft）。 */
+/** Core 物化（唯一允许的 Agent 写路径；只能创建 draft）。
+ *
+ * @param serviceJwtClaims 验证通过的Agent身份claims（SJWT-FR-008）：提供时JTI消费、
+ *   业务幂等检查、draft写入与agent_materializations台账收敛到同一事务（PRD §6.2/§6.4）。
+ */
 export async function materializeDraftBundle(
   rawBundle: DraftBundleInput,
   actor: string,
+  serviceJwtClaims?: ServiceJwtClaims,
 ): Promise<MaterializeResult> {
   // z.input 下带默认值的字段可能缺省——统一补齐。
   const bundle = {
@@ -113,48 +126,56 @@ export async function materializeDraftBundle(
     test_drafts: rawBundle.test_drafts ?? [],
     citations: rawBundle.citations ?? [],
   };
-  // 幂等（AC-005）：同键返回首次结果。
-  const existing = await db
-    .select()
-    .from(agentMaterializations)
-    .where(eq(agentMaterializations.idempotencyKey, bundle.idempotency_key))
-    .limit(1);
-  if (existing.length > 0) {
-    return {
-      idempotent: true,
-      proposal_id: existing[0].proposalId,
-      draft_ids: (existing[0].draftIds as MaterializeResult["draft_ids"]) ?? {
-        rules: [],
-        params: [],
-        tests: [],
-      },
-    };
-  }
 
-  // AC-006：基准快照已变化 → 拒绝并要求重新分析。
-  if (bundle.base_snapshot_id) {
-    const { policySnapshots } = await import("@/lib/db/schema");
-    const current = await db
-      .select({ id: policySnapshots.id })
-      .from(policySnapshots)
-      .where(
-        and(
-          eq(policySnapshots.jurisdictionCode, bundle.jurisdiction_code ?? "310000"),
-          eq(policySnapshots.id, bundle.base_snapshot_id),
-        ),
-      )
-      .limit(1);
-    if (current.length === 0) {
-      throw new MaterializationRejected(
-        409,
-        "stale-snapshot",
-        "基准快照已变化，提案需重新运行影响分析",
-      );
+  // SJWT-FR-008/§6.4 接收方顺序：验证(路由完成)→BEGIN→删过期→插JTI→业务写(含幂等)
+  // →台账→COMMIT。JTI冲突/业务失败 → 整体回滚（JTI也回滚，AC-012/013）。
+  const result = await withTransaction(async (tx): Promise<MaterializeResult> => {
+    if (serviceJwtClaims) {
+      const consumed = await consumeServiceJwtJti(tx, serviceJwtClaims);
+      if (!consumed) throw new JtiReplayConflictError(serviceJwtClaims.jti);
     }
-  }
 
-  // Core 独立二次校验（DRF-FR-014）：地区、引用、有效期由 Core 重新计算/确认。
-  const draftIds = await withTransaction(async (tx) => {
+    // 幂等（AC-005）：同键返回首次结果（与JTI同事务，先于业务写）。
+    const existing = await tx
+      .select()
+      .from(agentMaterializations)
+      .where(eq(agentMaterializations.idempotencyKey, bundle.idempotency_key))
+      .limit(1);
+    if (existing.length > 0) {
+      return {
+        idempotent: true,
+        proposal_id: existing[0].proposalId,
+        draft_ids: (existing[0].draftIds as MaterializeResult["draft_ids"]) ?? {
+          rules: [],
+          params: [],
+          tests: [],
+        },
+      };
+    }
+
+    // AC-006：基准快照已变化 → 拒绝并要求重新分析（失败抛出→JTI随事务回滚）。
+    if (bundle.base_snapshot_id) {
+      const { policySnapshots } = await import("@/lib/db/schema");
+      const current = await tx
+        .select({ id: policySnapshots.id })
+        .from(policySnapshots)
+        .where(
+          and(
+            eq(policySnapshots.jurisdictionCode, bundle.jurisdiction_code ?? "310000"),
+            eq(policySnapshots.id, bundle.base_snapshot_id),
+          ),
+        )
+        .limit(1);
+      if (current.length === 0) {
+        throw new MaterializationRejected(
+          409,
+          "stale-snapshot",
+          "基准快照已变化，提案需重新运行影响分析",
+        );
+      }
+    }
+
+    // Core 独立二次校验的写入（DRF-FR-014）：draft写入与台账同事务。
     const ruleIds: number[] = [];
     const paramIds: number[] = [];
     const testIds: number[] = [];
@@ -221,21 +242,24 @@ export async function materializeDraftBundle(
         .returning({ id: testsTable.id });
       testIds.push(rows[0].id);
     }
-    return { rules: ruleIds, params: paramIds, tests: testIds };
+
+    const draftIds = { rules: ruleIds, params: paramIds, tests: testIds };
+    // agent_materializations台账同事务（PRD §6.2）：业务回滚时台账不残留。
+    await tx.insert(agentMaterializations).values({
+      idempotencyKey: bundle.idempotency_key,
+      proposalId: bundle.proposal_id,
+      runId: bundle.run_id,
+      status: "draft",
+      draftIds: draftIds as unknown as Record<string, unknown>,
+    });
+
+    return { idempotent: false, proposal_id: bundle.proposal_id, draft_ids: draftIds };
   });
 
   console.info(
-    `[materialize] proposal=${bundle.proposal_id} actor=${actor} rules=${draftIds.rules.length} params=${draftIds.params.length} tests=${draftIds.tests.length}`,
+    `[materialize] proposal=${bundle.proposal_id} actor=${actor} rules=${result.draft_ids.rules.length} params=${result.draft_ids.params.length} tests=${result.draft_ids.tests.length}`,
   );
-  await db.insert(agentMaterializations).values({
-    idempotencyKey: bundle.idempotency_key,
-    proposalId: bundle.proposal_id,
-    runId: bundle.run_id,
-    status: "draft",
-    draftIds: draftIds as unknown as Record<string, unknown>,
-  });
-
-  return { idempotent: false, proposal_id: bundle.proposal_id, draft_ids: draftIds };
+  return result;
 }
 
 /** Schema 解析失败 → 422；非 draft 状态 → 403 安全事件。 */

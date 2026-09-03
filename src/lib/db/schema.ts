@@ -215,6 +215,18 @@ export const agentMaterializations = pgTable("agent_materializations", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// ─── 服务JWT重放表（09-03 SJWT-FR-008，PRD §7.1）────────────────────────────
+// JTI唯一消费：与draft物化业务写同事务；仅存UUID与claims元数据，不存令牌/签名。
+
+export const serviceJwtReplays = pgTable("service_jwt_replays", {
+  jti: uuid("jti").primaryKey(),
+  issuer: text("issuer").notNull(),
+  subject: text("subject").notNull(),
+  audience: text("audience").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Showcase Cases ────────────────────────────────────────────────────────
 
 export const showcaseCases = pgTable("showcase_cases", {

@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     core_base_url: str = "http://localhost:3000"
     core_service_name: str = "agent-runtime"
     core_timeout_seconds: float = 10.0
+    # 服务JWT（SJWT-FR-001）：与Web共用同名Secret变量；current必填≥32字节，
+    # previous可选（轮换期验证旧签名）。缺失或无效时生产装配启动失败（AC-010）。
+    service_jwt_current: str = ""
+    service_jwt_previous: str = ""
     # 工作流
     workflow_version: str = "policyops-graph-v1"
     max_verify_retries: int = 2

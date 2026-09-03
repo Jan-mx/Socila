@@ -204,7 +204,8 @@ jobs:
 
   # PMG-FR-024：构建 web:latest 与 agent:latest；合成 env + 临时卷启动
   # proxy/web/agent/worker/beat/postgres/redis/minio；检查 /api/health 与
-  # /internal/health；无条件 docker compose down -v。
+  # /internal/health；SJWT-AC-017 双向服务JWT冒烟（合法调用通过、伪造服务名失败）；
+  # 无条件 docker compose down -v。
   # PMG-FR-029：Trivy 0.74.0 扫描两个最终运行镜像（结果属于本门禁）。
   container-gates:
     name: container-gates
@@ -232,8 +233,10 @@ jobs:
           NEXTAUTH_URL=http://localhost
           ADMIN_USERNAME=ci-admin
           ADMIN_PASSWORD_HASH=$2a$12$abcdefghijklmnopqrstuv0123456789012345678901234567890
-          AGENT_SERVICE_JWT_CURRENT=ci-synthetic-jwt-current
-          AGENT_SERVICE_JWT_PREVIOUS=ci-synthetic-jwt-previous
+          # SJWT-FR-001/NFR-003/AC-010：合成Secret必须≥32 UTF-8字节，否则
+          # web/agent/worker/beat 启动失败（模块级强制校验）。
+          AGENT_SERVICE_JWT_CURRENT=ci-synthetic-jwt-current-secret-0123456789ab
+          AGENT_SERVICE_JWT_PREVIOUS=ci-synthetic-jwt-previous-secret-0123456789ab
           OPENAI_API_KEY=ci-synthetic-openai
           OPENAI_URL=http://localhost:9
           OPENAI_MODEL=ci-model
@@ -293,6 +296,89 @@ jobs:
             fi
             echo "OK: $c health=healthy"
           done
+      - name: core migration for SJWT smoke (compose postgres via published port)
+        env:
+          DATABASE_URL: postgresql://ci_postgres:ci-synthetic-pg-pw@localhost:5432/policyops_ci
+        run: npm run db:migrate
+      # SJWT-AC-017：完整Compose启动后双向合法调用通过、伪造服务名失败。
+      # 从agent容器验证：health豁免、业务端点缺JWT/仅X-Service-Name统一401、
+      # 合法Next→Agent 200、合法Agent→Core物化200入台账、同JTI重放401、错误方向401。
+      - name: SJWT-AC-017 smoke (bidirectional legal calls pass, forged service name fails)
+        working-directory: infra/prod
+        run: |
+          docker compose --env-file .ci.env exec -T agent python - <<'PY'
+          import json, os, time, urllib.request, urllib.error, uuid
+          import jwt as pyjwt
+
+          secret = os.environ["AGENT_SERVICE_JWT_CURRENT"].encode("utf-8")
+          now = int(time.time())
+
+          def sign(iss, aud, sub):
+              return pyjwt.encode(
+                  {"iss": iss, "aud": aud, "sub": sub, "jti": str(uuid.uuid4()),
+                   "iat": now, "exp": now + 300},
+                  secret, algorithm="HS256", headers={"typ": "JWT"},
+              )
+
+          def call(url, headers=None, body=None):
+              data = json.dumps(body).encode("utf-8") if body is not None else None
+              req = urllib.request.Request(
+                  url, data=data, headers=dict(headers or {}),
+                  method="POST" if body is not None else "GET")
+              if body is not None:
+                  req.add_header("Content-Type", "application/json")
+              try:
+                  with urllib.request.urlopen(req, timeout=10) as r:
+                      return r.status, json.loads(r.read().decode("utf-8") or "null")
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read().decode("utf-8") or "null")
+
+          # 1) /internal/health 唯一免JWT内部端点。
+          s, b = call("http://127.0.0.1:8100/internal/health")
+          assert s == 200 and b == {"status": "ok"}, (s, b)
+          # 2) 业务端点无JWT → 统一401。
+          s, b = call("http://127.0.0.1:8100/internal/ready")
+          assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
+          # 3) 仅X-Service-Name、无JWT → 401（Header不参与鉴权，SJWT-FR-006）。
+          s, b = call("http://127.0.0.1:8100/internal/ready", {"X-Service-Name": "next-core"})
+          assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
+          # 4) 合法Next→Agent调用（Next身份令牌）→ 200。
+          next_tok = sign("ssp-next-core", "policy-agent", "next-core")
+          s, b = call("http://127.0.0.1:8100/internal/ready", {"Authorization": "Bearer " + next_tok})
+          assert s == 200 and b == {"status": "ready"}, (s, b)
+
+          bundle = {
+              "proposal_id": "smoke-prop", "run_id": "smoke-run",
+              "idempotency_key": "smoke-key-1", "base_snapshot_id": None,
+              "jurisdiction_code": "310000", "effective_from": "2026-01-01", "status": "draft",
+              "rule_drafts": [{"temp_id": "t1", "rule_id": "R-SMOKE-1", "name": "smoke",
+                                "decision_table": {"hit_policy": "first", "rows": []},
+                                "effective_from": "2026-01-01",
+                                "citations": [{"document_version_id": "dv-smoke", "path": "/doc"}],
+                                "parameter_refs": []}],
+          }
+          draft_url = "http://web:3000/api/internal/v1/draft-imports"
+          # 5) Agent→Core：仅X-Service-Name（伪造服务名）→ 401。
+          s, b = call(draft_url, {"X-Service-Name": "agent-runtime"}, bundle)
+          assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
+          # 6) 合法Agent→Core调用（Agent身份令牌）→ 200且台账入库。
+          agent_tok = sign("policy-agent", "ssp-next-core", "agent-runtime")
+          s, b = call(draft_url, {"Authorization": "Bearer " + agent_tok,
+                                  "X-Service-Name": "agent-runtime"}, bundle)
+          assert s == 200 and b["idempotent"] is False, (s, b)
+          # 7) 同JTI重放 → 401且无业务副作用（SJWT-FR-008）。
+          s, b = call(draft_url, {"Authorization": "Bearer " + agent_tok,
+                                  "X-Service-Name": "agent-runtime"},
+                      {**bundle, "idempotency_key": "smoke-key-2"})
+          assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
+          # 8) 错误方向（Next身份令牌到Core）→ 401。
+          wrong = sign("ssp-next-core", "policy-agent", "next-core")
+          s, b = call(draft_url, {"Authorization": "Bearer " + wrong,
+                                  "X-Service-Name": "agent-runtime"},
+                      {**bundle, "idempotency_key": "smoke-key-3"})
+          assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
+          print("SJWT-AC-017 smoke: OK")
+          PY
       - name: compose down -v (unconditional)
         if: always()
         working-directory: infra/prod

@@ -1,7 +1,7 @@
 # Core与Agent双向服务JWT鉴权 Feature PRD
 
 > Author: Jan
-> Status: Approved
+> Status: Active
 > Updated: 2026-09-03
 
 ## 文档元数据
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-03-feature-core-agent-service-jwt.md` |
 | 类型 | Feature |
-| 状态 | Approved |
+| 状态 | Active |
 | 前置依赖 | `09-03-stage-runtime-configuration-remediation.md`已Accepted并推送、ADR-0005 |
 | 可并行阶段 | 无；双向协议、Secret和重放存储必须统一交付 |
 | 后续消费者 | PolicyOps审核、Draft物化、远程Personal Demo部署 |
