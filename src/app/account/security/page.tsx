@@ -18,7 +18,7 @@ type ChangeError =
   | "NETWORK";
 
 const ERROR_MESSAGES: Record<ChangeError, string> = {
-  INVALID_INPUT: "新密码至少 12 个字符（不超过 72 个字符）。",
+  INVALID_INPUT: "新密码至少 8 个字符，需包含字母和数字（不超过 72 个字符）。",
   AUTH_REQUIRED: "登录状态已失效，请重新登录。",
   INVALID_CREDENTIALS: "当前密码不正确。",
   AUTH_STORE_UNAVAILABLE: "服务暂时不可用，请稍后重试。",
@@ -154,14 +154,14 @@ export default function AccountSecurityPage() {
                 name="newPassword"
                 type="password"
                 required
-                minLength={12}
+                minLength={8}
                 maxLength={72}
                 autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="w-full rounded-xl border border-border bg-background-elevated px-4 py-3.5 text-[1.04rem] text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
               />
-              <p className="mt-2 text-sm text-muted-foreground">至少 12 个字符</p>
+              <p className="mt-2 text-sm text-muted-foreground">至少 8 个字符，需包含字母和数字</p>
             </div>
 
             <div>

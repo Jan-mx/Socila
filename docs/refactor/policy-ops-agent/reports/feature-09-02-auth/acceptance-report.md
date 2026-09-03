@@ -111,6 +111,10 @@ bash scripts/run-auth-e2e.sh
 - 引导脚本：`scripts/bootstrap-admin.mjs`；E2E：`playwright.config.ts`、`e2e/auth.spec.ts`、`e2e/mock-openai.mjs`、`scripts/run-auth-e2e.sh`
 - 文档：ADR-0007、本文、traceability、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、identity README、runtime.env.example
 
+## 6.1 验收后修订（2026-09-03）
+
+- **密码策略（PRD §10.2 用户修订）**：长度下限 12→8 字节，新增"至少一个字母+一个数字"组合规则。TDD 执行：`domain.test.ts` 密码用例先按新策略改写并确认 Red（3失败），`password.ts` 实现后 Green；注册与改密页面 `minLength` 与提示文案同步；对运行中的本机栈实测：8位无数字/8位无字母/7位均400 `INVALID_INPUT`，8位字母+数字201。门禁复跑：`npm test` 232 passed、ESLint/tsc/build PASS。
+
 ## 7. 遗留风险与需用户授权事项
 
 - 生产（远程）migration、`AUTH_REFRESH_PEPPER` Secret 配置、首次引导执行与入口切换需用户单独授权；本 Feature 仅完成本地/验收库验证。

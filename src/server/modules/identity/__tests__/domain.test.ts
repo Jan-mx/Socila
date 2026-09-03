@@ -75,26 +75,39 @@ describe("username domain rules (AUTH-FR-001, §10.1)", () => {
 
 // ─── 密码（§10.2）──────────────────────────────────────────────────────────
 
-describe("password domain rules (§10.2)", () => {
-  it("accepts 12-72 UTF-8 bytes without composition rules", () => {
-    expect(validatePassword("abcdefghijk").ok).toBe(false); // 11 bytes
-    expect(validatePassword("abcdefghijkl").ok).toBe(true); // 12 bytes
-    expect(validatePassword("a".repeat(72)).ok).toBe(true);
-    // 中文 3 字节/字
-    expect(validatePassword("一二三四").ok).toBe(true); // 12 bytes
+describe("password domain rules (§10.2, 2026-09-03 修订)", () => {
+  it("accepts 8-72 UTF-8 bytes containing at least one letter and one digit", () => {
+    expect(validatePassword("abc1234").ok).toBe(false); // 7 bytes
+    expect(validatePassword("abcd1234").ok).toBe(true); // 8 bytes, 字母+数字
+    expect(validatePassword("a".repeat(71) + "1").ok).toBe(true); // 72 bytes
+  });
+
+  it("requires letters and digits (weak composition rejected)", () => {
+    const noDigit = validatePassword("abcdefgh");
+    const noLetter = validatePassword("12345678");
+    expect(noDigit.ok).toBe(false); // 无数字
+    if (!noDigit.ok) expect(noDigit.reason).toBe("weak_composition");
+    expect(noLetter.ok).toBe(false); // 无字母
+    if (!noLetter.ok) expect(noLetter.reason).toBe("weak_composition");
   });
 
   it("rejects over-72-byte passwords without truncation", () => {
-    const result = validatePassword("a".repeat(73));
+    const result = validatePassword("a".repeat(72) + "1");
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("too_long");
   });
 
   it("counts UTF-8 bytes, not characters", () => {
-    // 4 字符 × 3 字节 = 12 → 合法
-    expect(validatePassword("一二三四").ok).toBe(true);
-    // 3 汉字 ×3 字节 + 2 ASCII = 11 字节 → 不合法
-    expect(validatePassword("一二三ab").ok).toBe(false);
+    // 3 汉字 ×3 字节 + 2 ASCII = 11 字节，含字母与数字 → 合法
+    expect(validatePassword("一二三a1").ok).toBe(true);
+    // 2 汉字 ×3 字节 + 2 ASCII = 8 字节 → 合法
+    expect(validatePassword("一二a1").ok).toBe(true);
+    // 7 字节 → 不合法
+    expect(validatePassword("一二a").ok).toBe(false);
+  });
+
+  it("rejects empty input", () => {
+    expect(validatePassword("").ok).toBe(false);
   });
 });
 

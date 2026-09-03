@@ -19,7 +19,7 @@ type RegisterError =
 
 const ERROR_MESSAGES: Record<RegisterError, string> = {
   INVALID_INPUT:
-    "用户名需 3-32 位，仅限字母、数字、_ 或 -；密码至少 12 个字符。",
+    "用户名需 3-32 位，仅限字母、数字、_ 或 -；密码至少 8 位，需包含字母和数字。",
   USERNAME_TAKEN: "该用户名已被占用，请换一个。",
   RATE_LIMITED: "注册尝试过于频繁，请一小时后再试。",
   FORBIDDEN: "请求来源不受支持。",
@@ -128,14 +128,14 @@ export default function RegisterPage() {
                 name="password"
                 type="password"
                 required
-                minLength={12}
+                minLength={8}
                 maxLength={72}
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-xl border border-border bg-background-elevated px-4 py-3.5 text-[1.04rem] text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
               />
-              <p className="mt-2 text-sm text-muted-foreground">至少 12 个字符</p>
+              <p className="mt-2 text-sm text-muted-foreground">至少 8 个字符，需包含字母和数字</p>
             </div>
 
             <div>
