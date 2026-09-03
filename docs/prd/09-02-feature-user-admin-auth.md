@@ -415,6 +415,17 @@ HTML页面可将这些错误映射为用户可理解文案，但服务端错误�
 - 回退期间新注册用户无法登录属于已知限制，不得通过双写密码或降低安全规则解决。
 - 任何远程/生产migration、Secret增加或轮换、入口切换都需要用户单独授权。
 
+### 11.5 本机Docker环境开通（2026-09-03 已完成）
+
+当前定位为**仅本机开发环境**，暂无远程服务器部署需求；本节记录本机栈的双角色开通事实与步骤，远程部署时按`服务器部署门禁`重走并在服务器环境重新执行。
+
+- **镜像**：`web:latest` 已按本Feature代码重建（旧镜像为环境管理员+匿名会话形态，不得继续使用）；compose 引用 `web:latest` tag。
+- **Secret**：`AUTH_REFRESH_PEPPER` 已写入 `infra/prod/.env`（gitignored），与 `NEXTAUTH_SECRET` 为不同随机值（§12.2）；compose 已透传该变量。
+- **Migration**：`drizzle/0008_auth_identity.sql` 已在本机 `socila-postgres`（pgvector/pgvector:pg17，宿主5432，库policyops）执行两次验证幂等；纯新增，既有数据未动。
+- **管理员引导**：`bootstrap-admin.mjs` 幂等创建 Jan。注意：`.env` 中历史 `ADMIN_PASSWORD_HASH` 为 **bcrypt cost 10**，不满足 §10.2 cost 12，引导脚本拒绝并禁止降级校验；本机改用 **cost 12 一次性临时密码**引导，并将账号置为 `must_change_password`（24小时），首次登录强制在 `/account/security` 自设新密码（§7.5 流程）。
+- **验收容器**：`socila-pg-auth-acceptance`（postgres:17-alpine，宿主5434）为 09-02 验收专用一次性设施，验收完成后已删除，不属于本机常态环境。
+- **开通后验证**（2026-09-03 实测）：`/api/health` ok；匿名 `/chat` 307→`/login?callbackUrl=%2Fchat`；`/admin/login` 308→统一登录；注册返回201且`role=user`；user登录访问管理API 403、访问`/admin/users`页面307→`/chat?error=forbidden`；Jan临时密码登录获得 `role=admin`+`mustChangePassword=true`，管理API 403 `PASSWORD_CHANGE_REQUIRED`、`/chat` 307→`/account/security`。
+
 ## 12. 安全、隐私与可观测
 
 ### 12.1 信任边界
