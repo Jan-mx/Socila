@@ -80,9 +80,11 @@ uv run pytest -m integration
 `testdata/service-jwt-vectors.json` 保存非真实固定向量：同一组claims（固定`fixedNow`）由Node（`jose`）与Python（`PyJWT`）各自独立签名，两端测试套件互验对方签名令牌（iss/aud/sub/jti/iat/exp精确一致、current/previous命中分类），并对全部拒绝向量（`alg=none`、过期、跨方向）在两个方向复验失败；协议常量（HS256/300s/30s）漂移由守卫测试拦截。
 
 ```powershell
-npm test                       # 含 service-jwt.test.ts 与 service-jwt-vectors.contract.test.ts
+npm test                       # 含 service-jwt.test.ts、service-jwt-vectors.contract.test.ts、service-jwt-startup.test.ts 与 service-jwt-config-contract.test.ts
 uv run --project services/agent pytest -m "not integration"   # 含 test_service_jwt.py 与 test_service_jwt_vectors.py
 ```
+
+启动期校验与配置契约（09-03复审缺漏二/四）：`src/lib/security/service-jwt-startup.test.ts` 覆盖Node运行时启动入口`src/instrumentation.ts`——current缺失、少于32 UTF-8字节或与previous相同时`register()`以`process.exit(1)`终止进程（fail-fast，Next 16 standalone中仅抛错不会使进程退出），非Node运行时（edge）不执行校验；`src/lib/env/service-jwt-config-contract.test.ts` 覆盖Compose中web/agent/worker/beat四消费者的`AGENT_SERVICE_JWT_CURRENT`必填插值（`:?`，缺失或空值时`docker compose config`失败）、`AGENT_SERVICE_JWT_PREVIOUS`可选插值，以及其他服务不含JWT变量、根`.env.example`声明两个变量且current占位符≥32字节。真实启动拒绝以standalone产物验证（D2无JWT→退出码1+拒绝消息；E2合法合成Secret→进程存活），见验收报告§7.4。
 
 ## 服务JWT跨语言契约（09-03 SJWT）
 

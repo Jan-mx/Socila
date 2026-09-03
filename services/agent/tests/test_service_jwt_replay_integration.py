@@ -37,8 +37,8 @@ USED_JTIS: list[str] = []
 
 
 def _jti(tag: int) -> str:
-    """确定性UUID v4（版本/变体位合法），按tag区分，供清理追踪。"""
-    return f"bb11{tag:03d}0-0000-4000-8000-00000000000{tag}"
+    """确定性UUID v4（版本/变体位合法），按tag区分，供清理追踪（支持任意位数tag）。"""
+    return f"bb11{tag:04d}-0000-4000-8000-{tag:012d}"
 
 
 def _claims(jti: str):
@@ -66,6 +66,8 @@ def drill() -> str:
 @pytest.fixture(scope="module", autouse=True)
 def cleanup(drill: str):
     yield
+    # 先按0007幂等DDL恢复重放表（缺表演练若中断/失败，保证后续可用），再清理行。
+    _restore_replay_table(drill)
     with psycopg.connect(drill, autocommit=True) as conn:
         conn.execute(
             "DELETE FROM agent.human_reviews WHERE idempotency_key LIKE 'sjwt-it-py-%'"
@@ -80,6 +82,17 @@ def cleanup(drill: str):
             "DELETE FROM agent.service_jwt_replays WHERE jti = ANY(%s)",
             (list(USED_JTIS),),
         )
+
+
+def _restore_replay_table(drill: str) -> None:
+    """恢复重放表：按0007迁移文件真实DDL重放（幂等，不触碰schema_migrations记录）。"""
+    from pathlib import Path
+
+    sql_path = Path(__file__).resolve().parent.parent / "agent" / "migrations" / "0007_service_jwt_replays.sql"
+    sql = sql_path.read_text(encoding="utf-8")
+    with psycopg.connect(drill, autocommit=True) as conn:
+        for stmt in [s.strip() for s in sql.split("--> statement-breakpoint") if s.strip()]:
+            conn.execute(stmt)
 
 
 def _sign_next(secret: str = CURRENT_SECRET) -> str:
@@ -202,6 +215,7 @@ def test_guard_expired_rows_cleaned_opportunistic(drill: str) -> None:
         row = conn.execute(
             "SELECT count(*) FROM agent.service_jwt_replays WHERE jti=%s", (expired_jti,)
         ).fetchone()
+    assert row is not None
     assert row[0] == 0
 
 
@@ -213,6 +227,92 @@ def test_guard_store_unavailable_category(drill: str) -> None:
     with pytest.raises(ServiceAuthStoreUnavailable) as exc:
         guard.with_jti(_claims(_jti(7)), lambda conn: conn.execute("SELECT 1"))
     assert exc.value.public_code == "SERVICE_AUTH_STORE_UNAVAILABLE"
+
+
+# ── 复审缺漏三：重放存储SQL异常精确映射（SJWT-FR-009/AC-013/014）──────────────
+
+
+def test_guard_missing_table_maps_to_store_unavailable(drill: str) -> None:
+    """复审缺漏三（AC-014）：重放表缺失 → ServiceAuthStoreUnavailable（503），不冒泡500。"""
+    from agent.security.replay import PostgresReplayGuard, ServiceAuthStoreUnavailable
+
+    with psycopg.connect(drill, autocommit=True) as conn:
+        conn.execute("DROP TABLE IF EXISTS agent.service_jwt_replays")
+    try:
+        guard = PostgresReplayGuard(drill)
+        with pytest.raises(ServiceAuthStoreUnavailable) as exc:
+            guard.with_jti(_claims(_jti(20)), lambda conn: conn.execute("SELECT 1"))
+        assert exc.value.public_code == "SERVICE_AUTH_STORE_UNAVAILABLE"
+    finally:
+        _restore_replay_table(drill)
+
+
+def test_guard_insufficient_privilege_maps_to_store_unavailable(drill: str) -> None:
+    """复审缺漏三（AC-014）：无表权限角色 → ServiceAuthStoreUnavailable（503），不冒泡500。"""
+    from urllib.parse import urlsplit, urlunsplit
+
+    from agent.security.replay import PostgresReplayGuard, ServiceAuthStoreUnavailable
+
+    parts = urlsplit(drill)
+    host = parts.hostname or "localhost"
+    port = f":{parts.port}" if parts.port else ""
+    noperm_url = urlunsplit(
+        ("postgresql", f"sjwt_it_noperm_role:sjwt-it-noperm@{host}{port}", parts.path, "", "")
+    )
+    try:
+        with psycopg.connect(drill, autocommit=True) as conn:
+            conn.execute("DROP ROLE IF EXISTS sjwt_it_noperm_role")
+            conn.execute("CREATE ROLE sjwt_it_noperm_role LOGIN PASSWORD 'sjwt-it-noperm'")
+        guard = PostgresReplayGuard(noperm_url)
+        with pytest.raises(ServiceAuthStoreUnavailable) as exc:
+            guard.with_jti(_claims(_jti(21)), lambda conn: conn.execute("SELECT 1"))
+        assert exc.value.public_code == "SERVICE_AUTH_STORE_UNAVAILABLE"
+    finally:
+        with psycopg.connect(drill, autocommit=True) as conn:
+            conn.execute("DROP ROLE IF EXISTS sjwt_it_noperm_role")
+
+
+def test_guard_business_sql_error_propagates_unwrapped_and_rolls_back_jti(drill: str) -> None:
+    """复审缺漏三（AC-013）：work_fn业务SQL错误不得误包装为存储不可用；
+    JTI同事务回滚，修复业务错误后相同JTI可重新执行。"""
+    from agent.security.replay import PostgresReplayGuard, ServiceAuthStoreUnavailable
+
+    guard = PostgresReplayGuard(drill)
+    jti = _jti(22)
+    claims = _claims(jti)
+
+    def business_sql_error(conn):
+        conn.execute("INSERT INTO nonexistent_business_table (id) VALUES (1)")
+
+    with pytest.raises(psycopg.Error) as exc:
+        guard.with_jti(claims, business_sql_error)
+    assert not isinstance(exc.value, ServiceAuthStoreUnavailable)
+    # JTI已同事务回滚：相同JTI重新执行成功。
+    guard.with_jti(claims, lambda conn: conn.execute("SELECT 1"))
+
+
+async def test_route_missing_table_returns_503(drill: str) -> None:
+    """复审缺漏三（SJWT-FR-009/AC-014）：重放表缺失 → 503 SERVICE_AUTH_STORE_UNAVAILABLE + no-store。"""
+    from agent.security.replay import PostgresReplayGuard
+
+    with psycopg.connect(drill, autocommit=True) as conn:
+        conn.execute("DROP TABLE IF EXISTS agent.service_jwt_replays")
+    try:
+        app = _build_app(drill, PostgresReplayGuard(drill))
+        client = _client(app)
+        res = await client.post(
+            "/internal/v1/agent-runs",
+            json={"as_of_date": "2026-01-01", "payload": {}},
+            headers={
+                "Authorization": f"Bearer {_sign_next()}",
+                "Idempotency-Key": "sjwt-it-py-503-missing-table",
+            },
+        )
+        assert res.status_code == 503
+        assert res.json() == {"error": "SERVICE_AUTH_STORE_UNAVAILABLE"}
+        assert res.headers.get("cache-control") == "no-store"
+    finally:
+        _restore_replay_table(drill)
 
 
 # ── FastAPI 真实装配（Next→Agent方向，SJWT-FR-004/006/AC-015）────────────────
@@ -398,12 +498,16 @@ def test_create_review_in_tx_same_transaction_with_jti(drill: str) -> None:
 
     review = guard.with_jti(claims, review_work)
     with psycopg.connect(drill, autocommit=True) as conn:
-        status = conn.execute(
+        status_row = conn.execute(
             "SELECT status FROM agent.agent_runs WHERE id=%s", (run_id,)
-        ).fetchone()[0]
-        count = conn.execute(
+        ).fetchone()
+        count_row = conn.execute(
             "SELECT count(*) FROM agent.human_reviews WHERE idempotency_key='sjwt-it-py-review'"
-        ).fetchone()[0]
+        ).fetchone()
+    assert status_row is not None
+    assert count_row is not None
+    status = status_row[0]
+    count = count_row[0]
     assert status == "approved"
     assert count == 1
     assert review.decision == "approve"

@@ -4,31 +4,32 @@
 > Executor: Agent
 > Status: PASS
 > Date: 2026-09-03
-> PRD: `docs/prd/09-03-stage-runtime-configuration-remediation.md`（CFG-FR-001～010、CFG-NFR-001～006、CFG-AC-001～012）
+> PRD: `docs/prd/09-03-stage-runtime-configuration-remediation.md`（CFG-FR-001～010、CFG-NFR-001～007、CFG-AC-001～013）
 > 分支：`refactor/policy-ops-agent-platform`
 
 ## 1. 结论
 
-本地运行配置与凭据管理已统一：宿主与Compose各自持有单一私有env源，共享加载器语义一致（`.env.local`优先、`.env`回退、进程变量永不覆盖）；模板与入口收口完成；管理员引导一次性化；PostgreSQL口令在新鲜备份经PG17+pgvector真实恢复对账后完成轮换，轮换前后逐表数据对账一致（34表/1610行）。全部PRD规定门禁取得本地新鲜结果，全部退出0、零skip。**阶段判定：PASS，PRD状态Approved→Active。**
+本地运行配置与凭据管理已统一：宿主与Compose各自持有单一私有env源，共享加载器语义一致（`.env.local`优先、`.env`回退、进程变量永不覆盖）；模板与入口收口完成；管理员引导一次性化；PostgreSQL口令在新鲜备份经PG17+pgvector真实恢复对账后完成轮换，轮换前后逐表数据对账一致（34表/1610行）。全部PRD规定门禁取得本地新鲜结果，全部退出0、零skip；2026-09-03复审确认本阶段演练容器无残留。**阶段判定：PASS，PRD状态Approved→Active。**
 
 ## 2. 需求映射（CFG-FR/NFR → 实现与证据）
 
 | 需求 | 实现 | 证据 |
 | --- | --- | --- |
-| CFG-FR-001 单一活动配置源 | 根`.env`删除（先验证无独有键）；宿主仅`.env.local`（localhost:5432），Compose仅`infra/prod/.env`（postgres:5432）；Neon不再被任何活动宿主配置引用 | `config-contract.test.ts`（neon/vercel口径扫描）；`git status`确认根`.env`已删 |
+| CFG-FR-001 单一活动配置源 | 宿主仅`.env.local`（localhost:5432），Compose仅`infra/prod/.env`（postgres:5432）；Neon不再被任何活动宿主配置引用 | `config-contract.test.ts`（neon/vercel口径扫描） |
 | CFG-FR-002 统一加载语义 | 新增`scripts/lib/load-environment.mjs`（显式调用，无import副作用）；`run-migrations.mjs`、`bootstrap-admin.mjs`、`drizzle.config.ts`全部切换，移除`dotenv/config` | `src/lib/env/scripts-load-environment.test.ts`（5个行为用例+3个源码契约） |
-| CFG-FR-003 两运行时共享敏感配置 | `NEXTAUTH_SECRET`与`AUTH_REFRESH_PEPPER`宿主/Compose取值一致（pepper对齐决策见§5） | `infra/prod/.env`与`.env.local`键值比对（执行记录，不落盘输出） |
+| CFG-FR-003 根环境清理 | 根`.env`删除前验证无独有键；宿主所需值已归并到`.env.local`，不保留第二份活动Secret或数据库连接 | `git status`确认根`.env`已删；`config-contract.test.ts` |
 | CFG-FR-004 管理员引导一次性 | `bootstrap-admin.mjs`只读显式进程变量（bcrypt cost 12校验）；Compose web env、`playwright.config.ts`、全部模板移除`ADMIN_*`；运行时登录只查`users`表 | `config-contract.test.ts`（compose web env无ADMIN_*、模板无字面量）；引导×2实测（创建+幂等no-op） |
 | CFG-FR-005/006 备份与恢复演练 | 新鲜`pg_dump -Fc`+SHA-256清单+临时PG17+pgvector容器真实恢复+逐表对账 | §3备份/恢复证据 |
 | CFG-FR-007/008 口令轮换 | ≥32随机字节URL安全口令内存生成；stdin执行`ALTER ROLE`（不进argv）；新口令成功/旧口令拒绝验证；`infra/prod/.env`与`.env.local`原子替换（同目录临时文件+rename，替换前内容校验） | §4轮换证据 |
 | CFG-FR-009 最小权限门禁例外 | 宿主脚本保留loopback门禁；Compose仅`migrate`服务持有`ALLOW_REMOTE_DATABASE=1`（内部DNS `postgres`被视为远程的既成事实），其余8服务零例外 | `config-contract.test.ts`（逐服务断言） |
 | CFG-FR-010 活动入口与模板收口 | 根`.env.example`仅7个活动宿主变量；`infra/prod/.env.example`仅17个Compose插值变量；`runtime.env.example`仅Agent实际消费变量；`vercel.json`删除；`next.config.ts`/README去除Vercel/Neon口径 | `config-contract.test.ts`（键集精确断言） |
 | CFG-NFR-001 最小权限 | 见CFG-FR-009；`agent_app`角色仅经`agent.migrate --with-roles`（强制口令）创建 | DB集成门禁中角色路径执行 |
-| CFG-NFR-002 可恢复 | 恢复演练在临时实例完成，不触碰生产卷；runbook写入OPERATIONS | §3；`OPERATIONS.md`轮换runbook |
-| CFG-NFR-003 不输出Secret | 全程日志/报告仅出现sha256[:12]指纹与长度；口令不经argv、不进env文件以外的持久位置 | 本报告的证据格式即执行格式 |
+| CFG-NFR-002 Secret安全 | 全程日志/报告仅出现sha256[:12]指纹与长度；口令不经argv、不进env文件以外的持久位置 | 本报告的证据格式即执行格式；Secret扫描 |
+| CFG-NFR-003 可恢复 | 恢复演练在临时实例完成，不触碰生产卷；runbook写入OPERATIONS | §3；`OPERATIONS.md`轮换runbook |
 | CFG-NFR-004 幂等 | migration×2、引导×2、agent migrate×2均幂等no-op | §6门禁记录 |
-| CFG-NFR-005 可配置性 | `docker compose config --quiet`零插值告警；服务JWT仅保留`AGENT_SERVICE_JWT_CURRENT/PREVIOUS`配置位（本阶段不实现签发/校验） | 门禁记录 |
-| CFG-NFR-006 可测试 | 契约测试覆盖compose/模板/README/脚本；行为测试覆盖加载器5种组合 | 2个新测试文件（8+20断言） |
+| CFG-NFR-005 可审计 | 需求、实现、测试、恢复对账和提交均记录到traceability、PROGRESS与本报告 | `reports/traceability.md`、`PROGRESS.md`、本报告 |
+| CFG-NFR-006 零数据漂移 | 轮换前后live库及恢复库34表/1610行逐表一致 | §3～4逐表对账 |
+| CFG-NFR-007 演练资源清理 | 2026-09-03复审枚举Docker对象，本阶段恢复、DB门禁、E2E演练容器均无残留；`socila-*`容器与持久卷保留 | `docker ps -a`、`docker volume ls`、`docker network ls`复核 |
 
 ## 3. 备份与真实恢复对账证据（轮换前）
 
@@ -73,6 +74,7 @@
 | Auth E2E | 全新PG17 `e2e`库：migration → Jan引导（显式进程变量）→ seed → `SSRP_E2E_DATABASE_URL/NEXTAUTH_SECRET/REFRESH_PEPPER`（secret≠pepper，一次性值）+ `npm run test:e2e:auth` | PASS；10通过（50.4s），含Jan管理员登录、双角色关键流程、被禁用账号拒绝 |
 | Compose | `up -d`重建、`config --quiet`、容器健康 | 8容器全部running、健康检查全healthy；零插值告警 |
 | Secret | `node scripts/scan-secrets.mjs --all` / 默认模式 | 534个跟踪文件无命中；18个候选文件无命中 |
+| 演练资源清理 | Docker容器/卷/网络枚举（2026-09-03复审） | 本阶段任务专属演练容器零残留；保留的`socila-*`容器和持久卷未删除 |
 
 ## 7. 交付物与提交
 

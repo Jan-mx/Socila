@@ -76,6 +76,7 @@
 - **CFG-NFR-004 可重复**：配置解析、migration和健康检查可重复执行且结果一致。
 - **CFG-NFR-005 可审计**：需求、实现、测试、备份恢复和提交存在唯一追踪路径。
 - **CFG-NFR-006 零数据漂移**：整改不得新增、删除或改变任何业务数据。
+- **CFG-NFR-007 演练资源清理**：任何为恢复验证、数据库门禁、Auth E2E或Compose冒烟创建的演练容器，必须使用任务专属名称，并在成功、失败或中断后的`finally`清理中删除；任务创建的匿名卷和临时网络必须同步删除。验收前必须通过`docker ps -a`、`docker volume ls`和`docker network ls`确认零任务残留，且不得删除或重建`socila-*`容器、`socila_pg-data`或`socila_minio-data`。
 
 ## 6. 实现设计
 
@@ -101,6 +102,10 @@ Plain Node脚本使用一个共享加载器；TypeScript脚本复用现有`src/l
 8. 若重建失败，保持数据卷不动，使用新生成口令修复配置；只有数据损坏时才从已验证dump恢复。
 
 轮换助手可以是一次性本地脚本，但必须位于Git忽略目录、不得记录Secret、执行后删除；不得把真实值放入Shell历史、命令参数、补丁、测试快照或报告。
+
+### 6.3 演练资源生命周期
+
+执行Agent必须在创建演练设施前记录本次将创建的容器、卷和网络精确名称，并以`try/finally`、PowerShell`finally`或CI`if: always()`保证清理无条件执行。清理只能作用于该清单中的任务专属资源；清理后重新枚举Docker对象，任一任务资源仍存在都视为验收失败，不得提交或声称完成。
 
 ## 7. 数据模型与不变量
 
@@ -146,6 +151,7 @@ Plain Node脚本使用一个共享加载器；TypeScript脚本复用现有`src/l
 | migration失败 | 保留PostgreSQL和数据卷，停止后续验收 | 查看migration日志并修复门禁/Schema问题 |
 | 数据行数漂移 | 立即停止，不提交 | 从事务/日志确认原因；必要时用已验证dump恢复 |
 | 服务健康失败 | 不声称完成 | 保留数据卷，回滚应用配置并继续使用新数据库口令 |
+| 演练容器/卷/网络清理失败 | 停止验收，不提交 | 按创建清单精确删除并重新枚举；不得扩大到`socila-*`资源 |
 
 ## 12. 交付物
 
@@ -166,6 +172,7 @@ Plain Node脚本使用一个共享加载器；TypeScript脚本复用现有`src/l
 | 数据 | CFG-FR-007/008 | 轮换前后逐表对账 | 表集合和行数无漂移 |
 | 认证 | CFG-FR-004/007 | 用户/admin登录、刷新、管理后台 | 数据库身份路径全部通过 |
 | Compose | CFG-FR-009 | config解析、migration两次、服务重建 | 零插值警告，migration两次退出0，健康服务全部通过 |
+| 资源清理 | CFG-NFR-007 | 恢复、DB门禁、E2E和Compose演练结束或失败 | 任务容器、匿名卷和临时网络零残留，保留的`socila-*`资源不变 |
 | 回归 | CFG-FR-010 | Node、Python、数据库、E2E、构建、安全 | 全部门禁零失败、零未解释skip |
 
 ## 14. 验收场景
@@ -182,13 +189,15 @@ Plain Node脚本使用一个共享加载器；TypeScript脚本复用现有`src/l
 - **CFG-AC-010** Given全部服务重建，When执行Web、Auth、Agent和数据库健康检查，Then全部返回预期成功状态。
 - **CFG-AC-011** Given配置候选提交，When执行Secret和Git忽略检查，Then真实环境、dump、清单和Secret均未进入提交。
 - **CFG-AC-012** Given全部整改完成，When执行适用项目门禁，Then退出码均为0且无未解释skip或warning。
+- **CFG-AC-013** Given任一演练成功、失败或被中断，When进入最终清理阶段，Then该任务创建的容器、匿名卷和临时网络全部被删除，Docker枚举无任务残留，且`socila-*`容器和持久卷未被删除或重建。
 
 ## 15. Definition of Done
 
-- CFG-FR-001～010、CFG-NFR-001～006和CFG-AC-001～012均有实现、测试或运行证据映射。
+- CFG-FR-001～010、CFG-NFR-001～007和CFG-AC-001～013均有实现、测试或运行证据映射。
 - 所有可测试行为先取得失败测试，再完成最小实现；纯私有配置和口令操作以恢复演练与运行验收代替伪单元测试。
 - 新鲜备份和临时恢复在轮换前通过，轮换后数据对账与Auth冒烟通过。
 - Node/Python单元、数据库集成、Auth E2E、TypeScript、ESLint、Build、Compose、Secret扫描全部取得新鲜结果。
+- 所有任务专属演练容器、匿名卷和临时网络完成无条件清理并取得零残留证据。
 - 受影响README在实施时为Updating，验收后恢复Active；ARCHITECTURE、OPERATIONS、traceability和PROGRESS同步。
 - 提交前检查完整staged diff，只创建提交`fix: 统一本地运行配置与凭据管理`并推送当前upstream；不创建PR、不合并main。
 

@@ -88,7 +88,9 @@ def _service_auth_response(status_code: int, error: str) -> JSONResponse:
 
 
 def create_app(deps: AppDeps) -> FastAPI:
-    app = FastAPI(title="PolicyOps Agent Runtime", version="0.1.0", docs_url="/internal/docs")
+    # 复审缺漏一/SJWT-AC-015：关闭全部文档与OpenAPI入口（生产与测试装配一致，
+    # 不新增环境开关）；/internal/health保持唯一免JWT内部端点。
+    app = FastAPI(title="PolicyOps Agent Runtime", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
     def _handle_auth_denied(request: Request, exc: Exception) -> JSONResponse:
         return _service_auth_response(401, "SERVICE_AUTH_INVALID")

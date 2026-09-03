@@ -73,24 +73,57 @@ class PostgresReplayGuard:
         import psycopg
 
         try:
+            conn = psycopg.connect(self._database_url)
+        except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+            # 连接失败：存储不可用，失败关闭（NFR-004），绝不回退Header信任。
+            raise ServiceAuthStoreUnavailable("connect-failed") from exc
+
+        # replay_phase标记重放SQL阶段（连接/事务初始化/删过期/JTI插入）：
+        # 该阶段的连接中断类错误统一映射存储不可用（AC-014）；
+        # work_fn业务阶段的异常一律原样传播，不得包装为存储不可用（AC-013）。
+        replay_phase = True
+        try:
+            with conn.transaction():
+                self._consume_jti(conn, claims)
+                replay_phase = False
+                return work_fn(conn)
+        except JtiReplayConflict:
+            # 重复JTI单独传播（路由映射统一401，FR-008/AC-012），绝不归入存储不可用。
+            raise
+        except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+            if not replay_phase:
+                raise
+            # 重放阶段的连接中断/事务初始化失败：统一存储不可用（AC-014）。
+            raise ServiceAuthStoreUnavailable("store-unavailable") from exc
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _consume_jti(conn: Any, claims: Any) -> None:
+        """重放存储SQL阶段：失败统一映射存储不可用（503，FR-009/AC-014）。
+
+        覆盖删除过期记录失败、JTI插入失败、重放表缺失（42P01）、权限不足（42501）
+        等全部重放存储SQL错误；JtiReplayConflict非psycopg异常，单独传播。
+        work_fn业务异常不属于本阶段，不在本方法的映射范围内。
+        """
+        import psycopg
+
+        try:
             # 机会式删除过期记录（§7.3）：失败会回滚本事务并按存储不可用处理，
             # 绝不绕过下方当前JTI的唯一插入。JTI插入与业务写入同事务提交/回滚。
-            with psycopg.connect(self._database_url) as conn, conn.transaction():
-                conn.execute("DELETE FROM agent.service_jwt_replays WHERE expires_at < now()")
-                cur = conn.execute(
-                    "INSERT INTO agent.service_jwt_replays (jti, issuer, subject, audience, expires_at) "
-                    "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (jti) DO NOTHING",
-                    (
-                        claims.jti,
-                        claims.iss,
-                        claims.sub,
-                        claims.aud,
-                        datetime.fromtimestamp(claims.exp, tz=UTC),
-                    ),
-                )
-                if cur.rowcount != 1:
-                    raise JtiReplayConflict(claims.jti)
-                return work_fn(conn)
-        except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
-            # 存储不可用（连接失败/中断）：失败关闭，绝不回退Header信任（NFR-004）。
-            raise ServiceAuthStoreUnavailable("store-unavailable") from exc
+            conn.execute("DELETE FROM agent.service_jwt_replays WHERE expires_at < now()")
+            cur = conn.execute(
+                "INSERT INTO agent.service_jwt_replays (jti, issuer, subject, audience, expires_at) "
+                "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (jti) DO NOTHING",
+                (
+                    claims.jti,
+                    claims.iss,
+                    claims.sub,
+                    claims.aud,
+                    datetime.fromtimestamp(claims.exp, tz=UTC),
+                ),
+            )
+            if cur.rowcount != 1:
+                raise JtiReplayConflict(claims.jti)
+        except psycopg.Error as exc:
+            raise ServiceAuthStoreUnavailable("replay-sql-failed") from exc

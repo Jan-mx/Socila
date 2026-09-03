@@ -1,7 +1,7 @@
 # Core与Agent双向服务JWT鉴权 Feature PRD
 
 > Author: Jan
-> Status: Active
+> Status: Accepted
 > Updated: 2026-09-03
 
 ## 文档元数据
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-03-feature-core-agent-service-jwt.md` |
 | 类型 | Feature |
-| 状态 | Active |
+| 状态 | Accepted |
 | 前置依赖 | `09-03-stage-runtime-configuration-remediation.md`已Accepted并推送、ADR-0005 |
 | 可并行阶段 | 无；双向协议、Secret和重放存储必须统一交付 |
 | 后续消费者 | PolicyOps审核、Draft物化、远程Personal Demo部署 |
@@ -73,6 +73,7 @@ Compose已向Web和Agent注入`AGENT_SERVICE_JWT_CURRENT/PREVIOUS`，架构与AD
 - **SJWT-NFR-004 失败关闭**：配置、验证或重放存储异常不得退回内网Header信任。
 - **SJWT-NFR-005 可测试性**：Clock、UUID、签发和验证边界可注入，测试不得依赖真实等待。
 - **SJWT-NFR-006 零泄漏**：日志、错误、响应、trace和测试产物不得包含Token或Secret。
+- **SJWT-NFR-007 演练资源清理**：任何为数据库集成、跨语言契约、Auth E2E或双向Compose冒烟创建的演练容器，必须使用任务专属名称，并在成功、失败或中断后的`finally`清理中删除；任务创建的匿名卷和临时网络必须同步删除。验收前必须通过`docker ps -a`、`docker volume ls`和`docker network ls`确认零任务残留，且不得删除或重建`socila-*`容器、`socila_pg-data`或`socila_minio-data`。
 
 ## 6. 实现设计
 
@@ -106,6 +107,10 @@ Next直接依赖`jose`；Python Agent依赖`PyJWT>=2.10,<3`。两端均必须显
 接收方验证顺序：解析Bearer→验证签名/Header/claims→开始数据库事务→删除过期重放记录→插入JTI→执行业务写入→提交。插入冲突时整体回滚并返回统一401。
 
 GET/健康检查不消费JTI；所有令牌仍必须携带唯一JTI。客户端在网络重试时签发新JTI，并复用现有`Idempotency-Key`保证业务幂等。
+
+### 6.5 演练资源生命周期
+
+执行Agent必须在创建演练设施前记录本次将创建的容器、卷和网络精确名称，并以`try/finally`、PowerShell`finally`或CI`if: always()`保证清理无条件执行。清理只能作用于该清单中的任务专属资源；清理后重新枚举Docker对象，任一任务资源仍存在都视为验收失败，不得提交或声称完成。
 
 ## 7. 数据模型与不变量
 
@@ -201,6 +206,7 @@ HTTP状态为401，`Cache-Control: no-store`。不得在响应中区分缺失、
 | 重放表不可用 | 失败关闭，返回503 `SERVICE_AUTH_STORE_UNAVAILABLE` | 数据库恢复后使用新JTI重试 |
 | 下游5xx/超时 | 沿用有限重试策略 | 每次重试签发新JTI，保留业务幂等键 |
 | previous验证异常 | 不自动提升previous为current | 修复配置后重启 |
+| 演练容器/卷/网络清理失败 | 停止验收，不提交 | 按创建清单精确删除并重新枚举；不得扩大到`socila-*`资源 |
 
 ## 12. 交付物
 
@@ -224,6 +230,7 @@ HTTP状态为401，`Cache-Control: no-store`。不得在响应中区分缺失、
 | 轮换 | SJWT-FR-007 | current签发、current/previous验证、移除previous | 无中断验证且签发永不使用previous |
 | 安全 | SJWT-NFR-001～006 | 日志、响应、Secret扫描、算法混淆 | 无Token/Secret泄漏，失败关闭 |
 | Compose | 全部 | migration、健康、真实内网调用 | 健康豁免可用，业务端点必须JWT |
+| 资源清理 | SJWT-NFR-007 | DB集成、E2E、跨语言和Compose演练结束或失败 | 任务容器、匿名卷和临时网络零残留，保留的`socila-*`资源不变 |
 
 ## 14. 验收场景
 
@@ -245,14 +252,16 @@ HTTP状态为401，`Cache-Control: no-store`。不得在响应中区分缺失、
 - **SJWT-AC-016** Given任一失败请求，When检查响应、日志和测试快照，Then不存在Token、Authorization或Secret。
 - **SJWT-AC-017** Given配置Feature已Accepted，When构建并启动完整Compose，Then双向合法调用通过且伪造服务名失败。
 - **SJWT-AC-018** Given全部实现完成，When运行完整项目门禁，Then全部退出0且无未解释skip或warning。
+- **SJWT-AC-019** Given任一JWT演练成功、失败或被中断，When进入最终清理阶段，Then该任务创建的容器、匿名卷和临时网络全部被删除，Docker枚举无任务残留，且`socila-*`容器和持久卷未被删除或重建。
 
 ## 15. Definition of Done
 
-- SJWT-FR-001～009、SJWT-NFR-001～006和SJWT-AC-001～018全部映射到实际实现、测试和验收证据。
+- SJWT-FR-001～009、SJWT-NFR-001～007和SJWT-AC-001～019全部映射到实际实现、测试和验收证据。
 - 每项可制造Red的行为均先观察到预期失败，再完成最小实现和重构。
 - Node/Python固定测试向量可以互相签发验证，双向真实HTTP集成通过。
 - 两端migration在空库和现有库重复执行通过；并发JTI测试证明原子唯一性。
 - Node、Python、数据库、Auth E2E、TypeScript、ESLint、Build、Compose与Secret扫描取得新鲜PASS。
+- 所有任务专属演练容器、匿名卷和临时网络完成无条件清理并取得零残留证据。
 - 受影响README从Updating恢复Active；ARCHITECTURE、OPERATIONS、TESTING、traceability和PROGRESS同步。
 - 提交前检查完整staged diff，只创建提交`feat: 接通Core与Agent服务JWT鉴权`并推送当前upstream；不创建PR、不合并main、不轮换真实Secret。
 
@@ -262,3 +271,7 @@ HTTP状态为401，`Cache-Control: no-store`。不得在响应中区分缺失、
 - 可审计、可清理、并发安全的JTI重放记录。
 - 远程Personal Demo部署可直接复用的服务鉴权配置和Runbook。
 - 多机部署或更高安全等级时重新评估mTLS，当前不自动扩展。
+
+## 17. 2026-09-03复审记录
+
+主体实现由`35d673c feat: 接通Core与Agent服务JWT鉴权`交付。当日复审新增SJWT-NFR-007/SJWT-AC-019（演练资源零残留），并发现4项实现缺漏：①FastAPI文档与OpenAPI入口未关闭；②Web启动期未拒绝无效JWT Secret（惰性装配+Compose非必填插值）；③Python重放存储未把缺表/权限等错误映射为503；④宿主机`.env.example`/`.env.local`缺少两个JWT变量。四项均已按本PRD修复并重新验收（Red→Green证据、全部门禁、隔离Compose双向冒烟与Docker零残留见验收报告§7.4/§7.5），修复提交`fix: 补齐服务JWT复审缺漏`。

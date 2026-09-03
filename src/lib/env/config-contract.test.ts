@@ -163,6 +163,9 @@ describe("可提交模板契约（CFG-FR-004/010）", () => {
       "OPENAI_API_KEY",
       "OPENAI_MODEL",
       "OPENAI_URL",
+      // 09-03 SJWT：宿主Next与Agent进程双向服务JWT（SJWT-FR-001，复审缺漏四）
+      "AGENT_SERVICE_JWT_CURRENT",
+      "AGENT_SERVICE_JWT_PREVIOUS",
     ].sort();
     expect([...keys].sort()).toEqual(expected);
   });

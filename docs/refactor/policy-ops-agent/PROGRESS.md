@@ -12,8 +12,8 @@
 - 本机定位：开发机，生产Compose数据卷保留但不常驻；远程服务器部署列入路线图。
 - 09-02 Feature（用户与管理员双角色鉴权，PRD `docs/prd/09-02-feature-user-admin-auth.md`）：**Accepted**（验收证据：`reports/feature-09-02-auth/acceptance-report.md`）。
 - 09-03 阶段（`docs/prd/09-03-stage-policyops-pre-merge-release.md`，P0合并质量门禁与v0.2.0发布准备）：**Accepted（开发分支发布准备）**（验收证据：`reports/stage-09-03-pre-merge-release/acceptance-report.md`）。本阶段仅验收开发分支`refactor/policy-ops-agent-platform`：六类门禁全部本地新鲜复现（全部退出0、零skip）、workflow经actionlint 1.7.7静态校验零发现、`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）。workflow已静态校验、六类门禁已本地复现，不声称GitHub-hosted六项checks已经运行。PR、main ruleset、merge与tag/Release为未来人工动作（见“精确下一步”），不阻塞本阶段验收。
-- 09-03 阶段（`docs/prd/09-03-stage-runtime-configuration-remediation.md`，本地运行配置与凭据整改）：**Accepted**（验收证据：`reports/stage-09-03-runtime-config-remediation/acceptance-report.md`）。CFG-FR-001～010、CFG-NFR-001～006、CFG-AC-001～012全部通过：统一环境加载、模板与入口收口、管理员引导一次性化、新鲜备份+PG17+pgvector真实恢复对账、PostgreSQL口令轮换与轮换前后逐表对账（34表/1610行一致）、全部门禁本地新鲜复验（全部退出0、零skip）。
-- 09-03 Feature（`docs/prd/09-03-feature-core-agent-service-jwt.md`，Core与Agent双向服务JWT鉴权）：**Accepted**（验收证据：`reports/feature-09-03-service-jwt/acceptance-report.md`）。SJWT-FR-001～009、SJWT-NFR-001～006、SJWT-AC-001～018全部通过：HS256双向签发与验证（current/previous双Secret、固定claims、300秒TTL+30秒偏差、previous命中仅内部指标）、JTI消费与agent-run创建/审核/draft物化业务写同事务（并发同JTI恰好一个成功、业务失败JTI同回滚）、`/internal/health`唯一免JWT内部端点、鉴权失败统一401 `SERVICE_AUTH_INVALID`与重放存储不可用503 `SERVICE_AUTH_STORE_UNAVAILABLE`（均`Cache-Control: no-store`）、`X-Service-Name`不再参与鉴权、Node `jose`/Python `PyJWT`跨语言契约向量互验（`testdata/service-jwt-vectors.json`）、AC-017完整隔离Compose双向真实TCP冒烟、AC-018全项目门禁新鲜PASS（本地复现；GitHub-hosted六项checks留待未来人工发布流程产生）。
+- 09-03 阶段（`docs/prd/09-03-stage-runtime-configuration-remediation.md`，本地运行配置与凭据整改）：**Accepted**（验收证据：`reports/stage-09-03-runtime-config-remediation/acceptance-report.md`）。CFG-FR-001～010、CFG-NFR-001～007、CFG-AC-001～013全部通过：统一环境加载、模板与入口收口、管理员引导一次性化、新鲜备份+PG17+pgvector真实恢复对账、PostgreSQL口令轮换与轮换前后逐表对账（34表/1610行一致）、全部门禁本地新鲜复验（全部退出0、零skip）；复审确认本阶段演练容器零残留。
+- 09-03 Feature（`docs/prd/09-03-feature-core-agent-service-jwt.md`，Core与Agent双向服务JWT鉴权）：**Accepted**（主体提交`35d673c`，修复提交`fix: 补齐服务JWT复审缺漏`；验收证据：`reports/feature-09-03-service-jwt/acceptance-report.md` §7.4～§7.6）。SJWT-FR-001～009、SJWT-NFR-001～007、SJWT-AC-001～019全部通过：复审四项缺漏逐条修复并重新验收——FastAPI文档/OpenAPI入口统一关闭（四路径一律404、`/internal/health`唯一豁免）、Web Node运行时启动入口`src/instrumentation.ts`对无效Secret fail-fast拒绝启动（standalone真实启动拒绝D2/E2）+Compose`AGENT_SERVICE_JWT_CURRENT`必填插值（缺失/空值`docker compose config`失败）、Python重放存储缺表/权限/连接中断统一映射503且业务异常原样传播不包装（JTI与业务写同事务回滚）、宿主`.env.example`补齐两变量且实际值安全同步至Git忽略的`.env.local`（零输出验证、未轮换）；全部门禁在修复后的全新演练库上重跑（全部退出0、零skip）、AC-017完全隔离Compose双向真实TCP冒烟（10断言+台账恰好1行）与Docker任务资源零残留复核（`socila-*`未动）。
 
 ## 已完成能力
 
@@ -70,19 +70,20 @@
 | Auth E2E（全新PG17 `e2e`库+Jan引导+seed+standalone+mock） | PASS；10通过（50.4s），含Jan管理员登录与被禁用账号拒绝 |
 | Secret门禁 | PASS；`scan-secrets --all`534个跟踪文件无命中；默认模式18个候选文件无命中 |
 
-## 当前任务验证（09-03 Feature Core与Agent服务JWT鉴权，2026-09-03本地新鲜执行）
+## 当前任务验证（09-03 Feature Core与Agent服务JWT鉴权复审缺漏修复，2026-09-03本地新鲜执行）
 
 | 验证 | 结果 |
 | --- | --- |
-| Node单元测试（`npm test`） | PASS；33文件/293通过、skip 0 |
+| Node单元测试（`npm test`） | PASS；35文件/313通过、skip 0（含新增`service-jwt-startup.test.ts` 9例与`service-jwt-config-contract.test.ts` 11例） |
 | ESLint / TypeScript / Build | PASS；全部退出码0（standalone产物） |
-| Node数据库集成（`npm run test:db`，全新重建演练PG17库） | PASS；9文件/35通过、skip 0（既有`snapshot-service`测试按CI新鲜库语义设计，每轮完整`test:db`前对演练库drop/create+migrate+roles+seed） |
-| Python门禁（ruff/mypy/pytest非集成/pip-audit） | PASS；0问题、33源文件0错误、81通过（skip 0、warning 0）、无可知漏洞（本地项目自身"not found on PyPI"为预期提示，非漏洞非skip） |
-| Python数据库集成（`pytest -m integration`，演练库） | PASS；16通过、skip 0 |
-| Auth E2E（全新PG17 `sjwt_e2e`库+Jan引导+seed+standalone+mock） | PASS；10通过（1.1m），含Jan管理员登录与被禁用账号拒绝 |
-| AC-017 Compose双向冒烟（完全隔离栈、合成Secret、真实TCP） | PASS；Next→Agent与Agent→Core双向合法调用通过、伪造服务名/错误方向/重放均401、台账入库、`down -v`残留0 |
-| Secret门禁 | PASS；`scan-secrets --all`538个候选文件无命中；默认模式43个候选文件无命中 |
-| Gitleaks 8.29.1完整历史（docker复现CI） | PASS；35 commits no leaks（仅5个已核实fingerprint基线） |
+| 启动拒绝（standalone D2/E2，复审缺漏二） | PASS；D2无JWT→退出码1+拒绝消息、E2合法合成Secret→进程存活且零拒绝输出 |
+| Node数据库集成（`npm run test:db`，全新重建演练PG17库`sjwfx_drill`） | PASS；9文件/35通过、skip 0 |
+| Python门禁（ruff/mypy agent tests/pytest非集成/pip-audit） | PASS；0问题、48文件0错误（`mypy agent tests`，修复4处既有测试类型错误未降检查）、100通过（skip 0、warning 0）、无可知漏洞（本地项目自身“not found on PyPI”为预期提示，非漏洞非skip） |
+| Python数据库集成（`pytest -m integration`，演练库） | PASS；20通过、skip 0（replay 15例含新增缺表/权限/业务异常映射4例+RAG 3例+postgres集成2例） |
+| Auth E2E（演练库+Jan引导+seed+standalone+mock） | PASS；10通过（37.4s），含Jan管理员登录与被禁用账号拒绝 |
+| AC-017 Compose双向冒烟（完全隔离`sjwtfxsmoke`栈、合成Secret、真实TCP） | PASS；10断言（health豁免、ready无JWT/仅Header 401、合法Next→Agent 200、**`/internal/docs`与`/openapi.json` 404**、draft-imports伪造401/合法200/重放401/错误方向401）、台账恰好1行、缺current时`docker compose config`退出1、`down -v`后零残留 |
+| Secret门禁 | PASS；`scan-secrets --all`555个候选文件零命中；默认模式26个候选文件零命中 |
+| Docker零任务残留（SJWT-NFR-007/AC-019） | PASS；`sjwfx*`容器/卷/网络全部删除、最终枚举零残留、清理前后快照逐行一致、`socila-*`容器与卷未删除未重建 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 

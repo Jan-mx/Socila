@@ -53,6 +53,9 @@ export default defineConfig({
         NEXTAUTH_URL: baseURL,
         NEXTAUTH_SECRET: process.env.SSRP_E2E_NEXTAUTH_SECRET ?? "",
         AUTH_REFRESH_PEPPER: process.env.SSRP_E2E_REFRESH_PEPPER ?? "",
+        // 09-03 SJWT（复审缺漏二）：standalone server 的 instrumentation.register()
+        // 启动校验要求 current Secret；E2E 使用固定合成值（≥32字节，非生产Secret）。
+        AGENT_SERVICE_JWT_CURRENT: ["e2e", "local", "synthetic", "jwt", "0123456789", "abcdef"].join("-"),
         // 09-03 CFG-FR-004：运行时不再注入管理员引导变量；Jan 账号由
         // bootstrap-admin.mjs 以显式进程变量写入数据库（见 run-auth-e2e 前提）。
         OPENAI_URL: `http://127.0.0.1:${MOCK_PORT}/v1`,

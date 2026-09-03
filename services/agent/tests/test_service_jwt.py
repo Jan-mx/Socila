@@ -257,6 +257,25 @@ async def test_ready_requires_jwt():
     assert allowed.status_code == 200
 
 
+async def test_docs_and_openapi_entries_closed():
+    """复审缺漏一（PRD §6.5/AC-015）：FastAPI文档与OpenAPI入口一律关闭。
+
+    docs_url/redoc_url/openapi_url关闭后全部404；/internal/health保持唯一
+    免JWT内部端点（200），/internal/ready仍要求合法Next JWT（401+no-store）。
+    """
+    app, _, _ = _protected_app()
+    client = _client(app)
+    for path in ("/internal/docs", "/docs", "/redoc", "/openapi.json"):
+        resp = await client.get(path)
+        assert resp.status_code == 404, f"{path} 必须404（当前 {resp.status_code}）"
+    health = await client.get("/internal/health")
+    assert health.status_code == 200
+    ready = await client.get("/internal/ready")
+    assert ready.status_code == 401
+    assert ready.json() == {"error": "SERVICE_AUTH_INVALID"}
+    assert ready.headers.get("cache-control") == "no-store"
+
+
 async def test_x_service_name_alone_rejected_without_side_effect():
     """AC-003：只有X-Service-Name无Bearer → 统一401且无副作用。"""
     app, _, repos = _protected_app()
@@ -419,11 +438,12 @@ async def test_store_unavailable_returns_503_without_side_effect():
             raise ServiceAuthStoreUnavailable("store-unavailable")
 
     repos = InMemoryRepositories()
+    jwt = make_jwt()
     deps = AppDeps(
         repos,
         graph_runner=None,
         settings=Settings(workflow_version="policyops-graph-v1"),
-        service_jwt=make_jwt(),
+        service_jwt=jwt,
         replay=BrokenGuard(),
     )
     app = create_app(deps)
@@ -431,7 +451,7 @@ async def test_store_unavailable_returns_503_without_side_effect():
     resp = await client.post(
         "/internal/v1/agent-runs",
         json={"as_of_date": "2026-01-01"},
-        headers={**bearer(deps.service_jwt), "Idempotency-Key": "store-down-1"},
+        headers={**bearer(jwt), "Idempotency-Key": "store-down-1"},
     )
     assert resp.status_code == 503
     assert resp.json() == {"error": "SERVICE_AUTH_STORE_UNAVAILABLE"}
