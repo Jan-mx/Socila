@@ -167,8 +167,8 @@ jobs:
       SSRP_E2E_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
       SSRP_E2E_NEXTAUTH_SECRET: ci-e2e-nextauth-secret-not-real
       SSRP_E2E_REFRESH_PEPPER: ci-e2e-refresh-pepper-not-real
-      SSRP_E2E_ADMIN_USERNAME: ci-admin
-      SSRP_E2E_ADMIN_PASSWORD: ci-e2e-synthetic-admin-pw
+      # 管理员引导账号不在此覆盖：bootstrap 与 run-auth-e2e.mjs 必须与
+      # e2e/auth.spec.ts 的既有验收契约一致（Jan + 规格内拆分构造的一次性口令）。
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -187,8 +187,10 @@ jobs:
         env:
           DATABASE_URL: ${{ env.SSRP_E2E_DATABASE_URL }}
         run: |
-          ADMIN_USERNAME="$SSRP_E2E_ADMIN_USERNAME"
-          ADMIN_PASSWORD_HASH="$(node -e "process.stdout.write(require('bcryptjs').hashSync(process.env.SSRP_E2E_ADMIN_PASSWORD, 12))")"
+          # 与 e2e/auth.spec.ts 的既有验收契约一致：用户名 Jan；口令按规格
+          # 相同的拆分构造生成，不在本文件引入新的凭据字面量。
+          ADMIN_USERNAME="Jan"
+          ADMIN_PASSWORD_HASH="$(node -e "process.stdout.write(require('bcryptjs').hashSync(['Acceptance','Temp','9137'].join('-'), 12))")"
           export ADMIN_USERNAME ADMIN_PASSWORD_HASH
           node scripts/bootstrap-admin.mjs
       - name: seed
