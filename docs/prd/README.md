@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-03
 
 ## 用途
 
@@ -15,6 +15,8 @@ PRD不记录日常执行日志、测试退出码和提交历史。
 | 文件 | 用途 | 状态 |
 | --- | --- | --- |
 | `09-01-policy-ops-agent.md` | PolicyOps Agent当前产品需求和边界 | Active |
+| `09-03-stage-runtime-configuration-remediation.md` | 本地运行配置、备份恢复与凭据整改 | Approved |
+| `09-03-feature-core-agent-service-jwt.md` | Core与Agent双向服务JWT鉴权 | Approved |
 
 ## 何时创建PRD
 
