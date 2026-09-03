@@ -175,10 +175,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - name: Chromium + system dependencies
-        run: npx playwright install --with-deps chromium
       - name: npm ci
         run: npm ci
+      - name: Chromium + system dependencies
+        run: npx playwright install --with-deps chromium
       - name: migration
         env:
           DATABASE_URL: ${{ env.SSRP_E2E_DATABASE_URL }}
@@ -187,8 +187,9 @@ jobs:
         env:
           DATABASE_URL: ${{ env.SSRP_E2E_DATABASE_URL }}
         run: |
-          export ADMIN_USERNAME="$SSRP_E2E_ADMIN_USERNAME"
-          export ADMIN_PASSWORD_HASH="$(node -e "process.stdout.write(require('bcryptjs').hashSync(process.env.SSRP_E2E_ADMIN_PASSWORD, 12))")"
+          ADMIN_USERNAME="$SSRP_E2E_ADMIN_USERNAME"
+          ADMIN_PASSWORD_HASH="$(node -e "process.stdout.write(require('bcryptjs').hashSync(process.env.SSRP_E2E_ADMIN_PASSWORD, 12))")"
+          export ADMIN_USERNAME ADMIN_PASSWORD_HASH
           node scripts/bootstrap-admin.mjs
       - name: seed
         env:
@@ -249,7 +250,7 @@ jobs:
         working-directory: infra/prod
         run: |
           ok=0
-          for i in $(seq 1 36); do
+          for _ in $(seq 1 36); do
             if docker compose --env-file .ci.env exec -T web wget -qO- http://127.0.0.1:3000/api/health | grep -q '"status":"ok"'; then
               ok=1
               break
@@ -262,6 +263,34 @@ jobs:
           fi
           docker compose --env-file .ci.env exec -T agent \
             python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8100/internal/health', timeout=4)"
+      - name: service state assertions (all 8 services)
+        working-directory: infra/prod
+        run: |
+          set -euo pipefail
+          for c in socila-proxy socila-web socila-agent socila-worker socila-beat socila-postgres socila-redis socila-minio; do
+            state=$(docker inspect -f '{{.State.Status}}' "$c")
+            if [ "$state" != "running" ]; then
+              echo "FAIL: $c state=$state (expected running)"
+              docker compose --env-file .ci.env logs --tail 100 "$c" || true
+              exit 1
+            fi
+            echo "OK: $c state=$state"
+          done
+          for c in socila-web socila-agent socila-worker socila-postgres socila-redis socila-minio; do
+            ok=0
+            health=starting
+            for _ in $(seq 1 24); do
+              health=$(docker inspect -f '{{.State.Health.Status}}' "$c")
+              if [ "$health" = "healthy" ]; then ok=1; break; fi
+              sleep 5
+            done
+            if [ "$ok" != "1" ]; then
+              echo "FAIL: $c health=$health (expected healthy)"
+              docker compose --env-file .ci.env logs --tail 100 "$c" || true
+              exit 1
+            fi
+            echo "OK: $c health=healthy"
+          done
       - name: compose down -v (unconditional)
         if: always()
         working-directory: infra/prod
