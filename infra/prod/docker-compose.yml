@@ -33,8 +33,8 @@ services:
       # compose 拒绝启动；必须与 NEXTAUTH_SECRET 为不同值（应用启动时二次拒绝相同值）
       AUTH_REFRESH_PEPPER: ${AUTH_REFRESH_PEPPER:?AUTH_REFRESH_PEPPER is required and must differ from NEXTAUTH_SECRET}
       NEXTAUTH_URL: ${NEXTAUTH_URL}
-      ADMIN_USERNAME: ${ADMIN_USERNAME}
-      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
+      # 管理员不再经运行环境变量注入（09-03 CFG-FR-004）：运行时登录只查询
+      # users 表；一次性引导使用 node scripts/bootstrap-admin.mjs 显式进程变量。
       AGENT_INTERNAL_URL: http://agent:8100
       AGENT_SERVICE_JWT_CURRENT: ${AGENT_SERVICE_JWT_CURRENT}
       AGENT_SERVICE_JWT_PREVIOUS: ${AGENT_SERVICE_JWT_PREVIOUS}
@@ -132,6 +132,10 @@ services:
     command: python -m agent.migrate
     environment:
       AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
+      # 09-03 CFG-FR-009/CFG-NFR-001：仅本服务持有内部非 loopback 例外——
+      # Compose 内部 DNS 主机 postgres 对容器而言是“远程”主机，agent.migrate 的
+      # db-guard 默认拒绝；宿主机脚本仍只允许 localhost/127.0.0.1/::1。
+      ALLOW_REMOTE_DATABASE: "1"
     depends_on:
       postgres:
         condition: service_healthy

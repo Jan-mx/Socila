@@ -69,3 +69,6 @@ services/agent/.venv/
 services/agent/**/__pycache__/
 .pytest_cache/
 .zcode/
+
+# local database backups (09-03 CFG-FR-005: dumps/manifests never enter Git)
+/backup/

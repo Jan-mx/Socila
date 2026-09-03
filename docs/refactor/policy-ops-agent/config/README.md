@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-03
 
 ## 用途
 
@@ -12,7 +12,7 @@
 
 | 文件 | 用途 | Git状态 |
 | --- | --- | --- |
-| `runtime.env.example` | 认证、Worker、格式和资源配置模板 | 跟踪 |
+| `runtime.env.example` | Agent Runtime 实际消费变量模板（09-03 CFG-FR-010 收口：未消费变量已移除，固定值标注见模板注释） | 跟踪 |
 | `siliconflow.env.example` | SiliconFlow无密钥配置模板 | 跟踪 |
 | `siliconflow.local.env` | 本机真实密钥和地址 | 忽略 |
 | `siliconflow-validation.md` | 不含密钥的真实API验证结果 | 跟踪 |

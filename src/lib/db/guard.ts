@@ -1,8 +1,9 @@
 /**
- * 本地脚本数据库门禁（事故防御：2026-08-30 seed 曾因 dotenv 回退连上生产 Neon）。
+ * 本地脚本数据库门禁（事故防御：2026-08-30 seed 曾因环境文件回退误连远程生产库）。
  *
  * 面向开发/运维脚本（seed、showcase 生成等）：DATABASE_URL 指向非本机主机时拒绝执行，
- * 除非显式设置 ALLOW_REMOTE_DATABASE=1。应用运行时（生产部署到远程库）不经过本门禁。
+ * 除非显式设置 ALLOW_REMOTE_DATABASE=1（09-03 CFG-FR-009：仅 Compose migrate 服务
+ * 持有该例外，用于容器内部 DNS 主机）。应用运行时（生产部署到远程库）不经过本门禁。
  */
 export function assertLocalDatabaseUrl(): string {
   const url = process.env.DATABASE_URL;

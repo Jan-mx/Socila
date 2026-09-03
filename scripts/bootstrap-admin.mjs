@@ -8,12 +8,17 @@
  *
  * 安全约束：不输出明文密码、哈希或数据库连接串；默认只允许本地库
  * （与 run-migrations.mjs 同门禁）；引导成功后运行时登录完全走数据库。
+ * 配置加载（09-03 CFG-FR-002）：经共享加载器取 `.env.local` 优先、`.env`
+ * 回退、进程变量不覆盖；ADMIN_USERNAME/ADMIN_PASSWORD_HASH 只来自显式
+ * 进程变量（09-03 CFG-FR-004：不再常驻任何环境文件）。
  *
  * 用法：DATABASE_URL=postgresql://... ADMIN_USERNAME=Jan ADMIN_PASSWORD_HASH=$2b$... \
  *       node scripts/bootstrap-admin.mjs
  */
-import "dotenv/config";
+import { loadEnvironment } from "./lib/load-environment.mjs";
 import pg from "pg";
+
+loadEnvironment();
 
 const url = process.env.DATABASE_URL;
 if (!url) {

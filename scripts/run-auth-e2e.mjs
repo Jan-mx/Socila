@@ -14,14 +14,16 @@
  * 环境变量（本地验收专用一次性值，不属于生产 Secret）：
  * - SSRP_E2E_DATABASE_URL        验收库连接串（必须存在，且指向本地库）
  * - SSRP_E2E_PORT / SSRP_E2E_MOCK_PORT  本地端口
- * - SSRP_E2E_ADMIN_USERNAME / SSRP_E2E_ADMIN_PASSWORD  Jan 引导账号
  * - SSRP_E2E_NEXTAUTH_SECRET / SSRP_E2E_REFRESH_PEPPER（必须非空且两者不同，§12.2）
+ *
+ * Jan 管理员账号由前提步骤用 `node scripts/bootstrap-admin.mjs` 显式进程变量
+ * 引导（09-03 CFG-FR-004：应用运行环境不再注入管理员变量）；E2E 登录 fixture
+ * 与 e2e/auth.spec.ts 中的既有验收契约一致。
  */
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import bcrypt from "bcryptjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 process.chdir(root);
@@ -55,11 +57,6 @@ if (nextauthSecret === refreshPepper) {
   fail("SSRP_E2E_NEXTAUTH_SECRET 与 SSRP_E2E_REFRESH_PEPPER 必须为不同值（§12.2）");
 }
 
-// Jan 引导口令：本地一次性测试值；缺失即拒绝运行（不输出口令）。
-const adminUsername = process.env.SSRP_E2E_ADMIN_USERNAME ?? "Jan";
-const adminPassword = process.env.SSRP_E2E_ADMIN_PASSWORD ?? "Acceptance-Temp-9137";
-const adminHash = bcrypt.hashSync(adminPassword, 12);
-
 // PMG-FR-004：standalone 产物必须存在；启动前把 public 与 .next/static
 // 复制到 standalone 期望的构建目录（不使用会产生兼容警告的 next start）。
 const standaloneDir = join(root, ".next", "standalone");
@@ -89,13 +86,11 @@ const result = spawnSync(
   {
     cwd: root,
     stdio: "inherit",
-    env: {
-      ...process.env,
-      SSRP_E2E_PORT: port,
-      SSRP_E2E_MOCK_PORT: mockPort,
-      SSRP_E2E_ADMIN_USERNAME: adminUsername,
-      SSRP_E2E_ADMIN_PASSWORD_HASH: adminHash,
-    },
+      env: {
+        ...process.env,
+        SSRP_E2E_PORT: port,
+        SSRP_E2E_MOCK_PORT: mockPort,
+      },
   },
 );
 process.exit(result.status ?? 1);

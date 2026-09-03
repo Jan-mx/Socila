@@ -53,8 +53,8 @@ export default defineConfig({
         NEXTAUTH_URL: baseURL,
         NEXTAUTH_SECRET: process.env.SSRP_E2E_NEXTAUTH_SECRET ?? "",
         AUTH_REFRESH_PEPPER: process.env.SSRP_E2E_REFRESH_PEPPER ?? "",
-        ADMIN_USERNAME: process.env.SSRP_E2E_ADMIN_USERNAME ?? "Jan",
-        ADMIN_PASSWORD_HASH: process.env.SSRP_E2E_ADMIN_PASSWORD_HASH ?? "",
+        // 09-03 CFG-FR-004：运行时不再注入管理员引导变量；Jan 账号由
+        // bootstrap-admin.mjs 以显式进程变量写入数据库（见 run-auth-e2e 前提）。
         OPENAI_URL: `http://127.0.0.1:${MOCK_PORT}/v1`,
         OPENAI_API_KEY: ["e2e", "local", "mock"].join("-"),
         OPENAI_MODEL: "e2e-mock-model",

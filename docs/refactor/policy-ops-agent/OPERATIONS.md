@@ -58,6 +58,19 @@ docker compose -f infra/prod/docker-compose.yml logs --tail 100 web agent worker
 - 公开演示前至少执行一次`infra/prod/restore-verify.sh`。
 - 恢复后检查数据库记录、MinIO对象、Checkpoint、规划黄金结果和服务健康。
 - 恢复点和耗时写入报告，作为Future Production容量输入。
+- 本地开发机：`backup/db/`保存本机新鲜dump（Git忽略，不提交、不替代服务器备份）。
+
+### PostgreSQL口令轮换runbook（09-03 CFG-FR-007/008）
+
+严格串行，任何一步失败即停止并恢复原状：
+
+1. 新鲜备份：`pg_dump -Fc`写入`backup/db/`并生成SHA-256清单；随后在临时PG17+pgvector容器中真实恢复，逐表行数必须与备份前基线完全一致（**必须先于口令轮换完成**）。
+2. 停止依赖数据库的服务（web/agent/worker/beat）；**不得**停止或删除`socila_pg-data`，**不得**执行`down -v`。
+3. 生成新口令（≥32随机字节、URL安全）仅保存在内存/临时文件，任何日志、报告、argv不得出现明文；临时轮换文件用完即删。
+4. 经stdin执行`ALTER ROLE`（不进进程列表），验证新口令TCP连接成功、旧口令被拒绝。
+5. 原子替换私有env文件（`infra/prod/.env`与`.env.local`：`POSTGRES_PASSWORD`、`DATABASE_URL`、`AGENT_DATABASE_URL`），替换前校验临时文件内容。
+6. 重建服务；Compose与宿主migration各执行两次确认幂等；`/api/health`、`/internal/health`与容器健康检查全部通过。
+7. 轮换后逐表行数对账必须与备份前基线一致；不一致即按恢复流程回滚并上报。
 
 ## 故障处理
 

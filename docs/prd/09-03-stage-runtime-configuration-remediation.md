@@ -1,7 +1,7 @@
 # 本地运行配置与凭据整改 Stage PRD
 
 > Author: Jan
-> Status: Approved
+> Status: Active
 > Updated: 2026-09-03
 
 ## 文档元数据
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-03-stage-runtime-configuration-remediation.md` |
 | 类型 | Stage |
-| 状态 | Approved |
+| 状态 | Active |
 | 前置依赖 | Stage 07本地Compose切换、09-02双角色鉴权、09-03发布准备 |
 | 可并行阶段 | 无；数据库备份、口令轮换和运行配置必须串行 |
 | 后续消费者 | Core↔Agent服务JWT、案例库精简、远程Demo部署 |
