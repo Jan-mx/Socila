@@ -1,15 +1,14 @@
 /**
  * 步骤03.1 地区树测试（POL-FR-001/002 / POL-AC-002 基础）：
- * 树不变量（循环/孤儿/层级跳跃/路径一致性）+ 四地区路径正确性 + 真库集成。
+ * 树不变量（循环/孤儿/层级跳跃/路径一致性）+ 四地区路径正确性。
+ * 真库集成部分见 tree.integration.test.ts。
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   validateJurisdictionTree,
   resolveChain,
   type JurisdictionNode,
 } from "@/server/modules/jurisdiction/domain/tree";
-import { createJurisdictionTreeService } from "@/server/modules/jurisdiction/application/tree-service";
-import { DrizzleJurisdictionReadRepository } from "@/server/modules/jurisdiction/infrastructure/drizzle/jurisdiction-read.repository";
 
 const BASE: JurisdictionNode[] = [
   { code: "CN", name: "中国", level: "national", parentCode: null, path: "/CN/" },
@@ -40,25 +39,5 @@ describe("jurisdiction tree invariants (pure)", () => {
     expect(kinds).toContainEqual({ kind: "path-mismatch", code: "510100" });
     expect(kinds).toContainEqual({ kind: "cycle", code: "A1" });
     expect(resolveChain([...BASE, cycA, cycB], "310000")).toBeNull();
-  });
-});
-
-const DRILL_URL = process.env.SSP_TEST_DATABASE_URL;
-
-describe.skipIf(!DRILL_URL)("jurisdiction tree (drill DB)", () => {
-  beforeAll(() => {
-    process.env.DATABASE_URL = DRILL_URL;
-  });
-
-  it("seeded migration rows resolve via repository service", async () => {
-    const service = createJurisdictionTreeService({
-      read: new DrizzleJurisdictionReadRepository(),
-    });
-    const chain = await service.resolveChain("310000");
-    expect(chain.map((n) => n.code)).toEqual(["CN", "310000"]);
-    expect(chain[0].name).toBe("中国");
-    await expect(service.resolveChain("999999")).rejects.toMatchObject({
-      reason: "not-found",
-    });
   });
 });

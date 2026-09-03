@@ -62,7 +62,7 @@ def fake_app():
     deps = AppDeps(repos=repos, graph_runner=runner, settings=Settings(workflow_version="policyops-graph-v1"))
 
     def dispatch(run) -> None:
-        result = runner.start(run.id, run.thread_id, {
+        runner.start(run.id, run.thread_id, {
             "jurisdiction_code": "310000",
             "as_of_date": "2026-01-01",
             "payload": {},
@@ -71,6 +71,7 @@ def fake_app():
 
     def resume_review(run_id: str, decision: dict) -> bool:
         run = repos.get(run_id)
+        assert run is not None
         return runner.resume(run_id, decision.get("thread_id", run.thread_id), decision)
 
     deps.dispatch = dispatch  # type: ignore[attr-defined]

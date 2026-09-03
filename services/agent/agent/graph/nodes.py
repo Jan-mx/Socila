@@ -15,17 +15,18 @@ import json
 from dataclasses import asdict
 from typing import Any
 
-from langgraph.types import Command, interrupt
+from langgraph.types import interrupt
 
+from ..core_client import CoreClient
 from ..repositories import (
     AgentArtifact,
+    AgentEvent,
     AgentProposal,
     EventRepository,
     ProposalRepository,
-    new_id,
     hash_content,
+    new_id,
 )
-from ..core_client import CoreClient
 from .state import PolicyOpsState
 
 MAX_VERIFY_RETRIES = 2
@@ -47,18 +48,19 @@ def node_event(
     run_id: str, node: str, event_type: str, duration_ms: int | None = None,
     model: str | None = None, tokens: int | None = None, trace_id: str | None = None,
     metadata: Any = None,
-) -> dict[str, Any]:
-    return {
-        "id": new_id(),
-        "run_id": run_id,
-        "node": node,
-        "event_type": event_type,
-        "duration_ms": duration_ms,
-        "model": model,
-        "tokens": tokens,
-        "trace_id": trace_id,
-        "metadata": metadata,
-    }
+) -> AgentEvent:
+    # PMG-FR-013：事件仓储类型一致性——节点只产出 AgentEvent，不再裸 dict。
+    return AgentEvent(
+        id=new_id(),
+        run_id=run_id,
+        node=node,
+        event_type=event_type,
+        duration_ms=duration_ms,
+        model=model,
+        tokens=tokens,
+        trace_id=trace_id,
+        metadata=metadata,
+    )
 
 
 def build_graph_nodes(
@@ -171,8 +173,7 @@ def build_graph_nodes(
                 proposals.update_status(proposal.id, "approved")
 
             idempotency_key = f"{run_id}:{proposal.id}"
-            # 幂等：副作用成功但确认丢失时，重复执行返回原结果（AGT-FR-007）。
-            prior = [a for a in [] ]  # placeholder；幂等由 CoreClient 的结果缓存 + artifact 查询实现
+            # 幂等：副作用成功但确认丢失时，重复执行返回原结果（AGT-FR-007，由 CoreClient 的结果缓存 + artifact 查询实现）。
             result = core_client.materialize_draft(
                 json.loads(json.dumps(proposal.draft_bundle, default=str)), idempotency_key, f"trace-{run_id}"
             )

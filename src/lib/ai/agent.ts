@@ -63,15 +63,12 @@ export function createChatStream(
     : SYSTEM_PROMPT;
 
   return streamText({
-    model: openai(model),
+    // PMG-FR-001：显式使用 Chat Completions 协议（OpenAI 兼容 POST /chat/completions）。
+    // 不得回退到默认模型选择（AI SDK v3 默认走 /responses）：部署目标 DeepSeek
+    // 与本地 mock 只提供 Chat Completions 接口。
+    model: openai.chat(model),
     system: systemPrompt,
     messages,
-    providerOptions: {
-      openai: {
-        // 中转网关可能默认不持久化 responses item，显式关闭 store 避免 item_reference 丢失。
-        store: false,
-      },
-    },
     tools,
     // 把归属用户 id 透传给工具的 execute（AI SDK v6：execute 第二参 experimental_context）。
     experimental_context: { ownerUserId: context?.ownerUserId },

@@ -1,17 +1,10 @@
 /**
- * 步骤06.7 Core 物化服务测试（DRF-FR-013/014 / AC-005/006/007）。
- * 集成路径（演练库）：幂等、stale 快照拒绝、非 draft 状态 403、draft 创建。
+ * 步骤06.7 Core 物化服务纯测试（DRF-FR-013/014 / AC-007）：
+ * 二次校验拒绝（非 draft 状态 403、引用缺失 422），不依赖数据库。
+ * 真库集成部分（AC-005 幂等 / AC-006 stale 拒绝）见 materialize.integration.test.ts。
  */
-import { describe, it, expect, beforeAll } from "vitest";
-import { sql } from "drizzle-orm";
-import { db } from "@/lib/db";
-import {
-  MaterializationRejected,
-  materializeDraftBundle,
-  parseAndReject,
-} from "../application/materialize";
-
-const DRILL = process.env.SSP_TEST_DATABASE_URL;
+import { describe, it, expect } from "vitest";
+import { MaterializationRejected, parseAndReject } from "../application/materialize";
 
 function validBundle() {
   return {
@@ -39,22 +32,7 @@ function validBundle() {
   };
 }
 
-describe.skipIf(!DRILL)("core materialize service (drill DB)", () => {
-  beforeAll(() => {
-    process.env.DATABASE_URL = DRILL;
-  });
-
-  it("AC-005: same idempotency key returns first result without new drafts", async () => {
-    const bundle = validBundle();
-    const first = await materializeDraftBundle(parseAndReject(bundle), "agent-runtime");
-    expect(first.idempotent).toBe(false);
-    expect(first.draft_ids.rules).toHaveLength(1);
-
-    const second = await materializeDraftBundle(parseAndReject(bundle), "agent-runtime");
-    expect(second.idempotent).toBe(true);
-    expect(second.draft_ids).toEqual(first.draft_ids);
-  });
-
+describe("core materialize parseAndReject (pure)", () => {
   it("AC-007: production status rejected with 403 and security event", () => {
     const bundle = { ...validBundle(), status: "production", idempotency_key: "mat-prod-1" };
     expect(() => parseAndReject(bundle)).toThrow(MaterializationRejected);
@@ -71,24 +49,5 @@ describe.skipIf(!DRILL)("core materialize service (drill DB)", () => {
     bundle.rule_drafts[0].citations = [];
     bundle.idempotency_key = "mat-nocite-1";
     expect(() => parseAndReject(bundle)).toThrow(MaterializationRejected);
-  });
-
-  it("AC-006: stale base snapshot rejected 409", async () => {
-    const stale: Record<string, unknown> = {
-      ...validBundle(),
-      idempotency_key: "mat-stale-1",
-      base_snapshot_id: "00000000-0000-0000-0000-000000000001",
-    };
-    await expect(materializeDraftBundle(parseAndReject(stale), "agent-runtime")).rejects.toThrow(
-      /重新运行影响分析|stale/,
-    );
-  });
-
-  it("cleanup test drafts", async () => {
-    await db.execute(
-      sql`DELETE FROM agent_materializations WHERE idempotency_key LIKE 'mat-%'`,
-    );
-    await db.execute(sql`DELETE FROM rules WHERE rule_id = 'R-CORE-DRAFT-1'`);
-    expect(true).toBe(true);
   });
 });

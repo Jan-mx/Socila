@@ -1,7 +1,7 @@
 /**
  * 步骤02.3 写仓储集成测试（CORE-FR-004/005）：CRUD、事务回滚、并发。
- * 前提同 repository-parity.test.ts：SSP_TEST_DATABASE_URL 指向已迁移的演练库。
- * 未设置时整组跳过。
+ * 前提：SSP_TEST_DATABASE_URL 指向已迁移的全新 PostgreSQL 17 库；
+ * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { eq } from "drizzle-orm";
@@ -14,13 +14,18 @@ import { DrizzleConversationWriteRepository } from "@/server/modules/conversatio
 
 const DRILL_URL = process.env.SSP_TEST_DATABASE_URL;
 
-describe.skipIf(!DRILL_URL)("write repositories (CRUD/rollback/concurrency)", () => {
+describe("write repositories (CRUD/rollback/concurrency)", () => {
   const rulesWrites = new DrizzleRulesWriteRepository();
   const rulesReads = new DrizzleRulesReadRepository();
   const planningWrites = new DrizzlePlanningWriteRepository();
   const conversationWrites = new DrizzleConversationWriteRepository();
 
   beforeAll(() => {
+    if (!DRILL_URL) {
+      throw new Error(
+        "SSP_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+      );
+    }
     process.env.DATABASE_URL = DRILL_URL;
   });
 

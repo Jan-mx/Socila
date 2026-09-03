@@ -6,13 +6,12 @@
 
 from __future__ import annotations
 
-import io
 import json
 import sys
 
 sys.path.insert(0, ".")
 
-from agent.rag.siliconflow import SiliconFlowClient  # noqa: E402
+from agent.rag.siliconflow import SiliconFlowClient
 
 
 def render_public_sample_png() -> bytes:
@@ -43,7 +42,7 @@ def main() -> None:
         report["verifications"].append(
             {"endpoint": "GET /models", "status": 200, "model_count": len(models), "visible": visible}
         )
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         report["verifications"].append({"endpoint": "GET /models", "status": getattr(err, "status_code", "error"), "error": str(err)[:120]})
 
     # 2) POST /embeddings
@@ -60,7 +59,7 @@ def main() -> None:
                 "indexVersion": emb["indexVersion"],
             }
         )
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         report["verifications"].append({"endpoint": "POST /embeddings", "status": getattr(err, "status_code", "error"), "error": str(err)[:120]})
 
     # 3) POST /rerank
@@ -78,7 +77,7 @@ def main() -> None:
                 "ranking": [(r["index"], round(r["relevance_score"], 4)) for r in results],
             }
         )
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         report["verifications"].append({"endpoint": "POST /rerank", "status": getattr(err, "status_code", "error"), "error": str(err)[:120]})
 
     # 4) PaddleOCR-VL-1.5 真实推理（公开测试句子图片）
@@ -106,7 +105,7 @@ def main() -> None:
                 "text_length": len(text),
             }
         )
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         report["verifications"].append({"endpoint": "POST /chat/completions (OCR-VL-1.5)", "status": getattr(err, "status_code", "error"), "error": str(err)[:160]})
 
     print(json.dumps(report, ensure_ascii=False, indent=2))

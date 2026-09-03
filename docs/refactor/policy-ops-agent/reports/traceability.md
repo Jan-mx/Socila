@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-02
+> Updated: 2026-09-03
 
 ## 用途
 
@@ -17,6 +17,7 @@
 | 05 Ingestion/RAG | RAG-FR-001～016 | 05.1～05.11 | RAG-AC-001～009 | `services/agent/agent/rag/`、`services/agent/agent/migrations/0003/0006` | `docs/refactor/policy-ops-agent/reports/stage-05/acceptance-report.md` |
 | 06 Drafting | DRF-FR-001～014 | 06.1～06.9 | DRF-AC-001～007 | `services/agent/agent/drafting/`、`src/server/modules/agent-integration/application/materialize.ts`、`src/app/admin/review/` | `docs/refactor/policy-ops-agent/reports/stage-06/acceptance-report.md` |
 | 07 Migration/Release | REL-FR-001～014 | 07.1～07.12 | REL-AC-001～008 | `infra/prod/`、`services/agent/scripts/neon_drill.py`、`src/app/api/health/` | `docs/refactor/policy-ops-agent/reports/stage-07/acceptance-report.md` |
+| 09-03 P0合并门禁/发布 | PMG-FR-001～041、PMG-NFR-001～009 | E2E Red/Green、测试分层、Python工具链、角色migration、六job CI、安全门禁、镜像加固、配置与版本、文档与发布治理 | PMG-AC-001～014 | `src/lib/ai/agent.ts`、`e2e/{auth.spec.ts,mock-openai.mjs}`、`scripts/run-auth-e2e.mjs`、`vitest{,.integration}.config.ts`、`src/server/**/__tests__/*.integration.test.ts`、`src/server/modules/identity/infrastructure/identity-container.ts`、`services/agent/{pyproject.toml,uv.lock}`、`services/agent/agent/**`、`services/agent/tests/**`、`.github/workflows/ci.yml`、`Dockerfile`、`services/agent/Dockerfile`、`infra/prod/docker-compose.yml`、`.gitleaksignore`、`package.json`、`package-lock.json` | `docs/refactor/policy-ops-agent/reports/stage-09-03-pre-merge-release/acceptance-report.md` |
 
 ## 总体需求映射
 
@@ -33,7 +34,7 @@
 | PRD-NFR-004 幂等 | 01、02、04、05、06 | 重复请求/任务/审核/物化测试 |
 | PRD-NFR-005 可观测 | 01、02、04、05、06、07 | 关联ID、指标、审计和告警 |
 | PRD-NFR-006 可测试 | 01、04、05、06 | Fake模型、黄金集和独立验收 |
-| PRD-NFR-007 兼容 | 01、02、03、07 | 112测试、黄金规划和迁移对账 |
+| PRD-NFR-007 兼容 | 01、02、03、07 | 完整Node回归、黄金规划和迁移对账 |
 
 ## Feature
 

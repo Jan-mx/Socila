@@ -13,7 +13,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
-from ..repositories import ProposalRepository, EventRepository
+from ..repositories import EventRepository, ProposalRepository
 from .nodes import build_graph_nodes
 from .state import PolicyOpsState
 

@@ -14,7 +14,6 @@ from pydantic import BaseModel
 
 from ..config import Settings, get_settings
 from ..repositories import (
-    AgentProposal,
     HumanReview,
     InMemoryRepositories,
     new_id,
@@ -73,7 +72,6 @@ def create_app(deps: AppDeps) -> FastAPI:
     ) -> CreateRunResponse:
         if not idempotency_key:
             raise HTTPException(status_code=400, detail="Idempotency-Key header required")
-        from ..repositories import input_hash
 
         existing = deps.repos.runs.find_by_idempotency_key(idempotency_key)
         if existing:

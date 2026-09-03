@@ -17,7 +17,7 @@ class TreeNode:
     type: str  # document|chapter|section|article|paragraph|list|table|row
     text: str = ""
     page: int | None = None
-    children: list["TreeNode"] = field(default_factory=list)
+    children: list[TreeNode] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -120,7 +120,8 @@ def parse_docx(raw: bytes) -> ParseResult:
         text = para.text.strip()
         if not text:
             continue
-        if para.style.name.lower().startswith("heading"):
+        style = para.style
+        if style is not None and style.name.lower().startswith("heading"):
             root.children.append(TreeNode(type="chapter", text=text))
         else:
             root.children.append(TreeNode(type="paragraph", text=text))
@@ -200,7 +201,7 @@ def parse_json_streamed(raw: bytes) -> ParseResult:
 
     root = TreeNode(type="document")
     count = 0
-    for item in ijson.items(io := __import__("io").BytesIO(raw), "items.item"):
+    for item in ijson.items(__import__("io").BytesIO(raw), "items.item"):
         count += 1
         if isinstance(item, dict):
             node = TreeNode(type="paragraph", text=json.dumps(item, ensure_ascii=False, sort_keys=True))

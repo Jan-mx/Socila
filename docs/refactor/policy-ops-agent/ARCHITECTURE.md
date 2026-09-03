@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-02
+> Updated: 2026-09-03
 
 ## 上下文
 
@@ -52,6 +52,7 @@ flowchart TB
 - current/previous Secret支持轮换。
 - 审核和draft物化使用jti与幂等键防止重放。
 - 浏览器和用户JWT不得获得内部服务Secret。
+- 刷新会话HMAC pepper（`AUTH_REFRESH_PEPPER`）与`NEXTAUTH_SECRET`是两个独立密钥：compose必填插值拒绝缺失，identity容器启动时拒绝两者相同（09-03 PMG-FR-032）。
 
 ## 政策与规则模型
 
@@ -111,6 +112,21 @@ flowchart LR
 ## 部署
 
 Personal Demo使用单机Docker Compose：Caddy、Next.js、FastAPI、Celery Worker、Beat、PostgreSQL 17 + pgvector、Redis和MinIO。只有反向代理对外；其他服务使用内部网络。详细资源和恢复规则见[OPERATIONS](./OPERATIONS.md)。
+
+### 质量门禁（09-03）
+
+GitHub Actions六job工作流（`.github/workflows/ci.yml`），触发`pull_request`、`main` push与`workflow_dispatch`；同ref并发取消；job级timeout；默认token仅`contents: read`；第三方Action全部固定提交SHA。
+
+| Job | 内容 |
+| --- | --- |
+| `gates` | tsc、ESLint、Node单元测试（零数据库依赖、零skip） |
+| `agent-gates` | ruff、mypy、Python单元（`-m "not integration"`）、pip-audit |
+| `database-gates` | 全新pgvector PG17：Core migration/引导各两次（幂等）、seed、`npm run test:db`、Agent migration+角色授权、Python集成 |
+| `e2e-gates` | 全新库+standalone构建+mock模型：`npm run test:e2e:auth`（10项Auth流程含助手回复） |
+| `container-gates` | 构建web/agent最终镜像；合成env+临时卷Compose冒烟（健康检查后无条件`down -v`）；Trivy 0.74.0扫描（HIGH/CRITICAL，ignore-unfixed，`scanners: vuln`） |
+| `security-gates` | `scan-secrets.mjs --all` + Gitleaks 8.29.1完整历史（`fetch-depth: 0`，`.gitleaksignore`仅5个已核实fingerprint） |
+
+运行镜像加固：web基于node:22-alpine，`apk upgrade`后删除npm/npx/corepack完整目录（`/usr/local/lib/node_modules`与`/usr/bin`），非root `node`用户；agent基于python:3.11-slim，运行层`apt-get upgrade`后删除全局pip/setuptools/wheel，uv仅存在于build stage，非root `appuser`。占位配置不使用Docker ARG/ENV保存Secret名称，仅在执行build的单层命令中使用非真实占位值。
 
 ## 已接受决策
 

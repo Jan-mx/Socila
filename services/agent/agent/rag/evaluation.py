@@ -51,7 +51,7 @@ def _ragas_context_precision(relevance_by_rank: list[bool]) -> float:
 def evaluate(retrieval: RetrievalService, top_k: int = 5) -> dict[str, float | int | str]:
     precision_sum = 0.0
     recall_hits = 0
-    citation_ok = 0
+    citation_ok = 0.0
     wrong_jurisdiction = 0
 
     for case in GOLDEN_SET:

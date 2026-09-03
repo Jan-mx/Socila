@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from agent.drafting.bundle import DraftBundle, parse_bundle, revise_bundle, verify_bundle
 from agent.drafting.diff import diff_trees
@@ -153,9 +154,9 @@ def test_verify_dependency_unknown_param_ref():
 
 
 def test_malformed_bundle_rejected():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         parse_bundle({"proposal_id": "p1"})  # 缺必填字段
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         parse_bundle("{broken json")
 
 

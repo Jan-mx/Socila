@@ -16,7 +16,8 @@ vi.mock("@/lib/import/excel-import", () => ({
   importRegressionTests: seedMocks.importRegressionTests,
 }));
 
-describe("seed runner", () => {
+// PMG-FR-007：seed 动态导入只在自身设置 15 秒上限，不提高全项目默认 timeout。
+describe("seed runner", { timeout: 15_000 }, () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();

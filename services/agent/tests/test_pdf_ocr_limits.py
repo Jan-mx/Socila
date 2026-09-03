@@ -29,7 +29,7 @@ def _make_scanned_pdf() -> bytes:
     import fitz
 
     doc = fitz.open()
-    page = doc.new_page()  # 无文本层 → 视为扫描页
+    doc.new_page()  # 无文本层 → 视为扫描页
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
@@ -47,8 +47,8 @@ def test_pdf_native_text_pages_and_hashes():
 
 
 def test_pdf_page_limit_rejected():
-    from agent.rag.pdf import extract_pdf_pages
     from agent.rag.fetcher import FetchRejected
+    from agent.rag.pdf import extract_pdf_pages
 
     with pytest.raises(FetchRejected, match="page-limit"):
         import fitz
@@ -82,7 +82,6 @@ class FakeOcrClient:
 
 def test_hybrid_pdf_routing_native_text_preferred():
     from agent.rag.ocr import ocr_document
-    from agent.rag.pdf import extract_pdf_pages
 
     raw = _make_text_pdf()
     ocr = FakeOcrClient()

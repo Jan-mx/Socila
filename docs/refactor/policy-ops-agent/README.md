@@ -2,11 +2,13 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-03
 
 ## 当前状态
 
 七个重构阶段已经完成并通过阶段验收。当前应用采用Next.js Core、FastAPI、Celery、LangGraph、本地PostgreSQL、pgvector、Redis和MinIO。
+
+09-02用户与管理员双角色鉴权Feature已Accepted；09-03 P0合并质量门禁与v0.2.0发布准备的自动门禁已全部通过（六job CI工作流、镜像加固、Secret/Trivy/Gitleaks、`AUTH_REFRESH_PEPPER`必填、0.2.0版本元数据），分支`refactor/policy-ops-agent-platform`已推送，**等待用户人工合并与发布**（v0.1.0基线tag、Draft PR、main ruleset、merge commit、main复验、v0.2.0 Release；见`PROGRESS.md`精确下一步）。
 
 本机作为开发环境，后续工作以远程Demo部署、真实Agent闭环、首批政策采集和持续质量建设为主。
 

@@ -45,6 +45,10 @@ def migrate() -> None:
             row[0] for row in conn.execute("SELECT name FROM agent.schema_migrations").fetchall()
         }
         for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            # PMG-FR-019：角色文件只能经 --with-roles（强制口令）应用，
+            # 普通 migration 不得创建 agent_app，更不得落默认口令。
+            if path.name.startswith("0002_"):
+                continue
             if path.name in applied:
                 continue
             sql = path.read_text(encoding="utf-8")

@@ -106,11 +106,11 @@ def chunk_document(
             tokens = approx_tokens(text)
             if tokens > SUB_MAX:
                 parts = _split_long(text, SUB_MAX)
-                ids = [add_chunk(path + f"/part{i}", part, parent_chunk_id, {}) for i, part in enumerate(parts)]
+                for i, part in enumerate(parts):
+                    add_chunk(path + f"/part{i}", part, parent_chunk_id, {})
             else:
                 add_chunk(path, text, parent_chunk_id, {})
 
-        structured_children = [c for c in node.children if c.type not in ("paragraph", "row")]
         for child in node.children:
             if child.type in ("chapter", "section", "article", "table", "list", "document"):
                 walk(child, path, parent_chunk_id, inherited_headers)

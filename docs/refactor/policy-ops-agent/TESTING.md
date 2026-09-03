@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-02
+> Updated: 2026-09-03
 
 ## 测试先行
 
@@ -36,18 +36,57 @@ node scripts/scan-secrets.mjs --all
 uv run --project services/agent pytest -q
 ```
 
+测试分层（09-03 PMG-FR-005/006/018）：
+
+```powershell
+# 单元测试：零数据库依赖、零 skip（vitest.config.ts 排除 *.integration.test.ts）
+npm test
+# 数据库集成测试：仅 *.integration.test.ts，必须指向已迁移的全新 PostgreSQL 17 库；
+# 未设置 SSP_TEST_DATABASE_URL 时直接失败（不允许以 skip 关闭）
+$env:SSP_TEST_DATABASE_URL="postgresql://..."; npm run test:db
+```
+
 Repository集成测试需要本地PostgreSQL；真实部署、恢复和切换按[OPERATIONS](./OPERATIONS.md)及对应报告执行。
 
 identity与鉴权专项（09-02）：
 
 ```powershell
-# PostgreSQL集成（identity repository / 刷新并发 / 最后管理员），未设置时自动跳过
-$env:SSP_TEST_DATABASE_URL="postgresql://..."; npm test
 # Chromium E2E（前提：全新PG17库已完成migration、bootstrap-admin、seed；npm run build）
-bash scripts/run-auth-e2e.sh
+$env:SSRP_E2E_DATABASE_URL="postgresql://..."
+$env:SSRP_E2E_NEXTAUTH_SECRET="..."
+$env:SSRP_E2E_REFRESH_PEPPER="..."
+npm run test:e2e:auth
 ```
 
 管理员引导脚本验证：`node scripts/bootstrap-admin.mjs`（读ADMIN_USERNAME/ADMIN_PASSWORD_HASH；幂等，重复执行no-op，同名普通用户冲突失败，不输出凭据）。
+
+Python测试分层（09-03 PMG-FR-008～014）：
+
+```powershell
+cd services/agent
+uv run ruff check .
+uv run mypy agent
+uv run pytest -m "not integration"   # 单元：零环境skip，DeprecationWarning提升为error
+uv run pip-audit
+# 数据库集成：必须指向已迁移的全新PG17库；缺环境变量时测试直接失败（不允许skip）
+$env:SSP_TEST_DATABASE_URL="postgresql://..."
+$env:AGENT_DATABASE_URL="postgresql://..."
+$env:AGENT_DB_PASSWORD="..."
+uv run pytest -m integration
+```
+
+## CI六项门禁（09-03 PMG-FR-020～025）
+
+`.github/workflows/ci.yml`：触发`pull_request`、`main` push与`workflow_dispatch`；同ref并发取消；job级timeout；默认token仅`contents: read`；第三方Action全部固定提交SHA。
+
+| Job | 本地等价命令 | 通过条件 |
+| --- | --- | --- |
+| `gates` | `npx tsc --noEmit`、`npx eslint src`、`npm test` | 退出0；单元skip为0 |
+| `agent-gates` | ruff、mypy、`pytest -m "not integration"`、pip-audit | 退出0；skip为0、未解释warning为0 |
+| `database-gates` | 全新PG17：migration×2、引导×2、seed、`npm run test:db`、`agent.migrate --with-roles`、`pytest -m integration` | 幂等no-op；集成skip为0 |
+| `e2e-gates` | `npm run test:e2e:auth`（standalone构建+mock模型+全新库） | 10项Auth流程与助手回复通过 |
+| `container-gates` | 构建web/agent镜像；合成env+临时卷`compose up`→健康检查→`down -v`；Trivy 0.74.0 | 健康通过、临时资源删除、可修复HIGH/CRITICAL为0 |
+| `security-gates` | `node scripts/scan-secrets.mjs --all`；Gitleaks 8.29.1完整历史 | 除5个已核实fingerprint外0发现 |
 
 ## SiliconFlow
 

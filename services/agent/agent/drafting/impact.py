@@ -133,10 +133,6 @@ def find_impacted_entities(
                 )
 
         # 受影响参数 → 引用它的规则（确定性依赖）。
-        impacted_params = [i for (t, _), i in impacts.items() if t == "param"]
-        for p in params:
-            if any((p.key, "param") in [(i.entity_key, "param") for i in impacts.values()] for _ in [0]) and False:
-                continue
         impacted_param_keys = {i.entity_key for (t, _), i in impacts.items() if t == "param"}
         for r in rules:
             refs_hit = [ref for ref in r.param_refs if ref in impacted_param_keys]

@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-02
+> Updated: 2026-09-03
 
 ## 当前Profile
 
@@ -72,12 +72,12 @@ docker compose -f infra/prod/docker-compose.yml logs --tail 100 web agent worker
 
 ## 服务器部署门禁
 
-1. 准备服务器Secret和离机备份目标；`NEXTAUTH_SECRET`与`AUTH_REFRESH_PEPPER`必须为不同值（ADR-0007）。
-2. 验证Compose配置、镜像版本、网络、资源和健康检查。
+1. 准备服务器Secret和离机备份目标；`AUTH_REFRESH_PEPPER`是Compose必填变量（`:?`插值，缺失即拒绝启动），且必须与`NEXTAUTH_SECRET`为不同值（应用启动时二次拒绝相同值，ADR-0007）。
+2. 验证Compose配置（`docker compose --env-file .env config`）、镜像版本、网络、资源和健康检查。
 3. 执行migration（含0008_auth_identity），再执行`node scripts/bootstrap-admin.mjs`幂等引导Jan管理员，然后启动完整服务。
 4. 运行登录、规划、Agent、RAG、Worker和Beat冒烟；登录冒烟使用引导账号经`/login`（数据库事实），环境凭据仅服务一次性引导。
 5. 执行一次备份及恢复验证。
-6. 记录域名、HTTPS、部署版本、恢复点和实际耗时。
+6. 记录域名、HTTPS、部署版本（当前代码基线v0.2.0：PolicyOps+Auth）、恢复点和实际耗时。
 
 生产迁移、停写、入口或DNS切换、删除数据和Secret轮换必须获得用户明确授权。
 

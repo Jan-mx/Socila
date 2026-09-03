@@ -14,6 +14,8 @@ const suffix = Date.now().toString(36).slice(-6);
 const E2E_USER = `e2euser${suffix}`;
 const E2E_PASSPHRASE = ["e2e", "pass", "word", "123"].join("-");
 const E2E_NEW_PASSPHRASE = ["e2e", "new", "pass", "456"].join("-");
+// mock-openai.mjs 流式拼接后的固定助手文本（PMG-FR-002 真实回复断言）。
+const MOCK_ASSISTANT_REPLY = "你好，我是本地 mock 回复。";
 
 async function login(
   page: Page,
@@ -97,11 +99,19 @@ test.describe.serial("09-02 双角色鉴权关键流程", () => {
       page.locator("#conversation-sidebar").getByText(message.slice(0, 30)),
     ).toBeVisible({ timeout: 30_000 });
 
-    // 刷新后会话仍在（来自服务端列表，非本地状态）
+    // PMG-FR-002（PMG-AC-001）：真实助手流式回复必须可见。
+    // 协议修正前（/v1/responses 对 mock 404）此处无助手回复，断言 Red。
+    const assistantReply = page.getByText("你好，我是本地 mock 回复。");
+    await expect(assistantReply).toBeVisible({ timeout: 30_000 });
+
+    // 刷新后会话仍在，且助手回复来自服务端持久化（非本地状态）
     await page.reload();
     await expect(
       page.locator("#conversation-sidebar").getByText(message.slice(0, 30)),
     ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("你好，我是本地 mock 回复。")).toBeVisible({
+      timeout: 30_000,
+    });
   });
 
   test("AUTH-AC-005: user 携带 /admin callback 登录 → /chat?error=forbidden", async ({ page }) => {

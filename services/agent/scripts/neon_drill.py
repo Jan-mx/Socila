@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import psycopg
@@ -86,7 +86,7 @@ def main() -> None:
         sys.exit(1)
     if "sslmode" not in neon_url:
         neon_url += ("&" if "?" in neon_url else "?") + "sslmode=require"
-    started = datetime.now(timezone.utc).isoformat()
+    started = datetime.now(UTC).isoformat()
     report: dict[str, object] = {"round": ROUND, "started": started, "steps": []}
 
     work = Path(os.environ.get("NEON_DRILL_DIR", Path.home() / "AppData" / "Local" / "Temp" / "neon-drill"))
@@ -176,7 +176,7 @@ def main() -> None:
                 if not batch:
                     break
                 for row in batch:
-                    src_row = dict(zip(src_cols, row))
+                    src_row = dict(zip(src_cols, row, strict=True))
                     target_row: dict[str, object] = {}
                     for col in insert_cols:
                         if col in src_cols:
@@ -200,7 +200,7 @@ def main() -> None:
                 rows = [
                     tuple(
                         (Jsonb(v) if v is not None else None) if c in json_cols else v
-                        for c, v in zip(insert_cols, row)
+                        for c, v in zip(insert_cols, row, strict=True)
                     )
                     for row in rows
                 ]
@@ -216,20 +216,19 @@ def main() -> None:
                     except Exception:
                         target.rollback()
                         # 逐行定位失败行；只输出列名+类型+前80字符，避免个人数据进日志
-                        with pg_conn(TARGET_DB) as probe_conn:
-                            with probe_conn.cursor() as probe:
-                                for i, r in enumerate(rows):
-                                    try:
-                                        probe.execute(sql, r)
-                                    except Exception as e2:
-                                        bad = {
-                                            c: f"{type(v).__name__}:{str(v)[:80]!r}"
-                                            for c, v in zip(insert_cols, r)
-                                            if isinstance(v, str) and "{" in v[:1]
-                                        }
-                                        raise RuntimeError(
-                                            f"copy {table} row {i} failed: {e2}; bracket-params: {bad}"
-                                        ) from e2
+                        with pg_conn(TARGET_DB) as probe_conn, probe_conn.cursor() as probe:
+                            for i, r in enumerate(rows):
+                                try:
+                                    probe.execute(sql, r)
+                                except Exception as e2:
+                                    bad = {
+                                        c: f"{type(v).__name__}:{str(v)[:80]!r}"
+                                        for c, v in zip(insert_cols, r, strict=True)
+                                        if isinstance(v, str) and "{" in v[:1]
+                                    }
+                                    raise RuntimeError(
+                                        f"copy {table} row {i} failed: {e2}; bracket-params: {bad}"
+                                    ) from e2
                         raise
                 target.commit()
             print(f"[drill] copy {table}: {len(rows)} rows", flush=True)
@@ -289,7 +288,7 @@ def main() -> None:
     report["reconciliation_all_match"] = all_ok
     print(f"[drill] 对账：{'全部一致' if all_ok else '存在差异'}", flush=True)
 
-    report["finished"] = datetime.now(timezone.utc).isoformat()
+    report["finished"] = datetime.now(UTC).isoformat()
     report_path = REPO / "docs/refactor/policy-ops-agent/reports/stage-07" / f"neon-drill-round{ROUND}.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

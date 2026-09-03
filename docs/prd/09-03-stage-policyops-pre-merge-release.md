@@ -1,7 +1,7 @@
 # PolicyOps P0 合并质量门禁与 v0.2.0 发布
 
 > Author: Jan
-> Status: Approved
+> Status: Active
 > Updated: 2026-09-03
 
 ## 文档元数据
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-03-stage-policyops-pre-merge-release.md` |
 | 类型 | Stage |
-| 状态 | Approved |
+| 状态 | Active（自动门禁已验收；人工合并与发布循环进行中，完成后方可记Accepted） |
 | 前置依赖 | Stage 01～07 已验收；Auth Feature 已由提交 `71da7fc` 交付并推送至 `refactor/policy-ops-agent-platform` |
 | 可并行阶段 | Python质量修复与镜像加固可在测试契约固定后独立实施；数据库、E2E、文档收口和合并发布必须串行 |
 | 后续消费者 | `main` 主分支、Personal Demo部署、后续PolicyOps和身份功能开发 |

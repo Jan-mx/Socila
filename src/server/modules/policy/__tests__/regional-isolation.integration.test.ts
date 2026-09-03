@@ -8,7 +8,7 @@ import { DrizzleJurisdictionReadRepository } from "@/server/modules/jurisdiction
 
 const DRILL_URL = process.env.SSP_TEST_DATABASE_URL;
 
-describe.skipIf(!DRILL_URL)("regional overlay isolation (drill DB)", () => {
+describe("regional overlay isolation (drill DB)", () => {
   const service = createPolicySnapshotService({
     resolveChain: async (code) => {
       const tree = createJurisdictionTreeService({
@@ -23,6 +23,11 @@ describe.skipIf(!DRILL_URL)("regional overlay isolation (drill DB)", () => {
   });
 
   beforeAll(() => {
+    if (!DRILL_URL) {
+      throw new Error(
+        "SSP_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+      );
+    }
     process.env.DATABASE_URL = DRILL_URL;
   });
 

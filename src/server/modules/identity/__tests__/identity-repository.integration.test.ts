@@ -1,7 +1,7 @@
 /**
  * identity PostgreSQL 集成测试（09-02，AUTH-FR-001/004/008-012，AUTH-AC-003/010/013/014/015）。
  * 前提：SSP_TEST_DATABASE_URL 指向已执行全部迁移（含 0008_auth_identity）的 PostgreSQL 17 演练库。
- * 未设置时整组跳过（与 write-repository.test.ts 同模式）。
+ * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { eq, inArray } from "drizzle-orm";
@@ -38,13 +38,18 @@ const TEST_NORMALIZED = [
   "rollback-user",
 ];
 
-describe.skipIf(!DRILL_URL)("identity repositories (PostgreSQL 17)", () => {
+describe("identity repositories (PostgreSQL 17)", () => {
   let deps: IdentityDeps;
   const TEST_PEPPER = "integration-test-pepper";
   const createdUserIds: string[] = [];
 
   beforeAll(async () => {
-    process.env.DATABASE_URL = DRILL_URL!;
+    if (!DRILL_URL) {
+      throw new Error(
+        "SSP_TEST_DATABASE_URL 未设置：identity 集成测试需要已执行全部迁移（含 0008_auth_identity）的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+      );
+    }
+    process.env.DATABASE_URL = DRILL_URL;
     // 清理上次运行残留，保证幂等
     await db.delete(users).where(inArray(users.normalizedUsername, TEST_NORMALIZED));
     deps = createIdentityDepsFor(undefined, TEST_PEPPER);

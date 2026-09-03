@@ -2,6 +2,8 @@
  * 步骤03.7 上海数据迁移对账（POL-FR-012 / POL-AC-006）：
  * 同一批 DB 测试用例，分别经 legacy 路径（runDbTestSuite 直连有效规则）与
  * 新快照路径（replayFromSnapshot）执行，逐案对账——通过数与逐案结果一致。
+ * 前提：SSP_TEST_DATABASE_URL 指向已迁移且已 seed 的全新 PostgreSQL 17 库；
+ * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { isNotNull } from "drizzle-orm";
@@ -15,7 +17,7 @@ import { DrizzleJurisdictionReadRepository } from "@/server/modules/jurisdiction
 
 const DRILL_URL = process.env.SSP_TEST_DATABASE_URL;
 
-describe.skipIf(!DRILL_URL)("Shanghai migration reconciliation (drill DB)", () => {
+describe("Shanghai migration reconciliation (drill DB)", () => {
   const service = createPolicySnapshotService({
     resolveChain: async (code) => {
       const tree = createJurisdictionTreeService({
@@ -31,6 +33,11 @@ describe.skipIf(!DRILL_URL)("Shanghai migration reconciliation (drill DB)", () =
   const bridge = createLegacyBridge({ resolveChain: async () => [] });
 
   beforeAll(() => {
+    if (!DRILL_URL) {
+      throw new Error(
+        "SSP_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移且已 seed 的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+      );
+    }
     process.env.DATABASE_URL = DRILL_URL;
   });
 

@@ -135,7 +135,7 @@ def diff_trees(old: TreeNode, new: TreeNode, similarity_threshold: float = 0.72)
             added.remove(ni)
             for oi in sources:
                 removed.remove(oi)
-            merged_groups.append(sources + [])
+            merged_groups.append([*sources])
             entries.append(
                 DiffEntry(
                     kind="merged",

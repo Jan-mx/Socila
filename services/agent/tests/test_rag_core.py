@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from typing import ClassVar
 
 import pytest
 
@@ -58,7 +59,7 @@ def test_fetch_rejects_oversized_content(monkeypatch):
             return None
 
         url = "https://www.gov.cn/x"
-        headers = {"content-type": "text/html"}
+        headers: ClassVar[dict[str, str]] = {"content-type": "text/html"}
 
         def iter_bytes(self):
             yield b"x" * (6 * 1024 * 1024)
@@ -91,7 +92,7 @@ def test_redirect_outside_whitelist_rejected(monkeypatch):
 
         status_code = 302
         url = "https://www.gov.cn/x"
-        headers = {"location": "https://evil.example.com/final"}
+        headers: ClassVar[dict[str, str]] = {"location": "https://evil.example.com/final"}
 
         def iter_bytes(self):
             yield b""
@@ -147,6 +148,7 @@ def test_format_adapters_docx_xlsx():
 
     wb = Workbook()
     ws = wb.active
+    assert ws is not None
     ws.title = "参数表"
     ws.append(["参数", "值"])
     ws.append(["最低工资", 2690])

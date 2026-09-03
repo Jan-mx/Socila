@@ -17,10 +17,12 @@ from agent.rag.storage import InMemoryObjectStore
 DRILL = os.environ.get("SSP_TEST_DATABASE_URL")
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(not DRILL, reason="requires SSP_TEST_DATABASE_URL")
 class TestIngestAndRetrieval:
     @pytest.fixture()
     def services(self):
+        assert DRILL is not None
         os.environ["DATABASE_URL"] = DRILL
         from psycopg import connect
 
@@ -33,9 +35,11 @@ class TestIngestAndRetrieval:
                    VALUES ('310000', '上海人社测试源', 'https://hrss.sh.gov.cn/test', 'hrss.sh.gov.cn', 'qa')
                    ON CONFLICT DO NOTHING"""
             )
-            source_id = conn.execute(
+            row = conn.execute(
                 "SELECT id FROM rag.sources WHERE domain='hrss.sh.gov.cn' LIMIT 1"
-            ).fetchone()[0]
+            ).fetchone()
+            assert row is not None
+            source_id = row[0]
         store = InMemoryObjectStore()
         ingest = IngestService(DRILL, store, {"hrss.sh.gov.cn"}, FakeSiliconFlowClient())
         retrieval = RetrievalService(DRILL, FakeSiliconFlowClient())
@@ -47,6 +51,7 @@ class TestIngestAndRetrieval:
         )
 
     def test_ingest_creates_original_tree_markdown_and_chunks(self, services, monkeypatch):
+        assert DRILL is not None
         sample = (
             "# 上海市社保缴费规定\n\n第一条 用人单位应当按月缴纳社会保险费。\n"
             "第二条 缴费基数按本人月平均工资确定。\n\n相关表格另行公布。"
@@ -89,6 +94,7 @@ class TestIngestAndRetrieval:
         assert again.document_version_id == result.document_version_id
 
     def test_hybrid_search_filters_and_parent_expansion(self, services, monkeypatch):
+        assert DRILL is not None
         from psycopg import connect
 
         sample = (
@@ -111,7 +117,7 @@ class TestIngestAndRetrieval:
         with connect(DRILL, autocommit=True) as conn:
             rows = conn.execute("SELECT id, text FROM rag.chunks").fetchall()
             vectors = client.embed([r[1] for r in rows])
-            for (chunk_id, _), vec in zip(rows, vectors["_vectors"]):
+            for (chunk_id, _), vec in zip(rows, vectors["_vectors"], strict=True):
                 literal = "[" + ",".join(f"{x:.6f}" for x in vec) + "]"
                 conn.execute(
                     "INSERT INTO rag.embeddings (chunk_id, model, dimensions, index_version, embedding)"

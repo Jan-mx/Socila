@@ -25,6 +25,15 @@ function sseChunk(id, created, content, finishReason) {
 }
 
 const server = createServer((req, res) => {
+  // 请求日志（PMG-FR-002）：404 或 5xx 会直接出现在 E2E 服务日志中，
+  // 用于验证“服务日志不得出现 mock 404 或未处理 AI API 错误”。
+  res.on("finish", () => {
+    const status = res.statusCode;
+    if (status >= 400) {
+      console.log(`mock-openai: ${req.method} ${req.url} -> ${status}`);
+    }
+  });
+
   if (req.method === "GET" && req.url === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ ok: true }));

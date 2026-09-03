@@ -44,6 +44,10 @@ export function getIdentityDeps(): IdentityDeps {
   if (!pepper) {
     throw new Error("AUTH_REFRESH_PEPPER environment variable is not set");
   }
+  // PMG-FR-032：启动即拒绝与 NEXTAUTH_SECRET 相同的 pepper（两个密钥必须独立）。
+  if (process.env.NEXTAUTH_SECRET && pepper === process.env.NEXTAUTH_SECRET) {
+    throw new Error("AUTH_REFRESH_PEPPER must differ from NEXTAUTH_SECRET");
+  }
 
   cachedDeps = {
     clock: new SystemClock(),

@@ -7,10 +7,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class ErrorKind(str, Enum):
+class ErrorKind(StrEnum):
     RETRYABLE = "retryable"
     NON_RETRYABLE = "non-retryable"
 

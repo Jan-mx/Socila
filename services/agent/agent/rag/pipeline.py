@@ -176,6 +176,7 @@ class RetrievalService:
             # 地区/日期/状态过滤：仅当前有效、已 indexed、发布地区匹配的文档参与召回。
             import jieba
 
+            # PMG-FR-013：FTS 必须使用分词后的查询（simple 配置下中文原文是单 token，整串 plainto_tsquery 无法命中）。
             tokenized_query = " ".join(jieba.cut_for_search(query))
             fts_sql = """
                 SELECT c.id, c.document_version_id, c.text, c.parent_chunk_id, c.path, s.jurisdiction_code,
@@ -191,7 +192,7 @@ class RetrievalService:
                 ORDER BY rank DESC
                 LIMIT 20
             """
-            params = {"q": query, "j": jurisdiction_code, "d": as_of_date}
+            params = {"q": tokenized_query, "j": jurisdiction_code, "d": as_of_date}
             fts_rows = conn.execute(fts_sql, params).fetchall()
 
             embedding = self._client.embed([query])

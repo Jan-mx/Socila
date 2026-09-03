@@ -1,67 +1,309 @@
-# 阶段01.6 CI 门禁（FND-FR-009 / FND-FR-010）
-# 全套门禁：依赖安装 → 源码Lint → 类型检查 → 测试 → 生产构建 → 全库 Secret 扫描。
-# 排除规则：Lint 仅作用于 src/（本地评估脚本目录不在其内且不入库）；
-# Secret 扫描覆盖全部跟踪文件；构建使用占位配置，不依赖真实数据库与模型密钥
-# （FND-AC-004，PRD §9：真实密钥只存在部署环境）。
+# PolicyOps 合并质量门禁（09-03 PMG-FR-020～029）
+#
+# 六项必需检查：gates / agent-gates / database-gates / e2e-gates /
+# container-gates / security-gates。全部只使用合成凭据与全新数据库，
+# 不接触任何生产数据（PMG-FR-015）。
+#
+# 触发（PMG-FR-026）：pull_request、main push、人工 dispatch；
+# 同 ref 并发取消 + job timeout；默认 GITHUB_TOKEN 仅 contents: read，
+# Gitleaks 关闭 PR 评论，不授予写权限。
+#
+# 第三方 Action 固定完整提交 SHA 并保留版本注释（PMG-FR-027）。
 name: CI
 
 on:
-  push:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  UV_VERSION: "0.12.7"
 
 jobs:
+  # PMG-FR-020：npm ci → ESLint → TypeScript → 单元测试（零skip）→ 生产构建
   gates:
+    name: gates
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
       NEXTAUTH_SECRET: ci-placeholder-secret-not-real
       NEXTAUTH_URL: http://localhost:3000
       ADMIN_USERNAME: admin
-      ADMIN_PASSWORD_HASH: $2a$12$abcdefghijklmnopqrstuv0123456789012345678901234567890
+      ADMIN_PASSWORD_HASH: "$2a$12$abcdefghijklmnopqrstuv0123456789012345678901234567890"
       OPENAI_URL: ""
       OPENAI_API_KEY: ci-placeholder-key-not-real
       OPENAI_MODEL: gpt-4o-mini
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - run: npm ci
-      - run: npx eslint src
-      - run: npx tsc --noEmit
-      - run: npm test
-      - run: npm run build
-      - run: node scripts/scan-secrets.mjs --all
+      - name: npm ci
+        run: npm ci
+      - name: ESLint
+        run: npx eslint src
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: unit tests
+        run: npm test
+      - name: production build
+        run: npm run build
 
-  # 步骤02.3/02.4：仓储层门禁——在 CI 自带的 PostgreSQL 17 服务上执行
-  # migration + seed，跑新旧对账与写仓储（CRUD/回滚/并发）集成测试。
-  repository-gates:
+  # PMG-FR-021：冻结依赖同步 → Ruff → Mypy → 非integration pytest → pip-audit
+  agent-gates:
+    name: agent-gates
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: services/agent
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: frozen dependency sync
+        run: uv sync --frozen
+      - name: Ruff
+        run: uv run ruff check .
+      - name: Mypy
+        run: uv run mypy agent tests
+      - name: pytest (non-integration)
+        run: uv run pytest -q -m "not integration"
+      - name: pip-audit
+        run: uv run pip-audit
+
+  # PMG-FR-022（初始化顺序 PMG-FR-015～019）：
+  # 全新 pgvector/pgvector:pg17 + 合成口令；
+  # Core migration ×2（第二次必须幂等no-op）→ 管理员引导 ×2 → seed ×1 →
+  # 完整 Node 数据库套件 → Agent migration + 角色授权 → 完整 Python 数据库套件
+  database-gates:
+    name: database-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: ssp_ci
+          POSTGRES_USER: ci_db_user
+          POSTGRES_PASSWORD: ci-synthetic-db-password-not-real
+          POSTGRES_DB: policyops_ci
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U ci_db_user"
           --health-interval 5s
           --health-timeout 3s
-          --health-retries 10
+          --health-retries 20
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ssp_ci
-      SSP_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ssp_ci
+      DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
+      SSP_TEST_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
+      AGENT_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
+      AGENT_DB_PASSWORD: ci-synthetic-agent-role-pw-not-real
+      ADMIN_USERNAME: ci-admin
+      ADMIN_PASSWORD_HASH: "$2a$12$abcdefghijklmnopqrstuv0123456789012345678901234567890"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - run: npm ci
-      - run: npm run db:migrate
-      - run: npm run seed
-      - run: npx vitest run src/server/modules/__tests__/write-repository.test.ts src/server/modules/identity/__tests__/ownership.test.ts
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: npm ci
+        run: npm ci
+      - name: Core migration (1st)
+        run: npm run db:migrate
+      - name: Core migration (2nd, must be idempotent no-op)
+        run: npm run db:migrate
+      - name: admin bootstrap (1st)
+        run: node scripts/bootstrap-admin.mjs
+      - name: admin bootstrap (2nd, must be idempotent no-op)
+        run: node scripts/bootstrap-admin.mjs
+      - name: seed
+        run: npm run seed
+      - name: Node database suite
+        run: npm run test:db
+      - name: Agent migration + role grants
+        working-directory: services/agent
+        run: uv run python -m agent.migrate --with-roles
+      - name: Python database suite
+        working-directory: services/agent
+        run: uv run pytest -q -m integration
+
+  # PMG-FR-023：Chromium + 系统依赖；全新 PostgreSQL 17 → migration → 引导 →
+  # seed → build → npm run test:e2e:auth
+  e2e-gates:
+    name: e2e-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: ci_db_user
+          POSTGRES_PASSWORD: ci-synthetic-db-password-not-real
+          POSTGRES_DB: policyops_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_db_user"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      SSRP_E2E_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
+      SSRP_E2E_NEXTAUTH_SECRET: ci-e2e-nextauth-secret-not-real
+      SSRP_E2E_REFRESH_PEPPER: ci-e2e-refresh-pepper-not-real
+      SSRP_E2E_ADMIN_USERNAME: ci-admin
+      SSRP_E2E_ADMIN_PASSWORD: ci-e2e-synthetic-admin-pw
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Chromium + system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: npm ci
+        run: npm ci
+      - name: migration
+        env:
+          DATABASE_URL: ${{ env.SSRP_E2E_DATABASE_URL }}
+        run: npm run db:migrate
+      - name: admin bootstrap
+        env:
+          DATABASE_URL: ${{ env.SSRP_E2E_DATABASE_URL }}
+        run: |
+          export ADMIN_USERNAME="$SSRP_E2E_ADMIN_USERNAME"
+          export ADMIN_PASSWORD_HASH="$(node -e "process.stdout.write(require('bcryptjs').hashSync(process.env.SSRP_E2E_ADMIN_PASSWORD, 12))")"
+          node scripts/bootstrap-admin.mjs
+      - name: seed
+        env:
+          DATABASE_URL: ${{ env.SSRP_E2E_DATABASE_URL }}
+        run: npm run seed
+      - name: production build
+        run: npm run build
+      - name: auth E2E
+        run: npm run test:e2e:auth
+
+  # PMG-FR-024：构建 web:latest 与 agent:latest；合成 env + 临时卷启动
+  # proxy/web/agent/worker/beat/postgres/redis/minio；检查 /api/health 与
+  # /internal/health；无条件 docker compose down -v。
+  # PMG-FR-029：Trivy 0.74.0 扫描两个最终运行镜像（结果属于本门禁）。
+  container-gates:
+    name: container-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: socila-ci
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: build web:latest
+        run: docker build -f Dockerfile -t web:latest .
+      - name: build agent:latest
+        run: docker build -f services/agent/Dockerfile -t agent:latest services/agent
+      - name: synthetic env file
+        working-directory: infra/prod
+        run: |
+          cat > .ci.env <<'EOF'
+          POSTGRES_USER=ci_postgres
+          POSTGRES_PASSWORD=ci-synthetic-pg-pw
+          POSTGRES_DB=policyops_ci
+          DATABASE_URL=postgresql://ci_postgres:ci-synthetic-pg-pw@postgres:5432/policyops_ci
+          AGENT_DATABASE_URL=postgresql://ci_postgres:ci-synthetic-pg-pw@postgres:5432/policyops_ci
+          NEXTAUTH_SECRET=ci-synthetic-nextauth
+          AUTH_REFRESH_PEPPER=ci-synthetic-pepper
+          NEXTAUTH_URL=http://localhost
+          ADMIN_USERNAME=ci-admin
+          ADMIN_PASSWORD_HASH=$2a$12$abcdefghijklmnopqrstuv0123456789012345678901234567890
+          AGENT_SERVICE_JWT_CURRENT=ci-synthetic-jwt-current
+          AGENT_SERVICE_JWT_PREVIOUS=ci-synthetic-jwt-previous
+          OPENAI_API_KEY=ci-synthetic-openai
+          OPENAI_URL=http://localhost:9
+          OPENAI_MODEL=ci-model
+          MINIO_ROOT_USER=ci_minio
+          MINIO_ROOT_PASSWORD=ci-synthetic-minio-pw
+          SILICONFLOW_API_KEY=ci-synthetic-siliconflow
+          REDIS_PASSWORD=ci-synthetic-redis-pw
+          EOF
+      - name: compose config (required interpolation must pass)
+        working-directory: infra/prod
+        run: docker compose --env-file .ci.env config --quiet
+      - name: compose up (synthetic env, temporary volumes)
+        working-directory: infra/prod
+        run: docker compose --env-file .ci.env up -d proxy web agent worker beat postgres redis minio
+      - name: health checks
+        working-directory: infra/prod
+        run: |
+          ok=0
+          for i in $(seq 1 36); do
+            if docker compose --env-file .ci.env exec -T web wget -qO- http://127.0.0.1:3000/api/health | grep -q '"status":"ok"'; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ok" != "1" ]; then
+            docker compose --env-file .ci.env logs
+            exit 1
+          fi
+          docker compose --env-file .ci.env exec -T agent \
+            python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8100/internal/health', timeout=4)"
+      - name: compose down -v (unconditional)
+        if: always()
+        working-directory: infra/prod
+        run: docker compose --env-file .ci.env down -v
+      - name: Trivy web:latest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: "0.74.0"
+          image-ref: web:latest
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Trivy agent:latest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: "0.74.0"
+          image-ref: agent:latest
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  # PMG-FR-025/028：仓库 Secret 扫描 + Gitleaks 完整历史扫描
+  # （固定 8.29.1，checkout fetch-depth 0，.gitleaksignore 仅五个已核实 fingerprint）
+  security-gates:
+    name: security-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: repo secret scan (all tracked files)
+        run: node scripts/scan-secrets.mjs --all
+      - name: Gitleaks full-history scan
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.29.1
+          GITLEAKS_ENABLE_COMMENTS: "false"

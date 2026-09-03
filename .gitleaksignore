@@ -1,0 +1,8 @@
+# Gitleaks 基线（09-03 PMG-FR-028）：仅允许以下五个已核实的历史误报 fingerprint
+# （dsl 规则 JSON 中的业务示例字段，generic-api-key 规则误报）。
+# 不得创建目录级忽略；任何新 fingerprint 必须阻断并人工核实。
+2fb225a325e7fe8cb12bd0b3d08b4cc2a4b5648f:dsl/ssp_dsl_v1/rules/R-500-4050-ELIGIBILITY.json:generic-api-key:121
+2fb225a325e7fe8cb12bd0b3d08b4cc2a4b5648f:dsl/ssp_dsl_v1/rules/R-510-4050-AMOUNT.json:generic-api-key:14
+2fb225a325e7fe8cb12bd0b3d08b4cc2a4b5648f:dsl/ssp_dsl_v1/rules/R-510-4050-AMOUNT.json:generic-api-key:197
+2fb225a325e7fe8cb12bd0b3d08b4cc2a4b5648f:dsl/ssp_dsl_v1/rules/R-540-SUBSIDY-MUTUAL-EXCLUSION.json:generic-api-key:14
+2fb225a325e7fe8cb12bd0b3d08b4cc2a4b5648f:dsl/ssp_dsl_v1/rules/R-540-SUBSIDY-MUTUAL-EXCLUSION.json:generic-api-key:29

@@ -2,20 +2,15 @@
 
 真实历史政策样本（上海最低工资标准调整，两版本）→ 采集解析 → Diff → 影响检索 →
 DraftBundle 生成 → verify → 管理员 edit-and-approve → Core 幂等物化（保留 Agent 原稿）。
+纯确定性流程，不依赖数据库（Core 物化副作用在 Node 侧 materialize.integration.test.ts 覆盖）。
 """
 
 from __future__ import annotations
-
-import os
-
-import pytest
 
 from agent.drafting.bundle import parse_bundle, verify_bundle
 from agent.drafting.diff import diff_trees
 from agent.drafting.impact import CoreEntity, find_impacted_entities
 from agent.rag.document_tree import parse_markdown_or_text
-
-DRILL = os.environ.get("SSP_TEST_DATABASE_URL")
 
 POLICY_2024 = """# 上海市最低工资标准规定（2024版）
 
@@ -36,7 +31,6 @@ POLICY_2025 = """# 上海市最低工资标准规定（2025版）
 """
 
 
-@pytest.mark.skipif(not DRILL, reason="requires SSP_TEST_DATABASE_URL")
 def test_real_policy_closed_loop():
     # 1) 解析两版政策（真实历史政策样本）。
     old_tree = parse_markdown_or_text(POLICY_2024.encode()).tree

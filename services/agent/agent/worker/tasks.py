@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .celery_app import celery_app
 from ..config import get_settings
 from ..errors import classify_error
 from ..graph.runner import build_policyops_graph
 from ..repositories import PostgresRepositories
+from .celery_app import celery_app
 
 _settings = get_settings()
 
@@ -55,7 +55,7 @@ def start_graph(self, run_id: str, thread_id: str, payload: dict[str, Any]) -> d
             current_node="human_review" if waiting else "materialize_draft",
         )
         return {"status": "waiting_review" if waiting else "completed", "proposal": final.get("proposal")}
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         return _fail_or_retry(self, repos, run_id, err)
 
 
@@ -77,7 +77,7 @@ def resume_graph(self, run_id: str, thread_id: str, decision: dict[str, Any]) ->
         status = "rejected" if (final.get("review_decision") or {}).get("decision") == "reject" else "completed"
         repos.update_status(run_id, status, current_node="materialize_draft")
         return {"status": status, "proposal": final.get("proposal")}
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         return _fail_or_retry(self, repos, run_id, err)
 
 

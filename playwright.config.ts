@@ -1,10 +1,11 @@
 /**
- * Playwright 配置（09-02 Chromium E2E，AUTH-US-001～005）。
+ * Playwright 配置（09-02 Chromium E2E，AUTH-US-001～005；09-03 PMG-FR-004 起运行
+ * `output: standalone` 生产产物，不再使用 next start）。
  *
- * 运行前提（验收脚本负责）：
+ * 运行前提（scripts/run-auth-e2e.mjs 负责校验与准备）：
  * - SSRP_E2E_DATABASE_URL 指向已迁移+已引导+已 seed 的全新 PostgreSQL 17 库；
- * - npm run build 已产出生产构建（next start）。
- * Next 服务器进程环境覆盖仓库内 .env*（process env 优先），避免误连开发/生产库。
+ * - npm run build 已产出 standalone 构建，public 与 .next/static 已复制到构建目录；
+ * - Next 服务器进程环境覆盖仓库内 .env*（process env 优先），避免误连开发/生产库。
  */
 import { defineConfig, devices } from "@playwright/test";
 
@@ -39,11 +40,15 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: `npx next start -p ${PORT}`,
+      // PMG-FR-004：运行 output: standalone 产物（node .next/standalone/server.js）。
+      command: `node .next/standalone/server.js`,
       url: `http://127.0.0.1:${PORT}/api/health`,
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
+        PORT: String(PORT),
+        HOSTNAME: "127.0.0.1",
+        NODE_ENV: "production",
         DATABASE_URL: process.env.SSRP_E2E_DATABASE_URL ?? "",
         NEXTAUTH_URL: baseURL,
         NEXTAUTH_SECRET: process.env.SSRP_E2E_NEXTAUTH_SECRET ?? "",

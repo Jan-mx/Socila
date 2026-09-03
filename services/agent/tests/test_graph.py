@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from langgraph.types import Command
+
 from agent.core_client import FakeCoreClient
 from agent.graph.runner import build_policyops_graph
 from agent.repositories import InMemoryRepositories
@@ -25,7 +27,7 @@ def _drive(repos: InMemoryRepositories, core: FakeCoreClient, payload: dict) -> 
     if not interrupts:
         return result
     return graph.invoke(
-        Command := __import__("langgraph.types", fromlist=["Command"]).Command(
+        Command(
             resume={"decision": payload.get("decision", "approve"), "patch": None}
         ),
         config=config,

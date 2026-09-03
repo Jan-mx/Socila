@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-02
+> Updated: 2026-09-03
 
 ## 用途
 
@@ -20,6 +20,7 @@
 | `stage-06/` | Diff、草案、审核和物化验收 |
 | `stage-07/` | 部署、迁移、恢复、回退和切换验收 |
 | `feature-09-02-auth/` | 用户与管理员双角色鉴权Feature验收 |
+| `stage-09-03-pre-merge-release/` | P0合并质量门禁与v0.2.0发布阶段验收（六job门禁、镜像加固、Secret/Trivy/Gitleaks、发布治理） |
 | `documentation/` | 文档体系和补充决策验收 |
 | `traceability.md` | 需求、实现、测试和报告追踪 |
 
