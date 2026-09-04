@@ -1,15 +1,18 @@
 /**
- * 服务JWT宿主/Compose配置契约（09-03复审缺漏二/四）：
+ * 服务JWT宿主/Compose配置契约（09-03复审缺漏二/四及2026-09-04复查）：
  * - Compose web/agent/worker/beat四个消费者：AGENT_SERVICE_JWT_CURRENT必须使用
  *   :? 必填插值（缺失或空值时docker compose config直接失败，SJWT-AC-010），
  *   AGENT_SERVICE_JWT_PREVIOUS保持可选插值（双窗口轮换）；
- * - 根 .env.example 宿主模板必须声明两个变量；current占位符不少于32 UTF-8
- *   字节且明确非真实（模板只含占位符，可安全提交）。
+ * - 根 .env.example 宿主模板必须声明两个变量，且current/previous模板值必须为空：
+ *   可预测占位符不得通过启动校验（复查），直接复制未填写的模板必须由Node启动
+ *   校验拒绝（模板为空是故意设计，未配置时必须启动失败，SJWT-AC-010）。
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+
+import { assertServiceJwtStartupConfig } from "../security/service-jwt-provider";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -34,6 +37,22 @@ function composeServiceSection(yaml: string, service: string): string {
 
 const composeYaml = sourceOf("infra/prod/docker-compose.yml");
 const jwtConsumers = ["web", "agent", "worker", "beat"];
+
+/** 从 .env.example 模板提取两个服务JWT变量的值（空值即未填写）。 */
+function templateJwtVars(): { current: string; previous: string } {
+  let current = "";
+  let previous = "";
+  for (const line of sourceOf(".env.example").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("AGENT_SERVICE_JWT_CURRENT=")) {
+      current = trimmed.slice("AGENT_SERVICE_JWT_CURRENT=".length);
+    }
+    if (trimmed.startsWith("AGENT_SERVICE_JWT_PREVIOUS=")) {
+      previous = trimmed.slice("AGENT_SERVICE_JWT_PREVIOUS=".length);
+    }
+  }
+  return { current, previous };
+}
 
 describe("Compose 服务JWT必填插值（SJWT-FR-001/AC-010，复审缺漏二）", () => {
   for (const service of jwtConsumers) {
@@ -62,7 +81,7 @@ describe("Compose 服务JWT必填插值（SJWT-FR-001/AC-010，复审缺漏二�
   });
 });
 
-describe("宿主模板服务JWT变量（复审缺漏四）", () => {
+describe("宿主模板服务JWT变量（复审缺漏四及2026-09-04复查）", () => {
   it(".env.example 声明 AGENT_SERVICE_JWT_CURRENT 与 AGENT_SERVICE_JWT_PREVIOUS", () => {
     const lines = sourceOf(".env.example").split(/\r?\n/).map((line) => line.trim());
     expect(
@@ -75,14 +94,21 @@ describe("宿主模板服务JWT变量（复审缺漏四）", () => {
     ).toBe(true);
   });
 
-  it(".env.example current 占位符不少于32 UTF-8字节且明确非真实", () => {
-    const line = sourceOf(".env.example")
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .find((l) => l.startsWith("AGENT_SERVICE_JWT_CURRENT="));
-    expect(line, "未找到 AGENT_SERVICE_JWT_CURRENT=").toBeDefined();
-    const value = (line as string).slice("AGENT_SERVICE_JWT_CURRENT=".length);
-    expect(new TextEncoder().encode(value).length).toBeGreaterThanOrEqual(32);
-    expect(value.toLowerCase()).toMatch(/replace|synthetic|placeholder/);
+  it("模板current/previous必须为空值（可预测占位符不得通过校验）", () => {
+    const vars = templateJwtVars();
+    expect(vars.current, "模板current必须为空（空值是故意设计，未配置必须启动失败）").toBe("");
+    expect(vars.previous, "模板previous必须为空").toBe("");
+  });
+
+  it("直接复制未填写的模板会被Node启动校验拒绝（防回归）", () => {
+    const vars = templateJwtVars();
+    expect(
+      () =>
+        assertServiceJwtStartupConfig({
+          AGENT_SERVICE_JWT_CURRENT: vars.current,
+          AGENT_SERVICE_JWT_PREVIOUS: vars.previous,
+        }),
+      "未填写的模板值必须无法通过启动校验",
+    ).toThrow();
   });
 });

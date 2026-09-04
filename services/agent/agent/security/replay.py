@@ -64,16 +64,28 @@ class PostgresReplayGuard:
 
     业务写入必须通过work_fn(conn)在传入连接上执行，才能与JTI插入同事务提交/回滚。
     agent_app角色仅持有本表最小读写权限（0007迁移GRANT）。
+
+    连接超时（2026-09-04复查）：connect_timeout_seconds必须为正整数，默认5秒，
+    显式传入psycopg.connect的connect_timeout——防火墙静默丢弃建连时不得无限挂起；
+    连接超时与其他连接失败同样统一映射ServiceAuthStoreUnavailable（AC-014）。
     """
 
-    def __init__(self, database_url: str) -> None:
+    def __init__(self, database_url: str, connect_timeout_seconds: int = 5) -> None:
+        # 布尔是int的子类，必须显式拒绝；非正整数在构造期失败（生产装配零配置默认5秒）。
+        if isinstance(connect_timeout_seconds, bool) or not isinstance(connect_timeout_seconds, int):
+            raise ValueError("connect_timeout_seconds must be a positive integer")
+        if connect_timeout_seconds < 1:
+            raise ValueError("connect_timeout_seconds must be a positive integer")
         self._database_url = database_url
+        self._connect_timeout_seconds = connect_timeout_seconds
 
     def with_jti(self, claims: Any, work_fn: Callable[[TxHandle], Any]) -> Any:
         import psycopg
 
         try:
-            conn = psycopg.connect(self._database_url)
+            conn = psycopg.connect(
+                self._database_url, connect_timeout=self._connect_timeout_seconds
+            )
         except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
             # 连接失败：存储不可用，失败关闭（NFR-004），绝不回退Header信任。
             raise ServiceAuthStoreUnavailable("connect-failed") from exc

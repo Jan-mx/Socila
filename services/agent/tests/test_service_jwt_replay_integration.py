@@ -220,13 +220,18 @@ def test_guard_expired_rows_cleaned_opportunistic(drill: str) -> None:
 
 
 def test_guard_store_unavailable_category(drill: str) -> None:
-    """AC-014：存储不可用（连接失败）→ ServiceAuthStoreUnavailable（失败关闭）。"""
+    """AC-014：存储不可用（连接失败）→ ServiceAuthStoreUnavailable（失败关闭）；
+    2026-09-04复查：connect_timeout_seconds=1使不可达连接在有界时间内返回
+    （Windows防火墙静默丢弃场景不得挂起；1秒超时允许5秒调度余量）。"""
     from agent.security.replay import PostgresReplayGuard, ServiceAuthStoreUnavailable
 
-    guard = PostgresReplayGuard(UNREACHABLE_URL)
+    guard = PostgresReplayGuard(UNREACHABLE_URL, connect_timeout_seconds=1)
+    start = time.monotonic()
     with pytest.raises(ServiceAuthStoreUnavailable) as exc:
         guard.with_jti(_claims(_jti(7)), lambda conn: conn.execute("SELECT 1"))
+    elapsed = time.monotonic() - start
     assert exc.value.public_code == "SERVICE_AUTH_STORE_UNAVAILABLE"
+    assert elapsed < 5.0, f"1秒连接超时应是有界失败，实际 {elapsed:.1f}s"
 
 
 # ── 复审缺漏三：重放存储SQL异常精确映射（SJWT-FR-009/AC-013/014）──────────────
@@ -436,11 +441,13 @@ async def test_route_create_run_valid_jti_replay_and_idempotency(drill: str) -> 
 
 
 async def test_route_store_unavailable_503(drill: str) -> None:
-    """AC-014：重放存储不可用 → 503 SERVICE_AUTH_STORE_UNAVAILABLE + no-store（不执行业务写）。"""
+    """AC-014：重放存储不可用 → 503 SERVICE_AUTH_STORE_UNAVAILABLE + no-store（不执行业务写）；
+    2026-09-04复查：connect_timeout_seconds=1使路由在有界时间内返回503。"""
     from agent.security.replay import PostgresReplayGuard
 
-    app = _build_app(drill, PostgresReplayGuard(UNREACHABLE_URL))
+    app = _build_app(drill, PostgresReplayGuard(UNREACHABLE_URL, connect_timeout_seconds=1))
     client = _client(app)
+    start = time.monotonic()
     res = await client.post(
         "/internal/v1/agent-runs",
         json={"as_of_date": "2026-01-01", "payload": {}},
@@ -449,9 +456,11 @@ async def test_route_store_unavailable_503(drill: str) -> None:
             "Idempotency-Key": "sjwt-it-py-503",
         },
     )
+    elapsed = time.monotonic() - start
     assert res.status_code == 503
     assert res.json() == {"error": "SERVICE_AUTH_STORE_UNAVAILABLE"}
     assert res.headers.get("cache-control") == "no-store"
+    assert elapsed < 5.0, f"1秒连接超时应是有界503，实际 {elapsed:.1f}s"
 
 
 def test_create_review_in_tx_same_transaction_with_jti(drill: str) -> None:

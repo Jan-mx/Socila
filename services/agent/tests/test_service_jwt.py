@@ -8,6 +8,8 @@ SJWT-NFR-005：Clock/UUID注入，零外部依赖、不依赖真实等待。
 
 from __future__ import annotations
 
+from typing import Literal
+
 import httpx
 import pytest
 
@@ -550,3 +552,92 @@ def test_main_assembly_builds_app_with_valid_secrets(monkeypatch):
     assert main.app.title == "PolicyOps Agent Runtime"
     assert main.deps.service_jwt is not None
     assert main.deps.replay is not None
+
+
+# ── PostgresReplayGuard 连接超时（2026-09-04复查：无确定性超时会在防火墙静默丢弃时挂起）────
+
+
+class _FakeCursor:
+    rowcount = 1
+
+
+class _FakeTransaction:
+    def __enter__(self) -> _FakeTransaction:
+        return self
+
+    def __exit__(self, *exc: object) -> Literal[False]:
+        return False
+
+
+class _FakeConnection:
+    """psycopg.connect替身：记录调用参数，让with_jti走通完整流程（不落真实数据库）。"""
+
+    def execute(self, *args: object, **kwargs: object) -> _FakeCursor:
+        return _FakeCursor()
+
+    def transaction(self) -> _FakeTransaction:
+        return _FakeTransaction()
+
+    def close(self) -> None:
+        pass
+
+
+def _fake_claims():
+    from agent.security.service_jwt import NEXT_IDENTITY, ServiceJwtClaims
+
+    return ServiceJwtClaims(
+        iss=NEXT_IDENTITY["iss"],
+        aud=NEXT_IDENTITY["aud"],
+        sub=NEXT_IDENTITY["sub"],
+        jti=FIXED_JTI,
+        iat=FIXED_NOW,
+        exp=FIXED_NOW + SERVICE_JWT_TTL_SECONDS,
+    )
+
+
+def test_guard_connect_passes_default_five_second_timeout(monkeypatch):
+    """复查：默认connect_timeout=5必须显式传入psycopg.connect（生产装配零改动）。"""
+    import psycopg
+
+    from agent.security.replay import PostgresReplayGuard
+
+    calls: list[tuple[str, dict]] = []
+
+    def fake_connect(conninfo: str, **kwargs: object) -> _FakeConnection:
+        calls.append((conninfo, dict(kwargs)))
+        return _FakeConnection()
+
+    monkeypatch.setattr(psycopg, "connect", fake_connect)
+    url = "postgresql://sjwt-unit:sjwt-unit@127.0.0.1:5432/sjwt_unit"
+    PostgresReplayGuard(url).with_jti(_fake_claims(), lambda conn: "ok")
+    assert calls == [(url, {"connect_timeout": 5})]
+
+
+def test_guard_connect_timeout_override_applied(monkeypatch):
+    """复查：显式connect_timeout_seconds=1生效（不可达连接测试使用，避免CI/Windows长期等待）。"""
+    import psycopg
+
+    from agent.security.replay import PostgresReplayGuard
+
+    calls: list[tuple[str, dict]] = []
+
+    def fake_connect(conninfo: str, **kwargs: object) -> _FakeConnection:
+        calls.append((conninfo, dict(kwargs)))
+        return _FakeConnection()
+
+    monkeypatch.setattr(psycopg, "connect", fake_connect)
+    url = "postgresql://sjwt-unit:sjwt-unit@127.0.0.1:5432/sjwt_unit"
+    PostgresReplayGuard(url, connect_timeout_seconds=1).with_jti(_fake_claims(), lambda conn: "ok")
+    assert calls == [(url, {"connect_timeout": 1})]
+
+
+@pytest.mark.parametrize("invalid", [0, -1, True, False, 2.5, "1", None])
+def test_guard_connect_timeout_rejects_invalid_values(invalid):
+    """复查：0、负数、布尔值和非整数在构造期即拒绝（必须正整数）。"""
+    from agent.security.replay import PostgresReplayGuard
+
+    with pytest.raises(ValueError):
+        PostgresReplayGuard(
+            "postgresql://sjwt-unit:sjwt-unit@127.0.0.1:5432/sjwt_unit",
+            connect_timeout_seconds=invalid,
+        )

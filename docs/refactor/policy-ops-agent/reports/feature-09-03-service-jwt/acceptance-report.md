@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Accepted
-> Updated: 2026-09-03
+> Updated: 2026-09-04
 > PRD: `docs/prd/09-03-feature-core-agent-service-jwt.md`
 > ADR: `docs/refactor/policy-ops-agent/archive/decisions/ADR-0005-内网服务JWT.md`
 
@@ -225,3 +225,63 @@ container-gates 在健康检查后新增 agent 容器内 PyJWT 双向冒烟（he
 - 最终枚举：`sjwfx*`容器/卷/网络全部为0；清理后容器/卷/网络快照与清理前基线**逐行一致**（唯一差异为本任务自身资源已不存在）。
 - `socila-*`九个容器状态与基线完全一致（均未运行、未被删除或重建）；`socila_pg-data`、`socila_minio-data`、`socila_caddy-data`卷均保留。
 - 真实Secret（`infra/prod/.env`）全程未读取、未输出、未轮换；`.env.local`与`infra/prod/.env`未进入暂存区。
+
+## 7.7 模板占位符与连接超时复查修复（2026-09-04，新鲜Red→Green）
+
+### 7.7.1 复查发现
+
+1. **可预测模板占位符通过校验**：宿主模板`.env.example`的`AGENT_SERVICE_JWT_CURRENT=replace-with-at-least-32-random-bytes`自身超过32 UTF-8字节、能通过`validateServiceJwtSecrets`——用户直接复制模板而不替换时，系统接受公开、可预测的服务JWT Secret。
+2. **PostgreSQL连接缺少确定性超时**：`services/agent/agent/security/replay.py`的`psycopg.connect(self._database_url)`未传`connect_timeout`；生产`AGENT_DATABASE_URL`与测试`UNREACHABLE_URL`均受影响。Windows防火墙静默丢弃连接时，完整集成测试通过前5项后长期挂起（PostgreSQL侧无测试连接，确认卡在客户端建连阶段）。
+
+### 7.7.2 修复一：模板空值+启动强制校验（SJWT-FR-001/AC-010）
+
+- Red：先修改`src/lib/env/service-jwt-config-contract.test.ts`——断言模板current/previous为空值（删除“模板占位符≥32字节即可”的错误契约），新增防回归测试（模板值直接经`assertServiceJwtStartupConfig`断言必须拒绝）。首跑**2失败/10通过**，失败原因恰为：`expected 'replace-with-at-least-32-random-bytes' to be ''`（模板current非空）与`expected [Function] to throw an error`（未填写模板值可通过启动校验）。
+- 实现：`.env.example`的`AGENT_SERVICE_JWT_CURRENT=`与`AGENT_SERVICE_JWT_PREVIOUS=`改为空值；注释明确current必须使用密码学安全随机源生成不少于32随机字节、previous仅Secret轮换窗口期设置、两者不得相同、模板值为空是故意设计（未配置时启动必须失败，`/api/health`不可绕过）。
+- Green：`service-jwt-config-contract.test.ts` 12通过；`service-jwt-startup.test.ts` 9通过；`src/lib/env/config-contract.test.ts` 11通过（模板键集合契约不受空值影响）。
+- 当前真实`.env.local`与`infra/prod/.env`中的有效JWT Secret未修改、未轮换、零输出；未生成、未输出任何真实Secret；未引入随机熵检测（只通过“模板为空+启动强制校验”解决问题，避免过度设计）。
+
+### 7.7.3 修复二：PostgresReplayGuard确定性连接超时（SJWT-FR-008/FR-009/AC-014）
+
+- Red：
+  - 单元（`tests/test_service_jwt.py`新增9例）：默认`connect_timeout=5`显式传入`psycopg.connect`（connect替身记录调用参数）、显式`connect_timeout_seconds=1`生效、`0`/`-1`/`True`/`False`/`2.5`/`"1"`/`None`构造期拒绝。首跑**9失败**：覆盖与非法值用例为`TypeError: PostgresReplayGuard.__init__() got an unexpected keyword argument 'connect_timeout_seconds'`，确认现有构造器不支持超时参数；默认用例因`psycopg.connect`未收到`connect_timeout`断言失败。
+  - 集成（`tests/test_service_jwt_replay_integration.py`两处不可达连接改用`connect_timeout_seconds=1`+5秒有界断言）：首跑**2失败**（同一TypeError），同组其余store-unavailable 503映射2例通过（既有异常边界未变）。
+- 实现：`PostgresReplayGuard.__init__(database_url, connect_timeout_seconds: int = 5)`——必须为正整数（布尔显式拒绝，非整数/非正整数构造期`ValueError`）；`psycopg.connect`显式传入`connect_timeout=connect_timeout_seconds`。生产装配`agent/api/main.py`保持默认5秒，零改动、不新增环境变量。
+- 异常边界不变：连接超时与其他连接失败统一映射`ServiceAuthStoreUnavailable`（503 `SERVICE_AUTH_STORE_UNAVAILABLE` + `Cache-Control: no-store`）；`JtiReplayConflict`继续单独传播→401；缺表/权限不足/连接中断继续503；`work_fn`业务异常原样传播不包装；任意失败JTI与业务写同事务回滚（既有15例全量覆盖）。
+- Green：单元`tests/test_service_jwt.py` **44通过**（既有35+新增9）；`ruff check .` 0问题；`mypy agent tests` 48文件0错误。
+
+### 7.7.4 演练环境与完整集成（SJWT-NFR-007清单先行）
+
+- 任务专属资源清单（创建前记录）：容器`sjwttimeout-pg`、卷`sjwttimeout-pg-data`、网络`sjwttimeout-net`；镜像`pgvector/pgvector:pg17`，127.0.0.1:5433，库`sjwttimeout_drill`；`agent.migrate --with-roles`重复执行2次（幂等，0001/0003/0006/0007+角色0002）；合成演练口令仅写入临时文件（`chmod 600`，用后即删），任何报告/日志零输出。
+- 完整集成`test_service_jwt_replay_integration.py`：**15通过（5.27s，不再挂起）**；不可达连接测试实际完成时间：`test_guard_store_unavailable_category` 2.11s、`test_route_store_unavailable_503` 2.11s（1秒connect超时+客户端栈开销，均满足“5秒内有界”断言；未使用依赖墙钟的过紧断言）。
+
+### 7.7.5 全部门禁重验（2026-09-04新鲜执行）
+
+| # | 命令 | 结果 |
+| --- | --- | --- |
+| 1 | `npx vitest run src/lib/env/service-jwt-config-contract.test.ts` | PASS，12通过，退出0 |
+| 2 | `npx vitest run src/lib/security/service-jwt-startup.test.ts` | PASS，9通过，退出0 |
+| 3 | `npm test` | PASS，35文件/314通过、skip 0，退出0 |
+| 4 | `npx tsc --noEmit` | PASS，退出0 |
+| 5 | `npx eslint src` | PASS，退出0 |
+| 6 | `npm run build`（standalone） | PASS，退出0 |
+| 8 | `uv run pytest -q tests/test_service_jwt.py` | PASS，44通过，退出0 |
+| 9 | `uv run pytest -q -m integration tests/test_service_jwt_replay_integration.py` | PASS，15通过（5.27s、不再挂起），退出0 |
+| 10 | `uv run pytest -q -m "not integration"` | PASS，91通过、20 deselected（integration）、skip 0，退出0 |
+| 11 | `uv run ruff check .` | PASS，0问题，退出0 |
+| 12 | `uv run mypy agent tests` | PASS，48文件0错误，退出0 |
+| 13 | `uv run pip-audit` | **环境阻塞（未通过、未声称PASS）**：6次尝试（经代理5次+直连1次）全部`ConnectionResetError(10054)`——本地代理127.0.0.1:7897重置到pypi.org的TLS握手，直连同样被重置，`curl pypi.org`同样schannel握手失败；本任务未改动`pyproject.toml`/`uv.lock`（Git零diff），审计对象集与2026-09-03新鲜PASS（无可知漏洞）完全一致 |
+| 14 | `docker compose --env-file infra/prod/.env -f infra/prod/docker-compose.yml config --quiet` | PASS，退出0 |
+| 15 | `node scripts/scan-secrets.mjs` | PASS，10个候选文件零命中，退出0 |
+| 16 | `node scripts/scan-secrets.mjs --all` | PASS，558个候选文件零命中，退出0 |
+| 17 | Docker任务资源零残留核查 | PASS（§7.7.6） |
+
+### 7.7.6 演练资源清理与零残留（SJWT-NFR-007、SJWT-AC-019）
+
+- 无条件清理（创建脚本ERR陷阱+最终显式清理双保险）：`docker rm -f sjwttimeout-pg`、`docker volume rm sjwttimeout-pg-data`、`docker network rm sjwttimeout-net`全部退出0；临时口令文件与演练脚本已删除。
+- 最终枚举（`docker ps -a`/`docker volume ls`/`docker network ls`）：`sjwttimeout-*`容器0/卷0/网络0；`sjwt*`全量（含历史演练名）容器/卷/网络均为0。
+- 清理前后容器/卷/网络全量快照逐行一致；`socila-*`九个容器、`socila_pg-data`、`socila_minio-data`、`socila_caddy-data`卷与`socila_edge`/`socila_internal`网络均保留，未删除、未重建。
+- 真实JWT Secret（`infra/prod/.env`）全程未读取、未输出、未轮换；`.env.local`与`infra/prod/.env`未进入暂存区。
+
+### 7.7.7 结论
+
+两项复查发现均以新鲜Red→Green证据修复：模板占位符收紧（空值+启动强制校验防回归）与PostgresReplayGuard确定性连接超时（默认5秒/测试1秒、超时统一503映射、异常边界不变）。全部门禁除`pip-audit`因本机到PyPI网络被重置而环境阻塞（依赖集零变化，见§7.7.5第13行）外全部新鲜PASS。本Feature状态保持**Accepted**（SJWT-FR-001～009、SJWT-NFR-001～007、SJWT-AC-001～019）；修复提交`fix: 收紧服务JWT占位符与连接超时`推送至`origin/refactor/policy-ops-agent-platform`。真实JWT Secret轮换仍未执行（非目标）；PR、main merge与tag/Release仍为未来人工动作。

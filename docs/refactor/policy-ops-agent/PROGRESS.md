@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-03
+> Updated: 2026-09-04
 
 ## 当前结论
 
@@ -13,7 +13,7 @@
 - 09-02 Feature（用户与管理员双角色鉴权，PRD `docs/prd/09-02-feature-user-admin-auth.md`）：**Accepted**（验收证据：`reports/feature-09-02-auth/acceptance-report.md`）。
 - 09-03 阶段（`docs/prd/09-03-stage-policyops-pre-merge-release.md`，P0合并质量门禁与v0.2.0发布准备）：**Accepted（开发分支发布准备）**（验收证据：`reports/stage-09-03-pre-merge-release/acceptance-report.md`）。本阶段仅验收开发分支`refactor/policy-ops-agent-platform`：六类门禁全部本地新鲜复现（全部退出0、零skip）、workflow经actionlint 1.7.7静态校验零发现、`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）。workflow已静态校验、六类门禁已本地复现，不声称GitHub-hosted六项checks已经运行。PR、main ruleset、merge与tag/Release为未来人工动作（见“精确下一步”），不阻塞本阶段验收。
 - 09-03 阶段（`docs/prd/09-03-stage-runtime-configuration-remediation.md`，本地运行配置与凭据整改）：**Accepted**（验收证据：`reports/stage-09-03-runtime-config-remediation/acceptance-report.md`）。CFG-FR-001～010、CFG-NFR-001～007、CFG-AC-001～013全部通过：统一环境加载、模板与入口收口、管理员引导一次性化、新鲜备份+PG17+pgvector真实恢复对账、PostgreSQL口令轮换与轮换前后逐表对账（34表/1610行一致）、全部门禁本地新鲜复验（全部退出0、零skip）；复审确认本阶段演练容器零残留。
-- 09-03 Feature（`docs/prd/09-03-feature-core-agent-service-jwt.md`，Core与Agent双向服务JWT鉴权）：**Accepted**（主体提交`35d673c`，修复提交`fix: 补齐服务JWT复审缺漏`；验收证据：`reports/feature-09-03-service-jwt/acceptance-report.md` §7.4～§7.6）。SJWT-FR-001～009、SJWT-NFR-001～007、SJWT-AC-001～019全部通过：复审四项缺漏逐条修复并重新验收——FastAPI文档/OpenAPI入口统一关闭（四路径一律404、`/internal/health`唯一豁免）、Web Node运行时启动入口`src/instrumentation.ts`对无效Secret fail-fast拒绝启动（standalone真实启动拒绝D2/E2）+Compose`AGENT_SERVICE_JWT_CURRENT`必填插值（缺失/空值`docker compose config`失败）、Python重放存储缺表/权限/连接中断统一映射503且业务异常原样传播不包装（JTI与业务写同事务回滚）、宿主`.env.example`补齐两变量且实际值安全同步至Git忽略的`.env.local`（零输出验证、未轮换）；全部门禁在修复后的全新演练库上重跑（全部退出0、零skip）、AC-017完全隔离Compose双向真实TCP冒烟（10断言+台账恰好1行）与Docker任务资源零残留复核（`socila-*`未动）。
+- 09-03 Feature（`docs/prd/09-03-feature-core-agent-service-jwt.md`，Core与Agent双向服务JWT鉴权）：**Accepted**（主体提交`35d673c`，修复提交`fix: 补齐服务JWT复审缺漏`；验收证据：`reports/feature-09-03-service-jwt/acceptance-report.md` §7.4～§7.6）。SJWT-FR-001～009、SJWT-NFR-001～007、SJWT-AC-001～019全部通过：复审四项缺漏逐条修复并重新验收——FastAPI文档/OpenAPI入口统一关闭（四路径一律404、`/internal/health`唯一豁免）、Web Node运行时启动入口`src/instrumentation.ts`对无效Secret fail-fast拒绝启动（standalone真实启动拒绝D2/E2）+Compose`AGENT_SERVICE_JWT_CURRENT`必填插值（缺失/空值`docker compose config`失败）、Python重放存储缺表/权限/连接中断统一映射503且业务异常原样传播不包装（JTI与业务写同事务回滚）、宿主`.env.example`补齐两变量且实际值安全同步至Git忽略的`.env.local`（零输出验证、未轮换）；全部门禁在修复后的全新演练库上重跑（全部退出0、零skip）、AC-017完全隔离Compose双向真实TCP冒烟（10断言+台账恰好1行）与Docker任务资源零残留复核（`socila-*`未动）。2026-09-04复查新发现2项缺漏并修复重验：公开模板可预测占位符通过校验→模板current/previous改空值（故意设计，直接复制未填写的模板被启动校验拒绝，已加防回归测试）+ `psycopg.connect`缺确定性超时→`PostgresReplayGuard`新增`connect_timeout_seconds`（正整数构造期校验、默认5秒、测试不可达连接1秒、超时统一映射503 no-store、既有异常边界不变）；全部门禁新鲜复验（除`pip-audit`因本机到PyPI连接被代理重置而环境阻塞、依赖集零diff外全部退出0）、完整集成测试不再挂起（15通过/5.27s）、演练资源零残留（`socila-*`未动），Feature保持**Accepted**（详见`reports/feature-09-03-service-jwt/acceptance-report.md` §7.7）。
 
 ## 已完成能力
 
@@ -84,6 +84,20 @@
 | AC-017 Compose双向冒烟（完全隔离`sjwtfxsmoke`栈、合成Secret、真实TCP） | PASS；10断言（health豁免、ready无JWT/仅Header 401、合法Next→Agent 200、**`/internal/docs`与`/openapi.json` 404**、draft-imports伪造401/合法200/重放401/错误方向401）、台账恰好1行、缺current时`docker compose config`退出1、`down -v`后零残留 |
 | Secret门禁 | PASS；`scan-secrets --all`555个候选文件零命中；默认模式26个候选文件零命中 |
 | Docker零任务残留（SJWT-NFR-007/AC-019） | PASS；`sjwfx*`容器/卷/网络全部删除、最终枚举零残留、清理前后快照逐行一致、`socila-*`容器与卷未删除未重建 |
+
+## 当前任务验证（09-03 Feature 服务JWT复查缺漏修复，2026-09-04本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red（两组） | 已记录；第一组配置契约测试首跑2失败/10通过（失败原因=模板current非空`replace-with-at-least-32-random-bytes`+未填写模板值可通过启动校验）；第二组单元9失败（`TypeError: unexpected keyword argument 'connect_timeout_seconds'`确认现有构造器不支持超时参数）+集成目标2失败（同一TypeError） |
+| 问题一修复（模板空值，SJWT-FR-001/AC-010） | PASS；`.env.example`current/previous改空值+注释收紧（密码学安全随机源≥32随机字节、previous仅轮换窗口期、两者不得相同、空值是故意设计未配置必须启动失败）；`service-jwt-config-contract.test.ts` 12通过（含防回归：未填写模板被`assertServiceJwtStartupConfig`拒绝）、`service-jwt-startup.test.ts` 9通过、`config-contract.test.ts` 11通过；真实`.env.local`/`infra/prod/.env` Secret未修改、未轮换、零输出 |
+| 问题二修复（连接超时，SJWT-FR-008/FR-009/AC-014） | PASS；`PostgresReplayGuard(database_url, connect_timeout_seconds=5)`正整数构造期校验（布尔/非整数/非正拒绝）+`psycopg.connect`显式`connect_timeout`；生产装配默认5秒零新增环境变量；异常边界不变（超时仍503 no-store、`JtiReplayConflict` 401、业务异常原样传播、JTI同回滚）；单元`tests/test_service_jwt.py` 44通过（既有35+新增9） |
+| Python数据库集成（`pytest -m integration`，演练库`sjwttimeout_drill`） | PASS；完整`test_service_jwt_replay_integration.py` 15通过（5.27s，**不再挂起**）；不可达连接测试实际完成2.11s/2.11s（1秒connect超时+客户端栈开销，满足5秒有界断言） |
+| Node单元/静态/构建 | PASS；`npm test` 35文件/314通过、skip 0，`npx tsc --noEmit`/`npx eslint src`/`npm run build`全部退出0 |
+| Python门禁（ruff/mypy/pytest非集成） | PASS；0问题、48文件0错误、91通过（skip 0） |
+| `uv run pip-audit` | **环境阻塞**；6次尝试（代理5+直连1）全部`ConnectionResetError(10054)`（本地代理127.0.0.1:7897重置PyPI TLS握手，直连同断，curl同失败）；`pyproject.toml`/`uv.lock`本任务零diff，审计对象集与2026-09-03新鲜PASS一致 |
+| Compose config / Secret扫描 | PASS；`config --quiet`退出0、`scan-secrets`默认10候选文件零命中、`--all` 558候选文件零命中 |
+| Docker零任务残留（SJWT-NFR-007/AC-019） | PASS；任务专属`sjwttimeout-pg`容器/`sjwttimeout-pg-data`卷/`sjwttimeout-net`网络创建前记录清单、无条件清理（rm/volume rm/network rm全退出0）、最终枚举`sjwt*`容器/卷/网络全0、清理前后全量快照逐行一致、`socila-*`九个容器与`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`卷未删除未重建 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
