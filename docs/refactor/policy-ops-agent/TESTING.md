@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-03
+> Updated: 2026-09-04
 
 ## 测试先行
 
@@ -84,7 +84,7 @@ npm test                       # 含 service-jwt.test.ts、service-jwt-vectors.c
 uv run --project services/agent pytest -m "not integration"   # 含 test_service_jwt.py 与 test_service_jwt_vectors.py
 ```
 
-启动期校验与配置契约（09-03复审缺漏二/四）：`src/lib/security/service-jwt-startup.test.ts` 覆盖Node运行时启动入口`src/instrumentation.ts`——current缺失、少于32 UTF-8字节或与previous相同时`register()`以`process.exit(1)`终止进程（fail-fast，Next 16 standalone中仅抛错不会使进程退出），非Node运行时（edge）不执行校验；`src/lib/env/service-jwt-config-contract.test.ts` 覆盖Compose中web/agent/worker/beat四消费者的`AGENT_SERVICE_JWT_CURRENT`必填插值（`:?`，缺失或空值时`docker compose config`失败）、`AGENT_SERVICE_JWT_PREVIOUS`可选插值，以及其他服务不含JWT变量、根`.env.example`声明两个变量且current占位符≥32字节。真实启动拒绝以standalone产物验证（D2无JWT→退出码1+拒绝消息；E2合法合成Secret→进程存活），见验收报告§7.4。
+启动期校验与配置契约（09-03复审缺漏二/四，2026-09-04运行时隔离复查）：`src/lib/security/service-jwt-startup.test.ts` 覆盖Node运行时启动入口——current缺失、少于32 UTF-8字节或与previous相同时启动校验以退出码1终止进程（fail-fast，Next 16 standalone中仅抛错不会使进程退出），非Node运行时（edge）不执行校验；校验与进程终止逻辑位于Node专用模块`src/lib/security/service-jwt-startup-node.ts`（`service-jwt-startup-node.test.ts` 5例：无效三态exit(1)、合法不退出、错误输出不含Secret且为稳定消息），`register`为async且仅`NEXT_RUNTIME=nodejs`分支动态import该Node专用模块——`src/instrumentation.ts`本体不引用`process.exit`或任何`node:`模块，源码契约与运行时路由（edge不加载/未设置不加载/nodejs恰好调用1次）由`service-jwt-startup-runtime-contract.test.ts`覆盖（7例，防Edge构建警告回归，AC-018）；`src/lib/env/service-jwt-config-contract.test.ts` 覆盖Compose中web/agent/worker/beat四消费者的`AGENT_SERVICE_JWT_CURRENT`必填插值（`:?`，缺失或空值时`docker compose config`失败）、`AGENT_SERVICE_JWT_PREVIOUS`可选插值、其他服务不含JWT变量，以及根`.env.example`声明两个变量且值为空（直接复制未填写的模板被启动校验拒绝，含防回归测试）。真实启动拒绝以standalone产物验证（D2无JWT→退出码1+拒绝消息；E2合法合成Secret→进程存活；2026-09-04四场景S1无current/S2 31字节/S3 previous===current/S4合法，见验收报告§7.4/§7.8）。
 
 ## 服务JWT跨语言契约（09-03 SJWT）
 

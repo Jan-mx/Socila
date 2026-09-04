@@ -1,8 +1,10 @@
 /**
- * SJWT-FR-001/AC-010 启动期校验（09-03复审缺漏二）：
+ * SJWT-FR-001/AC-010 启动期校验（09-03复审缺漏二，2026-09-04运行时隔离复查）：
  * Node运行时启动入口（instrumentation register，覆盖next dev/start与standalone
  * server.js）必须在AGENT_SERVICE_JWT_CURRENT缺失、少于32 UTF-8字节或与previous
- * 相同时立即抛错，使进程启动失败；/api/health不得成为绕过启动校验的路径。
+ * 相同时以exit(1)终止进程（fail-fast，/api/health不得成为绕过路径）；校验与终止
+ * 逻辑位于Node专用模块service-jwt-startup-node.ts，register为async且仅在
+ * NEXT_RUNTIME=nodejs分支动态加载该模块（Edge运行时零Node API，构建零警告）。
  * 纯单元：零数据库、零真实等待、合成Secret。
  */
 import type { MockInstance } from "vitest";
@@ -64,9 +66,10 @@ describe("assertServiceJwtStartupConfig（SJWT-FR-001/NFR-003/AC-010）", () => 
   });
 });
 
-describe("Node运行时启动入口（instrumentation register）", () => {
+describe("Node运行时启动入口（instrumentation register，async+Node模块动态加载）", () => {
   // Next 16 standalone中register抛错只会unhandledRejection且进程存活；
-  // 启动失败必须显式process.exit(1)（fail-fast，/api/health不可绕过）。
+  // 启动失败必须由Node专用模块显式process.exit(1)（fail-fast，/api/health不可绕过）。
+  // register为async：动态import Node专用模块并调用启动校验（2026-09-04运行时隔离）。
   let exitSpy: MockInstance<(code?: string | number | null | undefined) => never>;
   beforeEach(() => {
     exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number | string | null) => {
@@ -80,31 +83,32 @@ describe("Node运行时启动入口（instrumentation register）", () => {
     delete process.env.AGENT_SERVICE_JWT_PREVIOUS;
   });
 
-  it("NEXT_RUNTIME=nodejs且current缺失 → 启动入口以exit(1)终止进程", () => {
+  it("NEXT_RUNTIME=nodejs且current缺失 → 启动入口以exit(1)终止进程", async () => {
     process.env.NEXT_RUNTIME = "nodejs";
-    expect(() => register()).toThrow("process.exit called with 1");
+    await expect(register()).rejects.toThrow("process.exit called with 1");
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
-  it("NEXT_RUNTIME=nodejs且current过短/与previous相同 → 同样exit(1)", () => {
+  it("NEXT_RUNTIME=nodejs且current过短/与previous相同 → 同样exit(1)", async () => {
     process.env.NEXT_RUNTIME = "nodejs";
     process.env.AGENT_SERVICE_JWT_CURRENT = "a".repeat(31);
-    expect(() => register()).toThrow("process.exit called with 1");
+    await expect(register()).rejects.toThrow("process.exit called with 1");
     process.env.AGENT_SERVICE_JWT_CURRENT = SYNTHETIC_CURRENT;
     process.env.AGENT_SERVICE_JWT_PREVIOUS = SYNTHETIC_CURRENT;
-    expect(() => register()).toThrow("process.exit called with 1");
+    await expect(register()).rejects.toThrow("process.exit called with 1");
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
-  it("NEXT_RUNTIME=nodejs且current合法 → 不终止进程", () => {
+  it("NEXT_RUNTIME=nodejs且current合法 → 不终止进程", async () => {
     process.env.NEXT_RUNTIME = "nodejs";
     process.env.AGENT_SERVICE_JWT_CURRENT = SYNTHETIC_CURRENT;
-    expect(() => register()).not.toThrow();
+    await expect(register()).resolves.toBeUndefined();
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
-  it("非Node运行时（edge）不执行启动校验（不终止、不影响Edge/纯类型导入）", () => {
+  it("非Node运行时（edge）不执行启动校验（不终止、不影响Edge/纯类型导入）", async () => {
     process.env.NEXT_RUNTIME = "edge";
-    expect(() => register()).not.toThrow();
+    await expect(register()).resolves.toBeUndefined();
     expect(exitSpy).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Accepted
-> Updated: 2026-09-03
+> Updated: 2026-09-04
 
 ## 文档元数据
 
@@ -275,3 +275,14 @@ HTTP状态为401，`Cache-Control: no-store`。不得在响应中区分缺失、
 ## 17. 2026-09-03复审记录
 
 主体实现由`35d673c feat: 接通Core与Agent服务JWT鉴权`交付。当日复审新增SJWT-NFR-007/SJWT-AC-019（演练资源零残留），并发现4项实现缺漏：①FastAPI文档与OpenAPI入口未关闭；②Web启动期未拒绝无效JWT Secret（惰性装配+Compose非必填插值）；③Python重放存储未把缺表/权限等错误映射为503；④宿主机`.env.example`/`.env.local`缺少两个JWT变量。四项均已按本PRD修复并重新验收（Red→Green证据、全部门禁、隔离Compose双向冒烟与Docker零残留见验收报告§7.4/§7.5），修复提交`fix: 补齐服务JWT复审缺漏`。
+
+## 18. 2026-09-04复查记录
+
+2026-09-04复查新发现2项缺漏，本次（2026-09-04）又发现并修复1项Edge构建警告；三项均以新鲜Red→Green修复、全部映射到本PRD既有需求（不新增FR/NFR编号）、全部门禁通过后本PRD状态保持**Accepted**（证据：验收报告§7.7/§7.8）。
+
+1. **可预测模板占位符通过长度校验（SJWT-FR-001、SJWT-AC-010）**：宿主模板`.env.example`的`AGENT_SERVICE_JWT_CURRENT=replace-with-at-least-32-random-bytes`自身不少于32 UTF-8字节、能通过`validateServiceJwtSecrets`，直接复制模板不替换时系统接受公开可预测的服务JWT Secret。修复：模板current/previous改为**空值**（故意设计），注释明确current必须使用密码学安全随机源生成不少于32随机字节、previous仅Secret轮换窗口期设置、两者不得相同；直接复制未填写的模板会被Node启动校验拒绝（未配置模板值=配置缺失），并新增防回归测试。实现：`.env.example`；测试：`src/lib/env/service-jwt-config-contract.test.ts`（12通过，含"未填写模板被`assertServiceJwtStartupConfig`拒绝"）。
+2. **PostgreSQL连接缺少确定性超时（SJWT-FR-008/FR-009、SJWT-AC-014、SJWT-NFR-004）**：`services/agent/agent/security/replay.py`的`psycopg.connect`未传`connect_timeout`，Windows防火墙静默丢弃连接时完整重放集成测试通过前5项后挂起。修复：`PostgresReplayGuard`新增`connect_timeout_seconds: int = 5`——正整数在构造期校验（布尔/非整数/非正整数拒绝），`psycopg.connect`显式传入；生产装配保持默认5秒、零新增环境变量；测试不可达连接使用1秒并有界断言（5秒内完成）；连接超时仍统一映射`ServiceAuthStoreUnavailable`（503 `SERVICE_AUTH_STORE_UNAVAILABLE` + no-store），既有异常边界（`JtiReplayConflict`→401、缺表/权限/连接中断→503、业务异常原样传播、JTI与业务写同回滚）不变。完整`test_service_jwt_replay_integration.py` **15项在有界时间完成**（5.27s，不再挂起）。实现：`services/agent/agent/security/replay.py`；测试：`services/agent/tests/test_service_jwt.py`（44通过）与`services/agent/tests/test_service_jwt_replay_integration.py`（15通过）。
+3. **Edge bundle中的`process.exit`构建警告（SJWT-AC-018、SJWT-NFR-004/005/006）**：`src/instrumentation.ts`会被Next.js同时构建为Node与Edge运行时bundle，文件静态引用`process.exit(1)`使`npm run build`报告"process.exit is not supported in the Edge Runtime"（Turbopack警告+Ecmascript file had an error），违反AC-018"无未解释skip或warning"。修复：启动校验与进程终止逻辑移入Node专用模块`src/lib/security/service-jwt-startup-node.ts`（配置无效时输出**不含Secret**的稳定错误（NFR-006）并以退出码1终止进程；fail-fast语义不变，Next 16 standalone中仅抛错进程会存活，`/api/health`不构成绕过路径）；`src/instrumentation.ts`的`register`改为async，仅`NEXT_RUNTIME=nodejs`分支**动态import**该Node专用模块，文件本身不再引用进程退出或任何仅Node可用模块（源码契约测试防回归）；Edge运行时不执行启动校验（NFR-005可测试性：运行时路由经vi.mock断言）。`npm run build`**零警告**；standalone四种真实启动验证（无current/31字节current/previous===current均退出1且`/api/health`不可访问、合法合成Secret成功启动Ready）全部使用合成Secret，未读取、未输出任何真实`.env`值。实现：`src/instrumentation.ts`、`src/lib/security/service-jwt-startup-node.ts`；测试：`src/lib/security/service-jwt-startup.test.ts`（9通过，register用例改async）、`src/lib/security/service-jwt-startup-node.test.ts`（5通过）、`src/lib/security/service-jwt-startup-runtime-contract.test.ts`（7通过）。
+4. **演练资源零残留（SJWT-NFR-007、SJWT-AC-019）**：上述修复的演练资源全部使用任务专属名称（容器`sjwttimeout-pg`/卷`sjwttimeout-pg-data`/网络`sjwttimeout-net`），创建前记录清单、无条件清理、最终`docker ps -a`/`docker volume ls`/`docker network ls`枚举零残留，`socila-*`容器与持久卷未删除、未重建（验收报告§7.7.6）。
+
+修复提交：`fix: 收紧服务JWT占位符与连接超时`（第1、2项）与`fix: 隔离服务JWT启动校验运行时`（第3项），均推送至`origin/refactor/policy-ops-agent-platform`。真实JWT Secret轮换未执行（非目标）；PR、main merge与tag/Release仍为未来人工动作。

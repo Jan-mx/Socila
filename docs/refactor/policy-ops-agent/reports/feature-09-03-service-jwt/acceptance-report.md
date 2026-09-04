@@ -285,3 +285,78 @@ container-gates 在健康检查后新增 agent 容器内 PyJWT 双向冒烟（he
 ### 7.7.7 结论
 
 两项复查发现均以新鲜Red→Green证据修复：模板占位符收紧（空值+启动强制校验防回归）与PostgresReplayGuard确定性连接超时（默认5秒/测试1秒、超时统一503映射、异常边界不变）。全部门禁除`pip-audit`因本机到PyPI网络被重置而环境阻塞（依赖集零变化，见§7.7.5第13行）外全部新鲜PASS。本Feature状态保持**Accepted**（SJWT-FR-001～009、SJWT-NFR-001～007、SJWT-AC-001～019）；修复提交`fix: 收紧服务JWT占位符与连接超时`推送至`origin/refactor/policy-ops-agent-platform`。真实JWT Secret轮换仍未执行（非目标）；PR、main merge与tag/Release仍为未来人工动作。
+
+## 7.8 Edge instrumentation构建警告修复（2026-09-04，新鲜Red→Green）
+
+### 7.8.1 发现（SJWT-AC-018）
+
+`npm run build`（退出0）输出Turbopack警告——`src/instrumentation.ts`被Next.js同时构建为Node与Edge运行时bundle，文件静态引用`process.exit(1)`（第21行）使Edge bundle引用Node专用API：
+
+```text
+Turbopack build encountered 1 warning:
+./src/instrumentation.ts:21:5
+Warning: A Node.js API is used (process.exit at line: 21) which is not supported in the Edge Runtime.
+Ecmascript file had an error
+```
+
+违反SJWT-AC-018"全部退出0且无未解释skip或warning"。既有证据（§7.4缺漏二）确认必须保留启动期fail-fast与显式退出（Next 16 standalone中register仅抛错只触发unhandledRejection且进程存活），故修复方向是运行时隔离而非删除校验。
+
+### 7.8.2 TDD Red（先测试后实现，2026-09-04）
+
+- 新增`src/lib/security/service-jwt-startup-node.test.ts`（5例，Node专用模块行为）与`src/lib/security/service-jwt-startup-runtime-contract.test.ts`（7例，源码契约+运行时路由）；既有`src/lib/security/service-jwt-startup.test.ts`的4个register用例由同步断言改为async契约（`register()`改async）。
+- 首跑**8失败/8通过**，失败原因恰为目标行为缺失：
+  - Node模块测试整文件`Cannot find module './service-jwt-startup-node' ... Does the file exist?`（Node专用模块不存在，5例）；
+  - 源码契约：`expected 'import { assertServiceJwtStartupConfi…' not to match /process\.exit/`（instrumentation.ts确实含`process.exit`）、`expected null not to be null`（无动态import）、`ENOENT ... service-jwt-startup-node.ts`（模块文件不存在）；
+  - 运行时路由：`expected "spy" to be called 1 times, but got 0 times`（nodejs分支未调用Node启动模块）；
+  - 既有register用例：同步`register()`抛`Error: process.exit called with 1`（来自`src/instrumentation.ts:21:13`）或`TypeError: You must provide a Promise to expect() when using .resolves, not 'undefined'`（register尚非async）。
+- 构建Red证据：修复前`npm run build`即上述"Turbopack 1 warning"（§7.8.1）。
+
+### 7.8.3 实现（最小修复，运行时隔离）
+
+- 新增`src/lib/security/service-jwt-startup-node.ts`：导出`runServiceJwtStartupCheck()`——调用`assertServiceJwtStartupConfig()`；无效配置时输出稳定错误`[service-jwt] startup validation failed, refusing to start: <message>`（不含Secret，SJWT-NFR-006）并`process.exit(1)`（fail-fast语义与§7.4缺漏二一致，`/api/health`不构成绕过路径）；有效配置不退出。
+- 重写`src/instrumentation.ts`：`register`改为`async`；`NEXT_RUNTIME`非`nodejs`立即返回（Edge运行时不执行启动校验、不接触Node专用模块）；仅nodejs分支经动态`import("@/lib/security/service-jwt-startup-node")`加载并调用。文件本身不再引用进程退出或任何仅Node可用模块（源码契约测试防回归）。
+- 未退回"只抛异常"实现（既有standalone实测证据）；未删除启动期fail-fast、未改为首次路由调用时校验；未影响Edge运行时、NextAuth与公开路由（§7.8.4/§7.8.5）。
+
+### 7.8.4 Green（新鲜执行）
+
+- 三个启动测试文件全部通过：`service-jwt-startup-node.test.ts` 5通过、`service-jwt-startup-runtime-contract.test.ts` 7通过（源码契约4例：不引用process.exit/无node:静态导入/动态import位于nodejs守卫之后/Node模块承载退出码1；运行时路由3例：edge不加载、NEXT_RUNTIME未设置不加载、nodejs恰好调用1次）、`service-jwt-startup.test.ts` 9通过（5例断言函数不变+4例async register）。
+- 生产构建零警告：`npm run build`退出0，输出中无任何warning/error行（对比修复前"Turbopack build encountered 1 warning"消失）。
+- Node全量门禁：`npm test` **37文件/326通过**、skip 0（35文件/314通过基线+2个新测试文件12例）；`npx tsc --noEmit`退出0；`npx eslint src`退出0。
+
+### 7.8.5 standalone真实启动验证与全部门禁重验（2026-09-04新鲜执行）
+
+standalone产物（`.next/standalone/server.js`，全新构建，端口3900～3903，全合成Secret）：
+
+| 场景 | 配置 | 结果 |
+| --- | --- | --- |
+| S1 无`AGENT_SERVICE_JWT_CURRENT` | 干净环境（变量未设置） | 进程**退出码1**；`refusing to start: AGENT_SERVICE_JWT_CURRENT is required`；`/api/health`连接不可达（进程已终止，无绕过路径）；日志零Secret |
+| S2 current仅31字节 | 31字节合成值 | 进程**退出码1**；`refusing to start: AGENT_SERVICE_JWT_CURRENT must be at least 32 UTF-8 bytes`；日志零Secret |
+| S3 previous===current | 两变量同一48字节合成值 | 进程**退出码1**；`refusing to start: AGENT_SERVICE_JWT_PREVIOUS must differ from AGENT_SERVICE_JWT_CURRENT`；日志零Secret |
+| S4 合法合成Secret | current+previous各48字节合成值且不同 | 进程**存活**、`✓ Ready`、`Local: http://127.0.0.1:3903`、零拒绝输出（合法配置不终止进程） |
+
+全程只使用合成Secret，未读取、未输出、未轮换任何真实`.env`值。
+
+全部门禁（本次任务命令序列新鲜执行）：
+
+| # | 命令 | 结果 |
+| --- | --- | --- |
+| 1 | `npx vitest run src/lib/security/service-jwt-startup.test.ts` | PASS，9通过，退出0 |
+| 2 | `npx vitest run src/lib/env/service-jwt-config-contract.test.ts` | PASS，12通过，退出0 |
+| 3 | `npm test` | PASS，**37文件/326通过**、skip 0（35文件/314基线+2个新测试文件12例），退出0 |
+| 4 | `npx tsc --noEmit` | PASS，退出0 |
+| 5 | `npx eslint src` | PASS，退出0 |
+| 6 | `npm run build`（standalone） | PASS，退出0，**输出零warning/error行**（§7.8.1警告消失） |
+| 7 | standalone真实启动验证（S1～S4） | PASS（上表） |
+| 8 | `uv run pytest -q -m "not integration"` | PASS，91通过、20 deselected（integration）、skip 0，退出0 |
+| 9 | `uv run ruff check .` | PASS，0问题，退出0 |
+| 10 | `uv run mypy agent tests` | PASS，48文件0错误，退出0 |
+| 11 | `docker compose --env-file infra/prod/.env -f infra/prod/docker-compose.yml config --quiet` | PASS，退出0 |
+| 12 | `node scripts/scan-secrets.mjs` | PASS，候选文件零命中，退出0 |
+| 13 | `node scripts/scan-secrets.mjs --all` | PASS，全部候选文件零命中，退出0 |
+| 14 | Docker任务资源零残留核查（`docker ps -a`/`volume ls`/`network ls`） | PASS，`sjwt*`容器/卷/网络全0（本轮无新建演练设施）；`socila-*`九个容器与`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`卷与基线一致，未删除、未重建 |
+
+Python侧未改动代码（本轮无`PostgresReplayGuard`变更），第8～10项为回归复验。
+
+### 7.8.6 结论
+
+Edge构建警告以运行时隔离修复：`process.exit`等Node专用API全部收敛到`src/lib/security/service-jwt-startup-node.ts`，instrumentation为运行时中性入口（async register+nodejs分支动态import）；fail-fast启动拒绝语义与§7.4/§7.7完全一致（standalone四种场景复验）。本Feature状态保持**Accepted**；修复提交`fix: 隔离服务JWT启动校验运行时`推送至`origin/refactor/policy-ops-agent-platform`。真实JWT Secret轮换仍未执行（非目标）；PR、main merge与tag/Release仍为未来人工动作。
