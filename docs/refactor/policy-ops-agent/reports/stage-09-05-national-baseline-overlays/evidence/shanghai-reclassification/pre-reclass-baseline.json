@@ -1,0 +1,7109 @@
+[
+  {
+    "kind": "example",
+    "rule_id": "R-010-PARSE-BIRTH-YEAR",
+    "name": "73年 -> 1973",
+    "input": {
+      "user": {
+        "basic": {
+          "birth_year": null,
+          "birth_year_text": "73年"
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "basic": {
+          "birth_year": 1973,
+          "birth_year_text": "73年"
+        }
+      },
+      "calc": {
+        "normalization": {
+          "birth_year_source": "parsed_from_text"
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-010-PARSE-BIRTH-YEAR",
+        "row_id": "row_2_parse_text",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "parse_birth_year",
+            "args": {
+              "text": {
+                "var": "user.basic.birth_year_text"
+              }
+            },
+            "into": "user.basic.birth_year"
+          },
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_year_source",
+            "value": "parsed_from_text"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-010-PARSE-BIRTH-YEAR",
+    "name": "1973 -> 1973",
+    "input": {
+      "user": {
+        "basic": {
+          "birth_year": null,
+          "birth_year_text": "1973"
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "basic": {
+          "birth_year": 1973,
+          "birth_year_text": "1973"
+        }
+      },
+      "calc": {
+        "normalization": {
+          "birth_year_source": "parsed_from_text"
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-010-PARSE-BIRTH-YEAR",
+        "row_id": "row_2_parse_text",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "parse_birth_year",
+            "args": {
+              "text": {
+                "var": "user.basic.birth_year_text"
+              }
+            },
+            "into": "user.basic.birth_year"
+          },
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_year_source",
+            "value": "parsed_from_text"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-011-BUILD-BIRTH-DATE",
+    "name": "有年/月/日可组装",
+    "input": {
+      "user": {
+        "basic": {
+          "birth_date": null,
+          "birth_year": 1973,
+          "birth_month": 5,
+          "birth_day": 12
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "basic": {
+          "birth_date": "1973-05-12",
+          "birth_year": 1973,
+          "birth_month": 5,
+          "birth_day": 12
+        }
+      },
+      "calc": {
+        "normalization": {
+          "birth_date_source": "built_from_fields"
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-011-BUILD-BIRTH-DATE",
+        "row_id": "row_2_build",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "make_date",
+            "args": {
+              "year": {
+                "var": "user.basic.birth_year"
+              },
+              "month": {
+                "var": "user.basic.birth_month"
+              },
+              "day": {
+                "var": "user.basic.birth_day"
+              }
+            },
+            "into": "user.basic.birth_date"
+          },
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_date_source",
+            "value": "built_from_fields"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-012-NORMALIZE-GENDER",
+    "name": "男 -> male",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "男"
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male"
+        }
+      },
+      "calc": {
+        "normalization": {
+          "gender_source": "normalized_from_text"
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-012-NORMALIZE-GENDER",
+        "row_id": "row_2_try_normalize",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "normalize_gender",
+            "args": {
+              "text": {
+                "var": "user.basic.gender"
+              }
+            },
+            "into": "user.basic.gender"
+          },
+          {
+            "type": "set",
+            "path": "calc.normalization.gender_source",
+            "value": "normalized_from_text"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-012-NORMALIZE-GENDER",
+    "name": "female 保持",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female"
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "female"
+        }
+      },
+      "calc": {
+        "normalization": {
+          "gender_source": "provided_normalized"
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-012-NORMALIZE-GENDER",
+        "row_id": "row_1_already_norm",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.gender_source",
+            "value": "provided_normalized"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+    "name": "女性未填口径 -> 追问",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": null
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": null
+        }
+      },
+      "calc": {
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-FEMALE-RETIRE-TYPE",
+            "text": "请确认女性退休口径：女工一般50岁、女干部/管理岗一般55岁（以你本人档案/参保口径为准）。",
+            "field": "user.basic.female_retire_type"
+          }
+        ]
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+        "row_id": "row_3_female_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-FEMALE-RETIRE-TYPE",
+              "text": "请确认女性退休口径：女工一般50岁、女干部/管理岗一般55岁（以你本人档案/参保口径为准）。",
+              "field": "user.basic.female_retire_type"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+    "name": "男性 -> na",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male"
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na"
+        }
+      },
+      "calc": {},
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+        "row_id": "row_1_male_set_na",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "user.basic.female_retire_type",
+            "value": "na"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "name": "1973 男 -> 60",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1973
+        }
+      }
+    },
+    "params_override": {
+      "T-RETIREMENT-AGE-LOOKUP": [
+        {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year_min": 1900,
+          "birth_year_max": 2100,
+          "legal_retire_age_years": 60
+        }
+      ]
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1973
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 60,
+          "legal_retire_age_months": 1,
+          "original_retire_age_years": 60,
+          "_algo_result": {
+            "legal_retire_age_years": 62,
+            "legal_retire_age_months": 1,
+            "original_retire_age_years": 60
+          }
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-120-COMPUTE-RETIRE-DATE",
+    "name": "1973-05-12 男 60 -> 2033-05-12",
+    "input": {
+      "user": {
+        "basic": {
+          "birth_date": "1973-05-12"
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 60
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "basic": {
+          "birth_date": "1973-05-12"
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 60,
+          "legal_retire_date": "2033-05-12",
+          "legal_retire_year": 2033,
+          "legal_retire_month": 5,
+          "months_to_legal_retire": 0
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-120-COMPUTE-RETIRE-DATE",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "date_add_years_months",
+            "args": {
+              "date": {
+                "var": "user.basic.birth_date"
+              },
+              "years": {
+                "var": "calc.retirement.legal_retire_age_years"
+              },
+              "months": {
+                "var": "calc.retirement.legal_retire_age_months"
+              }
+            },
+            "into": "calc.retirement.legal_retire_date"
+          },
+          {
+            "type": "call",
+            "fn": "date_year",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_year"
+          },
+          {
+            "type": "call",
+            "fn": "date_month",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_month"
+          },
+          {
+            "type": "call",
+            "fn": "date_diff_months",
+            "args": {
+              "from": {
+                "var": "calc._today"
+              },
+              "to": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.months_to_legal_retire"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-200-MIN-PENSION-YEARS",
+    "name": "退休年份2029 -> 15年",
+    "input": {
+      "calc": {
+        "retirement": {
+          "legal_retire_year": 2029
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {},
+      "calc": {
+        "retirement": {
+          "legal_retire_year": 2029
+        },
+        "pension": {
+          "min_years_required": 15
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-200-MIN-PENSION-YEARS",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+            "key": {
+              "retire_year": {
+                "var": "calc.retirement.legal_retire_year"
+              }
+            },
+            "into": "calc.pension.min_years_required"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-200-MIN-PENSION-YEARS",
+    "name": "退休年份2036 -> 19年（示例表）",
+    "input": {
+      "calc": {
+        "retirement": {
+          "legal_retire_year": 2036
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {},
+      "calc": {
+        "retirement": {
+          "legal_retire_year": 2036
+        },
+        "pension": {
+          "min_years_required": 18.5
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-200-MIN-PENSION-YEARS",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+            "key": {
+              "retire_year": {
+                "var": "calc.retirement.legal_retire_year"
+              }
+            },
+            "into": "calc.pension.min_years_required"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-210-PENSION-GAP",
+    "name": "已缴14年(168月)，要求15年(180月) -> 缺12月",
+    "input": {
+      "user": {
+        "social": {
+          "pension_contrib_months": 168
+        }
+      },
+      "calc": {
+        "pension": {
+          "min_years_required": 15
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "social": {
+          "pension_contrib_months": 168
+        }
+      },
+      "calc": {
+        "pension": {
+          "min_years_required": 15,
+          "gap_months": 12,
+          "gap_years_ceil": 1
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-210-PENSION-GAP",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.pension.gap_months",
+            "value": {
+              "max": [
+                0,
+                {
+                  "-": [
+                    {
+                      "*": [
+                        {
+                          "var": "calc.pension.min_years_required"
+                        },
+                        12
+                      ]
+                    },
+                    {
+                      "var": "user.social.pension_contrib_months"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.pension.gap_years_ceil",
+            "value": {
+              "ceil": [
+                {
+                  "/": [
+                    {
+                      "var": "calc.pension.gap_months"
+                    },
+                    12
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+    "name": "医保已缴120月，要求180月 -> 缺60月",
+    "input": {
+      "user": {
+        "social": {
+          "medical_contrib_months": 120
+        }
+      },
+      "params": {
+        "P-SH-MEDICAL-LIFETIME-REQUIRED-YEARS": 15
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "social": {
+          "medical_contrib_months": 120
+        }
+      },
+      "calc": {
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-MI-MONTHS",
+            "text": "请提供医保累计缴费月数和性别（用于判断是否满足终身医保条件）。",
+            "field": "user.social.medical_contrib_months"
+          }
+        ]
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+        "row_id": "row_1_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-MONTHS",
+              "text": "请提供医保累计缴费月数和性别（用于判断是否满足终身医保条件）。",
+              "field": "user.social.medical_contrib_months"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-300-MI-GAP-MONTHS",
+    "name": "断缴2个月",
+    "input": {
+      "user": {
+        "mi": {
+          "prev_end_date": "2025-12-31",
+          "enroll_date": "2026-03-01"
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "mi": {
+          "prev_end_date": "2025-12-31",
+          "enroll_date": "2026-03-01"
+        }
+      },
+      "calc": {
+        "mi": {
+          "gap_months": 3
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-300-MI-GAP-MONTHS",
+        "row_id": "row_3_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "date_diff_months",
+            "args": {
+              "from": {
+                "var": "user.mi.prev_end_date"
+              },
+              "to": {
+                "var": "user.mi.enroll_date"
+              }
+            },
+            "into": "calc.mi.gap_months"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-310-MI-WAITING-PERIOD",
+    "name": "断缴2个月 <=3 -> 0等待期",
+    "input": {
+      "calc": {
+        "mi": {
+          "gap_months": 2
+        }
+      },
+      "params": {
+        "P-SH-MI-GAP-WAIVER-MONTHS": 3,
+        "P-SH-MI-WAITING-PERIOD-MONTHS": 6
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {},
+      "calc": {
+        "mi": {
+          "gap_months": 2,
+          "waiting_period_months": 0,
+          "waiting_required": false
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-310-MI-WAITING-PERIOD",
+        "row_id": "row_2_no_waiting",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_period_months",
+            "value": 0
+          },
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_required",
+            "value": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-310-MI-WAITING-PERIOD",
+    "name": "断缴5个月 -> 6个月等待期",
+    "input": {
+      "calc": {
+        "mi": {
+          "gap_months": 5
+        }
+      },
+      "params": {
+        "P-SH-MI-GAP-WAIVER-MONTHS": 3,
+        "P-SH-MI-WAITING-PERIOD-MONTHS": 6
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {},
+      "calc": {
+        "mi": {
+          "gap_months": 5,
+          "waiting_period_months": 6,
+          "waiting_required": true
+        },
+        "warnings": [
+          {
+            "warning_id": "W-MI-WAITING",
+            "text": "医保断缴超过阈值，可能触发等待期；规划中需优先保证医保连续性。"
+          }
+        ]
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-310-MI-WAITING-PERIOD",
+        "row_id": "row_3_need_waiting",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_period_months",
+            "value": {
+              "var": "params.P-SH-MI-WAITING-PERIOD-MONTHS"
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_required",
+            "value": true
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-MI-WAITING",
+              "text": "医保断缴超过阈值，可能触发等待期；规划中需优先保证医保连续性。"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+    "name": "失业且失业险2年 -> eligible",
+    "input": {
+      "user": {
+        "status": {
+          "employment_status": "unemployed"
+        },
+        "social": {
+          "unemployment_insurance_years": 2
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "status": {
+          "employment_status": "unemployed"
+        },
+        "social": {
+          "unemployment_insurance_years": 2
+        }
+      },
+      "calc": {
+        "unemployment": {
+          "eligible": true
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+        "row_id": "row_3_years_ge_1",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.eligible",
+            "value": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+    "name": "失业险8年 -> 24月(上限)",
+    "input": {
+      "calc": {
+        "unemployment": {
+          "eligible": true
+        }
+      },
+      "user": {
+        "social": {
+          "unemployment_insurance_years": 8
+        }
+      },
+      "params": {
+        "P-SH-UNEMPLOYMENT-MAX-MONTHS": 24,
+        "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS": [
+          {
+            "insured_years_min": 8,
+            "insured_years_max": 99,
+            "months": 24
+          }
+        ]
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "social": {
+          "unemployment_insurance_years": 8
+        }
+      },
+      "calc": {
+        "unemployment": {
+          "eligible": true,
+          "duration_months_raw": 24,
+          "duration_months": 24
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+        "row_id": "row_4_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS",
+            "key": {
+              "insured_years": {
+                "var": "user.social.unemployment_insurance_years"
+              }
+            },
+            "into": "calc.unemployment.duration_months_raw"
+          },
+          {
+            "type": "set",
+            "path": "calc.unemployment.duration_months",
+            "value": {
+              "min": [
+                {
+                  "var": "calc.unemployment.duration_months_raw"
+                },
+                {
+                  "var": "params.P-SH-UNEMPLOYMENT-MAX-MONTHS"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+    "name": "正在领取失业金 -> 医保基金代缴提示",
+    "input": {
+      "user": {
+        "status": {
+          "on_unemployment_benefit": true
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "status": {
+          "on_unemployment_benefit": true
+        }
+      },
+      "calc": {
+        "mi": {
+          "paid_by_unemployment_fund": true
+        },
+        "warnings": [
+          {
+            "warning_id": "W-UI-MI-PAID",
+            "text": "失业金期间，医保通常由失业保险基金代缴（以经办口径为准）。规划现金流时请不要重复计算医保个人缴费。"
+          }
+        ]
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+        "row_id": "row_1_on_benefit",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.paid_by_unemployment_fund",
+            "value": true
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-UI-MI-PAID",
+              "text": "失业金期间，医保通常由失业保险基金代缴（以经办口径为准）。规划现金流时请不要重复计算医保个人缴费。"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-500-4050-ELIGIBILITY",
+    "name": "已认定就业困难 + 灵活就业 -> eligible",
+    "input": {
+      "user": {
+        "subsidy": {
+          "has_employment_difficulty_cert": true
+        },
+        "status": {
+          "employment_status": "flexible"
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "subsidy": {
+          "has_employment_difficulty_cert": true
+        },
+        "status": {
+          "employment_status": "flexible"
+        }
+      },
+      "calc": {
+        "subsidy": {
+          "4050_eligible": true
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-500-4050-ELIGIBILITY",
+        "row_id": "row_1_cert_true",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_eligible",
+            "value": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-510-4050-AMOUNT",
+    "name": "下限基数5000，比例0.3，补贴50% -> 750",
+    "input": {
+      "calc": {
+        "subsidy": {
+          "4050_eligible": true
+        }
+      },
+      "user": {
+        "social": {
+          "base_lower_amount_per_month": 5000
+        }
+      },
+      "params": {
+        "P-SH-PENSION-RATE-FLEX": 0.2,
+        "P-SH-MEDICAL-RATE-FLEX": 0.1,
+        "P-SH-4050-SUBSIDY-RATE": 0.5
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "social": {
+          "base_lower_amount_per_month": 5000
+        }
+      },
+      "calc": {
+        "subsidy": {
+          "4050_eligible": true,
+          "flex_cost_est": 1500.0000000000002,
+          "4050_amount_est": 750.0000000000001
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-510-4050-AMOUNT",
+        "row_id": "row_3_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.flex_cost_est",
+            "value": {
+              "*": [
+                {
+                  "var": "user.social.base_lower_amount_per_month"
+                },
+                {
+                  "+": [
+                    {
+                      "var": "params.P-SH-PENSION-RATE-FLEX"
+                    },
+                    {
+                      "var": "params.P-SH-MEDICAL-RATE-FLEX"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_amount_est",
+            "value": {
+              "*": [
+                {
+                  "var": "calc.subsidy.flex_cost_est"
+                },
+                {
+                  "var": "params.P-SH-4050-SUBSIDY-RATE"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+    "name": "距退休30个月且就业困难 -> eligible",
+    "input": {
+      "user": {
+        "subsidy": {
+          "months_to_legal_retire": 30,
+          "has_employment_difficulty_cert": true
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "subsidy": {
+          "months_to_legal_retire": 30,
+          "has_employment_difficulty_cert": true
+        }
+      },
+      "calc": {
+        "subsidy": {
+          "job_eligible": true
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+        "row_id": "row_3_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_eligible",
+            "value": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+    "name": "最低工资2690，比例50% -> 1345",
+    "input": {
+      "calc": {
+        "subsidy": {
+          "job_eligible": true
+        }
+      },
+      "user": {
+        "social": {
+          "min_wage_amount_per_month": 2690
+        }
+      },
+      "params": {
+        "P-SH-JOB-SUBSIDY-RATE-MINWAGE": 0.5
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "social": {
+          "min_wage_amount_per_month": 2690
+        }
+      },
+      "calc": {
+        "subsidy": {
+          "job_eligible": true,
+          "job_amount_est": 1345
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+        "row_id": "row_3_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_amount_est",
+            "value": {
+              "*": [
+                {
+                  "var": "user.social.min_wage_amount_per_month"
+                },
+                {
+                  "var": "params.P-SH-JOB-SUBSIDY-RATE-MINWAGE"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+    "name": "领失业金且距退休10个月 -> eligible",
+    "input": {
+      "user": {
+        "status": {
+          "on_unemployment_benefit": true
+        },
+        "subsidy": {
+          "months_to_legal_retire": 10
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "status": {
+          "on_unemployment_benefit": true
+        },
+        "subsidy": {
+          "months_to_legal_retire": 10
+        }
+      },
+      "calc": {
+        "subsidy": {
+          "older_ui_pension_fund_eligible": true
+        },
+        "warnings": [
+          {
+            "warning_id": "W-OLDER-UI-PENSION",
+            "text": "如符合大龄条件，失业金期间养老最低档可能由失业基金承担；通常需要先缴后退并在退休前后办理，需按经办要求操作。"
+          }
+        ]
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+        "row_id": "row_3_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.older_ui_pension_fund_eligible",
+            "value": true
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-OLDER-UI-PENSION",
+              "text": "如符合大龄条件，失业金期间养老最低档可能由失业基金承担；通常需要先缴后退并在退休前后办理，需按经办要求操作。"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+    "name": "min_cost 且 job金额>4050 -> 选job",
+    "input": {
+      "user": {
+        "objective": "min_cost"
+      },
+      "calc": {
+        "subsidy": {
+          "4050_eligible": true,
+          "job_eligible": true,
+          "4050_amount_est": 700,
+          "job_amount_est": 1200
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "objective": "min_cost"
+      },
+      "calc": {
+        "subsidy": {
+          "4050_eligible": true,
+          "job_eligible": true,
+          "4050_amount_est": 700,
+          "job_amount_est": 1200,
+          "selected_option": "job_subsidy"
+        },
+        "warnings": [
+          {
+            "warning_id": "W-SUBSIDY-CHOICE",
+            "text": "同时符合4050与岗位补贴窗口，按“最低净成本”目标选择补贴金额更高的岗位补贴（估算）。请以经办互斥口径确认。"
+          }
+        ]
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+        "row_id": "row_5_conflict_min_cost_choose_job",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.selected_option",
+            "value": "job_subsidy"
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-SUBSIDY-CHOICE",
+              "text": "同时符合4050与岗位补贴窗口，按“最低净成本”目标选择补贴金额更高的岗位补贴（估算）。请以经办互斥口径确认。"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-600-PAY-GAP-REMINDER",
+    "name": "缴费月份包含7 -> 需要补差提醒",
+    "input": {
+      "user": {
+        "social": {
+          "paid_months_in_year": [
+            6,
+            7,
+            8
+          ]
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "social": {
+          "paid_months_in_year": [
+            6,
+            7,
+            8
+          ]
+        }
+      },
+      "calc": {
+        "contribution": {
+          "pay_gap_needed": true
+        },
+        "warnings": [
+          {
+            "warning_id": "W-PAY-GAP",
+            "text": "你的缴费月份包含可能需要补差的月份（常见7-8月，视社平/基数发布时间）。请关注随申办/税务通知并及时补差，避免影响后续扣费。"
+          }
+        ]
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-600-PAY-GAP-REMINDER",
+        "row_id": "row_2_intersects",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.contribution.pay_gap_needed",
+            "value": true
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-PAY-GAP",
+              "text": "你的缴费月份包含可能需要补差的月份（常见7-8月，视社平/基数发布时间）。请关注随申办/税务通知并及时补差，避免影响后续扣费。"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-700-PLAN-TEMPLATE",
+    "name": "信息齐全且失业 -> 失业模板",
+    "input": {
+      "calc": {
+        "needs_agent": false
+      },
+      "user": {
+        "status": {
+          "employment_status": "unemployed"
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "status": {
+          "employment_status": "unemployed"
+        }
+      },
+      "calc": {
+        "needs_agent": false
+      },
+      "plan": {
+        "conclusion_level": "direct",
+        "template_id": "T-UNEMPLOYMENT-PLANNING",
+        "primary_strategy": "失业路径：优先用失业金期覆盖社保/医保衔接，再衔接补贴或灵活就业"
+      }
+    },
+    "trace": [
+      {
+        "rule_id": "R-700-PLAN-TEMPLATE",
+        "row_id": "row_2_unemployed_path",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "plan.conclusion_level",
+            "value": "direct"
+          },
+          {
+            "type": "set",
+            "path": "plan.template_id",
+            "value": "T-UNEMPLOYMENT-PLANNING"
+          },
+          {
+            "type": "set",
+            "path": "plan.primary_strategy",
+            "value": "失业路径：优先用失业金期覆盖社保/医保衔接，再衔接补贴或灵活就业"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "example",
+    "rule_id": "R-900-FINAL-GATE",
+    "name": "缺出生年份 -> needs_agent",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "birth_year": null
+        },
+        "status": {
+          "employment_status": "employed"
+        }
+      }
+    },
+    "params_override": null,
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "birth_year": null
+        },
+        "status": {
+          "employment_status": "employed"
+        }
+      },
+      "calc": {
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-CORE",
+            "text": "缺少核心信息（性别/出生年份/当前状态），无法生成可执行规划。请补齐。"
+          }
+        ]
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-900-FINAL-GATE",
+        "row_id": "row_1_any_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-CORE",
+              "text": "缺少核心信息（性别/出生年份/当前状态），无法生成可执行规划。请补齐。"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "delayed-retirement",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "test_id": "DR-001",
+    "name": "Male 1965-01 delayed retirement: 60y1m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1965,
+          "birth_month": 1,
+          "birth_date": "1965-01-15"
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1965,
+          "birth_month": 1,
+          "birth_date": "1965-01-15"
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 60,
+          "legal_retire_age_months": 1,
+          "original_retire_age_years": 60,
+          "_algo_result": {
+            "legal_retire_age_years": 60,
+            "legal_retire_age_months": 1,
+            "original_retire_age_years": 60
+          }
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "delayed-retirement",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "test_id": "DR-002",
+    "name": "Male 1964-12 no delay: 60y0m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1964,
+          "birth_month": 12,
+          "birth_date": "1964-12-15"
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1964,
+          "birth_month": 12,
+          "birth_date": "1964-12-15"
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 60,
+          "legal_retire_age_months": 0,
+          "original_retire_age_years": 60,
+          "_algo_result": {
+            "legal_retire_age_years": 60,
+            "legal_retire_age_months": 0,
+            "original_retire_age_years": 60
+          }
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "delayed-retirement",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "test_id": "DR-003",
+    "name": "Male 1977+ max delay: 63y0m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1977,
+          "birth_month": 6,
+          "birth_date": "1977-06-15"
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1977,
+          "birth_month": 6,
+          "birth_date": "1977-06-15"
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 63,
+          "legal_retire_age_months": 0,
+          "original_retire_age_years": 60,
+          "_algo_result": {
+            "legal_retire_age_years": 63,
+            "legal_retire_age_months": 0,
+            "original_retire_age_years": 60
+          }
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "delayed-retirement",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "test_id": "DR-004",
+    "name": "Female worker 1975-01 delayed: 50y1m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "worker50",
+          "birth_year": 1975,
+          "birth_month": 1,
+          "birth_date": "1975-01-15"
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "worker50",
+          "birth_year": 1975,
+          "birth_month": 1,
+          "birth_date": "1975-01-15"
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 50,
+          "legal_retire_age_months": 1,
+          "original_retire_age_years": 50,
+          "_algo_result": {
+            "legal_retire_age_years": 50,
+            "legal_retire_age_months": 1,
+            "original_retire_age_years": 50
+          }
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "delayed-retirement",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "test_id": "DR-005",
+    "name": "Female worker 1985+ max delay: 55y0m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "worker50",
+          "birth_year": 1985,
+          "birth_month": 6,
+          "birth_date": "1985-06-15"
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "worker50",
+          "birth_year": 1985,
+          "birth_month": 6,
+          "birth_date": "1985-06-15"
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 55,
+          "legal_retire_age_months": 0,
+          "original_retire_age_years": 50,
+          "_algo_result": {
+            "legal_retire_age_years": 55,
+            "legal_retire_age_months": 0,
+            "original_retire_age_years": 50
+          }
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "delayed-retirement",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "test_id": "DR-006",
+    "name": "Female cadre 1970-01 delayed: 55y1m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "cadre55",
+          "birth_year": 1970,
+          "birth_month": 1,
+          "birth_date": "1970-01-15"
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "cadre55",
+          "birth_year": 1970,
+          "birth_month": 1,
+          "birth_date": "1970-01-15"
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 55,
+          "legal_retire_age_months": 1,
+          "original_retire_age_years": 55,
+          "_algo_result": {
+            "legal_retire_age_years": 55,
+            "legal_retire_age_months": 1,
+            "original_retire_age_years": 55
+          }
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "delayed-retirement",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "test_id": "DR-007",
+    "name": "Female cadre 1969-12 no delay: 55y0m",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "cadre55",
+          "birth_year": 1969,
+          "birth_month": 12,
+          "birth_date": "1969-12-15"
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "cadre55",
+          "birth_year": 1969,
+          "birth_month": 12,
+          "birth_date": "1969-12-15"
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 55,
+          "legal_retire_age_months": 0,
+          "original_retire_age_years": 55,
+          "_algo_result": {
+            "legal_retire_age_years": 55,
+            "legal_retire_age_months": 0,
+            "original_retire_age_years": 55
+          }
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "delayed-retirement",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "test_id": "DR-008",
+    "name": "Male medical lifetime gap - 25yr requirement",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male"
+        },
+        "social": {
+          "medical_contrib_months": 200
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male"
+        },
+        "social": {
+          "medical_contrib_months": 200
+        }
+      },
+      "calc": {
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-RETIRE-INPUTS",
+            "text": "计算退休年龄需要：性别、女性50/55口径、出生年份。请补齐。"
+          }
+        ]
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_1_missing_inputs",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-RETIRE-INPUTS",
+              "text": "计算退休年龄需要：性别、女性50/55口径、出生年份。请补齐。"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "delayed-retirement",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "test_id": "DR-009",
+    "name": "Female medical lifetime gap - 20yr requirement",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female"
+        },
+        "social": {
+          "medical_contrib_months": 200
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "female"
+        },
+        "social": {
+          "medical_contrib_months": 200
+        }
+      },
+      "calc": {
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-RETIRE-INPUTS",
+            "text": "计算退休年龄需要：性别、女性50/55口径、出生年份。请补齐。"
+          }
+        ]
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_1_missing_inputs",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-RETIRE-INPUTS",
+              "text": "计算退休年龄需要：性别、女性50/55口径、出生年份。请补齐。"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "delayed-retirement",
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "test_id": "DR-010",
+    "name": "Flexible retirement - earliest for male 1970",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1970,
+          "birth_month": 6,
+          "birth_date": "1970-06-15",
+          "retire_preference": "earliest"
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "female_retire_type": "na",
+          "birth_year": 1970,
+          "birth_month": 6,
+          "birth_date": "1970-06-15",
+          "retire_preference": "earliest"
+        }
+      },
+      "calc": {
+        "retirement": {
+          "legal_retire_age_years": 61,
+          "legal_retire_age_months": 5,
+          "original_retire_age_years": 60,
+          "_algo_result": {
+            "legal_retire_age_years": 61,
+            "legal_retire_age_months": 5,
+            "original_retire_age_years": 60
+          }
+        }
+      },
+      "plan": {}
+    },
+    "trace": [
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "full-plan",
+    "name": "full: 1970男职工在职工资1万",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "birth_year": 1970,
+          "birth_date": "1970-06-15"
+        },
+        "status": {
+          "employment_status": "employed"
+        },
+        "social": {
+          "pension_contrib_months": 120,
+          "medical_contrib_months": 100,
+          "unemployment_insurance_years": 3
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "birth_year": 1970,
+          "birth_date": "1970-06-15",
+          "female_retire_type": "na"
+        },
+        "status": {
+          "employment_status": "employed"
+        },
+        "social": {
+          "pension_contrib_months": 120,
+          "medical_contrib_months": 100,
+          "unemployment_insurance_years": 3
+        },
+        "subsidy": {
+          "months_to_legal_retire": 69
+        }
+      },
+      "calc": {
+        "normalization": {
+          "birth_year_source": "provided",
+          "birth_date_source": "provided",
+          "gender_source": "provided_normalized"
+        },
+        "retirement": {
+          "legal_retire_age_years": 61,
+          "legal_retire_age_months": 4,
+          "original_retire_age_years": 60,
+          "_algo_result": {
+            "legal_retire_age_years": 61,
+            "legal_retire_age_months": 4,
+            "original_retire_age_years": 60
+          },
+          "flex_adjusted": false,
+          "flex_preference": "standard",
+          "legal_retire_date": "2031-10-15",
+          "legal_retire_year": 2031,
+          "legal_retire_month": 10,
+          "months_to_legal_retire": 0
+        },
+        "pension": {
+          "min_years_required": 16,
+          "gap_months": 72,
+          "gap_years_ceil": 6
+        },
+        "mi": {
+          "lifetime_required_months": 300,
+          "lifetime_gap_months": 200,
+          "waiting_period_months": null,
+          "paid_by_unemployment_fund": false
+        },
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-MI-ENROLL-DATE",
+            "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+            "field": "user.mi.enroll_date"
+          },
+          {
+            "question_id": "Q-MI-GAP",
+            "text": "无法判断医保断缴月数，可能影响等待期。请补充上次医保结束日期。",
+            "field": "user.mi.prev_end_date"
+          },
+          {
+            "question_id": "Q-EMPLOYMENT-DIFF",
+            "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+            "field": "user.subsidy.has_employment_difficulty_cert"
+          }
+        ],
+        "unemployment": {
+          "eligible": false,
+          "duration_months": 0
+        },
+        "subsidy": {
+          "4050_eligible": null,
+          "4050_amount_est": 0,
+          "job_eligible": false,
+          "job_amount_est": 0,
+          "older_ui_pension_fund_eligible": false,
+          "selected_option": "none"
+        },
+        "contribution": {
+          "pay_gap_needed": null
+        },
+        "warnings": [
+          {
+            "warning_id": "W-NEEDS-AGENT",
+            "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+          }
+        ]
+      },
+      "plan": {
+        "conclusion_level": "needs_agent",
+        "template_id": "T-AGENT-ASSIST"
+      }
+    },
+    "trace": [
+      {
+        "rule_id": "R-010-PARSE-BIRTH-YEAR",
+        "row_id": "row_1_provided",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_year_source",
+            "value": "provided"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-011-BUILD-BIRTH-DATE",
+        "row_id": "row_1_already_have",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_date_source",
+            "value": "provided"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-012-NORMALIZE-GENDER",
+        "row_id": "row_1_already_norm",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.gender_source",
+            "value": "provided_normalized"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+        "row_id": "row_1_male_set_na",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "user.basic.female_retire_type",
+            "value": "na"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-115-FLEXIBLE-RETIREMENT",
+        "row_id": "row_1_no_preference",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_adjusted",
+            "value": false
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_preference",
+            "value": "standard"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-120-COMPUTE-RETIRE-DATE",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "date_add_years_months",
+            "args": {
+              "date": {
+                "var": "user.basic.birth_date"
+              },
+              "years": {
+                "var": "calc.retirement.legal_retire_age_years"
+              },
+              "months": {
+                "var": "calc.retirement.legal_retire_age_months"
+              }
+            },
+            "into": "calc.retirement.legal_retire_date"
+          },
+          {
+            "type": "call",
+            "fn": "date_year",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_year"
+          },
+          {
+            "type": "call",
+            "fn": "date_month",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_month"
+          },
+          {
+            "type": "call",
+            "fn": "date_diff_months",
+            "args": {
+              "from": {
+                "var": "calc._today"
+              },
+              "to": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.months_to_legal_retire"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-200-MIN-PENSION-YEARS",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+            "key": {
+              "retire_year": {
+                "var": "calc.retirement.legal_retire_year"
+              }
+            },
+            "into": "calc.pension.min_years_required"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-210-PENSION-GAP",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.pension.gap_months",
+            "value": {
+              "max": [
+                0,
+                {
+                  "-": [
+                    {
+                      "*": [
+                        {
+                          "var": "calc.pension.min_years_required"
+                        },
+                        12
+                      ]
+                    },
+                    {
+                      "var": "user.social.pension_contrib_months"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.pension.gap_years_ceil",
+            "value": {
+              "ceil": [
+                {
+                  "/": [
+                    {
+                      "var": "calc.pension.gap_months"
+                    },
+                    12
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+        "row_id": "row_2_male",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.lifetime_required_months",
+            "value": {
+              "*": [
+                {
+                  "var": "params.P-SH-MEDICAL-LIFETIME-MALE-YEARS"
+                },
+                12
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.mi.lifetime_gap_months",
+            "value": {
+              "max": [
+                0,
+                {
+                  "-": [
+                    {
+                      "var": "calc.mi.lifetime_required_months"
+                    },
+                    {
+                      "var": "user.social.medical_contrib_months"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-300-MI-GAP-MONTHS",
+        "row_id": "row_1_missing_enroll",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-ENROLL-DATE",
+              "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+              "field": "user.mi.enroll_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-310-MI-WAITING-PERIOD",
+        "row_id": "row_1_gap_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_period_months",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-GAP",
+              "text": "无法判断医保断缴月数，可能影响等待期。请补充上次医保结束日期。",
+              "field": "user.mi.prev_end_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+        "row_id": "row_1_not_unemployed",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.duration_months",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+        "row_id": "row_2_not_on_benefit_or_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.paid_by_unemployment_fund",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-500-4050-ELIGIBILITY",
+        "row_id": "row_3_cert_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_eligible",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-EMPLOYMENT-DIFF",
+              "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+              "field": "user.subsidy.has_employment_difficulty_cert"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-510-4050-AMOUNT",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_amount_est",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+        "row_id": "row_4_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_amount_est",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+        "row_id": "row_2_not_on_ui",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.older_ui_pension_fund_eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+        "row_id": "row_4_none",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.selected_option",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-600-PAY-GAP-REMINDER",
+        "row_id": "row_1_no_data",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.contribution.pay_gap_needed",
+            "value": null
+          }
+        ]
+      },
+      {
+        "rule_id": "R-700-PLAN-TEMPLATE",
+        "row_id": "row_1_needs_agent",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "plan.conclusion_level",
+            "value": "needs_agent"
+          },
+          {
+            "type": "set",
+            "path": "plan.template_id",
+            "value": "T-AGENT-ASSIST"
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-NEEDS-AGENT",
+              "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-900-FINAL-GATE",
+        "row_id": "row_2_ok",
+        "matched": true,
+        "actions_executed": []
+      }
+    ]
+  },
+  {
+    "kind": "full-plan",
+    "name": "full: 1978女干部灵活就业",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "cadre55",
+          "birth_year": 1978,
+          "birth_date": "1978-03-02"
+        },
+        "status": {
+          "employment_status": "flexible"
+        },
+        "social": {
+          "pension_contrib_months": 90,
+          "medical_contrib_months": 60
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "cadre55",
+          "birth_year": 1978,
+          "birth_date": "1978-03-02"
+        },
+        "status": {
+          "employment_status": "flexible"
+        },
+        "social": {
+          "pension_contrib_months": 90,
+          "medical_contrib_months": 60
+        },
+        "subsidy": {
+          "months_to_legal_retire": 111
+        }
+      },
+      "calc": {
+        "normalization": {
+          "birth_year_source": "provided",
+          "birth_date_source": "provided",
+          "gender_source": "provided_normalized"
+        },
+        "retirement": {
+          "female_retire_type_status": "confirmed",
+          "legal_retire_age_years": 57,
+          "legal_retire_age_months": 1,
+          "original_retire_age_years": 55,
+          "_algo_result": {
+            "legal_retire_age_years": 57,
+            "legal_retire_age_months": 1,
+            "original_retire_age_years": 55
+          },
+          "flex_adjusted": false,
+          "flex_preference": "standard",
+          "legal_retire_date": "2035-04-02",
+          "legal_retire_year": 2035,
+          "legal_retire_month": 4,
+          "months_to_legal_retire": 0
+        },
+        "pension": {
+          "min_years_required": 18,
+          "gap_months": 126,
+          "gap_years_ceil": 11
+        },
+        "mi": {
+          "lifetime_required_months": 240,
+          "lifetime_gap_months": 180,
+          "waiting_period_months": null,
+          "paid_by_unemployment_fund": false
+        },
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-MI-ENROLL-DATE",
+            "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+            "field": "user.mi.enroll_date"
+          },
+          {
+            "question_id": "Q-MI-GAP",
+            "text": "无法判断医保断缴月数，可能影响等待期。请补充上次医保结束日期。",
+            "field": "user.mi.prev_end_date"
+          },
+          {
+            "question_id": "Q-EMPLOYMENT-DIFF",
+            "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+            "field": "user.subsidy.has_employment_difficulty_cert"
+          }
+        ],
+        "unemployment": {
+          "eligible": false,
+          "duration_months": 0
+        },
+        "subsidy": {
+          "4050_eligible": null,
+          "4050_amount_est": 0,
+          "job_eligible": false,
+          "job_amount_est": 0,
+          "older_ui_pension_fund_eligible": false,
+          "selected_option": "none"
+        },
+        "contribution": {
+          "pay_gap_needed": null
+        },
+        "warnings": [
+          {
+            "warning_id": "W-NEEDS-AGENT",
+            "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+          }
+        ]
+      },
+      "plan": {
+        "conclusion_level": "needs_agent",
+        "template_id": "T-AGENT-ASSIST"
+      }
+    },
+    "trace": [
+      {
+        "rule_id": "R-010-PARSE-BIRTH-YEAR",
+        "row_id": "row_1_provided",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_year_source",
+            "value": "provided"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-011-BUILD-BIRTH-DATE",
+        "row_id": "row_1_already_have",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_date_source",
+            "value": "provided"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-012-NORMALIZE-GENDER",
+        "row_id": "row_1_already_norm",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.gender_source",
+            "value": "provided_normalized"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+        "row_id": "row_2_female_known",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.retirement.female_retire_type_status",
+            "value": "confirmed"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-115-FLEXIBLE-RETIREMENT",
+        "row_id": "row_1_no_preference",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_adjusted",
+            "value": false
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_preference",
+            "value": "standard"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-120-COMPUTE-RETIRE-DATE",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "date_add_years_months",
+            "args": {
+              "date": {
+                "var": "user.basic.birth_date"
+              },
+              "years": {
+                "var": "calc.retirement.legal_retire_age_years"
+              },
+              "months": {
+                "var": "calc.retirement.legal_retire_age_months"
+              }
+            },
+            "into": "calc.retirement.legal_retire_date"
+          },
+          {
+            "type": "call",
+            "fn": "date_year",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_year"
+          },
+          {
+            "type": "call",
+            "fn": "date_month",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_month"
+          },
+          {
+            "type": "call",
+            "fn": "date_diff_months",
+            "args": {
+              "from": {
+                "var": "calc._today"
+              },
+              "to": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.months_to_legal_retire"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-200-MIN-PENSION-YEARS",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+            "key": {
+              "retire_year": {
+                "var": "calc.retirement.legal_retire_year"
+              }
+            },
+            "into": "calc.pension.min_years_required"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-210-PENSION-GAP",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.pension.gap_months",
+            "value": {
+              "max": [
+                0,
+                {
+                  "-": [
+                    {
+                      "*": [
+                        {
+                          "var": "calc.pension.min_years_required"
+                        },
+                        12
+                      ]
+                    },
+                    {
+                      "var": "user.social.pension_contrib_months"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.pension.gap_years_ceil",
+            "value": {
+              "ceil": [
+                {
+                  "/": [
+                    {
+                      "var": "calc.pension.gap_months"
+                    },
+                    12
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+        "row_id": "row_3_female",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.lifetime_required_months",
+            "value": {
+              "*": [
+                {
+                  "var": "params.P-SH-MEDICAL-LIFETIME-FEMALE-YEARS"
+                },
+                12
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.mi.lifetime_gap_months",
+            "value": {
+              "max": [
+                0,
+                {
+                  "-": [
+                    {
+                      "var": "calc.mi.lifetime_required_months"
+                    },
+                    {
+                      "var": "user.social.medical_contrib_months"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-300-MI-GAP-MONTHS",
+        "row_id": "row_1_missing_enroll",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-ENROLL-DATE",
+              "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+              "field": "user.mi.enroll_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-310-MI-WAITING-PERIOD",
+        "row_id": "row_1_gap_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_period_months",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-GAP",
+              "text": "无法判断医保断缴月数，可能影响等待期。请补充上次医保结束日期。",
+              "field": "user.mi.prev_end_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+        "row_id": "row_1_not_unemployed",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.duration_months",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+        "row_id": "row_2_not_on_benefit_or_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.paid_by_unemployment_fund",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-500-4050-ELIGIBILITY",
+        "row_id": "row_3_cert_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_eligible",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-EMPLOYMENT-DIFF",
+              "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+              "field": "user.subsidy.has_employment_difficulty_cert"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-510-4050-AMOUNT",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_amount_est",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+        "row_id": "row_4_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_amount_est",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+        "row_id": "row_2_not_on_ui",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.older_ui_pension_fund_eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+        "row_id": "row_4_none",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.selected_option",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-600-PAY-GAP-REMINDER",
+        "row_id": "row_1_no_data",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.contribution.pay_gap_needed",
+            "value": null
+          }
+        ]
+      },
+      {
+        "rule_id": "R-700-PLAN-TEMPLATE",
+        "row_id": "row_1_needs_agent",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "plan.conclusion_level",
+            "value": "needs_agent"
+          },
+          {
+            "type": "set",
+            "path": "plan.template_id",
+            "value": "T-AGENT-ASSIST"
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-NEEDS-AGENT",
+              "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-900-FINAL-GATE",
+        "row_id": "row_2_ok",
+        "matched": true,
+        "actions_executed": []
+      }
+    ]
+  },
+  {
+    "kind": "full-plan",
+    "name": "full: 1988女工人断缴后重参保",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "worker50",
+          "birth_year": 1988
+        },
+        "status": {
+          "employment_status": "unemployed"
+        },
+        "social": {
+          "pension_contrib_months": 60,
+          "medical_contrib_months": 40,
+          "unemployment_insurance_years": 2,
+          "base_lower_amount_per_month": 7460,
+          "min_wage_amount_per_month": 2690
+        },
+        "mi": {
+          "prev_end_date": "2025-03-31",
+          "enroll_date": "2025-09-01"
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "worker50",
+          "birth_year": 1988,
+          "birth_month": 1,
+          "birth_day": 1,
+          "birth_date": "1988-01-01"
+        },
+        "status": {
+          "employment_status": "unemployed"
+        },
+        "social": {
+          "pension_contrib_months": 60,
+          "medical_contrib_months": 40,
+          "unemployment_insurance_years": 2,
+          "base_lower_amount_per_month": 7460,
+          "min_wage_amount_per_month": 2690
+        },
+        "mi": {
+          "prev_end_date": "2025-03-31",
+          "enroll_date": "2025-09-01"
+        },
+        "subsidy": {
+          "months_to_legal_retire": 204
+        }
+      },
+      "calc": {
+        "normalization": {
+          "birth_year_source": "provided",
+          "birth_date_source": "defaulted_month_day",
+          "gender_source": "provided_normalized"
+        },
+        "caveats": [
+          {
+            "caveat_id": "C-BIRTH-MONTH-DEFAULT",
+            "text": "出生月份未提供，默认为1月。实际退休日期可能相差数月，建议补充准确出生月份。",
+            "confidence": "medium"
+          }
+        ],
+        "retirement": {
+          "female_retire_type_status": "confirmed",
+          "legal_retire_age_years": 55,
+          "legal_retire_age_months": 0,
+          "original_retire_age_years": 50,
+          "_algo_result": {
+            "legal_retire_age_years": 55,
+            "legal_retire_age_months": 0,
+            "original_retire_age_years": 50
+          },
+          "flex_adjusted": false,
+          "flex_preference": "standard",
+          "legal_retire_date": "2043-01-01",
+          "legal_retire_year": 2043,
+          "legal_retire_month": 1,
+          "months_to_legal_retire": 0
+        },
+        "pension": {
+          "min_years_required": 20,
+          "gap_months": 180,
+          "gap_years_ceil": 15
+        },
+        "mi": {
+          "lifetime_required_months": 240,
+          "lifetime_gap_months": 200,
+          "gap_months": 6,
+          "waiting_period_months": 2,
+          "waiting_required": true,
+          "paid_by_unemployment_fund": false
+        },
+        "warnings": [
+          {
+            "warning_id": "W-MI-WAITING",
+            "text": "医保断缴超过阈值，可能触发等待期；规划中需优先保证医保连续性。"
+          },
+          {
+            "warning_id": "W-NEEDS-AGENT",
+            "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+          }
+        ],
+        "unemployment": {
+          "eligible": true,
+          "duration_months_raw": 6,
+          "duration_months": 6
+        },
+        "subsidy": {
+          "4050_eligible": null,
+          "4050_amount_est": 0,
+          "job_eligible": false,
+          "job_amount_est": 0,
+          "older_ui_pension_fund_eligible": false,
+          "selected_option": "none"
+        },
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-EMPLOYMENT-DIFF",
+            "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+            "field": "user.subsidy.has_employment_difficulty_cert"
+          }
+        ],
+        "contribution": {
+          "pay_gap_needed": null
+        }
+      },
+      "plan": {
+        "conclusion_level": "needs_agent",
+        "template_id": "T-AGENT-ASSIST"
+      }
+    },
+    "trace": [
+      {
+        "rule_id": "R-010-PARSE-BIRTH-YEAR",
+        "row_id": "row_1_provided",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_year_source",
+            "value": "provided"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-011-BUILD-BIRTH-DATE",
+        "row_id": "row_2b_default_month_day",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "user.basic.birth_month",
+            "value": {
+              "if": [
+                {
+                  "==": [
+                    {
+                      "var": "user.basic.birth_month"
+                    },
+                    null
+                  ]
+                },
+                1,
+                {
+                  "var": "user.basic.birth_month"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "user.basic.birth_day",
+            "value": {
+              "if": [
+                {
+                  "==": [
+                    {
+                      "var": "user.basic.birth_day"
+                    },
+                    null
+                  ]
+                },
+                1,
+                {
+                  "var": "user.basic.birth_day"
+                }
+              ]
+            }
+          },
+          {
+            "type": "call",
+            "fn": "make_date",
+            "args": {
+              "year": {
+                "var": "user.basic.birth_year"
+              },
+              "month": {
+                "var": "user.basic.birth_month"
+              },
+              "day": {
+                "var": "user.basic.birth_day"
+              }
+            },
+            "into": "user.basic.birth_date"
+          },
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_date_source",
+            "value": "defaulted_month_day"
+          },
+          {
+            "type": "emit_caveat",
+            "value": {
+              "caveat_id": "C-BIRTH-MONTH-DEFAULT",
+              "text": "出生月份未提供，默认为1月。实际退休日期可能相差数月，建议补充准确出生月份。",
+              "confidence": "medium"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-012-NORMALIZE-GENDER",
+        "row_id": "row_1_already_norm",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.gender_source",
+            "value": "provided_normalized"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+        "row_id": "row_2_female_known",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.retirement.female_retire_type_status",
+            "value": "confirmed"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-115-FLEXIBLE-RETIREMENT",
+        "row_id": "row_1_no_preference",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_adjusted",
+            "value": false
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_preference",
+            "value": "standard"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-120-COMPUTE-RETIRE-DATE",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "date_add_years_months",
+            "args": {
+              "date": {
+                "var": "user.basic.birth_date"
+              },
+              "years": {
+                "var": "calc.retirement.legal_retire_age_years"
+              },
+              "months": {
+                "var": "calc.retirement.legal_retire_age_months"
+              }
+            },
+            "into": "calc.retirement.legal_retire_date"
+          },
+          {
+            "type": "call",
+            "fn": "date_year",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_year"
+          },
+          {
+            "type": "call",
+            "fn": "date_month",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_month"
+          },
+          {
+            "type": "call",
+            "fn": "date_diff_months",
+            "args": {
+              "from": {
+                "var": "calc._today"
+              },
+              "to": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.months_to_legal_retire"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-200-MIN-PENSION-YEARS",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+            "key": {
+              "retire_year": {
+                "var": "calc.retirement.legal_retire_year"
+              }
+            },
+            "into": "calc.pension.min_years_required"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-210-PENSION-GAP",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.pension.gap_months",
+            "value": {
+              "max": [
+                0,
+                {
+                  "-": [
+                    {
+                      "*": [
+                        {
+                          "var": "calc.pension.min_years_required"
+                        },
+                        12
+                      ]
+                    },
+                    {
+                      "var": "user.social.pension_contrib_months"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.pension.gap_years_ceil",
+            "value": {
+              "ceil": [
+                {
+                  "/": [
+                    {
+                      "var": "calc.pension.gap_months"
+                    },
+                    12
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+        "row_id": "row_3_female",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.lifetime_required_months",
+            "value": {
+              "*": [
+                {
+                  "var": "params.P-SH-MEDICAL-LIFETIME-FEMALE-YEARS"
+                },
+                12
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.mi.lifetime_gap_months",
+            "value": {
+              "max": [
+                0,
+                {
+                  "-": [
+                    {
+                      "var": "calc.mi.lifetime_required_months"
+                    },
+                    {
+                      "var": "user.social.medical_contrib_months"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-300-MI-GAP-MONTHS",
+        "row_id": "row_3_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "date_diff_months",
+            "args": {
+              "from": {
+                "var": "user.mi.prev_end_date"
+              },
+              "to": {
+                "var": "user.mi.enroll_date"
+              }
+            },
+            "into": "calc.mi.gap_months"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-310-MI-WAITING-PERIOD",
+        "row_id": "row_3_need_waiting",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_period_months",
+            "value": {
+              "var": "params.P-SH-MI-WAITING-PERIOD-MONTHS"
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_required",
+            "value": true
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-MI-WAITING",
+              "text": "医保断缴超过阈值，可能触发等待期；规划中需优先保证医保连续性。"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+        "row_id": "row_3_years_ge_1",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.eligible",
+            "value": true
+          }
+        ]
+      },
+      {
+        "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+        "row_id": "row_4_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS",
+            "key": {
+              "insured_years": {
+                "var": "user.social.unemployment_insurance_years"
+              }
+            },
+            "into": "calc.unemployment.duration_months_raw"
+          },
+          {
+            "type": "set",
+            "path": "calc.unemployment.duration_months",
+            "value": {
+              "min": [
+                {
+                  "var": "calc.unemployment.duration_months_raw"
+                },
+                {
+                  "var": "params.P-SH-UNEMPLOYMENT-MAX-MONTHS"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+        "row_id": "row_2_not_on_benefit_or_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.paid_by_unemployment_fund",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-500-4050-ELIGIBILITY",
+        "row_id": "row_3_cert_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_eligible",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-EMPLOYMENT-DIFF",
+              "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+              "field": "user.subsidy.has_employment_difficulty_cert"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-510-4050-AMOUNT",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_amount_est",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+        "row_id": "row_4_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_amount_est",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+        "row_id": "row_2_not_on_ui",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.older_ui_pension_fund_eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+        "row_id": "row_4_none",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.selected_option",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-600-PAY-GAP-REMINDER",
+        "row_id": "row_1_no_data",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.contribution.pay_gap_needed",
+            "value": null
+          }
+        ]
+      },
+      {
+        "rule_id": "R-700-PLAN-TEMPLATE",
+        "row_id": "row_1_needs_agent",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "plan.conclusion_level",
+            "value": "needs_agent"
+          },
+          {
+            "type": "set",
+            "path": "plan.template_id",
+            "value": "T-AGENT-ASSIST"
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-NEEDS-AGENT",
+              "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-900-FINAL-GATE",
+        "row_id": "row_2_ok",
+        "matched": true,
+        "actions_executed": []
+      }
+    ]
+  },
+  {
+    "kind": "full-plan",
+    "name": "full: 1962男即将退休缺信息",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "birth_year": 1962
+        },
+        "status": {
+          "employment_status": "employed"
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "male",
+          "birth_year": 1962,
+          "birth_month": 1,
+          "birth_day": 1,
+          "birth_date": "1962-01-01",
+          "female_retire_type": "na"
+        },
+        "status": {
+          "employment_status": "employed"
+        },
+        "subsidy": {
+          "months_to_legal_retire": -48
+        }
+      },
+      "calc": {
+        "normalization": {
+          "birth_year_source": "provided",
+          "birth_date_source": "defaulted_month_day",
+          "gender_source": "provided_normalized"
+        },
+        "caveats": [
+          {
+            "caveat_id": "C-BIRTH-MONTH-DEFAULT",
+            "text": "出生月份未提供，默认为1月。实际退休日期可能相差数月，建议补充准确出生月份。",
+            "confidence": "medium"
+          }
+        ],
+        "retirement": {
+          "legal_retire_age_years": 60,
+          "legal_retire_age_months": 0,
+          "original_retire_age_years": 60,
+          "_algo_result": {
+            "legal_retire_age_years": 60,
+            "legal_retire_age_months": 0,
+            "original_retire_age_years": 60
+          },
+          "flex_adjusted": false,
+          "flex_preference": "standard",
+          "legal_retire_date": "2022-01-01",
+          "legal_retire_year": 2022,
+          "legal_retire_month": 1,
+          "months_to_legal_retire": 0
+        },
+        "pension": {
+          "min_years_required": 15
+        },
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-PENSION-MONTHS",
+            "text": "请提供养老累计缴费月数（可从随申办/社保查询导出）。",
+            "field": "user.social.pension_contrib_months"
+          },
+          {
+            "question_id": "Q-MI-MONTHS",
+            "text": "请提供医保累计缴费月数和性别（用于判断是否满足终身医保条件）。",
+            "field": "user.social.medical_contrib_months"
+          },
+          {
+            "question_id": "Q-MI-ENROLL-DATE",
+            "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+            "field": "user.mi.enroll_date"
+          },
+          {
+            "question_id": "Q-MI-GAP",
+            "text": "无法判断医保断缴月数，可能影响等待期。请补充上次医保结束日期。",
+            "field": "user.mi.prev_end_date"
+          },
+          {
+            "question_id": "Q-EMPLOYMENT-DIFF",
+            "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+            "field": "user.subsidy.has_employment_difficulty_cert"
+          }
+        ],
+        "mi": {
+          "waiting_period_months": null,
+          "paid_by_unemployment_fund": false
+        },
+        "unemployment": {
+          "eligible": false,
+          "duration_months": 0
+        },
+        "subsidy": {
+          "4050_eligible": null,
+          "4050_amount_est": 0,
+          "job_amount_est": 0,
+          "older_ui_pension_fund_eligible": false,
+          "selected_option": "none"
+        },
+        "contribution": {
+          "pay_gap_needed": null
+        },
+        "warnings": [
+          {
+            "warning_id": "W-NEEDS-AGENT",
+            "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+          }
+        ]
+      },
+      "plan": {
+        "conclusion_level": "needs_agent",
+        "template_id": "T-AGENT-ASSIST"
+      }
+    },
+    "trace": [
+      {
+        "rule_id": "R-010-PARSE-BIRTH-YEAR",
+        "row_id": "row_1_provided",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_year_source",
+            "value": "provided"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-011-BUILD-BIRTH-DATE",
+        "row_id": "row_2b_default_month_day",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "user.basic.birth_month",
+            "value": {
+              "if": [
+                {
+                  "==": [
+                    {
+                      "var": "user.basic.birth_month"
+                    },
+                    null
+                  ]
+                },
+                1,
+                {
+                  "var": "user.basic.birth_month"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "user.basic.birth_day",
+            "value": {
+              "if": [
+                {
+                  "==": [
+                    {
+                      "var": "user.basic.birth_day"
+                    },
+                    null
+                  ]
+                },
+                1,
+                {
+                  "var": "user.basic.birth_day"
+                }
+              ]
+            }
+          },
+          {
+            "type": "call",
+            "fn": "make_date",
+            "args": {
+              "year": {
+                "var": "user.basic.birth_year"
+              },
+              "month": {
+                "var": "user.basic.birth_month"
+              },
+              "day": {
+                "var": "user.basic.birth_day"
+              }
+            },
+            "into": "user.basic.birth_date"
+          },
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_date_source",
+            "value": "defaulted_month_day"
+          },
+          {
+            "type": "emit_caveat",
+            "value": {
+              "caveat_id": "C-BIRTH-MONTH-DEFAULT",
+              "text": "出生月份未提供，默认为1月。实际退休日期可能相差数月，建议补充准确出生月份。",
+              "confidence": "medium"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-012-NORMALIZE-GENDER",
+        "row_id": "row_1_already_norm",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.gender_source",
+            "value": "provided_normalized"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+        "row_id": "row_1_male_set_na",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "user.basic.female_retire_type",
+            "value": "na"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-115-FLEXIBLE-RETIREMENT",
+        "row_id": "row_1_no_preference",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_adjusted",
+            "value": false
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_preference",
+            "value": "standard"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-120-COMPUTE-RETIRE-DATE",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "date_add_years_months",
+            "args": {
+              "date": {
+                "var": "user.basic.birth_date"
+              },
+              "years": {
+                "var": "calc.retirement.legal_retire_age_years"
+              },
+              "months": {
+                "var": "calc.retirement.legal_retire_age_months"
+              }
+            },
+            "into": "calc.retirement.legal_retire_date"
+          },
+          {
+            "type": "call",
+            "fn": "date_year",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_year"
+          },
+          {
+            "type": "call",
+            "fn": "date_month",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_month"
+          },
+          {
+            "type": "call",
+            "fn": "date_diff_months",
+            "args": {
+              "from": {
+                "var": "calc._today"
+              },
+              "to": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.months_to_legal_retire"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-200-MIN-PENSION-YEARS",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+            "key": {
+              "retire_year": {
+                "var": "calc.retirement.legal_retire_year"
+              }
+            },
+            "into": "calc.pension.min_years_required"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-210-PENSION-GAP",
+        "row_id": "row_1_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-PENSION-MONTHS",
+              "text": "请提供养老累计缴费月数（可从随申办/社保查询导出）。",
+              "field": "user.social.pension_contrib_months"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+        "row_id": "row_1_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-MONTHS",
+              "text": "请提供医保累计缴费月数和性别（用于判断是否满足终身医保条件）。",
+              "field": "user.social.medical_contrib_months"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-300-MI-GAP-MONTHS",
+        "row_id": "row_1_missing_enroll",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-ENROLL-DATE",
+              "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+              "field": "user.mi.enroll_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-310-MI-WAITING-PERIOD",
+        "row_id": "row_1_gap_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_period_months",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-GAP",
+              "text": "无法判断医保断缴月数，可能影响等待期。请补充上次医保结束日期。",
+              "field": "user.mi.prev_end_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+        "row_id": "row_1_not_unemployed",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.duration_months",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+        "row_id": "row_2_not_on_benefit_or_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.paid_by_unemployment_fund",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-500-4050-ELIGIBILITY",
+        "row_id": "row_3_cert_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_eligible",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-EMPLOYMENT-DIFF",
+              "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+              "field": "user.subsidy.has_employment_difficulty_cert"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-510-4050-AMOUNT",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_amount_est",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+        "row_id": "none",
+        "matched": false,
+        "actions_executed": []
+      },
+      {
+        "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_amount_est",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+        "row_id": "row_2_not_on_ui",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.older_ui_pension_fund_eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+        "row_id": "row_4_none",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.selected_option",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-600-PAY-GAP-REMINDER",
+        "row_id": "row_1_no_data",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.contribution.pay_gap_needed",
+            "value": null
+          }
+        ]
+      },
+      {
+        "rule_id": "R-700-PLAN-TEMPLATE",
+        "row_id": "row_1_needs_agent",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "plan.conclusion_level",
+            "value": "needs_agent"
+          },
+          {
+            "type": "set",
+            "path": "plan.template_id",
+            "value": "T-AGENT-ASSIST"
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-NEEDS-AGENT",
+              "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-900-FINAL-GATE",
+        "row_id": "row_2_ok",
+        "matched": true,
+        "actions_executed": []
+      }
+    ]
+  },
+  {
+    "kind": "full-plan",
+    "name": "full: 大龄领金人员（含补贴链路）",
+    "input": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "worker50",
+          "birth_year": 1976,
+          "birth_date": "1976-11-08"
+        },
+        "status": {
+          "employment_status": "unemployed",
+          "on_unemployment_benefit": true
+        },
+        "social": {
+          "pension_contrib_months": 200,
+          "medical_contrib_months": 150,
+          "unemployment_insurance_years": 11,
+          "base_lower_amount_per_month": 7460,
+          "min_wage_amount_per_month": 2690
+        },
+        "subsidy": {
+          "has_employment_difficulty_cert": true
+        }
+      }
+    },
+    "actual": {
+      "user": {
+        "basic": {
+          "gender": "female",
+          "female_retire_type": "worker50",
+          "birth_year": 1976,
+          "birth_date": "1976-11-08"
+        },
+        "status": {
+          "employment_status": "unemployed",
+          "on_unemployment_benefit": true
+        },
+        "social": {
+          "pension_contrib_months": 200,
+          "medical_contrib_months": 150,
+          "unemployment_insurance_years": 11,
+          "base_lower_amount_per_month": 7460,
+          "min_wage_amount_per_month": 2690
+        },
+        "subsidy": {
+          "has_employment_difficulty_cert": true,
+          "months_to_legal_retire": 17
+        }
+      },
+      "calc": {
+        "normalization": {
+          "birth_year_source": "provided",
+          "birth_date_source": "provided",
+          "gender_source": "provided_normalized"
+        },
+        "retirement": {
+          "female_retire_type_status": "confirmed",
+          "legal_retire_age_years": 50,
+          "legal_retire_age_months": 7,
+          "original_retire_age_years": 50,
+          "_algo_result": {
+            "legal_retire_age_years": 50,
+            "legal_retire_age_months": 7,
+            "original_retire_age_years": 50
+          },
+          "flex_adjusted": false,
+          "flex_preference": "standard",
+          "legal_retire_date": "2027-06-08",
+          "legal_retire_year": 2027,
+          "legal_retire_month": 6,
+          "months_to_legal_retire": 0
+        },
+        "pension": {
+          "min_years_required": 15,
+          "gap_months": 0,
+          "gap_years_ceil": 0
+        },
+        "mi": {
+          "lifetime_required_months": 240,
+          "lifetime_gap_months": 90,
+          "waiting_period_months": null,
+          "paid_by_unemployment_fund": true
+        },
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-MI-ENROLL-DATE",
+            "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+            "field": "user.mi.enroll_date"
+          },
+          {
+            "question_id": "Q-MI-GAP",
+            "text": "无法判断医保断缴月数，可能影响等待期。请补充上次医保结束日期。",
+            "field": "user.mi.prev_end_date"
+          },
+          {
+            "question_id": "Q-SUBSIDY-CONFLICT",
+            "text": "你可能同时落入多个补贴/基金承担窗口（例如4050与岗位补贴互斥）。请确认你的目标（省钱/多缴/医保连续性）并补充：基数下限、最低工资、是否已领失业金等，以便对比方案。",
+            "field": "user.objective"
+          }
+        ],
+        "unemployment": {
+          "eligible": true,
+          "duration_months_raw": 24,
+          "duration_months": 24
+        },
+        "warnings": [
+          {
+            "warning_id": "W-UI-MI-PAID",
+            "text": "失业金期间，医保通常由失业保险基金代缴（以经办口径为准）。规划现金流时请不要重复计算医保个人缴费。"
+          },
+          {
+            "warning_id": "W-NEEDS-AGENT",
+            "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+          }
+        ],
+        "subsidy": {
+          "4050_eligible": true,
+          "flex_cost_est": 2238.0000000000005,
+          "4050_amount_est": 1119.0000000000002,
+          "job_eligible": true,
+          "job_amount_est": 1345,
+          "selected_option": "conflict"
+        },
+        "contribution": {
+          "pay_gap_needed": null
+        }
+      },
+      "plan": {
+        "conclusion_level": "needs_agent",
+        "template_id": "T-AGENT-ASSIST"
+      }
+    },
+    "trace": [
+      {
+        "rule_id": "R-010-PARSE-BIRTH-YEAR",
+        "row_id": "row_1_provided",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_year_source",
+            "value": "provided"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-011-BUILD-BIRTH-DATE",
+        "row_id": "row_1_already_have",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.birth_date_source",
+            "value": "provided"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-012-NORMALIZE-GENDER",
+        "row_id": "row_1_already_norm",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.normalization.gender_source",
+            "value": "provided_normalized"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+        "row_id": "row_2_female_known",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.retirement.female_retire_type_status",
+            "value": "confirmed"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "key": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              }
+            },
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            }
+          },
+          {
+            "type": "call",
+            "fn": "compute_delayed_retire_age",
+            "args": {
+              "gender": {
+                "var": "user.basic.gender"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              }
+            },
+            "into": "calc.retirement._algo_result"
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.legal_retire_age_months",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.original_retire_age_years",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-115-FLEXIBLE-RETIREMENT",
+        "row_id": "row_1_no_preference",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_adjusted",
+            "value": false
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_preference",
+            "value": "standard"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-120-COMPUTE-RETIRE-DATE",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "call",
+            "fn": "date_add_years_months",
+            "args": {
+              "date": {
+                "var": "user.basic.birth_date"
+              },
+              "years": {
+                "var": "calc.retirement.legal_retire_age_years"
+              },
+              "months": {
+                "var": "calc.retirement.legal_retire_age_months"
+              }
+            },
+            "into": "calc.retirement.legal_retire_date"
+          },
+          {
+            "type": "call",
+            "fn": "date_year",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_year"
+          },
+          {
+            "type": "call",
+            "fn": "date_month",
+            "args": {
+              "date": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.legal_retire_month"
+          },
+          {
+            "type": "call",
+            "fn": "date_diff_months",
+            "args": {
+              "from": {
+                "var": "calc._today"
+              },
+              "to": {
+                "var": "calc.retirement.legal_retire_date"
+              }
+            },
+            "into": "calc.retirement.months_to_legal_retire"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-200-MIN-PENSION-YEARS",
+        "row_id": "row_2_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+            "key": {
+              "retire_year": {
+                "var": "calc.retirement.legal_retire_year"
+              }
+            },
+            "into": "calc.pension.min_years_required"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-210-PENSION-GAP",
+        "row_id": "row_2_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.pension.gap_months",
+            "value": {
+              "max": [
+                0,
+                {
+                  "-": [
+                    {
+                      "*": [
+                        {
+                          "var": "calc.pension.min_years_required"
+                        },
+                        12
+                      ]
+                    },
+                    {
+                      "var": "user.social.pension_contrib_months"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.pension.gap_years_ceil",
+            "value": {
+              "ceil": [
+                {
+                  "/": [
+                    {
+                      "var": "calc.pension.gap_months"
+                    },
+                    12
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+        "row_id": "row_3_female",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.lifetime_required_months",
+            "value": {
+              "*": [
+                {
+                  "var": "params.P-SH-MEDICAL-LIFETIME-FEMALE-YEARS"
+                },
+                12
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.mi.lifetime_gap_months",
+            "value": {
+              "max": [
+                0,
+                {
+                  "-": [
+                    {
+                      "var": "calc.mi.lifetime_required_months"
+                    },
+                    {
+                      "var": "user.social.medical_contrib_months"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-300-MI-GAP-MONTHS",
+        "row_id": "row_1_missing_enroll",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-ENROLL-DATE",
+              "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+              "field": "user.mi.enroll_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-310-MI-WAITING-PERIOD",
+        "row_id": "row_1_gap_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_period_months",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-GAP",
+              "text": "无法判断医保断缴月数，可能影响等待期。请补充上次医保结束日期。",
+              "field": "user.mi.prev_end_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+        "row_id": "row_3_years_ge_1",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.eligible",
+            "value": true
+          }
+        ]
+      },
+      {
+        "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+        "row_id": "row_4_lookup",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "lookup",
+            "table_param_id": "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS",
+            "key": {
+              "insured_years": {
+                "var": "user.social.unemployment_insurance_years"
+              }
+            },
+            "into": "calc.unemployment.duration_months_raw"
+          },
+          {
+            "type": "set",
+            "path": "calc.unemployment.duration_months",
+            "value": {
+              "min": [
+                {
+                  "var": "calc.unemployment.duration_months_raw"
+                },
+                {
+                  "var": "params.P-SH-UNEMPLOYMENT-MAX-MONTHS"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+        "row_id": "row_1_on_benefit",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.paid_by_unemployment_fund",
+            "value": true
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-UI-MI-PAID",
+              "text": "失业金期间，医保通常由失业保险基金代缴（以经办口径为准）。规划现金流时请不要重复计算医保个人缴费。"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-500-4050-ELIGIBILITY",
+        "row_id": "row_1_cert_true",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_eligible",
+            "value": true
+          }
+        ]
+      },
+      {
+        "rule_id": "R-510-4050-AMOUNT",
+        "row_id": "row_3_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.flex_cost_est",
+            "value": {
+              "*": [
+                {
+                  "var": "user.social.base_lower_amount_per_month"
+                },
+                {
+                  "+": [
+                    {
+                      "var": "params.P-SH-PENSION-RATE-FLEX"
+                    },
+                    {
+                      "var": "params.P-SH-MEDICAL-RATE-FLEX"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_amount_est",
+            "value": {
+              "*": [
+                {
+                  "var": "calc.subsidy.flex_cost_est"
+                },
+                {
+                  "var": "params.P-SH-4050-SUBSIDY-RATE"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+        "row_id": "row_3_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_eligible",
+            "value": true
+          }
+        ]
+      },
+      {
+        "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+        "row_id": "row_3_compute",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_amount_est",
+            "value": {
+              "*": [
+                {
+                  "var": "user.social.min_wage_amount_per_month"
+                },
+                {
+                  "var": "params.P-SH-JOB-SUBSIDY-RATE-MINWAGE"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+        "row_id": "none",
+        "matched": false,
+        "actions_executed": []
+      },
+      {
+        "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+        "row_id": "row_7_conflict_need_agent",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.selected_option",
+            "value": "conflict"
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-SUBSIDY-CONFLICT",
+              "text": "你可能同时落入多个补贴/基金承担窗口（例如4050与岗位补贴互斥）。请确认你的目标（省钱/多缴/医保连续性）并补充：基数下限、最低工资、是否已领失业金等，以便对比方案。",
+              "field": "user.objective"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-600-PAY-GAP-REMINDER",
+        "row_id": "row_1_no_data",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.contribution.pay_gap_needed",
+            "value": null
+          }
+        ]
+      },
+      {
+        "rule_id": "R-700-PLAN-TEMPLATE",
+        "row_id": "row_1_needs_agent",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "plan.conclusion_level",
+            "value": "needs_agent"
+          },
+          {
+            "type": "set",
+            "path": "plan.template_id",
+            "value": "T-AGENT-ASSIST"
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-NEEDS-AGENT",
+              "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-900-FINAL-GATE",
+        "row_id": "row_2_ok",
+        "matched": true,
+        "actions_executed": []
+      }
+    ]
+  },
+  {
+    "kind": "full-plan",
+    "name": "full: 输入为空",
+    "input": {
+      "user": {}
+    },
+    "actual": {
+      "user": {},
+      "calc": {
+        "needs_agent": true,
+        "agent_questions": [
+          {
+            "question_id": "Q-BIRTH-YEAR",
+            "text": "请提供出生年份（例如：1973，或写“73年”代表1973年）",
+            "field": "user.basic.birth_year"
+          },
+          {
+            "question_id": "Q-GENDER",
+            "text": "请确认性别（男/女）。退休年龄与补贴资格会因此不同。",
+            "field": "user.basic.gender"
+          },
+          {
+            "question_id": "Q-RETIRE-INPUTS",
+            "text": "计算退休年龄需要：性别、女性50/55口径、出生年份。请补齐。"
+          },
+          {
+            "question_id": "Q-RETIRE-DATE",
+            "text": "计算退休日期需要出生日期（年/月/日）与退休年龄。请补齐出生月日，或上传参保档案截图。",
+            "field": "user.basic.birth_date"
+          },
+          {
+            "question_id": "Q-RETIRE-YEAR",
+            "text": "缺少退休年份，无法判断最低缴费年限（15/16/…/20年）。",
+            "field": "calc.retirement.legal_retire_year"
+          },
+          {
+            "question_id": "Q-PENSION-MONTHS",
+            "text": "请提供养老累计缴费月数（可从随申办/社保查询导出）。",
+            "field": "user.social.pension_contrib_months"
+          },
+          {
+            "question_id": "Q-MI-MONTHS",
+            "text": "请提供医保累计缴费月数和性别（用于判断是否满足终身医保条件）。",
+            "field": "user.social.medical_contrib_months"
+          },
+          {
+            "question_id": "Q-MI-ENROLL-DATE",
+            "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+            "field": "user.mi.enroll_date"
+          },
+          {
+            "question_id": "Q-MI-GAP",
+            "text": "无法判断医保断缴月数，可能影响等待期。请补充上次医保结束日期。",
+            "field": "user.mi.prev_end_date"
+          },
+          {
+            "question_id": "Q-EMPLOYMENT-DIFF",
+            "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+            "field": "user.subsidy.has_employment_difficulty_cert"
+          },
+          {
+            "question_id": "Q-MONTHS-TO-RETIRE",
+            "text": "缺少“距退休月数”，无法判断是否进入大龄岗位补贴窗口（≤36个月）。",
+            "field": "user.subsidy.months_to_legal_retire"
+          },
+          {
+            "question_id": "Q-CORE",
+            "text": "缺少核心信息（性别/出生年份/当前状态），无法生成可执行规划。请补齐。"
+          }
+        ],
+        "retirement": {
+          "flex_adjusted": false,
+          "flex_preference": "standard"
+        },
+        "mi": {
+          "waiting_period_months": null,
+          "paid_by_unemployment_fund": false
+        },
+        "unemployment": {
+          "eligible": false,
+          "duration_months": 0
+        },
+        "subsidy": {
+          "4050_eligible": null,
+          "4050_amount_est": 0,
+          "job_eligible": null,
+          "job_amount_est": 0,
+          "older_ui_pension_fund_eligible": null,
+          "selected_option": "none"
+        },
+        "contribution": {
+          "pay_gap_needed": null
+        },
+        "warnings": [
+          {
+            "warning_id": "W-NEEDS-AGENT",
+            "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+          }
+        ]
+      },
+      "plan": {
+        "conclusion_level": "needs_agent",
+        "template_id": "T-AGENT-ASSIST"
+      }
+    },
+    "trace": [
+      {
+        "rule_id": "R-010-PARSE-BIRTH-YEAR",
+        "row_id": "row_3_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-BIRTH-YEAR",
+              "text": "请提供出生年份（例如：1973，或写“73年”代表1973年）",
+              "field": "user.basic.birth_year"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-011-BUILD-BIRTH-DATE",
+        "row_id": "row_4_missing_year",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-BIRTH-YEAR",
+              "text": "请提供出生年份（例如：1973）",
+              "field": "user.basic.birth_year"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-012-NORMALIZE-GENDER",
+        "row_id": "row_3_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-GENDER",
+              "text": "请确认性别（男/女）。退休年龄与补贴资格会因此不同。",
+              "field": "user.basic.gender"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+        "row_id": "none",
+        "matched": false,
+        "actions_executed": []
+      },
+      {
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+        "row_id": "row_1_missing_inputs",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-RETIRE-INPUTS",
+              "text": "计算退休年龄需要：性别、女性50/55口径、出生年份。请补齐。"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-115-FLEXIBLE-RETIREMENT",
+        "row_id": "row_1_no_preference",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_adjusted",
+            "value": false
+          },
+          {
+            "type": "set",
+            "path": "calc.retirement.flex_preference",
+            "value": "standard"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-120-COMPUTE-RETIRE-DATE",
+        "row_id": "row_1_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-RETIRE-DATE",
+              "text": "计算退休日期需要出生日期（年/月/日）与退休年龄。请补齐出生月日，或上传参保档案截图。",
+              "field": "user.basic.birth_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-200-MIN-PENSION-YEARS",
+        "row_id": "row_1_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-RETIRE-YEAR",
+              "text": "缺少退休年份，无法判断最低缴费年限（15/16/…/20年）。",
+              "field": "calc.retirement.legal_retire_year"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-210-PENSION-GAP",
+        "row_id": "row_1_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-PENSION-MONTHS",
+              "text": "请提供养老累计缴费月数（可从随申办/社保查询导出）。",
+              "field": "user.social.pension_contrib_months"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+        "row_id": "row_1_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-MONTHS",
+              "text": "请提供医保累计缴费月数和性别（用于判断是否满足终身医保条件）。",
+              "field": "user.social.medical_contrib_months"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-300-MI-GAP-MONTHS",
+        "row_id": "row_1_missing_enroll",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-ENROLL-DATE",
+              "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+              "field": "user.mi.enroll_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-310-MI-WAITING-PERIOD",
+        "row_id": "row_1_gap_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.waiting_period_months",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MI-GAP",
+              "text": "无法判断医保断缴月数，可能影响等待期。请补充上次医保结束日期。",
+              "field": "user.mi.prev_end_date"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+        "row_id": "row_1_not_unemployed",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.eligible",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.unemployment.duration_months",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+        "row_id": "row_2_not_on_benefit_or_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.mi.paid_by_unemployment_fund",
+            "value": false
+          }
+        ]
+      },
+      {
+        "rule_id": "R-500-4050-ELIGIBILITY",
+        "row_id": "row_3_cert_unknown",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_eligible",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-EMPLOYMENT-DIFF",
+              "text": "是否已做“就业困难人员”认定？这将决定是否能走4050补贴。",
+              "field": "user.subsidy.has_employment_difficulty_cert"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-510-4050-AMOUNT",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.4050_amount_est",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+        "row_id": "row_1_missing_months",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_eligible",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MONTHS-TO-RETIRE",
+              "text": "缺少“距退休月数”，无法判断是否进入大龄岗位补贴窗口（≤36个月）。",
+              "field": "user.subsidy.months_to_legal_retire"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+        "row_id": "row_1_not_eligible",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.job_amount_est",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+        "row_id": "row_1_missing_months",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.older_ui_pension_fund_eligible",
+            "value": null
+          },
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-MONTHS-TO-RETIRE",
+              "text": "缺少距退休月数，无法判断是否进入“大龄领失业金养老费基金承担”窗口（常见≤12个月）。",
+              "field": "user.subsidy.months_to_legal_retire"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+        "row_id": "row_4_none",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.subsidy.selected_option",
+            "value": "none"
+          }
+        ]
+      },
+      {
+        "rule_id": "R-600-PAY-GAP-REMINDER",
+        "row_id": "row_1_no_data",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.contribution.pay_gap_needed",
+            "value": null
+          }
+        ]
+      },
+      {
+        "rule_id": "R-700-PLAN-TEMPLATE",
+        "row_id": "row_1_needs_agent",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "plan.conclusion_level",
+            "value": "needs_agent"
+          },
+          {
+            "type": "set",
+            "path": "plan.template_id",
+            "value": "T-AGENT-ASSIST"
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "warning_id": "W-NEEDS-AGENT",
+              "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+            }
+          }
+        ]
+      },
+      {
+        "rule_id": "R-900-FINAL-GATE",
+        "row_id": "row_1_any_missing",
+        "matched": true,
+        "actions_executed": [
+          {
+            "type": "set",
+            "path": "calc.needs_agent",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-CORE",
+              "text": "缺少核心信息（性别/出生年份/当前状态），无法生成可执行规划。请补齐。"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]
