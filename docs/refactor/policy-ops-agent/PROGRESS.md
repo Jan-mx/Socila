@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-04
+> Updated: 2026-09-05
 
 ## 当前结论
 
@@ -14,6 +14,7 @@
 - 09-03 阶段（`docs/prd/09-03-stage-policyops-pre-merge-release.md`，P0合并质量门禁与v0.2.0发布准备）：**Accepted（开发分支发布准备）**（验收证据：`reports/stage-09-03-pre-merge-release/acceptance-report.md`）。本阶段仅验收开发分支`refactor/policy-ops-agent-platform`：六类门禁全部本地新鲜复现（全部退出0、零skip）、workflow经actionlint 1.7.7静态校验零发现、`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）。workflow已静态校验、六类门禁已本地复现，不声称GitHub-hosted六项checks已经运行。PR、main ruleset、merge与tag/Release为未来人工动作（见“精确下一步”），不阻塞本阶段验收。
 - 09-03 阶段（`docs/prd/09-03-stage-runtime-configuration-remediation.md`，本地运行配置与凭据整改）：**Accepted**（验收证据：`reports/stage-09-03-runtime-config-remediation/acceptance-report.md`）。CFG-FR-001～010、CFG-NFR-001～007、CFG-AC-001～013全部通过：统一环境加载、模板与入口收口、管理员引导一次性化、新鲜备份+PG17+pgvector真实恢复对账、PostgreSQL口令轮换与轮换前后逐表对账（34表/1610行一致）、全部门禁本地新鲜复验（全部退出0、零skip）；复审确认本阶段演练容器零残留。
 - 09-03 Feature（`docs/prd/09-03-feature-core-agent-service-jwt.md`，Core与Agent双向服务JWT鉴权）：**Accepted**（主体提交`35d673c`，修复提交`fix: 补齐服务JWT复审缺漏`；验收证据：`reports/feature-09-03-service-jwt/acceptance-report.md` §7.4～§7.6）。SJWT-FR-001～009、SJWT-NFR-001～007、SJWT-AC-001～019全部通过：复审四项缺漏逐条修复并重新验收——FastAPI文档/OpenAPI入口统一关闭（四路径一律404、`/internal/health`唯一豁免）、Web Node运行时启动入口`src/instrumentation.ts`对无效Secret fail-fast拒绝启动（standalone真实启动拒绝D2/E2）+Compose`AGENT_SERVICE_JWT_CURRENT`必填插值（缺失/空值`docker compose config`失败）、Python重放存储缺表/权限/连接中断统一映射503且业务异常原样传播不包装（JTI与业务写同事务回滚）、宿主`.env.example`补齐两变量且实际值安全同步至Git忽略的`.env.local`（零输出验证、未轮换）；全部门禁在修复后的全新演练库上重跑（全部退出0、零skip）、AC-017完全隔离Compose双向真实TCP冒烟（10断言+台账恰好1行）与Docker任务资源零残留复核（`socila-*`未动）。2026-09-04复查新发现2项缺漏并修复重验：公开模板可预测占位符通过校验→模板current/previous改空值（故意设计，直接复制未填写的模板被启动校验拒绝，已加防回归测试）+ `psycopg.connect`缺确定性超时→`PostgresReplayGuard`新增`connect_timeout_seconds`（正整数构造期校验、默认5秒、测试不可达连接1秒、超时统一映射503 no-store、既有异常边界不变）；全部门禁新鲜复验（除`pip-audit`因本机到PyPI连接被代理重置而环境阻塞、依赖集零diff外全部退出0）、完整集成测试不再挂起（15通过/5.27s）、演练资源零残留（`socila-*`未动），Feature保持**Accepted**（详见`reports/feature-09-03-service-jwt/acceptance-report.md` §7.7）。2026-09-04 Edge构建警告复查修复：`src/instrumentation.ts`被Next.js同时构建为Node与Edge运行时bundle，静态`process.exit(1)`触发Turbopack警告（`process.exit is not supported in the Edge Runtime`，违反AC-018）→启动校验与进程终止收敛至Node专用模块`src/lib/security/service-jwt-startup-node.ts`（`register`改async、仅`NEXT_RUNTIME=nodejs`分支动态import、Edge运行时不执行启动校验、fail-fast语义不变），`npm run build`零警告、standalone四种真实启动复验（无current/31字节/previous===current均退出1且`/api/health`不可访问、合法合成Secret成功启动Ready）、源码契约测试防回归（§7.8），Feature保持**Accepted**。
+- 09-05全国政策能力三阶段需求：**仅完成Draft PRD编写，尚未实施**。执行顺序固定为`Socila命名统一与地区DSL分层`→`国家baseline及广东、四川权威overlay`→`用户规划按地区快照触发`；三份PRD均位于`docs/prd/`，不得把Draft需求记为已交付能力。
 
 ## 已完成能力
 
@@ -34,6 +35,9 @@
 | 国家独立baseline实体 | 最小实现 | 按权威政策分批抽取 |
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
+| Socila命名与地区DSL | Planned | 先验收`09-05-feature-socila-naming-regional-dsl.md` |
+| 国家baseline及粤川权威政策 | Planned（依赖前项） | 使用官方来源建立核心可规划集和地区候选快照 |
+| 地区感知用户规划 | Planned（依赖前项） | 只为门禁通过的活动快照逐地区开放，缺失地区不默认上海 |
 
 ## 当前任务验证（09-03 P0合并门禁/发布准备阶段，本地新鲜执行）
 

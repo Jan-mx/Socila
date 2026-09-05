@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-05
 
 ## 状态说明
 
@@ -20,6 +20,9 @@
 | 方向 | 状态 | 成功条件 |
 | --- | --- | --- |
 | 文档分类与低上下文读取改造 | Done | 当前事实、报告和归档分离，README路由可用 |
+| Socila命名统一与地区DSL分层 | Planned | `SOCILA-DSL-1.0`与地区Manifest稳定，粤川示例退出生产Seed，上海黄金结果无漂移 |
+| 国家baseline及粤川权威overlay | Planned | CN、上海、广东、四川核心政策具有官方引用、显式overlay、黄金测试和候选快照；依赖命名Feature Accepted |
+| 用户规划按地区快照触发 | Planned | 地区代码必填，逐地区消费活动快照且绝不默认上海；依赖权威政策Stage产出候选快照 |
 | 远程Personal Demo服务器部署 | Planned | 目标服务器全栈healthy、域名/HTTPS和离机备份验证 |
 | 首批公开政策采集与RAG建库 | Planned | 白名单来源原件、DocumentTree、Chunk和索引形成闭环 |
 | 完整真实Agent闭环观察 | Planned | 真实政策从采集到管理员审核和Core draft可追踪完成 |
@@ -29,8 +32,6 @@
 
 | 方向 | 状态 | 成功条件 |
 | --- | --- | --- |
-| 国家独立基线政策抽取 | Candidate | 国家baseline不再由地方add全量承载 |
-| 扩展省市政策包与来源 | Candidate | 新地区具有来源、overlay、黄金样本和隔离测试 |
 | Chat SSE数据库故障语义 | Candidate | 流式接口故障具有稳定、可恢复且可测试的协议 |
 | 文档追踪自动化 | Candidate | PRD/Work Item、测试路径、报告和README状态可自动校验 |
 | RAG黄金集持续扩充 | Candidate | 四地区覆盖养老、医保、失业、补贴和废止政策 |
