@@ -17,23 +17,26 @@ PRD不记录日常执行日志、测试退出码和提交历史。
 | `09-01-policy-ops-agent.md` | PolicyOps Agent当前产品需求和边界 | Active |
 | `09-03-stage-runtime-configuration-remediation.md` | 本地运行配置、备份恢复与凭据整改 | Active |
 | `09-03-feature-core-agent-service-jwt.md` | Core与Agent双向服务JWT鉴权 | Accepted |
-| `09-05-feature-socila-naming-regional-dsl.md` | Socila活动命名统一、地区DSL分层与粤川示例测试化 | Draft |
+| `09-05-feature-socila-naming-regional-dsl.md` | Socila活动命名统一、地区DSL分层与粤川示例测试化 | Active |
 | `09-05-stage-national-baseline-regional-overlays.md` | 国家baseline及广东、四川权威核心政策overlay | Draft |
+| `09-05-feature-case-library-governance.md` | 案例库精简、质量治理与原始数据归档 | Draft |
 | `09-05-feature-jurisdiction-aware-planning.md` | 用户规划按地区活动快照触发 | Draft |
 
 ## 全国政策能力执行顺序
 
-以下三份PRD具有强前置依赖，不得倒序宣称完成：
+全国政策与案例治理PRD具有强前置依赖，不得倒序宣称完成：
 
 ```text
 Socila命名统一与地区DSL分层
   → 国家baseline及广东、四川权威overlay
+  → 案例库精简、质量治理与原始数据归档
   → 用户规划按地区快照触发
 ```
 
 - 第一阶段只整理协议、命名、Seed和测试数据边界，不新增真实粤川政策。
 - 第二阶段只交付经权威来源验证的候选快照，不直接开放用户地区流量。
-- 第三阶段只激活已通过全部政策门禁的地区，缺失地区不得默认上海。
+- 案例治理使用候选快照校验案例，形成452/36/528和可恢复归档。
+- 地区规划只激活已通过政策与案例门禁的地区，缺失地区不得默认上海。
 
 ## 何时创建PRD
 
