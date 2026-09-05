@@ -47,10 +47,18 @@ export async function seedRules(region: DiscoveredRegion) {
       );
     }
 
+    // 地区作用域upsert（09-05复审纠正）：同一rule_id+version在不同地区必须各自成行，
+    // 绝不跨地区更新覆盖。
     const existing = await db
       .select({ id: rules.id })
       .from(rules)
-      .where(and(eq(rules.ruleId, rule.rule_id), eq(rules.version, 1)))
+      .where(
+        and(
+          eq(rules.jurisdictionCode, jurisdictionCode),
+          eq(rules.ruleId, rule.rule_id),
+          eq(rules.version, 1),
+        ),
+      )
       .limit(1);
 
     const data = {
@@ -79,7 +87,13 @@ export async function seedRules(region: DiscoveredRegion) {
       await db
         .update(rules)
         .set({ ...data, updatedAt: new Date() })
-        .where(and(eq(rules.ruleId, rule.rule_id), eq(rules.version, 1)));
+        .where(
+          and(
+            eq(rules.jurisdictionCode, jurisdictionCode),
+            eq(rules.ruleId, rule.rule_id),
+            eq(rules.version, 1),
+          ),
+        );
       console.log(`  Updated rule: ${rule.rule_id}`);
     } else {
       await db.insert(rules).values(data);

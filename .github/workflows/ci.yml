@@ -424,3 +424,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_VERSION: 8.29.1
           GITLEAKS_ENABLE_COMMENTS: "false"
+      # 09-05 SDL-NFR-007（ADR-0009）：allowlist哨兵回归——已核实误报被精确忽略、
+      # 允许路径上其他规则的合成哨兵必须被检测、无整文件跳过。
+      - name: gitleaks allowlist sentinel regression
+        run: node scripts/verify-gitleaks-allowlist.mjs

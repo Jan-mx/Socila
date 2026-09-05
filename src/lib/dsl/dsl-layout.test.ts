@@ -10,6 +10,12 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  LEGACY_BRAND_SUBSTRING,
+  LEGACY_DSL_DIR_ID_FRAGMENT,
+  LEGACY_DSL_DIR_ID_PATTERN,
+  LEGACY_DSL_VERSION_PATTERN,
+} from "@/lib/naming/socila-naming-contract";
 
 const DSL_ROOT = path.join(process.cwd(), "dsl");
 const PROTOCOL_DIR = path.join(DSL_ROOT, "protocol/socila_dsl_v1");
@@ -52,7 +58,7 @@ describe("通用协议目录 dsl/protocol/socila_dsl_v1（SDL-FR-002）", () => 
       properties?: { dsl_version?: { const?: string; enum?: string[] } };
     };
     expect(schema.title).toMatch(/[Ss]ocila/);
-    expect(schema.title).not.toMatch(/SSP/);
+    expect(schema.title).not.toMatch(new RegExp(LEGACY_BRAND_SUBSTRING));
     const dv = schema.properties?.dsl_version ?? {};
     expect(dv.const ?? dv.enum?.[0]).toBe("SOCILA-DSL-1.0");
   });
@@ -62,8 +68,8 @@ describe("通用协议目录 dsl/protocol/socila_dsl_v1（SDL-FR-002）", () => 
       const p = path.join(PROTOCOL_DIR, String(f));
       if (!p.endsWith(".json") && !p.endsWith(".md")) continue;
       const content = readFileSync(p, "utf8");
-      expect(content).not.toMatch(/\bSSP-DSL-1\.0\b/);
-      expect(content).not.toMatch(/\bssp_dsl_v1\b/);
+      expect(content).not.toMatch(LEGACY_DSL_VERSION_PATTERN);
+      expect(content).not.toMatch(LEGACY_DSL_DIR_ID_PATTERN);
     }
   });
 });
@@ -120,8 +126,8 @@ describe("上海地区目录 dsl/regions/shanghai_dsl_v1（SDL-FR-002/003）", (
     expect([...ruleSet.rules].sort()).toEqual([...files].sort());
   });
 
-  it("旧目录dsl/ssp_dsl_v1已不存在", () => {
-    expect(existsSync(path.join(DSL_ROOT, "ssp_dsl_v1"))).toBe(false);
+  it(`旧目录dsl/${LEGACY_DSL_DIR_ID_FRAGMENT}已不存在`, () => {
+    expect(existsSync(path.join(DSL_ROOT, LEGACY_DSL_DIR_ID_FRAGMENT))).toBe(false);
   });
 
   it("dsl/README.md描述协议/地区分层（SDL-FR-002）", () => {

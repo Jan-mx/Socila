@@ -15,6 +15,8 @@
 - 09-03 阶段（`docs/prd/09-03-stage-runtime-configuration-remediation.md`，本地运行配置与凭据整改）：**Accepted**（验收证据：`reports/stage-09-03-runtime-config-remediation/acceptance-report.md`）。CFG-FR-001～010、CFG-NFR-001～007、CFG-AC-001～013全部通过：统一环境加载、模板与入口收口、管理员引导一次性化、新鲜备份+PG17+pgvector真实恢复对账、PostgreSQL口令轮换与轮换前后逐表对账（34表/1610行一致）、全部门禁本地新鲜复验（全部退出0、零skip）；复审确认本阶段演练容器零残留。
 - 09-03 Feature（`docs/prd/09-03-feature-core-agent-service-jwt.md`，Core与Agent双向服务JWT鉴权）：**Accepted**（主体提交`35d673c`，修复提交`fix: 补齐服务JWT复审缺漏`；验收证据：`reports/feature-09-03-service-jwt/acceptance-report.md` §7.4～§7.6）。SJWT-FR-001～009、SJWT-NFR-001～007、SJWT-AC-001～019全部通过：复审四项缺漏逐条修复并重新验收——FastAPI文档/OpenAPI入口统一关闭（四路径一律404、`/internal/health`唯一豁免）、Web Node运行时启动入口`src/instrumentation.ts`对无效Secret fail-fast拒绝启动（standalone真实启动拒绝D2/E2）+Compose`AGENT_SERVICE_JWT_CURRENT`必填插值（缺失/空值`docker compose config`失败）、Python重放存储缺表/权限/连接中断统一映射503且业务异常原样传播不包装（JTI与业务写同事务回滚）、宿主`.env.example`补齐两变量且实际值安全同步至Git忽略的`.env.local`（零输出验证、未轮换）；全部门禁在修复后的全新演练库上重跑（全部退出0、零skip）、AC-017完全隔离Compose双向真实TCP冒烟（10断言+台账恰好1行）与Docker任务资源零残留复核（`socila-*`未动）。2026-09-04复查新发现2项缺漏并修复重验：公开模板可预测占位符通过校验→模板current/previous改空值（故意设计，直接复制未填写的模板被启动校验拒绝，已加防回归测试）+ `psycopg.connect`缺确定性超时→`PostgresReplayGuard`新增`connect_timeout_seconds`（正整数构造期校验、默认5秒、测试不可达连接1秒、超时统一映射503 no-store、既有异常边界不变）；全部门禁新鲜复验（除`pip-audit`因本机到PyPI连接被代理重置而环境阻塞、依赖集零diff外全部退出0）、完整集成测试不再挂起（15通过/5.27s）、演练资源零残留（`socila-*`未动），Feature保持**Accepted**（详见`reports/feature-09-03-service-jwt/acceptance-report.md` §7.7）。2026-09-04 Edge构建警告复查修复：`src/instrumentation.ts`被Next.js同时构建为Node与Edge运行时bundle，静态`process.exit(1)`触发Turbopack警告（`process.exit is not supported in the Edge Runtime`，违反AC-018）→启动校验与进程终止收敛至Node专用模块`src/lib/security/service-jwt-startup-node.ts`（`register`改async、仅`NEXT_RUNTIME=nodejs`分支动态import、Edge运行时不执行启动校验、fail-fast语义不变），`npm run build`零警告、standalone四种真实启动复验（无current/31字节/previous===current均退出1且`/api/health`不可访问、合法合成Secret成功启动Ready）、源码契约测试防回归（§7.8），Feature保持**Accepted**。
 - 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）：**Accepted**（验收证据：`reports/feature-09-05-socila-naming/acceptance-report.md`）。SDL-FR-001～014、SDL-NFR-001～007全部有实现与测试映射，SDL-AC-001～010新鲜证据通过：通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层（24规则/29参数/`SOCILA-DSL-1.0`/Manifest `jurisdiction_code=310000`）、Seed经Manifest发现（零硬编码地区）、活动代码与配置SSP/SSRP→Socila硬切换（命名扫描零命中，无旧变量/Cookie/localStorage/服务身份兼容）、Node与Python服务JWT身份原子切换`socila-next-core`（固定向量重签+CI冒烟同步）、粤川示例转测试夹具（生产Seed不写入）、0010迁移完成dsl_version规范化与六条示例精确清理（删除前新鲜pg_dump+SHA-256清单+PG17+pgvector真实恢复逐表对账25表一致；删除后diff仅params 33→29、packs 2→0及0009补齐空表；备份/旧卷/历史快照未动）；Gitleaks完整历史19条历史命中经人工核实为测试合成值并以`.gitleaks.toml`精确allowlist闭环（ADR-0008）。
+- 09-05 Feature **复审纠正完成并重新Accepted（2026-09-05）**：三项复审缺漏全部纠正——①命名契约扫描器收敛到`src/lib/naming/socila-naming-contract.ts`并以"允许片段剥离"区分精确旧协议值与独立品牌标识（npm test恢复359/359全绿）；②`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`+`condition="AND"`，新增哨兵回归`scripts/verify-gitleaks-allowlist.mjs`接入CI（ADR-0009替代ADR-0008；哨兵证明允许路径上其他规则照常检测、trace无整文件跳过）；③多地区Seed补齐jurisdiction作用域（seed-rules/seed-params/seed-misc/excel-import，tests行写入jurisdictionCode，协议workflow只装载一次，0011回填存量NULL），新增multi-region-seed落库级集成测试。全部门禁新鲜复验通过后恢复Accepted。
+- 09-05 Feature **Review Reopened（2026-09-05复审）**：`npm test`实际1失败（`socila-naming-contract.test.ts`——允许的精确旧协议值`SSP-DSL-1.0`同时命中宽泛`SSP`规则）；`.gitleaks.toml`使用旧式全局`[allowlist]`（Gitleaks 8.29.1 trace显示`condition=OR`按路径整文件跳过，未按规则收窄，违反SDL-NFR-007）；多地区Seed不完整（seed-rules/seed-params/seed-misc存在检查与更新缺`jurisdictionCode`、tests写入未设置jurisdictionCode、协议workflow在地区循环内重复更新）。原验收结论暂不可复用，ADR-0008安全结论被实测推翻（由ADR-0009纠正）；修复与新鲜门禁完成后重新验收。
 - 09-05全国政策能力三阶段需求：执行顺序固定为`Socila命名统一与地区DSL分层`（**已实施并验收**）→`国家baseline及广东、四川权威overlay`（Draft）→`用户规划按地区快照触发`（Draft）；后两份PRD尚未实施，不得把Draft需求记为已交付能力。
 
 ## 已完成能力
@@ -132,6 +134,18 @@
 | 持久库示例清理（SDL-AC-007） | PASS；删除前6目标精确确认（2包/4参数/预期地区版本/引用0）；0010迁移×2幂等；删除后diff仅`params 33→29`、`policy_pack_versions 2→0`、新增0009空表；其余23表不变；web/agent/worker/beat以新镜像重建（JWT身份同步生效）、健康检查全过；备份/旧卷/快照未删除 |
 | Secret与Gitleaks | PASS；`scan-secrets --all`563文件零命中；Gitleaks 8.29.1完整历史40 commits：首跑19条历史命中逐条核实为测试合成值（提交35d673c引入），`.gitleaks.toml`精确allowlist（ADR-0008）后复跑零发现 |
 | 演练资源清理 | PASS；`sdl-drill-pg`、`sdl-restore-verify`容器删除，`sdl*`容器/卷0残留，冒烟临时文件删除 |
+
+## 当前任务验证（09-05复审纠正，2026-09-05本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 已记录；复审复现npm test 350/351（宽泛品牌命中允许片段）；命名契约重写1文件收集失败（模块缺失）；Gitleaks哨兵对旧配置3项失败（哨兵漏检+trace整文件跳过）；多地区Seed集成4失败/1通过（第二地区覆盖第一地区） |
+| 静态与构建 | PASS；`tsc --noEmit`、`eslint src scripts`、`npm run build`（零warning）全部exit 0 |
+| Node单元（`npm test`） | PASS；41文件/359通过、skip 0（命名契约模块9用例） |
+| Python门禁 | PASS；ruff 0问题、mypy 48文件0错误、pytest非集成94通过、pip-audit无已知漏洞 |
+| 数据库门禁（全新PG17+pgvector） | PASS；migration×2（0010+0011）幂等、seed×2幂等（落库24规则/29参数/528测试全310000/粤川0）、`test:db` 12文件/52通过（含multi-region-seed 5用例）、`agent.migrate --with-roles`×2幂等、`pytest -m integration` 20通过 |
+| 安全门禁 | PASS；`scan-secrets`默认与`--all`（576文件）零命中；Gitleaks 8.29.1完整历史42 commits零发现（新增1条已核实fingerprint：ADR-0008引用的业务字段名样例）；哨兵回归3场景全过（误报精确忽略/允许路径其他规则哨兵被检测/trace无整文件跳过） |
+| 资源与边界 | PASS；演练容器删除零残留；持久policyops库全程未连接未修改；0011仅交付代码未对持久库执行；用户未提交文档保持原样 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 

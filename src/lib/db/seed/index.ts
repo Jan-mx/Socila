@@ -5,6 +5,7 @@ import { discoverRegionDsl } from "@/lib/dsl/region-manifest";
 import { seedRules } from "./seed-rules";
 import { seedParams } from "./seed-params";
 import { seedMisc } from "./seed-misc";
+import { seedPublishWorkflow } from "./seed-workflow";
 import { importCases, importRegressionTests } from "@/lib/import/excel-import";
 
 async function main() {
@@ -21,6 +22,9 @@ async function main() {
       `Discovered regions: ${regions.map((r) => `${r.manifest.region_slug}(${r.manifest.jurisdiction_code})`).join(", ")}`,
     );
 
+    // 协议级发布工作流：地区无关，只装载一次（复审纠正——不在地区循环内重复更新）。
+    await seedPublishWorkflow();
+
     for (const region of regions) {
       // Phase 1: Rules
       await seedRules(region);
@@ -28,7 +32,7 @@ async function main() {
       // Phase 2: Params
       await seedParams(region);
 
-      // Phase 3: Rule sets, workflows, example tests
+      // Phase 3: Rule sets and example tests
       await seedMisc(region);
     }
 

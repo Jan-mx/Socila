@@ -1,7 +1,7 @@
 # 09-05 Socila命名统一与地区DSL分层 验收报告
 
 > Author: Jan
-> Status: Accepted
+> Status: Accepted（2026-09-05复审纠正后重新验收）
 > Updated: 2026-09-05
 > PRD: `docs/prd/09-05-feature-socila-naming-regional-dsl.md`
 > ADR: `docs/refactor/policy-ops-agent/decisions/ADR-0008-Gitleaks测试合成值allowlist.md`
@@ -155,3 +155,80 @@ Gitleaks 8.29.1完整历史（docker，--redact）：
 ## 7. 结论
 
 **PASS。** SDL-FR-001～014、SDL-NFR-001～007全部有实现与测试映射；SDL-AC-001～010取得新鲜证据；持久库六条示例在可恢复备份、真实恢复对账与精确目标确认后完成清理，历史快照、用户数据与备份未受影响；活动代码与配置完成Socila硬切换且命名扫描零命中；服务JWT身份两端原子切换为`socila-next-core`。Definition of Done满足，PRD状态更新为Active。
+
+## 8. 复审纠正记录（2026-09-05，Review Reopened）
+
+复审（用户）结论：任务主体已实现，但不能保持Accepted。三项缺漏：
+
+1. **`npm test`实际失败（本报告§4.1的351/351结论不可复现）**：40文件通过/1失败、350项通过/1失败；失败文件`src/lib/naming/socila-naming-contract.test.ts`——允许出现的精确旧协议值`SSP-DSL-1.0`同时命中宽泛`SSP`品牌规则（允许清单只按"token名"豁免，未在宽泛检查前剥离已允许的精确片段）。
+2. **`.gitleaks.toml`安全边界错误**：使用旧式全局`[allowlist]`，Gitleaks 8.29.1 trace显示`condition=OR`按路径**整文件跳过**（`skipping file: global allowlist`）——7个文件被整文件跳过而非仅忽略指定jwt/generic-api-key规则；同文件中其他规则的Secret将漏检，违反SDL-NFR-007与本报告§2"检测能力不降低"的结论（ADR-0008安全结论被实测推翻，由ADR-0009纠正）。
+3. **多地区Seed不完整**：`seed-rules.ts`存在检查/更新按`ruleId+version`缺`jurisdictionCode`；`seed-params.ts`缺`jurisdictionCode`；`seed-misc.ts`规则集按`ruleSetId`、测试按`name`缺地区；`tests`表写入未设置`jurisdictionCode`；协议workflow在地区循环内重复更新；既有测试只证明多Manifest可被发现，未证明多地区可安全同时落库。
+
+本节仅为复审发现记录；纠正实施、新鲜门禁与重新验收结论见后续追加小节。原始§1～§7验收证据保持原貌不改写。
+
+## 9. 复审纠正实施与重新验收（2026-09-05，新鲜执行）
+
+### 9.1 纠正实现
+
+| 缺漏 | 纠正 |
+| --- | --- |
+| 命名契约宽泛规则误命中 | 扫描逻辑收敛到`src/lib/naming/socila-naming-contract.ts`：`scanContent(content, allowedFragments)`在执行宽泛品牌检查前**剥离该文件已允许的精确旧协议片段**（`split/join`精确剥离），并把全部token值改为拆分构造防止自命中；`ALLOWED_FRAGMENT_FILES`只允许"精确片段"（非整文件全token例外）——drizzle/0010（SDL-FR-011枚举旧值）、sdl-0010迁移行为测试（被测输入）、守卫测试钉断言三处；dsl-layout/region-manifest/seed契约测试改用导出常量，源码零裸片段 |
+| `.gitleaks.toml`整文件跳过 | 改用现代`[[allowlists]]`+`targetRules`+`condition = "AND"`：jwt规则只允许契约向量文件，generic-api-key只允许3个测试占位Secret文件与3个DSL业务字段文件；同文件其他规则的发现照常报告。新增自动化哨兵回归`scripts/verify-gitleaks-allowlist.mjs`并接入CI security-gates（ADR-0009） |
+| 多地区Seed跨地区覆盖 | `seed-rules.ts`/`seed-params.ts`/`seed-misc.ts`全部存在检查与更新条件补`jurisdictionCode`（参数含policyPackId、规则集含version）；`tests`写入设置`jurisdictionCode`；协议发布工作流拆分到`seed-workflow.ts`由`seed/index.ts`只装载一次；`excel-import.ts`回归测试同样设置`jurisdictionCode`并按地区作用域upsert；新增`drizzle/0011_sdl_tests_jurisdiction_backfill.sql`把存量NULL地区测试回填为310000（数据来源为上海DSL示例与上海案例工作簿，归属可由权威文件推导；幂等；本任务未对持久库执行） |
+
+### 9.2 TDD Red（修复前，新鲜记录）
+
+- **复审复现**：`npm test` 40文件通过/1失败、350/351——`socila-naming-contract.test.ts`宽泛`SSP`命中允许片段。
+- **命名契约**：重写测试引用`scanContent`模块 → 1文件收集失败（模块不存在）。
+- **Gitleaks哨兵（对旧配置）**：3项失败——场景2哨兵exit=0未检测、发现未报告、场景3 trace出现`skipping file: global allowlist`（与审查结论一致）。
+- **多地区Seed**：4失败/1通过——同rule_id/param_id/rule_set_id/测试名均只有1行（第二地区覆盖第一地区）、tests行jurisdiction为NULL。
+
+### 9.3 重新验收证据（全部门禁新鲜执行）
+
+```
+npm test                       # 41文件/359通过，skip 0（含命名契约模块9用例：精确片段零命中、
+                               #  同文件独立品牌仍命中、无片段时命中、清单精确性）
+npx tsc --noEmit               # exit 0
+npx eslint src scripts         # 0 problems
+npm run build                  # exit 0，零warning
+uv run ruff check .            # All checks passed!
+uv run mypy agent tests        # 48 files, 0 errors
+uv run pytest -q -m "not integration"   # 94 passed（skip 0）
+uv run pip-audit               # No known vulnerabilities found
+```
+
+数据库（全新PG17+pgvector演练库`sdl_drill`，一次性容器，验收后删除）：
+
+```
+npm run db:migrate ×2          # 0010+0011两次幂等exit 0
+npm run seed                   # 落库直查：rules=24（全SOCILA-DSL-1.0/310000）、params=29（310000）、
+                               # tests=528全部jurisdiction_code=310000、NULL=0、粤川示例包/参数=0
+npm run seed（第二次）          # 幂等：计数完全一致（24/29/528/0）
+npm run test:db                # 12文件/52通过，skip 0（新增multi-region-seed 5用例：
+                               #  两地区同rule_id/param_id/rule_set_id/测试名并存、值互不覆盖、
+                               #  tests行带jurisdictionCode、重复Seed幂等无跨地区覆盖）
+agent.migrate --with-roles ×2  # 幂等
+uv run pytest -q -m integration # 20 passed
+```
+
+安全：
+
+```
+node scripts/scan-secrets.mjs        # clean
+node scripts/scan-secrets.mjs --all  # 576个候选文件clean
+Gitleaks 8.29.1完整历史（42 commits）  # no leaks found（新增1条已核实fingerprint：
+                                     # ADR-0008第14行引用的业务字段名样例，与dsl规则JSON同批误报）
+gitleaks allowlist哨兵回归            # 3场景全过：已核实误报exit 0；允许路径上private-key哨兵
+                                     # 被检测（exit非0+报告发现）；trace无"skipping file: global allowlist"
+```
+
+### 9.4 资源与边界
+
+- 演练容器`sdl-drill-pg`无条件删除，`sdl*`容器/卷/网络零残留；哨兵临时目录脚本内清理。
+- **持久`policyops`库全程未连接、未修改**；历史快照、备份、旧Docker卷未触碰。
+- 0011回填迁移只作为代码交付（作用于全新演练库；持久库如需执行属未来授权维护动作）。
+- 工作区用户未提交文档（09-03 PRD与pre-merge验收报告）保持原样，未纳入本任务提交。
+
+### 9.5 重新验收结论
+
+**PASS。** §8三项缺漏全部纠正并取得新鲜证据：`npm test`从1失败恢复到359/359全绿且命名契约语义满足"精确片段允许、独立品牌阻断"；Gitleaks allowlist不再整文件跳过（哨兵回归与trace证明），检测能力恢复"不降低"；多地区Seed具备地区作用域并有落库级测试。任务恢复**Accepted**。

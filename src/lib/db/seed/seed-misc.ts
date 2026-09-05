@@ -1,11 +1,8 @@
 import fs from "fs";
 import { db } from "@/lib/db";
-import { ruleSets, workflows, tests } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import {
-  protocolWorkflowPath,
-  type DiscoveredRegion,
-} from "@/lib/dsl/region-manifest";
+import { ruleSets, tests } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
+import type { DiscoveredRegion } from "@/lib/dsl/region-manifest";
 
 interface RuleSetFile {
   rule_set_id: string;
@@ -14,16 +11,6 @@ interface RuleSetFile {
   effective_from: string;
   rules: string[];
   conflict_resolution?: unknown;
-}
-
-interface WorkflowFile {
-  workflow_id: string;
-  name: string;
-  version: string;
-  stages: unknown[];
-  rollback_policy?: unknown;
-  canary?: unknown;
-  audit?: unknown;
 }
 
 interface TestEntry {
@@ -39,13 +26,15 @@ interface TestsFile {
 }
 
 /**
- * 装载规则集与示例测试（SDL-FR-004：路径来自地区Manifest）；发布工作流是
- * 协议级资产（SDL-FR-002），从协议目录装载。
+ * 装载地区规则集与示例测试（SDL-FR-004：路径与地区来自地区Manifest）。
+ * 复审纠正：存在检查与更新条件包含jurisdictionCode——同一rule_set_id/测试名称
+ * 在不同地区各自成行，绝不跨地区更新覆盖；tests行写入jurisdictionCode。
+ * 协议级发布工作流与本职责分离（见seed-workflow.ts，只装载一次）。
  */
 export async function seedMisc(region: DiscoveredRegion) {
   const jurisdictionCode = region.manifest.jurisdiction_code;
 
-  // Seed rule set
+  // Seed rule set（地区作用域：jurisdictionCode + ruleSetId + version）
   const ruleSetRaw = fs.readFileSync(region.ruleSetPath, "utf-8");
   const ruleSet: RuleSetFile = JSON.parse(ruleSetRaw);
 
@@ -54,7 +43,13 @@ export async function seedMisc(region: DiscoveredRegion) {
   const existingRuleSet = await db
     .select({ id: ruleSets.id })
     .from(ruleSets)
-    .where(eq(ruleSets.ruleSetId, ruleSet.rule_set_id))
+    .where(
+      and(
+        eq(ruleSets.jurisdictionCode, jurisdictionCode),
+        eq(ruleSets.ruleSetId, ruleSet.rule_set_id),
+        eq(ruleSets.version, 1),
+      ),
+    )
     .limit(1);
 
   const ruleSetData = {
@@ -72,47 +67,20 @@ export async function seedMisc(region: DiscoveredRegion) {
     await db
       .update(ruleSets)
       .set({ ...ruleSetData, updatedAt: new Date() })
-      .where(eq(ruleSets.ruleSetId, ruleSet.rule_set_id));
+      .where(
+        and(
+          eq(ruleSets.jurisdictionCode, jurisdictionCode),
+          eq(ruleSets.ruleSetId, ruleSet.rule_set_id),
+          eq(ruleSets.version, 1),
+        ),
+      );
     console.log(`  Updated rule set: ${ruleSet.rule_set_id}`);
   } else {
     await db.insert(ruleSets).values(ruleSetData);
     console.log(`  Inserted rule set: ${ruleSet.rule_set_id}`);
   }
 
-  // Seed workflow（协议级资产）
-  const workflowRaw = fs.readFileSync(protocolWorkflowPath(), "utf-8");
-  const workflow: WorkflowFile = JSON.parse(workflowRaw);
-
-  console.log(`Seeding workflow: ${workflow.workflow_id}...`);
-
-  const existingWorkflow = await db
-    .select({ id: workflows.id })
-    .from(workflows)
-    .where(eq(workflows.workflowId, workflow.workflow_id))
-    .limit(1);
-
-  const workflowData = {
-    workflowId: workflow.workflow_id,
-    name: workflow.name,
-    versionStr: workflow.version,
-    stages: workflow.stages,
-    rollbackPolicy: workflow.rollback_policy ?? null,
-    canary: workflow.canary ?? null,
-    auditConfig: workflow.audit ?? null,
-  };
-
-  if (existingWorkflow.length > 0) {
-    await db
-      .update(workflows)
-      .set({ ...workflowData, updatedAt: new Date() })
-      .where(eq(workflows.workflowId, workflow.workflow_id));
-    console.log(`  Updated workflow: ${workflow.workflow_id}`);
-  } else {
-    await db.insert(workflows).values(workflowData);
-    console.log(`  Inserted workflow: ${workflow.workflow_id}`);
-  }
-
-  // Seed tests from rule examples
+  // Seed tests from rule examples（地区作用域：jurisdictionCode + name）
   const testsRaw = fs.readFileSync(region.testsPath, "utf-8");
   const testsFile: TestsFile = JSON.parse(testsRaw);
 
@@ -124,11 +92,12 @@ export async function seedMisc(region: DiscoveredRegion) {
     const existingTest = await db
       .select({ id: tests.id })
       .from(tests)
-      .where(eq(tests.name, testName))
+      .where(and(eq(tests.jurisdictionCode, jurisdictionCode), eq(tests.name, testName)))
       .limit(1);
 
     const testData = {
       name: testName,
+      jurisdictionCode,
       ruleId: t.rule_id,
       input: t.input as Record<string, unknown>,
       paramsOverride: t.params_override ?? null,
@@ -140,7 +109,7 @@ export async function seedMisc(region: DiscoveredRegion) {
       await db
         .update(tests)
         .set({ ...testData, updatedAt: new Date() })
-        .where(eq(tests.name, testName));
+        .where(and(eq(tests.jurisdictionCode, jurisdictionCode), eq(tests.name, testName)));
       console.log(`  Updated test: ${testName}`);
     } else {
       await db.insert(tests).values(testData);

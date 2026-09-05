@@ -14,6 +14,7 @@ import {
   CANONICAL_DSL_VERSION,
   discoverRegionDsl,
 } from "@/lib/dsl/region-manifest";
+import { LEGACY_DSL_VERSION_FRAGMENT } from "@/lib/naming/socila-naming-contract";
 
 function makeTmpRoot(): string {
   const root = path.join(
@@ -122,7 +123,7 @@ describe("discoverRegionDsl（SDL-FR-002/003/004）", () => {
   it("拒绝未知dsl_version的Manifest（SDL-NFR-004 fail-fast）", () => {
     const root = makeTmpRoot();
     try {
-      writeRegion(root, "shanghai", manifestOf({ dsl_version: "SSP-DSL-1.0" }), ["R-1-A"]);
+      writeRegion(root, "shanghai", manifestOf({ dsl_version: LEGACY_DSL_VERSION_FRAGMENT }), ["R-1-A"]);
       expect(() => discoverRegionDsl({ regionsRoot: root, protocolRoot: root }))
         .toThrow(/dsl_version/);
     } finally {

@@ -1,30 +1,45 @@
-# Gitleaks 自定义配置（09-05 SDL-NFR-007）：扩展默认规则集，仅追加人工核实的
-# 测试专用合成值 allowlist——不降低任何真实Secret检测能力。
+# Gitleaks 自定义配置（09-05 SDL-NFR-007；ADR-0009复审纠正）：
+# [extend] useDefault = true 保留完整默认规则集；仅追加人工核实的测试合成值
+# [[allowlists]]——按"目标规则×精确路径"收窄（targetRules + condition = "AND"）。
 #
-# 核实记录（2026-09-05，Gitleaks 8.29.1完整历史扫描）：
-# - testdata/service-jwt-vectors.json      → jwt规则命中：SJWT跨语言契约的固定合成向量
-#   （文件自述"testSecrets为测试专用固定值，非生产Secret"，Secret为明文档占位值）；
-# - services/agent/tests/test_service_jwt_replay_integration.py、
-#   src/server/modules/agent-integration/__tests__/{draft-imports-route,service-jwt-replay}
-#   .integration.test.ts                    → generic-api-key规则命中：
-#   "sjwt-*-secret-0123456789-abcdef-…"明显占位测试Secret（current/previous/forged三态）；
-# - dsl/regions/shanghai_dsl_v1/rules/R-500/R-510/R-540 → generic-api-key规则命中：
-#   决策表业务字段名（"key": "calc.subsidy.4050_eligible"等），
-#   与旧路径 dsl/ssp_dsl_v1 的5个fingerprint基线（.gitleaksignore）为同一批已核实误报，
-#   目录迁移后按新路径显式登记。
-# 任何新增命中仍必须阻断并人工核实；不得扩大本清单范围。
+# 为什么不用旧式全局 [allowlist]：Gitleaks 8.29.1 对旧式全局allowlist按路径
+# condition=OR **整文件跳过**（trace: `skipping file: global allowlist`）——允许路径上
+# 匹配其他规则的Secret将漏检，违反"检测能力不降低"。[[allowlists]]+targetRules把
+# 忽略范围收窄到指定规则，同文件中其他规则的发现仍正常报告。
+#
+# 自动化哨兵回归：node scripts/verify-gitleaks-allowlist.mjs
+# （已核实误报通过 + 允许路径上其他规则哨兵必须被检测 + trace无整文件跳过）。
+# 任何新增命中仍必须阻断并人工核实；不得扩大本清单（不得排除生产代码/配置/目录）。
 [extend]
 useDefault = true
 
-[allowlist]
-description = "测试专用合成值（非真实Secret）：SJWT契约固定向量、测试占位Secret、DSL规则JSON业务字段名"
-rules = ['''^jwt$''', '''^generic-api-key$''']
+# jwt规则：仅SJWT跨语言契约固定合成向量（文件自述"testSecrets为测试专用固定值，
+# 非生产Secret"；2026-09-05人工核实）。
+[[allowlists]]
+description = "SJWT契约固定合成向量（jwt规则，人工核实）"
+targetRules = ["jwt"]
+paths = ['''^testdata/service-jwt-vectors\.json$''']
+condition = "AND"
+
+# generic-api-key规则：测试占位Secret（sjwt-*-secret-…明显占位值；2026-09-05人工核实）。
+[[allowlists]]
+description = "测试占位Secret（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
 paths = [
-  '''^testdata/service-jwt-vectors\.json$''',
   '''^services/agent/tests/test_service_jwt_replay_integration\.py$''',
   '''^src/server/modules/agent-integration/__tests__/draft-imports-route\.integration\.test\.ts$''',
   '''^src/server/modules/agent-integration/__tests__/service-jwt-replay\.integration\.test\.ts$''',
+]
+condition = "AND"
+
+# generic-api-key规则：DSL决策表业务字段名（"key": "calc.…"等；与.gitleaksignore
+# 旧路径基线为同一批已核实误报，目录迁移后按新路径登记；2026-09-05人工核实）。
+[[allowlists]]
+description = "DSL规则JSON业务字段名（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
   '''^dsl/regions/shanghai_dsl_v1/rules/R-500-4050-ELIGIBILITY\.json$''',
   '''^dsl/regions/shanghai_dsl_v1/rules/R-510-4050-AMOUNT\.json$''',
   '''^dsl/regions/shanghai_dsl_v1/rules/R-540-SUBSIDY-MUTUAL-EXCLUSION\.json$''',
 ]
+condition = "AND"

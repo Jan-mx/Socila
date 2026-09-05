@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { LEGACY_DSL_DIR_ID_FRAGMENT } from "@/lib/naming/socila-naming-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const seedMocks = vi.hoisted(() => ({
@@ -64,7 +65,9 @@ describe("seed runner structure contract (SDL-FR-004/012)", () => {
 
   it("经地区Manifest发现装载资产，不硬编码上海目录或310000", () => {
     expect(source).toContain("discoverRegionDsl");
-    expect(source).not.toMatch(/\bdsl\/ssp_dsl_v1\b/);
+    expect(source).not.toMatch(
+      new RegExp(`\\bdsl\\/${LEGACY_DSL_DIR_ID_FRAGMENT}\\b`),
+    );
     expect(source).not.toMatch(/\b310000\b/);
   });
 

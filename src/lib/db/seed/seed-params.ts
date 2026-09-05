@@ -50,6 +50,7 @@ export async function seedParams(region: DiscoveredRegion) {
       .from(params)
       .where(
         and(
+          eq(params.jurisdictionCode, jurisdictionCode),
           eq(params.paramId, p.param_id),
           eq(params.policyPackId, policyPackId),
           eq(params.version, 1),
@@ -81,6 +82,7 @@ export async function seedParams(region: DiscoveredRegion) {
         .set({ ...data, updatedAt: new Date() })
         .where(
           and(
+            eq(params.jurisdictionCode, jurisdictionCode),
             eq(params.paramId, p.param_id),
             eq(params.policyPackId, policyPackId),
             eq(params.version, 1),
@@ -100,6 +102,7 @@ export async function seedParams(region: DiscoveredRegion) {
       .from(params)
       .where(
         and(
+          eq(params.jurisdictionCode, jurisdictionCode),
           eq(params.paramId, t.param_id),
           eq(params.policyPackId, policyPackId),
           eq(params.version, 1),
@@ -131,6 +134,7 @@ export async function seedParams(region: DiscoveredRegion) {
         .set({ ...data, updatedAt: new Date() })
         .where(
           and(
+            eq(params.jurisdictionCode, jurisdictionCode),
             eq(params.paramId, t.param_id),
             eq(params.policyPackId, policyPackId),
             eq(params.version, 1),

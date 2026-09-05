@@ -97,7 +97,9 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 
 ## Socila命名契约与地区DSL（09-05 SDL）
 
-- 命名契约扫描（`src/lib/naming/socila-naming-contract.test.ts`，npm test）：扫描Git跟踪的活动代码与配置（排除docs/历史与package-lock），禁止`SSP-DSL-1.0`、`ssp_dsl_v1`、`SSP_TEST_DATABASE_URL`、`SSP_PG_DEV_PASSWORD`、`SSRP_E2E_*`、`ssp-next-core`、`ssp-anon-session`、`ssp-session-id`、`ssp-web`、开发Compose旧资源名、`__sspRateLimitBuckets`等历史标识；唯一例外为`drizzle/0010_*.sql`（SDL-FR-011要求migration显式枚举已知旧值）与负向守卫/自扫描测试文件（SDL-AC-003）。
+- 命名契约扫描（`src/lib/naming/socila-naming-contract.ts` + `.test.ts`，npm test；2026-09-05复审纠正语义）：扫描Git跟踪的活动代码与配置（排除docs/历史与package-lock），禁止精确旧协议值（SSP-DSL-1.0/ssp_dsl_v1）、旧环境变量/Cookie/localStorage/服务身份/开发Compose资源名等历史标识与独立品牌缩写。精确片段语义：允许文件（仅drizzle/0010 migration、其行为测试与守卫钉断言）中的精确旧协议值在宽泛品牌检查前被剥离，**同文件中其他独立品牌标识仍必须命中**；全部token值经拆分构造防自命中（SDL-AC-003）。
+- Gitleaks allowlist哨兵回归（`scripts/verify-gitleaks-allowlist.mjs`，CI security-gates；ADR-0009）：以Gitleaks 8.29.1在临时git仓库中断言——已核实误报被`[[allowlists]]`+`targetRules`精确忽略（exit 0）、允许路径上其他规则的合成哨兵（private-key-header假PEM，非真实凭据）必须被检测（exit非0+报告发现）、trace无`skipping file: global allowlist`整文件跳过。
+- 多地区Seed隔离（`multi-region-seed.integration.test.ts`，test:db；2026-09-05复审纠正）：临时DSL目录构造两个地区共享rule_id/param_id/rule_set_id/测试名，断言两地记录并存、值互不覆盖、tests行带jurisdictionCode、重复Seed幂等（SDL-AC-002落库面）。
 - DSL布局契约（`src/lib/dsl/dsl-layout.test.ts`）：协议目录`dsl/protocol/socila_dsl_v1`（Socila命名Schema、`dsl_version` const钉死`SOCILA-DSL-1.0`）与地区目录`dsl/regions/shanghai_dsl_v1`（24规则全SOCILA-DSL-1.0、SHANGHAI_BASE 29参数、RS-SHANGHAI-PLAN-V1覆盖24规则、旧目录不存在）。
 - 地区Manifest发现（`src/lib/dsl/region-manifest.test.ts`）：Manifest必备字段、清单与目录双向一致、越界路径拒绝、未知`dsl_version`拒绝、未来地区无需修改上海常量即可发现（SDL-AC-002）。
 - migration行为（`src/server/modules/policy/__tests__/sdl-0010-migration.integration.test.ts`，test:db）：已知旧值规范化、未知值中止、六条示例精确删除+对照行不变、非预期地区/版本/引用中止、重复执行幂等（SDL-AC-007）。
