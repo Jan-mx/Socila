@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Draft
-> Updated: 2026-09-05
+> Updated: 2026-09-06
 
 ## 文档元数据
 
@@ -23,6 +23,19 @@
 
 RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索引为空，现有LangGraph节点仍是固定Fake骨架。Stage必须从官方来源建立可审计事实，再生成规则、参数和测试草案；不得从现有示例数值反推正式政策。
 
+### 1.1 阶段E执行前基线（2026-09-06只读核对）
+
+里程碑A～D已经在仓库和隔离演练库完成，但权威资产尚未物化到本机持久Compose数据库`socila-postgres/policyops`。该库只应用了0011和0012增量迁移，未重新Seed，当前仍为上海旧运行基线：24条`published`规则、29个`published`参数和1个`published`规则集，`policy_snapshots=0`。
+
+| 地区 | 仓库权威资产 | 持久库现状 | 覆盖状态 |
+| --- | --- | --- | --- |
+| CN | 16条规则、6个参数 | 0 | 待物化、待管理员批准 |
+| 上海310000 | 重分类后8条地方规则、27个参数 | 旧版24条规则、29个参数 | 新版本待物化，旧运行行为必须保持 |
+| 广东440000 | 1条医保退休`restrict`规则、5个参数 | 0 | 2025-07后缴费基数、失业条例及2030年前市级医保口径缺失，必须阻断发布 |
+| 四川510000 | 0条地方规则、3个参数 | 0 | 医保退休年限、失业金标准及2026年度基数缺失，必须阻断发布 |
+
+四川现有权威成果只有3个2025年度缴费基数参数，没有可执行地方规则；不得为了后台可见性创建占位规则或根据征求意见稿、转载推断政策含义。
+
 ## 2. 目标
 
 - 从权威国家文件抽取共性规则，形成`CN` baseline。
@@ -41,6 +54,8 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 - 不允许Agent自动创建staging、production或激活用户地区。
 - 不以搜索摘要、转载、自媒体、测试文本或现有示例参数作为政策事实源。
 - 不在来源含义冲突时由模型自动作出法律解释。
+- 阶段E不重新Seed、不改写案例库或测试库，不自动发布规则、生成活动快照或开放用户流量。
+- 阶段E的本机持久库授权不包含远程生产数据库、数据删除、Secret轮换或其他生产切换。
 
 ## 4. 用户故事
 
@@ -68,6 +83,12 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 - **NRP-FR-014 地区快照**：CN、上海、广东、四川分别生成包含继承链、成员版本、provenance和内容哈希的不可变候选快照。
 - **NRP-FR-015 黄金测试**：每个地区建立核心场景黄金用例，覆盖正常、边界、缺失信息和地区隔离。
 - **NRP-FR-016 阶段交付**：按国家baseline、上海重分类、广东overlay、四川overlay四个里程碑独立形成验收证据。
+- **NRP-FR-017 受控物化**：提供独立的地区政策物化命令；默认仅执行`audit`，不得调用`npm run seed`。任何数据库操作必须显式读取进程级`DATABASE_URL`，禁止回退读取`.env.local`；`apply`必须同时校验授权参数、目标指纹和预期manifest哈希。
+- **NRP-FR-018 强制草案与版本**：仓库资产进入持久库时一律强制为`draft`，不得信任文件中的`published`声明。CN、广东和四川首次业务键使用v1；上海已有业务键创建v2，新业务键可使用v1；任何既有`published`行不得原地更新。
+- **NRP-FR-019 批次审计与幂等**：按地区记录物化批次及成员，保存manifest哈希、来源提交、非敏感目标指纹、实体计数、业务键、版本、内容哈希、就绪状态、阻断原因、操作者和时间；同一地区相同manifest重复执行必须返回no-op。
+- **NRP-FR-020 参数证据与政策包**：`params`必须保存完整结构化`evidence`；CN、上海、广东和四川分别创建一个`draft policy_pack_version`，参数快照必须包含原值、有效期、operation、目标业务键和引用。
+- **NRP-FR-021 地区化管理身份**：规则、参数、规则集、详情、版本和发布流水线必须展示并使用地区身份；同名实体通过`jurisdiction_code + entity_id + version`唯一定位，不得按`rule_id`或`param_id`猜测地区。
+- **NRP-FR-022 覆盖阻断**：CN和上海物化批次标记为`awaiting_approval`；广东和四川标记为`blocked`并保存本PRD列明的政策缺口。blocked地区的实体不得晋级production、生成活动快照或作为用户流量依据。
 
 ### 5.1 非功能需求
 
@@ -79,6 +100,10 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 - **NRP-NFR-006 可观测**：记录来源、解析、检索、模型、Prompt、Token、审核、冲突和快照关联ID。
 - **NRP-NFR-007 安全输入**：政策文本按不可信输入处理，不能修改系统指令、权限或工具范围。
 - **NRP-NFR-008 资源约束**：沿用Personal Demo的单Worker、prefetch 1及文件大小/页数限制。
+- **NRP-NFR-009 目标保护**：阶段E只允许显式授权的本机`localhost:5432/policyops`目标；连接串、口令和完整URL不得写入日志、manifest、审计表或Git。
+- **NRP-NFR-010 原子幂等**：四地区物化必须在单个数据库事务中完成；任一地区计数、哈希、引用或版本不符时全部回滚，不得留下部分实体或已成功批次。
+- **NRP-NFR-011 可恢复**：apply前必须完成完整`pg_dump -Fc`、SHA-256清单及全新PG17+pgvector容器真实恢复，并逐表核对计数和规范化行哈希。
+- **NRP-NFR-012 零运行漂移**：阶段E完成后旧上海24条规则、29个参数及规则集继续保持`published`且内容哈希不变；新增draft不得改变现有规划、测试、案例、快照或用户流量。
 
 ## 6. 实现设计
 
@@ -103,6 +128,21 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 
 每个地区分别计算`ready_for_planning`，仅表示可供后续规划Feature接入，不直接改变用户流量。条件包括引用、Schema、参数依赖、地区隔离、有效期、冲突、黄金结果、快照重放和管理员批准全部通过。
 
+### 6.3 阶段E受控物化顺序
+
+```text
+只读基线与旧行规范化哈希
+ → 生成确定性物化manifest
+ → 完整数据库备份与SHA-256清单
+ → 全新PG17+pgvector真实恢复及逐表对账
+ → 显式DATABASE_URL执行增量migration
+ → 单事务写入四地区draft及批次审计
+ → 旧行哈希、固定计数和上海运行行为复核
+ → 后台地区化展示验证
+```
+
+物化manifest只包含规则、参数、规则集和政策包版本，不包含`tests`、`cases`、`showcase_cases`、快照或发布事件。apply前选中的DSL及证据文件必须来自已提交内容；任何目标、哈希、计数或工作树来源不确定时停止。
+
 ## 7. 数据模型与不变量
 
 为政策实体补充或规范：
@@ -121,6 +161,27 @@ interface PolicyEntityVersion {
   status: "draft" | "staging" | "published" | "retired";
   citations: Citation[];
 }
+
+interface PolicyImportBatch {
+  jurisdictionCode: "CN" | "310000" | "440000" | "510000";
+  manifestHash: string;
+  sourceCommit: string;
+  targetFingerprint: string;
+  status: "prepared" | "applied" | "verified" | "failed";
+  readiness: "awaiting_approval" | "blocked";
+  blockingReasons: string[];
+  entityCounts: Record<string, number>;
+  actor: string;
+}
+
+interface PolicyImportBatchMember {
+  batchId: string;
+  entityType: "rule" | "param" | "rule_set" | "policy_pack_version";
+  entityRowId: number;
+  businessKey: string;
+  version: number;
+  contentHash: string;
+}
 ```
 
 不变量：
@@ -131,6 +192,9 @@ interface PolicyEntityVersion {
 - published实体不可原地修改；修订通过新版本完成。
 - 未确认OCR关键字段不得进入可审核DraftBundle。
 - 快照成员和内容哈希创建后不可修改或删除。
+- 批次和成员审计不得存储连接串、口令、Authorization或原始用户数据。
+- `verified`只表示持久化与恢复验证完成，不代表政策已批准、published或ready_for_planning。
+- 四川批次的规则成员数必须为0；任何占位规则都属于验收失败。
 
 ## 8. API、事件与类型
 
@@ -141,6 +205,26 @@ interface PolicyEntityVersion {
 - `ResolvePolicyContext(jurisdictionCode, asOfDate)`返回合并实体、provenance和冲突。
 - `CreatePolicySnapshot(jurisdictionCode, asOfDate, actor)`只接受门禁通过的实体。
 - DraftBundle必须携带overlay操作、目标业务键、引用和基准快照。
+- 管理列表支持`jurisdiction_code`和状态筛选；规则列表同时支持`module`与`q`，其中`q`检索规则编号和名称。
+- 规则详情、校验、示例执行、版本、晋级与回滚必须携带`jurisdiction_code`和`version`；缺失精确身份返回400，不存在返回404，不得选择其他地区同名实体。
+- 发布请求固定为`entity_type + jurisdiction_code + entity_id + version`；发布审计同时记录地区和实体版本。
+
+```text
+GET /api/admin/rules?jurisdiction_code=&status=&module=&q=
+GET /api/admin/params?jurisdiction_code=&status=
+GET /api/admin/rules/{ruleId}?jurisdiction_code=&version=
+POST /api/admin/publish/promote
+POST /api/admin/publish/rollback
+```
+
+```ts
+interface PublishEntityRequest {
+  entity_type: "rule" | "param" | "rule_set";
+  jurisdiction_code: string;
+  entity_id: string;
+  version: number;
+}
+```
 
 不新增浏览器直接访问FastAPI的路径，不允许客户端直接指定published实体版本。
 
@@ -151,6 +235,9 @@ interface PolicyEntityVersion {
 - 旧上海规则集在新候选快照验收前保持可回退。
 - 广东、四川测试夹具不能迁入正式政策表；真实政策使用新的权威业务键和引用。
 - 任一地区验收失败只回退该地区草案和候选快照，不删除原件或其他地区数据。
+- 阶段E新增migration只能增加审计结构、参数证据及发布地区身份；历史发布记录允许地区和版本为空，新发布记录必须完整。
+- 阶段E不得使用现有Seed作为持久库导入路径，因为Seed还会写入案例和测试并直接产生published参数。
+- 持久库物化后的固定计数必须为：`rules=49`、`params=70`、`rule_sets=5`、`policy_pack_versions=4`、`tests=528`、`cases=851`、`showcase_cases=117`、`policy_snapshots=0`。
 
 ## 10. 安全、隐私与可观测
 
@@ -171,6 +258,12 @@ interface PolicyEntityVersion {
 | 引用或参数依赖不完整 | 阻止审核 | 补齐证据后重跑 |
 | 地区黄金测试失败 | 地区不标记ready | 回退该地区新版本 |
 | 外部模型429/503 | 有限退避 | 超限后保留队列状态 |
+| 未显式设置DATABASE_URL或目标不是授权库 | 拒绝执行，不读取dotenv回退 | 修正显式目标后重新audit |
+| manifest哈希、来源提交或资产计数不符 | apply前停止 | 重新生成并人工复核manifest |
+| 备份恢复计数或行哈希不符 | 禁止migration和物化 | 修复备份/恢复流程后重试 |
+| 发现既有published实体需要原地更新 | 拒绝物化 | 生成下一版本并重新audit |
+| 四地区任一写入或验证失败 | 整个物化事务回滚 | 保留备份和失败证据后重试 |
+| 广东或四川存在覆盖缺口 | draft可见但保持blocked | 取得权威原件并新增版本后重新验收 |
 
 ## 12. 交付物
 
@@ -181,6 +274,9 @@ interface PolicyEntityVersion {
 - 四个地区的候选快照及独立门禁结果。
 - 原件、DocumentTree、RAG索引、审核和冲突证据。
 - 当前架构、测试、运维、traceability、PROGRESS和阶段验收报告。
+- 阶段E受控物化命令、确定性manifest、批次及成员审计、参数证据和四个draft政策包版本。
+- 地区化规则、参数、规则集和发布管理界面；四川显示“0条地方规则、3个参数、blocked”。
+- 本机持久库完整备份、真实恢复、物化前后计数及旧上海行哈希对账证据。
 
 ## 13. 测试矩阵
 
@@ -196,6 +292,11 @@ interface PolicyEntityVersion {
 | 上海迁移 | 重分类前后执行 | `plan/calc/trace`无未解释漂移 |
 | 快照 | 创建、重放、篡改 | 可重放且更新/删除被拒绝 |
 | RAG | 地区过滤、召回和引用 | 错地区/日期0，达到既有阈值 |
+| 物化命令 | 默认audit、显式目标、授权参数、manifest哈希 | 缺一项即拒绝apply，不发生写入 |
+| 版本与幂等 | 旧上海副本、四地区重复物化 | published不变；版本精确；相同manifest no-op |
+| 事务与恢复 | 中途失败、完整dump、全新PG17恢复 | 无部分写入；恢复计数和行哈希一致 |
+| 管理身份 | 同名CN/上海实体、粤川筛选 | 详情和发布不串区；四川覆盖状态准确 |
+| 持久库回归 | 物化前后业务表与上海规划 | 固定计数满足；528/851/117及旧上海行为不变 |
 
 ## 14. 验收场景
 
@@ -209,15 +310,24 @@ interface PolicyEntityVersion {
 - **NRP-AC-008** Given任一地区全部门禁通过，When管理员批准，Then生成可重放的候选快照但不自动开放用户流量。
 - **NRP-AC-009** Given某地区验收失败，When检查其他地区，Then已通过地区的候选快照不受影响。
 - **NRP-AC-010** Given相同地区、日期和快照，When重复执行，Then规则、参数和结果哈希一致。
+- **NRP-AC-011** Given未显式设置数据库目标、目标指纹错误或缺少授权参数/manifest哈希，When请求apply，Then命令拒绝且持久库零写入。
+- **NRP-AC-012** Given物化前完整备份，When在全新PG17+pgvector中恢复，Then逐表计数和规范化行哈希与源库一致，否则不得继续。
+- **NRP-AC-013** Given旧上海运行基线，When物化四地区资产，ThenCN/粤/川首次实体为v1、上海已有业务键为v2、新业务键为v1，且旧published行内容不变。
+- **NRP-AC-014** Given相同地区和manifest哈希已验证，When再次apply，Then返回幂等no-op；任一地区失败时四地区新增实体和批次全部回滚。
+- **NRP-AC-015** Given阶段E成功，When核对持久库，Then计数严格为49/70/5/4/528/851/117/0，广东和四川保持blocked且四川规则成员为0。
+- **NRP-AC-016** GivenCN与上海存在同名业务键，When管理员查看详情或请求发布，Then必须用地区、实体ID和版本精确定位；缺失身份被拒绝且不得跨地区操作。
 
 ## 15. Definition of Done
 
-- NRP-FR-001～016、NRP-NFR-001～008具有实现和测试映射。
-- NRP-AC-001～010按国家、上海、广东、四川分别取得新鲜证据。
+- NRP-FR-001～022、NRP-NFR-001～012具有实现和测试映射。
+- NRP-AC-001～016按国家、上海、广东、四川分别取得新鲜证据。
 - 权威引用覆盖100%，错地区和错有效期混入为0。
 - 上海黄金结果无未解释漂移。
 - 无未解决Conflict的地区才可形成候选快照。
 - Agent只创建draft，管理员审核和发布门禁保持有效。
+- 阶段E备份真实恢复、确定性manifest、单事务物化、固定计数和幂等复跑全部通过。
+- 旧上海published资产及规划行为无漂移，tests/cases/showcase_cases和policy_snapshots计数不变。
+- 广东、四川政策缺口和管理员批准未完成时，任务2整体不得标记Accepted；阶段E的`verified`不得被描述为地区已开放。
 - README、架构、测试、运维、traceability、PROGRESS和报告同步。
 - 每个已接受里程碑使用独立`英文行为: 中文简短总结`提交并推送，不创建PR或合并main。
 
