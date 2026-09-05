@@ -98,8 +98,13 @@ function parseManifest(regionDir: string): RegionDslManifest {
   if (typeof m.region_slug !== "string" || m.region_slug.length === 0) {
     throw new Error(`${MANIFEST_FILE}: region_slug 必须为非空字符串`);
   }
-  if (typeof m.jurisdiction_code !== "string" || !/^\d{1,20}$/.test(m.jurisdiction_code)) {
-    throw new Error(`${MANIFEST_FILE}: jurisdiction_code 必须为行政区划代码字符串`);
+  if (
+    typeof m.jurisdiction_code !== "string" ||
+    !/^(CN|[0-9]{1,20})$/.test(m.jurisdiction_code)
+  ) {
+    throw new Error(
+      `${MANIFEST_FILE}: jurisdiction_code 必须为行政区划代码字符串或国家级代码CN`,
+    );
   }
   if (typeof m.bundle_version !== "number" || !Number.isInteger(m.bundle_version) || m.bundle_version < 1) {
     throw new Error(`${MANIFEST_FILE}: bundle_version 必须为正整数`);

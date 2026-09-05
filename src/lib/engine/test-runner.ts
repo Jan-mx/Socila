@@ -247,6 +247,9 @@ export function dbRuleToDefinition(r: any): RuleDefinition {
   };
 }
 
+/** 国家baseline参数包：所有地区解析的参数底层（地区包按键覆盖）。 */
+export const NATIONAL_PARAM_PACK_ID = "CN-BASELINE";
+
 /**
  * Load the effective rules + flattened params from the DB for a given date.
  * Shared by runTest (single) and runDbTestSuite (batch) so both run the engine
@@ -254,6 +257,10 @@ export function dbRuleToDefinition(r: any): RuleDefinition {
  *
  * 规则按"规则集声明顺序"排序，使内存编排 (orchestrateInMemory) 与生产 orchestrate()
  * 的执行顺序一致——规则输出会喂给后续规则，执行顺序对结果有意义。
+ *
+ * 参数按继承链扁平化（NRP-FR-005/006）：先装载国家baseline参数包，再以地区包
+ * 覆盖同名键——国家表（退休年龄/最低缴费年限/失业金法定档）由CN提供，地区执行
+ * 值通过显式overlay（add/replace）落地。
  */
 export async function loadEffectiveEngine(asOfDate?: string): Promise<{
   allRules: RuleDefinition[];
@@ -263,10 +270,12 @@ export async function loadEffectiveEngine(asOfDate?: string): Promise<{
   const ruleSetId = "RS-SHANGHAI-PLAN-V1";
   const policyPackId = "SHANGHAI_BASE";
 
-  const [{ ruleSet, rules: dbRules }, dbParams] = await Promise.all([
-    rulesReads.getEffectiveRules(ruleSetId, date),
-    rulesReads.getEffectiveParams(policyPackId, date),
-  ]);
+  const [{ ruleSet, rules: dbRules }, nationalParams, regionalParams] =
+    await Promise.all([
+      rulesReads.getEffectiveRules(ruleSetId, date),
+      rulesReads.getEffectiveParams(NATIONAL_PARAM_PACK_ID, date),
+      rulesReads.getEffectiveParams(policyPackId, date),
+    ]);
 
   let allRules: RuleDefinition[] = dbRules.map(dbRuleToDefinition);
 
@@ -281,7 +290,7 @@ export async function loadEffectiveEngine(asOfDate?: string): Promise<{
   }
 
   const baseParams: Record<string, unknown> = {};
-  for (const p of dbParams) {
+  for (const p of [...nationalParams, ...regionalParams]) {
     const paramId = (p as any).paramId;
     const type = (p as any).type;
     if (type === "table" || type === "timeline") {

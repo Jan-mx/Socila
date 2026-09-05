@@ -1,0 +1,381 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+  "name": "计算医保终身待遇年限缺口（性别区分）",
+  "module": "medical_insurance",
+  "status": "published",
+  "priority": 220,
+  "effective_from": "2025-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "国家框架（社会保险法第二十七条）：达到法定退休年龄时累计缴费达到国家规定年限的，退休后不再缴纳基本医疗保险费。国家规定年限的具体年数由参保地（统筹地区）规定，通过地区参数 P-MI-LIFETIME-MALE-YEARS / P-MI-LIFETIME-FEMALE-YEARS 提供；缺失时进入人工确认。",
+  "inputs": [
+    {
+      "key": "user.basic.gender",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "user.social.medical_contrib_months",
+      "type": "number",
+      "required": true
+    }
+  ],
+  "parameter_refs": [
+    {
+      "param_id": "P-MI-LIFETIME-MALE-YEARS",
+      "purpose": "男性终身医保所需年限"
+    },
+    {
+      "param_id": "P-MI-LIFETIME-FEMALE-YEARS",
+      "purpose": "女性终身医保所需年限"
+    }
+  ],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_missing",
+        "when": {
+          "or": [
+            {
+              "==": [
+                {
+                  "var": "user.social.medical_contrib_months"
+                },
+                null
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.basic.gender"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-MI-MONTHS",
+                "text": "请提供医保累计缴费月数和性别（用于判断是否满足终身医保条件）。",
+                "field": "user.social.medical_contrib_months"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_1b_local_years_missing",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.basic.gender"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.medical_contrib_months"
+                },
+                null
+              ]
+            },
+            {
+              "or": [
+                {
+                  "and": [
+                    {
+                      "==": [
+                        {
+                          "var": "user.basic.gender"
+                        },
+                        "male"
+                      ]
+                    },
+                    {
+                      "==": [
+                        {
+                          "var": "params.P-MI-LIFETIME-MALE-YEARS"
+                        },
+                        null
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "and": [
+                    {
+                      "==": [
+                        {
+                          "var": "user.basic.gender"
+                        },
+                        "female"
+                      ]
+                    },
+                    {
+                      "==": [
+                        {
+                          "var": "params.P-MI-LIFETIME-FEMALE-YEARS"
+                        },
+                        null
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-MI-LOCAL-YEARS-MISSING",
+                "text": "参保地医保退休最低缴费年限参数未配置（国家框架由社会保险法第27条授权统筹地区规定），需人工确认后补充地区参数。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_male",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.gender"
+                },
+                "male"
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.medical_contrib_months"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.mi.lifetime_required_months",
+              "value": {
+                "*": [
+                  {
+                    "var": "params.P-MI-LIFETIME-MALE-YEARS"
+                  },
+                  12
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.mi.lifetime_gap_months",
+              "value": {
+                "max": [
+                  0,
+                  {
+                    "-": [
+                      {
+                        "var": "calc.mi.lifetime_required_months"
+                      },
+                      {
+                        "var": "user.social.medical_contrib_months"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_female",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.gender"
+                },
+                "female"
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.medical_contrib_months"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.mi.lifetime_required_months",
+              "value": {
+                "*": [
+                  {
+                    "var": "params.P-MI-LIFETIME-FEMALE-YEARS"
+                  },
+                  12
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.mi.lifetime_gap_months",
+              "value": {
+                "max": [
+                  0,
+                  {
+                    "-": [
+                      {
+                        "var": "calc.mi.lifetime_required_months"
+                      },
+                      {
+                        "var": "user.social.medical_contrib_months"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.mi.lifetime_gap_months",
+      "type": "number"
+    },
+    {
+      "key": "calc.mi.lifetime_required_months",
+      "type": "number"
+    }
+  ],
+  "examples": [
+    {
+      "name": "男性已缴200月，需300月 -> 缺100月",
+      "input": {
+        "user": {
+          "basic": {
+            "gender": "male"
+          },
+          "social": {
+            "medical_contrib_months": 200
+          }
+        },
+        "params": {
+          "P-MI-LIFETIME-MALE-YEARS": 25
+        }
+      },
+      "expected": {
+        "calc": {
+          "mi": {
+            "lifetime_gap_months": 100,
+            "lifetime_required_months": 300
+          }
+        }
+      }
+    },
+    {
+      "name": "女性已缴200月，需240月 -> 缺40月",
+      "input": {
+        "user": {
+          "basic": {
+            "gender": "female"
+          },
+          "social": {
+            "medical_contrib_months": 200
+          }
+        },
+        "params": {
+          "P-MI-LIFETIME-FEMALE-YEARS": 20
+        }
+      },
+      "expected": {
+        "calc": {
+          "mi": {
+            "lifetime_gap_months": 40,
+            "lifetime_required_months": 240
+          }
+        }
+      }
+    },
+    {
+      "name": "女性已缴240月，需240月 -> 无缺口",
+      "input": {
+        "user": {
+          "basic": {
+            "gender": "female"
+          },
+          "social": {
+            "medical_contrib_months": 240
+          }
+        },
+        "params": {
+          "P-MI-LIFETIME-FEMALE-YEARS": 20
+        }
+      },
+      "expected": {
+        "calc": {
+          "mi": {
+            "lifetime_gap_months": 0,
+            "lifetime_required_months": 240
+          }
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "document_id": "DOC-CN-SOCIAL-INSURANCE-LAW",
+      "jurisdiction_code": "CN",
+      "title": "中华人民共和国社会保险法（2018修正）",
+      "authority": "全国人民代表大会常务委员会",
+      "official_url": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394629.html",
+      "fetched_at": "2026-09-05T13:38:56.250Z",
+      "content_sha256": "b69d5d490f9b6b70394dfb670c2e1a0a959f306e70380bb678ee4866f947d464",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-SOCIAL-INSURANCE-LAW/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "article",
+        "reference": "第二十七条"
+      },
+      "excerpt": "参加职工基本医疗保险的个人，达到法定退休年龄时累计缴费达到国家规定年限的，退休后不再缴纳基本医疗保险费，按照国家规定享受基本医疗保险待遇；未达到国家规定年限的，可以缴费至国家规定年限。"
+    }
+  ],
+  "operation": "baseline"
+}

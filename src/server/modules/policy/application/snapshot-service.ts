@@ -13,9 +13,11 @@ import { db, withTransaction } from "@/lib/db";
 import { params, ruleSets, rules } from "@/lib/db/schema";
 import {
   mergePolicyContext,
+  NATIONAL_JURISDICTION,
   type EffectiveEntity,
   type MergeInputEntity,
   type MergeConflict,
+  type OverlayOperation,
 } from "../domain/overlay";
 import type {
   PolicyConflictRepository,
@@ -24,7 +26,7 @@ import type {
 import { DrizzlePolicyConflictRepository } from "../infrastructure/drizzle/policy-conflict-snapshot.repository";
 import { DrizzlePolicySnapshotRepository } from "../infrastructure/drizzle/policy-conflict-snapshot.repository";
 
-export const NATIONAL_CODE = "CN";
+export const NATIONAL_CODE = NATIONAL_JURISDICTION;
 
 export class SnapshotBlockedError extends Error {
   constructor(public readonly conflicts: MergeConflict[]) {
@@ -108,13 +110,17 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
       version: number,
       payload: unknown,
       packId: string,
+      operation: string | null,
+      targetBusinessKey: string | null,
     ): MergeInputEntity => ({
       businessKey,
       jurisdictionCode,
       version,
       payload,
       packId,
-      role: jurisdictionCode === NATIONAL_CODE ? "baseline" : "add",
+      // NRP-FR-007：操作来自持久化字段，不得按地区代码推断。
+      operation: (operation ?? "add") as OverlayOperation,
+      targetBusinessKey: targetBusinessKey ?? null,
       effectiveFrom: asOfDate,
       effectiveTo: null,
     });
@@ -128,6 +134,8 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
           r.version,
           r,
           "rules",
+          r.operation,
+          r.targetBusinessKey,
         ),
       );
     }
@@ -139,6 +147,8 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
           p.version,
           p,
           p.policyPackId,
+          p.operation,
+          p.targetBusinessKey,
         ),
       );
     }
@@ -150,6 +160,8 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
           rs.version,
           rs,
           "rule_sets",
+          rs.operation,
+          rs.targetBusinessKey,
         ),
       );
     }
@@ -257,9 +269,10 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
       });
     },
 
-    /** ListImpactedOverlays（POL-FR-011）：上级基线变化列出受影响 overlay 与快照。 */
+    /** ListImpactedOverlays（POL-FR-011）：上级基线变化列出受影响 overlay 与快照。
+     * 覆盖规则与参数两类实体上指向该键的显式overlay（NRP-FR-007：操作与目标键持久化）。 */
     async listImpactedOverlays(baseBusinessKey: string) {
-      const overlayRows = await db
+      const ruleOverlayRows = await db
         .select()
         .from(rules)
         .where(
@@ -268,19 +281,44 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
             sql`${rules.jurisdictionCode} is not null`,
           ),
         );
-      const impactedOverlays = overlayRows.filter(
-        (r) => (r.jurisdictionCode ?? "") !== NATIONAL_CODE,
-      );
+      const paramOverlayRows = await db
+        .select()
+        .from(params)
+        .where(
+          and(
+            eq(params.businessKey, baseBusinessKey),
+            sql`${params.jurisdictionCode} is not null`,
+          ),
+        );
+      const impactedOverlays = [
+        ...ruleOverlayRows
+          .filter((r) => (r.jurisdictionCode ?? "") !== NATIONAL_CODE)
+          .map((r) => ({
+          entityType: "rule" as const,
+          jurisdictionCode: r.jurisdictionCode,
+          entityId: r.ruleId,
+          operation: r.operation,
+          targetBusinessKey: r.targetBusinessKey,
+          version: r.version,
+          status: r.status,
+        })),
+        ...paramOverlayRows
+          .filter((r) => (r.jurisdictionCode ?? "") !== NATIONAL_CODE)
+          .map((r) => ({
+            entityType: "param" as const,
+            jurisdictionCode: r.jurisdictionCode,
+            entityId: r.paramId,
+            operation: r.operation,
+            targetBusinessKey: r.targetBusinessKey,
+            version: r.version,
+            status: r.status,
+          })),
+      ];
       const impactedSnapshots =
         await snapshotRepo.listSnapshotsContainingKey(baseBusinessKey);
       return {
         businessKey: baseBusinessKey,
-        impactedOverlays: impactedOverlays.map((r) => ({
-          jurisdictionCode: r.jurisdictionCode,
-          ruleId: r.ruleId,
-          version: r.version,
-          status: r.status,
-        })),
+        impactedOverlays,
         impactedSnapshots: impactedSnapshots.map((s) => ({
           id: s.id,
           jurisdictionCode: s.jurisdictionCode,

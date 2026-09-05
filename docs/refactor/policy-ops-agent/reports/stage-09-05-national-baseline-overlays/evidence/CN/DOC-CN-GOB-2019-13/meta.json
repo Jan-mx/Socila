@@ -1,0 +1,11 @@
+{
+  "docId": "DOC-CN-GOB-2019-13",
+  "title": "国务院办公厅关于印发降低社会保险费率综合方案的通知_社会保障_中国政府网",
+  "officialUrl": "https://www.gov.cn/zhengce/content/2019-04/04/content_5379629.htm",
+  "finalUrl": "https://www.gov.cn/zhengce/content/2019-04/04/content_5379629.htm",
+  "httpStatus": 200,
+  "fetchedAt": "2026-09-05T13:41:40.310Z",
+  "fetchMethod": "playwright-chromium-headless",
+  "sha256": "61791c8194888fdc379a7c47f71d33269073fff9f6df46acf37690fd6d968bb0",
+  "byteSize": 46802
+}

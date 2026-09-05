@@ -73,19 +73,27 @@ describe("CANONICAL_DSL_VERSION（SDL-FR-001 协议标识）", () => {
 });
 
 describe("discoverRegionDsl（SDL-FR-002/003/004）", () => {
-  it("从仓库默认根发现上海地区：310000、SOCILA-DSL-1.0、24条规则", () => {
+  it("从仓库默认根发现国家与上海两地区（CN + 310000，NRP-FR-005）", () => {
     const regions = discoverRegionDsl();
-    expect(regions).toHaveLength(1);
+    expect(regions).toHaveLength(2);
 
-    const shanghai = regions[0];
-    expect(shanghai.manifest.region_slug).toBe("shanghai");
+    const shanghai = regions.find((r) => r.manifest.region_slug === "shanghai")!;
+    expect(shanghai).toBeTruthy();
     expect(shanghai.manifest.jurisdiction_code).toBe("310000");
     expect(shanghai.manifest.dsl_version).toBe(CANONICAL_DSL_VERSION);
     expect(shanghai.manifest.bundle_version).toBe(1);
     expect(shanghai.manifest.params_file).toBe("params/policy_params_shanghai_base.json");
     expect(shanghai.manifest.rule_set_file).toBe("rule_sets/rule_set_shanghai_plan_v1.json");
     expect(shanghai.manifest.tests_file).toBe("tests/rule_examples_as_tests.json");
-    expect(shanghai.ruleFiles).toHaveLength(24);
+    expect(shanghai.ruleFiles).toHaveLength(8);
+
+    const cn = regions.find((r) => r.manifest.region_slug === "cn")!;
+    expect(cn).toBeTruthy();
+    expect(cn.manifest.jurisdiction_code).toBe("CN");
+    expect(cn.manifest.dsl_version).toBe(CANONICAL_DSL_VERSION);
+    expect(cn.ruleFiles).toHaveLength(16);
+    expect(cn.manifest.params_file).toBe("params/policy_params_cn_baseline.json");
+    expect(cn.manifest.rule_set_file).toBe("rule_sets/rule_set_cn_plan_v1.json");
 
     for (const f of [
       shanghai.paramsPath,
@@ -98,7 +106,7 @@ describe("discoverRegionDsl（SDL-FR-002/003/004）", () => {
   });
 
   it("Manifest规则清单与rules目录文件集合双向一致（SDL-FR-004）", () => {
-    const [shanghai] = discoverRegionDsl();
+    const shanghai = discoverRegionDsl().find((r) => r.manifest.region_slug === "shanghai")!;
     const dirRuleIds = readdirSync(path.join(process.cwd(), "dsl/regions/shanghai_dsl_v1/rules"))
       .filter((f) => f.endsWith(".json"))
       .sort();

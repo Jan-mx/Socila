@@ -32,5 +32,7 @@
   "conflict_resolution": {
     "same_rule_id_multiple_versions": "latest_effective_from",
     "policy_params": "latest_effective_from"
-  }
+  },
+  "operation": "add",
+  "target_business_key": null
 }

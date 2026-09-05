@@ -13,14 +13,21 @@ import { discoverRegionDsl } from "@/lib/dsl/region-manifest";
 import { runTestSuite, type TestCase } from "../test-runner";
 
 /**
- * 上海地区资产经地区Manifest发现（SDL-FR-004）：黄金回归与生产Seed共用同一
- * 发现器，不硬编码地区目录。
+ * 地区链资产经地区Manifest发现（SDL-FR-004 + NRP-FR-005/006）：黄金回归与生产Seed
+ * 共用同一发现器。重分类后上海语料 = 国家baseline（CN）+ 上海overlay（310000），
+ * 规则与参数按继承链合并——CN垫底、SH覆盖同名键（显式overlay语义）。
  */
+const chainRegions = discoverRegionDsl();
 const shanghaiRegion = (() => {
-  const region = discoverRegionDsl().find(
+  const region = chainRegions.find(
     (r) => r.manifest.region_slug === "shanghai",
   );
   if (!region) throw new Error("shanghai region manifest not found");
+  return region;
+})();
+const cnRegion = (() => {
+  const region = chainRegions.find((r) => r.manifest.region_slug === "cn");
+  if (!region) throw new Error("cn region manifest not found");
   return region;
 })();
 
@@ -30,34 +37,44 @@ export const DSL_DIR = shanghaiRegion.regionDir;
 export const FIXED_AS_OF_DATE = "2026-01-01";
 
 export function loadRules(): RuleDefinition[] {
-  const dir = path.join(DSL_DIR, "rules");
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(".json"))
-    .map(
-      (f) =>
-        JSON.parse(readFileSync(path.join(dir, f), "utf8")) as RuleDefinition,
-    );
+  const regions = [cnRegion, shanghaiRegion];
+  const rules: RuleDefinition[] = [];
+  for (const region of regions) {
+    const dir = path.join(region.regionDir, "rules");
+    for (const f of readdirSync(dir)
+      .filter((f) => f.endsWith(".json"))
+      .sort()) {
+      rules.push(JSON.parse(readFileSync(path.join(dir, f), "utf8")) as RuleDefinition);
+    }
+  }
+  return rules;
 }
 
 export function loadBaseParams(): Record<string, unknown> {
-  const pack = JSON.parse(
-    readFileSync(shanghaiRegion.paramsPath, "utf8"),
-  ) as {
-    params: Array<{ param_id: string; value: unknown }>;
-    tables: Array<{ param_id: string; rows: unknown[] }>;
-  };
-  // 与 DB seed + loadEffectiveEngine 等价的扁平化：标量取 value、表取 rows。
+  // 继承链参数扁平化：CN baseline包先装载，SHANGHAI_BASE覆盖同名键。
+  const packs = [cnRegion.paramsPath, shanghaiRegion.paramsPath];
   const base: Record<string, unknown> = {};
-  for (const p of pack.params) base[p.param_id] = p.value;
-  for (const t of pack.tables) base[t.param_id] = t.rows;
+  for (const packPath of packs) {
+    const pack = JSON.parse(readFileSync(packPath, "utf8")) as {
+      params: Array<{ param_id: string; value: unknown }>;
+      tables: Array<{ param_id: string; rows: unknown[] }>;
+    };
+    // 与 DB seed + loadEffectiveEngine 等价的扁平化：标量取 value、表取 rows。
+    for (const p of pack.params) base[p.param_id] = p.value;
+    for (const t of pack.tables) base[t.param_id] = t.rows;
+  }
   return base;
 }
 
 export function loadGoldenCases(): TestCase[] {
-  const seed = JSON.parse(
-    readFileSync(shanghaiRegion.testsPath, "utf8"),
-  ) as { tests: TestCase[] };
-  return seed.tests;
+  const cases: TestCase[] = [];
+  for (const testsPath of [cnRegion.testsPath, shanghaiRegion.testsPath]) {
+    const seed = JSON.parse(readFileSync(testsPath, "utf8")) as {
+      tests: TestCase[];
+    };
+    cases.push(...seed.tests);
+  }
+  return cases;
 }
 
 export type SnapshotTraceEntry = Omit<TraceEntry, "timestamp">;

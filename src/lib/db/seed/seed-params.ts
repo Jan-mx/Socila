@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { params } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import type { DiscoveredRegion } from "@/lib/dsl/region-manifest";
+import { parseOverlayOperation } from "@/lib/dsl/overlay-operation";
 
 interface ScalarParamEntry {
   param_id: string;
@@ -11,6 +12,8 @@ interface ScalarParamEntry {
   unit?: string;
   effective_from?: string;
   source?: string;
+  operation?: string;
+  target_business_key?: string | null;
 }
 
 interface TableParamEntry {
@@ -22,6 +25,8 @@ interface TableParamEntry {
   rows: unknown[];
   note?: string;
   source?: string;
+  operation?: string;
+  target_business_key?: string | null;
 }
 
 interface PolicyPackFile {
@@ -45,6 +50,13 @@ export async function seedParams(region: DiscoveredRegion) {
 
   // Seed scalar params
   for (const p of pack.params) {
+    const overlay = parseOverlayOperation(
+      "param",
+      p.param_id,
+      p.operation,
+      p.target_business_key,
+      jurisdictionCode,
+    );
     const existing = await db
       .select({ id: params.id })
       .from(params)
@@ -74,6 +86,8 @@ export async function seedParams(region: DiscoveredRegion) {
       note: null,
       version: 1,
       status: "published",
+      operation: overlay.operation,
+      targetBusinessKey: overlay.targetBusinessKey,
     };
 
     if (existing.length > 0) {
@@ -97,6 +111,13 @@ export async function seedParams(region: DiscoveredRegion) {
 
   // Seed table params
   for (const t of pack.tables) {
+    const overlay = parseOverlayOperation(
+      "param",
+      t.param_id,
+      t.operation,
+      t.target_business_key,
+      jurisdictionCode,
+    );
     const existing = await db
       .select({ id: params.id })
       .from(params)
@@ -126,6 +147,8 @@ export async function seedParams(region: DiscoveredRegion) {
       note: t.note ?? null,
       version: 1,
       status: "published",
+      operation: overlay.operation,
+      targetBusinessKey: overlay.targetBusinessKey,
     };
 
     if (existing.length > 0) {

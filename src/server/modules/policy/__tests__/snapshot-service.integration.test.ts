@@ -5,9 +5,9 @@
  * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { sql, isNotNull } from "drizzle-orm";
+import { sql, isNotNull, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { params } from "@/lib/db/schema";
+import { params, policyPackVersions } from "@/lib/db/schema";
 import { rulesWrites } from "@/server/modules/rules/application";
 import { DrizzlePolicyWriteRepository } from "@/server/modules/policy/infrastructure/drizzle/policy-write.repository";
 import {
@@ -53,20 +53,47 @@ describe("policy snapshot service (drill DB)", () => {
       e.businessKey.startsWith("R-"),
     );
     expect(ruleEntities.length).toBeGreaterThanOrEqual(20);
-    const sh = ruleEntities.find((e) => e.businessKey === "R-010-PARSE-BIRTH-YEAR");
-    expect(sh?.provenance[0]).toMatchObject({
+    // NRP重分类后：R-010为国家baseline继承（CN/baseline），上海地方规则为310000/add。
+    const national = ruleEntities.find((e) => e.businessKey === "R-010-PARSE-BIRTH-YEAR");
+    expect(national?.provenance[0]).toMatchObject({
+      jurisdictionCode: "CN",
+      operation: "baseline",
+    });
+    const local = ruleEntities.find((e) => e.businessKey === "R-500-4050-ELIGIBILITY");
+    expect(local?.provenance[0]).toMatchObject({
       jurisdictionCode: "310000",
       operation: "add",
     });
   });
 
   it("POL-AC-003: cross-pack same-key overlap blocks snapshot and records PolicyConflict", async () => {
-    // 制造同级冲突：第二个 overlay 包发布与既有参数相同业务键的有效版本。
+    // 制造同级冲突：第二个overlay包发布与既有上海参数相同业务键的有效版本。
+    // 目标键显式选取上海地方参数（P-SH-MIN-WAGE），保证确定性（NRP重分类后
+    // 参数首行可能是CN baseline实体）。
     const policyWrites = new DrizzlePolicyWriteRepository();
+    // 幂等前置清理：清除此前运行残留的冲突行（含draft状态行），避免唯一键冲突。
+    await db.delete(params).where(eq(params.paramId, "P-SH-MIN-WAGE"));
+    await db
+      .delete(policyPackVersions)
+      .where(eq(policyPackVersions.policyPackId, "SH-CONFLICT-PACK"));
+    // 重新seed该参数（P-SH-MIN-WAGE为上海基础包正式行）。
+    await rulesWrites.insertParam({
+      policyPackId: "SHANGHAI_BASE",
+      jurisdictionCode: "310000",
+      businessKey: "P-SH-MIN-WAGE",
+      paramId: "P-SH-MIN-WAGE",
+      type: "number",
+      value: 2690,
+      status: "published",
+      effectiveFrom: "2024-07-01",
+      operation: "add",
+      targetBusinessKey: null,
+      version: 1,
+    });
     const [target] = await db
       .select()
       .from(params)
-      .where(isNotNull(params.businessKey))
+      .where(eq(params.paramId, "P-SH-MIN-WAGE"))
       .limit(1);
     expect(target?.businessKey).toBeTruthy();
 
@@ -126,7 +153,8 @@ describe("policy snapshot service (drill DB)", () => {
     });
     snapshotId = created.snapshotId;
     expect(created.ruleCount).toBeGreaterThanOrEqual(20);
-    expect(created.ruleSetCount).toBe(1);
+    // NRP重分类后继承链含两个规则集：RS-CN-PLAN-V1（baseline）+ RS-SHANGHAI-PLAN-V1（add）。
+    expect(created.ruleSetCount).toBe(2);
 
     const got = await service.getSnapshot(created.snapshotId);
     expect(got?.snapshot.contentHash).toBe(created.contentHash);
@@ -159,8 +187,11 @@ describe("policy snapshot service (drill DB)", () => {
   });
 
   it("POL-FR-011: impacted overlays query points back at containing snapshots", async () => {
-    const impact = await service.listImpactedOverlays("R-010-PARSE-BIRTH-YEAR");
+    // NRP重分类后R-010为国家baseline（无overlay指向它）；改用存在上海显式replace
+    // 的国家基线参数键验证影响查询（NRP-FR-011）。
+    const impact = await service.listImpactedOverlays("T-UNEMPLOYMENT-DURATION-BY-YEARS");
     expect(impact.impactedOverlays.length).toBeGreaterThanOrEqual(1);
+    expect(impact.impactedOverlays[0].jurisdictionCode).toBe("310000");
     expect(impact.impactedSnapshots.some((s) => s.id === snapshotId)).toBe(true);
   });
 });

@@ -1,0 +1,11 @@
+{
+  "docId": "DOC-CN-UNEMPLOYMENT-REGULATION",
+  "title": "失业保险条例_中华人民共和国人力资源和社会保障部",
+  "officialUrl": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fg/202011/t20201103_394936.html",
+  "finalUrl": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fg/202011/t20201103_394936.html",
+  "httpStatus": 200,
+  "fetchedAt": "2026-09-05T13:43:01.660Z",
+  "fetchMethod": "playwright-chromium-headless",
+  "sha256": "b8187965656565984549569e9894a62cb3960f5a64aacac3749b80be2d7a3e04",
+  "byteSize": 25840
+}

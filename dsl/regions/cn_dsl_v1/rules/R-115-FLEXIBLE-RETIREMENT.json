@@ -1,0 +1,336 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-115-FLEXIBLE-RETIREMENT",
+  "name": "弹性退休年龄调整",
+  "module": "retirement",
+  "status": "published",
+  "priority": 115,
+  "effective_from": "2025-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "2025年弹性退休制度：可提前最多3年（不低于原法定年龄），或延迟最多3年。基于 retire_preference 字段调整。",
+  "inputs": [
+    {
+      "key": "user.basic.retire_preference",
+      "type": "string",
+      "required": false,
+      "desc": "退休偏好：earliest/standard/latest",
+      "enum": [
+        "earliest",
+        "standard",
+        "latest"
+      ]
+    },
+    {
+      "key": "calc.retirement.legal_retire_age_years",
+      "type": "number",
+      "required": true
+    },
+    {
+      "key": "calc.retirement.legal_retire_age_months",
+      "type": "number",
+      "required": true
+    },
+    {
+      "key": "calc.retirement.original_retire_age_years",
+      "type": "number",
+      "required": true
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_no_preference",
+        "when": {
+          "or": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.retire_preference"
+                },
+                null
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.basic.retire_preference"
+                },
+                "standard"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.retirement.flex_adjusted",
+              "value": false
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement.flex_preference",
+              "value": "standard"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_earliest",
+        "when": {
+          "==": [
+            {
+              "var": "user.basic.retire_preference"
+            },
+            "earliest"
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.retirement.flex_adjusted",
+              "value": true
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement.flex_preference",
+              "value": "earliest"
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement._earliest_total_months",
+              "value": {
+                "max": [
+                  {
+                    "*": [
+                      {
+                        "var": "calc.retirement.original_retire_age_years"
+                      },
+                      12
+                    ]
+                  },
+                  {
+                    "-": [
+                      {
+                        "+": [
+                          {
+                            "*": [
+                              {
+                                "var": "calc.retirement.legal_retire_age_years"
+                              },
+                              12
+                            ]
+                          },
+                          {
+                            "var": "calc.retirement.legal_retire_age_months"
+                          }
+                        ]
+                      },
+                      36
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement.legal_retire_age_years",
+              "value": {
+                "floor": [
+                  {
+                    "/": [
+                      {
+                        "var": "calc.retirement._earliest_total_months"
+                      },
+                      12
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement.legal_retire_age_months",
+              "value": {
+                "%": [
+                  {
+                    "var": "calc.retirement._earliest_total_months"
+                  },
+                  12
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_latest",
+        "when": {
+          "==": [
+            {
+              "var": "user.basic.retire_preference"
+            },
+            "latest"
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.retirement.flex_adjusted",
+              "value": true
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement.flex_preference",
+              "value": "latest"
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement._latest_total_months",
+              "value": {
+                "+": [
+                  {
+                    "*": [
+                      {
+                        "var": "calc.retirement.legal_retire_age_years"
+                      },
+                      12
+                    ]
+                  },
+                  {
+                    "var": "calc.retirement.legal_retire_age_months"
+                  },
+                  36
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement.legal_retire_age_years",
+              "value": {
+                "floor": [
+                  {
+                    "/": [
+                      {
+                        "var": "calc.retirement._latest_total_months"
+                      },
+                      12
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement.legal_retire_age_months",
+              "value": {
+                "%": [
+                  {
+                    "var": "calc.retirement._latest_total_months"
+                  },
+                  12
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.retirement.legal_retire_age_years",
+      "type": "number"
+    },
+    {
+      "key": "calc.retirement.legal_retire_age_months",
+      "type": "number"
+    },
+    {
+      "key": "calc.retirement.flex_adjusted",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.retirement.flex_preference",
+      "type": "string"
+    }
+  ],
+  "examples": [
+    {
+      "name": "标准退休（无偏好）不调整",
+      "input": {
+        "user": {
+          "basic": {
+            "retire_preference": "standard"
+          }
+        },
+        "calc": {
+          "retirement": {
+            "legal_retire_age_years": 61,
+            "legal_retire_age_months": 6,
+            "original_retire_age_years": 60
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "retirement": {
+            "legal_retire_age_years": 61,
+            "legal_retire_age_months": 6,
+            "flex_adjusted": false
+          }
+        }
+      }
+    },
+    {
+      "name": "最早退休 - 男1970 delayed 61y6m -> max(60*12, 61*12+6-36) = max(720, 702) = 720 -> 60y0m",
+      "input": {
+        "user": {
+          "basic": {
+            "retire_preference": "earliest"
+          }
+        },
+        "calc": {
+          "retirement": {
+            "legal_retire_age_years": 61,
+            "legal_retire_age_months": 6,
+            "original_retire_age_years": 60
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "retirement": {
+            "legal_retire_age_years": 60,
+            "legal_retire_age_months": 0,
+            "flex_adjusted": true
+          }
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "document_id": "DOC-CN-NPC-DELAYED-RETIREMENT-2024",
+      "jurisdiction_code": "CN",
+      "title": "全国人民代表大会常务委员会关于实施渐进式延迟法定退休年龄的决定",
+      "authority": "全国人民代表大会常务委员会",
+      "official_url": "https://www.mohrss.gov.cn/SYrlzyhshbzb/ztzl/zt202409/qwfb/202409/t20240913_525781.html",
+      "fetched_at": "2026-09-05T13:37:42.739Z",
+      "content_sha256": "69a02418f3ce5fbc6276135990e62731cfb6ae7c0b1524c3f2f855651ffa7d9b",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-NPC-DELAYED-RETIREMENT-2024/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "article",
+        "reference": "国务院办法第三条"
+      },
+      "excerpt": "职工达到最低缴费年限，可以自愿选择弹性提前退休，提前时间最长不超过三年，且退休年龄不得低于女职工五十周岁、五十五周岁及男职工六十周岁的原法定退休年龄。职工达到法定退休年龄，所在单位与职工协商一致的，可以弹性延迟退休，延迟时间最长不超过三年。"
+    }
+  ],
+  "operation": "baseline"
+}

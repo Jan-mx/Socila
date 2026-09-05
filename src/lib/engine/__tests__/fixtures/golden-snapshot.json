@@ -1,197 +1,27 @@
 [
   {
-    "calc": {
-      "normalization": {
-        "birth_year_source": "parsed_from_text"
-      }
-    },
-    "name": "73年 -> 1973",
+    "calc": {},
+    "name": "男性 -> na",
     "plan": {},
-    "rule_id": "R-010-PARSE-BIRTH-YEAR",
+    "rule_id": "R-020-FEMALE-RETIRE-TYPE",
     "trace": [
       {
         "actions_executed": [
           {
-            "args": {
-              "text": {
-                "var": "user.basic.birth_year_text"
-              }
-            },
-            "fn": "parse_birth_year",
-            "into": "user.basic.birth_year",
-            "type": "call"
-          },
-          {
-            "path": "calc.normalization.birth_year_source",
+            "path": "user.basic.female_retire_type",
             "type": "set",
-            "value": "parsed_from_text"
+            "value": "na"
           }
         ],
         "matched": true,
-        "row_id": "row_2_parse_text",
-        "rule_id": "R-010-PARSE-BIRTH-YEAR"
+        "row_id": "row_1_male_set_na",
+        "rule_id": "R-020-FEMALE-RETIRE-TYPE"
       }
     ],
     "user": {
       "basic": {
-        "birth_year": 1973,
-        "birth_year_text": "73年"
-      }
-    }
-  },
-  {
-    "calc": {
-      "normalization": {
-        "birth_year_source": "parsed_from_text"
-      }
-    },
-    "name": "1973 -> 1973",
-    "plan": {},
-    "rule_id": "R-010-PARSE-BIRTH-YEAR",
-    "trace": [
-      {
-        "actions_executed": [
-          {
-            "args": {
-              "text": {
-                "var": "user.basic.birth_year_text"
-              }
-            },
-            "fn": "parse_birth_year",
-            "into": "user.basic.birth_year",
-            "type": "call"
-          },
-          {
-            "path": "calc.normalization.birth_year_source",
-            "type": "set",
-            "value": "parsed_from_text"
-          }
-        ],
-        "matched": true,
-        "row_id": "row_2_parse_text",
-        "rule_id": "R-010-PARSE-BIRTH-YEAR"
-      }
-    ],
-    "user": {
-      "basic": {
-        "birth_year": 1973,
-        "birth_year_text": "1973"
-      }
-    }
-  },
-  {
-    "calc": {
-      "normalization": {
-        "birth_date_source": "built_from_fields"
-      }
-    },
-    "name": "有年/月/日可组装",
-    "plan": {},
-    "rule_id": "R-011-BUILD-BIRTH-DATE",
-    "trace": [
-      {
-        "actions_executed": [
-          {
-            "args": {
-              "day": {
-                "var": "user.basic.birth_day"
-              },
-              "month": {
-                "var": "user.basic.birth_month"
-              },
-              "year": {
-                "var": "user.basic.birth_year"
-              }
-            },
-            "fn": "make_date",
-            "into": "user.basic.birth_date",
-            "type": "call"
-          },
-          {
-            "path": "calc.normalization.birth_date_source",
-            "type": "set",
-            "value": "built_from_fields"
-          }
-        ],
-        "matched": true,
-        "row_id": "row_2_build",
-        "rule_id": "R-011-BUILD-BIRTH-DATE"
-      }
-    ],
-    "user": {
-      "basic": {
-        "birth_date": "1973-05-12",
-        "birth_day": 12,
-        "birth_month": 5,
-        "birth_year": 1973
-      }
-    }
-  },
-  {
-    "calc": {
-      "normalization": {
-        "gender_source": "normalized_from_text"
-      }
-    },
-    "name": "男 -> male",
-    "plan": {},
-    "rule_id": "R-012-NORMALIZE-GENDER",
-    "trace": [
-      {
-        "actions_executed": [
-          {
-            "args": {
-              "text": {
-                "var": "user.basic.gender"
-              }
-            },
-            "fn": "normalize_gender",
-            "into": "user.basic.gender",
-            "type": "call"
-          },
-          {
-            "path": "calc.normalization.gender_source",
-            "type": "set",
-            "value": "normalized_from_text"
-          }
-        ],
-        "matched": true,
-        "row_id": "row_2_try_normalize",
-        "rule_id": "R-012-NORMALIZE-GENDER"
-      }
-    ],
-    "user": {
-      "basic": {
+        "female_retire_type": "na",
         "gender": "male"
-      }
-    }
-  },
-  {
-    "calc": {
-      "normalization": {
-        "gender_source": "provided_normalized"
-      }
-    },
-    "name": "female 保持",
-    "plan": {},
-    "rule_id": "R-012-NORMALIZE-GENDER",
-    "trace": [
-      {
-        "actions_executed": [
-          {
-            "path": "calc.normalization.gender_source",
-            "type": "set",
-            "value": "provided_normalized"
-          }
-        ],
-        "matched": true,
-        "row_id": "row_1_already_norm",
-        "rule_id": "R-012-NORMALIZE-GENDER"
-      }
-    ],
-    "user": {
-      "basic": {
-        "gender": "female"
       }
     }
   },
@@ -239,26 +69,220 @@
     }
   },
   {
-    "calc": {},
-    "name": "男性 -> na",
+    "calc": {
+      "normalization": {
+        "birth_year_source": "parsed_from_text"
+      }
+    },
+    "name": "73年 -> 1973",
     "plan": {},
-    "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+    "rule_id": "R-010-PARSE-BIRTH-YEAR",
     "trace": [
       {
         "actions_executed": [
           {
-            "path": "user.basic.female_retire_type",
+            "args": {
+              "text": {
+                "var": "user.basic.birth_year_text"
+              }
+            },
+            "fn": "parse_birth_year",
+            "into": "user.basic.birth_year",
+            "type": "call"
+          },
+          {
+            "path": "calc.normalization.birth_year_source",
             "type": "set",
-            "value": "na"
+            "value": "parsed_from_text"
           }
         ],
         "matched": true,
-        "row_id": "row_1_male_set_na",
-        "rule_id": "R-020-FEMALE-RETIRE-TYPE"
+        "row_id": "row_2_parse_text",
+        "rule_id": "R-010-PARSE-BIRTH-YEAR"
       }
     ],
     "user": {
       "basic": {
+        "birth_year": 1973,
+        "birth_year_text": "73年"
+      }
+    }
+  },
+  {
+    "calc": {
+      "normalization": {
+        "gender_source": "normalized_from_text"
+      }
+    },
+    "name": "男 -> male",
+    "plan": {},
+    "rule_id": "R-012-NORMALIZE-GENDER",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "args": {
+              "text": {
+                "var": "user.basic.gender"
+              }
+            },
+            "fn": "normalize_gender",
+            "into": "user.basic.gender",
+            "type": "call"
+          },
+          {
+            "path": "calc.normalization.gender_source",
+            "type": "set",
+            "value": "normalized_from_text"
+          }
+        ],
+        "matched": true,
+        "row_id": "row_2_try_normalize",
+        "rule_id": "R-012-NORMALIZE-GENDER"
+      }
+    ],
+    "user": {
+      "basic": {
+        "gender": "male"
+      }
+    }
+  },
+  {
+    "calc": {
+      "retirement": {
+        "_algo_result": {
+          "legal_retire_age_months": 1,
+          "legal_retire_age_years": 60,
+          "original_retire_age_years": 60
+        },
+        "legal_retire_age_months": 1,
+        "legal_retire_age_years": 60,
+        "original_retire_age_years": 60
+      }
+    },
+    "name": "1965-01男 -> 60岁1个月（渐进延迟首档）",
+    "plan": {},
+    "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "into": "calc.retirement._table_override",
+            "into_map": {
+              "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+              "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+              "original_retire_age_years": "calc.retirement.original_retire_age_years"
+            },
+            "key": {
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "gender": {
+                "var": "user.basic.gender"
+              }
+            },
+            "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+            "type": "lookup"
+          },
+          {
+            "args": {
+              "birth_month": {
+                "var": "user.basic.birth_month"
+              },
+              "birth_year": {
+                "var": "user.basic.birth_year"
+              },
+              "female_retire_type": {
+                "var": "user.basic.female_retire_type"
+              },
+              "gender": {
+                "var": "user.basic.gender"
+              }
+            },
+            "fn": "compute_delayed_retire_age",
+            "into": "calc.retirement._algo_result",
+            "type": "call"
+          },
+          {
+            "path": "calc.retirement.legal_retire_age_years",
+            "type": "set",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_years"
+                }
+              ]
+            }
+          },
+          {
+            "path": "calc.retirement.legal_retire_age_months",
+            "type": "set",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.legal_retire_age_months"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.legal_retire_age_months"
+                },
+                {
+                  "var": "calc.retirement._algo_result.legal_retire_age_months"
+                }
+              ]
+            }
+          },
+          {
+            "path": "calc.retirement.original_retire_age_years",
+            "type": "set",
+            "value": {
+              "if": [
+                {
+                  "!=": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "var": "calc.retirement.original_retire_age_years"
+                },
+                {
+                  "var": "calc.retirement._algo_result.original_retire_age_years"
+                }
+              ]
+            }
+          }
+        ],
+        "matched": true,
+        "row_id": "row_2_lookup",
+        "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE"
+      }
+    ],
+    "user": {
+      "basic": {
+        "birth_date": "1965-01-15",
+        "birth_month": 1,
+        "birth_year": 1965,
         "female_retire_type": "na",
         "gender": "male"
       }
@@ -277,7 +301,7 @@
         "original_retire_age_years": 60
       }
     },
-    "name": "1973 男 -> 60",
+    "name": "覆盖表 1973男 -> 60",
     "plan": {},
     "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
     "trace": [
@@ -406,6 +430,109 @@
   {
     "calc": {
       "retirement": {
+        "_earliest_total_months": 720,
+        "flex_adjusted": true,
+        "flex_preference": "earliest",
+        "legal_retire_age_months": 0,
+        "legal_retire_age_years": 60,
+        "original_retire_age_years": 60
+      }
+    },
+    "name": "弹性最早：61岁5个月男职工提前至不低于原法定60岁",
+    "plan": {},
+    "rule_id": "R-115-FLEXIBLE-RETIREMENT",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "path": "calc.retirement.flex_adjusted",
+            "type": "set",
+            "value": true
+          },
+          {
+            "path": "calc.retirement.flex_preference",
+            "type": "set",
+            "value": "earliest"
+          },
+          {
+            "path": "calc.retirement._earliest_total_months",
+            "type": "set",
+            "value": {
+              "max": [
+                {
+                  "*": [
+                    {
+                      "var": "calc.retirement.original_retire_age_years"
+                    },
+                    12
+                  ]
+                },
+                {
+                  "-": [
+                    {
+                      "+": [
+                        {
+                          "*": [
+                            {
+                              "var": "calc.retirement.legal_retire_age_years"
+                            },
+                            12
+                          ]
+                        },
+                        {
+                          "var": "calc.retirement.legal_retire_age_months"
+                        }
+                      ]
+                    },
+                    36
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "path": "calc.retirement.legal_retire_age_years",
+            "type": "set",
+            "value": {
+              "floor": [
+                {
+                  "/": [
+                    {
+                      "var": "calc.retirement._earliest_total_months"
+                    },
+                    12
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "path": "calc.retirement.legal_retire_age_months",
+            "type": "set",
+            "value": {
+              "%": [
+                {
+                  "var": "calc.retirement._earliest_total_months"
+                },
+                12
+              ]
+            }
+          }
+        ],
+        "matched": true,
+        "row_id": "row_2_earliest",
+        "rule_id": "R-115-FLEXIBLE-RETIREMENT"
+      }
+    ],
+    "user": {
+      "basic": {
+        "retire_preference": "earliest"
+      }
+    }
+  },
+  {
+    "calc": {
+      "retirement": {
         "legal_retire_age_years": 60,
         "legal_retire_date": "2033-05-12",
         "legal_retire_month": 5,
@@ -413,7 +540,7 @@
         "months_to_legal_retire": 0
       }
     },
-    "name": "1973-05-12 男 60 -> 2033-05-12",
+    "name": "1973-05-12男60岁 -> 2033-05-12",
     "plan": {},
     "rule_id": "R-120-COMPUTE-RETIRE-DATE",
     "trace": [
@@ -476,7 +603,11 @@
     ],
     "user": {
       "basic": {
-        "birth_date": "1973-05-12"
+        "birth_date": "1973-05-12",
+        "gender": "male"
+      },
+      "status": {
+        "employment_status": "employed"
       }
     }
   },
@@ -522,7 +653,7 @@
         "legal_retire_year": 2036
       }
     },
-    "name": "退休年份2036 -> 19年（示例表）",
+    "name": "退休年份2036 -> 18.5年（办法第二条每年提高6个月）",
     "plan": {},
     "rule_id": "R-200-MIN-PENSION-YEARS",
     "trace": [
@@ -554,7 +685,7 @@
         "min_years_required": 15
       }
     },
-    "name": "已缴14年(168月)，要求15年(180月) -> 缺12月",
+    "name": "已缴168月要求180月 -> 缺12月",
     "plan": {},
     "rule_id": "R-210-PENSION-GAP",
     "trace": [
@@ -614,6 +745,65 @@
   },
   {
     "calc": {
+      "mi": {
+        "lifetime_gap_months": 180,
+        "lifetime_required_months": 300
+      }
+    },
+    "name": "男性已缴120月按25年口径 -> 缺180月",
+    "plan": {},
+    "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "path": "calc.mi.lifetime_required_months",
+            "type": "set",
+            "value": {
+              "*": [
+                {
+                  "var": "params.P-MI-LIFETIME-MALE-YEARS"
+                },
+                12
+              ]
+            }
+          },
+          {
+            "path": "calc.mi.lifetime_gap_months",
+            "type": "set",
+            "value": {
+              "max": [
+                0,
+                {
+                  "-": [
+                    {
+                      "var": "calc.mi.lifetime_required_months"
+                    },
+                    {
+                      "var": "user.social.medical_contrib_months"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "matched": true,
+        "row_id": "row_2_male",
+        "rule_id": "R-220-MEDICAL-LIFETIME-GAP"
+      }
+    ],
+    "user": {
+      "basic": {
+        "gender": "male"
+      },
+      "social": {
+        "medical_contrib_months": 120
+      }
+    }
+  },
+  {
+    "calc": {
       "agent_questions": [
         {
           "field": "user.social.medical_contrib_months",
@@ -623,7 +813,7 @@
       ],
       "needs_agent": true
     },
-    "name": "医保已缴120月，要求180月 -> 缺60月",
+    "name": "缺性别或月数 -> 追问（年限由参保地规定）",
     "plan": {},
     "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
     "trace": [
@@ -660,7 +850,7 @@
         "gap_months": 3
       }
     },
-    "name": "断缴2个月",
+    "name": "自然月差：2025-12-31断缴2026-03-01续保 -> 3个月",
     "plan": {},
     "rule_id": "R-300-MI-GAP-MONTHS",
     "trace": [
@@ -689,6 +879,224 @@
       "mi": {
         "enroll_date": "2026-03-01",
         "prev_end_date": "2025-12-31"
+      }
+    }
+  },
+  {
+    "calc": {
+      "unemployment": {
+        "eligible": true
+      }
+    },
+    "name": "失业且失业险2年 -> eligible",
+    "plan": {},
+    "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "path": "calc.unemployment.eligible",
+            "type": "set",
+            "value": true
+          }
+        ],
+        "matched": true,
+        "row_id": "row_3_years_ge_1",
+        "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY"
+      }
+    ],
+    "user": {
+      "social": {
+        "unemployment_insurance_years": 2
+      },
+      "status": {
+        "employment_status": "unemployed"
+      }
+    }
+  },
+  {
+    "calc": {
+      "unemployment": {
+        "duration_months": 18,
+        "duration_months_raw": 18,
+        "eligible": true
+      }
+    },
+    "name": "失业险6年 -> 最长18个月（法定档）",
+    "plan": {},
+    "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "into": "calc.unemployment.duration_months_raw",
+            "key": {
+              "insured_years": {
+                "var": "user.social.unemployment_insurance_years"
+              }
+            },
+            "table_param_id": "T-UNEMPLOYMENT-DURATION-BY-YEARS",
+            "type": "lookup"
+          },
+          {
+            "path": "calc.unemployment.duration_months",
+            "type": "set",
+            "value": {
+              "min": [
+                {
+                  "var": "calc.unemployment.duration_months_raw"
+                },
+                {
+                  "var": "params.P-UNEMPLOYMENT-MAX-MONTHS"
+                }
+              ]
+            }
+          }
+        ],
+        "matched": true,
+        "row_id": "row_4_lookup",
+        "rule_id": "R-410-UNEMPLOYMENT-DURATION"
+      }
+    ],
+    "user": {
+      "social": {
+        "unemployment_insurance_years": 6
+      }
+    }
+  },
+  {
+    "calc": {
+      "unemployment": {
+        "duration_months": 24,
+        "duration_months_raw": 24,
+        "eligible": true
+      }
+    },
+    "name": "失业险11年 -> 最长24个月（法定档）",
+    "plan": {},
+    "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "into": "calc.unemployment.duration_months_raw",
+            "key": {
+              "insured_years": {
+                "var": "user.social.unemployment_insurance_years"
+              }
+            },
+            "table_param_id": "T-UNEMPLOYMENT-DURATION-BY-YEARS",
+            "type": "lookup"
+          },
+          {
+            "path": "calc.unemployment.duration_months",
+            "type": "set",
+            "value": {
+              "min": [
+                {
+                  "var": "calc.unemployment.duration_months_raw"
+                },
+                {
+                  "var": "params.P-UNEMPLOYMENT-MAX-MONTHS"
+                }
+              ]
+            }
+          }
+        ],
+        "matched": true,
+        "row_id": "row_4_lookup",
+        "rule_id": "R-410-UNEMPLOYMENT-DURATION"
+      }
+    ],
+    "user": {
+      "social": {
+        "unemployment_insurance_years": 11
+      }
+    }
+  },
+  {
+    "calc": {
+      "mi": {
+        "paid_by_unemployment_fund": true
+      },
+      "warnings": [
+        {
+          "text": "失业金期间，医保通常由失业保险基金代缴（以经办口径为准）。规划现金流时请不要重复计算医保个人缴费。",
+          "warning_id": "W-UI-MI-PAID"
+        }
+      ]
+    },
+    "name": "领金期间 -> 医保由失业保险基金缴纳",
+    "plan": {},
+    "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "path": "calc.mi.paid_by_unemployment_fund",
+            "type": "set",
+            "value": true
+          },
+          {
+            "type": "emit_warning",
+            "value": {
+              "text": "失业金期间，医保通常由失业保险基金代缴（以经办口径为准）。规划现金流时请不要重复计算医保个人缴费。",
+              "warning_id": "W-UI-MI-PAID"
+            }
+          }
+        ],
+        "matched": true,
+        "row_id": "row_1_on_benefit",
+        "rule_id": "R-420-UI-MEDICAL-COVERAGE"
+      }
+    ],
+    "user": {
+      "status": {
+        "on_unemployment_benefit": true
+      }
+    }
+  },
+  {
+    "calc": {
+      "agent_questions": [
+        {
+          "question_id": "Q-CORE",
+          "text": "缺少核心信息（性别/出生年份/当前状态），无法生成可执行规划。请补齐。"
+        }
+      ],
+      "needs_agent": true
+    },
+    "name": "缺出生年份 -> needs_agent",
+    "plan": {},
+    "rule_id": "R-900-FINAL-GATE",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "path": "calc.needs_agent",
+            "type": "set",
+            "value": true
+          },
+          {
+            "type": "emit_question",
+            "value": {
+              "question_id": "Q-CORE",
+              "text": "缺少核心信息（性别/出生年份/当前状态），无法生成可执行规划。请补齐。"
+            }
+          }
+        ],
+        "matched": true,
+        "row_id": "row_1_any_missing",
+        "rule_id": "R-900-FINAL-GATE"
+      }
+    ],
+    "user": {
+      "basic": {
+        "birth_year": null,
+        "gender": "male"
+      },
+      "status": {
+        "employment_status": "employed"
       }
     }
   },
@@ -770,130 +1178,6 @@
       }
     ],
     "user": {}
-  },
-  {
-    "calc": {
-      "unemployment": {
-        "eligible": true
-      }
-    },
-    "name": "失业且失业险2年 -> eligible",
-    "plan": {},
-    "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
-    "trace": [
-      {
-        "actions_executed": [
-          {
-            "path": "calc.unemployment.eligible",
-            "type": "set",
-            "value": true
-          }
-        ],
-        "matched": true,
-        "row_id": "row_3_years_ge_1",
-        "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY"
-      }
-    ],
-    "user": {
-      "social": {
-        "unemployment_insurance_years": 2
-      },
-      "status": {
-        "employment_status": "unemployed"
-      }
-    }
-  },
-  {
-    "calc": {
-      "unemployment": {
-        "duration_months": 24,
-        "duration_months_raw": 24,
-        "eligible": true
-      }
-    },
-    "name": "失业险8年 -> 24月(上限)",
-    "plan": {},
-    "rule_id": "R-410-UNEMPLOYMENT-DURATION",
-    "trace": [
-      {
-        "actions_executed": [
-          {
-            "into": "calc.unemployment.duration_months_raw",
-            "key": {
-              "insured_years": {
-                "var": "user.social.unemployment_insurance_years"
-              }
-            },
-            "table_param_id": "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS",
-            "type": "lookup"
-          },
-          {
-            "path": "calc.unemployment.duration_months",
-            "type": "set",
-            "value": {
-              "min": [
-                {
-                  "var": "calc.unemployment.duration_months_raw"
-                },
-                {
-                  "var": "params.P-SH-UNEMPLOYMENT-MAX-MONTHS"
-                }
-              ]
-            }
-          }
-        ],
-        "matched": true,
-        "row_id": "row_4_lookup",
-        "rule_id": "R-410-UNEMPLOYMENT-DURATION"
-      }
-    ],
-    "user": {
-      "social": {
-        "unemployment_insurance_years": 8
-      }
-    }
-  },
-  {
-    "calc": {
-      "mi": {
-        "paid_by_unemployment_fund": true
-      },
-      "warnings": [
-        {
-          "text": "失业金期间，医保通常由失业保险基金代缴（以经办口径为准）。规划现金流时请不要重复计算医保个人缴费。",
-          "warning_id": "W-UI-MI-PAID"
-        }
-      ]
-    },
-    "name": "正在领取失业金 -> 医保基金代缴提示",
-    "plan": {},
-    "rule_id": "R-420-UI-MEDICAL-COVERAGE",
-    "trace": [
-      {
-        "actions_executed": [
-          {
-            "path": "calc.mi.paid_by_unemployment_fund",
-            "type": "set",
-            "value": true
-          },
-          {
-            "type": "emit_warning",
-            "value": {
-              "text": "失业金期间，医保通常由失业保险基金代缴（以经办口径为准）。规划现金流时请不要重复计算医保个人缴费。",
-              "warning_id": "W-UI-MI-PAID"
-            }
-          }
-        ],
-        "matched": true,
-        "row_id": "row_1_on_benefit",
-        "rule_id": "R-420-UI-MEDICAL-COVERAGE"
-      }
-    ],
-    "user": {
-      "status": {
-        "on_unemployment_benefit": true
-      }
-    }
   },
   {
     "calc": {
@@ -1189,91 +1473,6 @@
           7,
           8
         ]
-      }
-    }
-  },
-  {
-    "calc": {
-      "needs_agent": false
-    },
-    "name": "信息齐全且失业 -> 失业模板",
-    "plan": {
-      "conclusion_level": "direct",
-      "primary_strategy": "失业路径：优先用失业金期覆盖社保/医保衔接，再衔接补贴或灵活就业",
-      "template_id": "T-UNEMPLOYMENT-PLANNING"
-    },
-    "rule_id": "R-700-PLAN-TEMPLATE",
-    "trace": [
-      {
-        "actions_executed": [
-          {
-            "path": "plan.conclusion_level",
-            "type": "set",
-            "value": "direct"
-          },
-          {
-            "path": "plan.template_id",
-            "type": "set",
-            "value": "T-UNEMPLOYMENT-PLANNING"
-          },
-          {
-            "path": "plan.primary_strategy",
-            "type": "set",
-            "value": "失业路径：优先用失业金期覆盖社保/医保衔接，再衔接补贴或灵活就业"
-          }
-        ],
-        "matched": true,
-        "row_id": "row_2_unemployed_path",
-        "rule_id": "R-700-PLAN-TEMPLATE"
-      }
-    ],
-    "user": {
-      "status": {
-        "employment_status": "unemployed"
-      }
-    }
-  },
-  {
-    "calc": {
-      "agent_questions": [
-        {
-          "question_id": "Q-CORE",
-          "text": "缺少核心信息（性别/出生年份/当前状态），无法生成可执行规划。请补齐。"
-        }
-      ],
-      "needs_agent": true
-    },
-    "name": "缺出生年份 -> needs_agent",
-    "plan": {},
-    "rule_id": "R-900-FINAL-GATE",
-    "trace": [
-      {
-        "actions_executed": [
-          {
-            "path": "calc.needs_agent",
-            "type": "set",
-            "value": true
-          },
-          {
-            "type": "emit_question",
-            "value": {
-              "question_id": "Q-CORE",
-              "text": "缺少核心信息（性别/出生年份/当前状态），无法生成可执行规划。请补齐。"
-            }
-          }
-        ],
-        "matched": true,
-        "row_id": "row_1_any_missing",
-        "rule_id": "R-900-FINAL-GATE"
-      }
-    ],
-    "user": {
-      "basic": {
-        "birth_year": null,
-        "gender": "male"
-      },
-      "status": {
-        "employment_status": "employed"
       }
     }
   }

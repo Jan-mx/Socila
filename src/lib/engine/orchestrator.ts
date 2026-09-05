@@ -34,6 +34,8 @@ export interface OrchestratorResult {
 
 const DEFAULT_RULE_SET = "RS-SHANGHAI-PLAN-V1";
 const DEFAULT_POLICY_PACK = "SHANGHAI_BASE";
+/** 国家baseline参数包（NRP-FR-005）：所有地区解析的参数底层，地区包按键覆盖。 */
+export const NATIONAL_PARAM_PACK = "CN-BASELINE";
 
 /**
  * Main orchestrator: loads rule set, params, and executes all rules sequentially.
@@ -49,15 +51,17 @@ export async function orchestrate(
     input.asOfDate ??
     new Date().toISOString().split("T")[0];
 
-  // Load rule set, rules, and params from DB
-  const [{ ruleSet, rules: effectiveRules }, effectiveParams] =
+  // Load rule set, rules, and params from DB.
+  // NRP-FR-005/006：参数按继承链扁平化——国家baseline参数包垫底，地区包覆盖同名键。
+  const [{ ruleSet, rules: effectiveRules }, nationalParams, regionalParams] =
     await Promise.all([
       rulesReads.getEffectiveRules(ruleSetId, asOfDate),
+      rulesReads.getEffectiveParams(NATIONAL_PARAM_PACK, asOfDate),
       rulesReads.getEffectiveParams(policyPackId, asOfDate),
     ]);
 
   // Flatten params into a params namespace
-  const flatParams = flattenParams(effectiveParams);
+  const flatParams = flattenParams([...nationalParams, ...regionalParams]);
 
   // Build initial context.
   // Seed calc._today with asOfDate so R-120's `date_diff_months(_today, retire_date)`

@@ -118,9 +118,15 @@
               "type": "lookup",
               "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
               "key": {
-                "gender": { "var": "user.basic.gender" },
-                "female_retire_type": { "var": "user.basic.female_retire_type" },
-                "birth_year": { "var": "user.basic.birth_year" }
+                "gender": {
+                  "var": "user.basic.gender"
+                },
+                "female_retire_type": {
+                  "var": "user.basic.female_retire_type"
+                },
+                "birth_year": {
+                  "var": "user.basic.birth_year"
+                }
               },
               "into": "calc.retirement._table_override",
               "into_map": {
@@ -133,10 +139,18 @@
               "type": "call",
               "fn": "compute_delayed_retire_age",
               "args": {
-                "gender": { "var": "user.basic.gender" },
-                "female_retire_type": { "var": "user.basic.female_retire_type" },
-                "birth_year": { "var": "user.basic.birth_year" },
-                "birth_month": { "var": "user.basic.birth_month" }
+                "gender": {
+                  "var": "user.basic.gender"
+                },
+                "female_retire_type": {
+                  "var": "user.basic.female_retire_type"
+                },
+                "birth_year": {
+                  "var": "user.basic.birth_year"
+                },
+                "birth_month": {
+                  "var": "user.basic.birth_month"
+                }
               },
               "into": "calc.retirement._algo_result"
             },
@@ -145,9 +159,20 @@
               "path": "calc.retirement.legal_retire_age_years",
               "value": {
                 "if": [
-                  { "!=": [{ "var": "calc.retirement.legal_retire_age_years" }, null] },
-                  { "var": "calc.retirement.legal_retire_age_years" },
-                  { "var": "calc.retirement._algo_result.legal_retire_age_years" }
+                  {
+                    "!=": [
+                      {
+                        "var": "calc.retirement.legal_retire_age_years"
+                      },
+                      null
+                    ]
+                  },
+                  {
+                    "var": "calc.retirement.legal_retire_age_years"
+                  },
+                  {
+                    "var": "calc.retirement._algo_result.legal_retire_age_years"
+                  }
                 ]
               }
             },
@@ -156,9 +181,20 @@
               "path": "calc.retirement.legal_retire_age_months",
               "value": {
                 "if": [
-                  { "!=": [{ "var": "calc.retirement.legal_retire_age_months" }, null] },
-                  { "var": "calc.retirement.legal_retire_age_months" },
-                  { "var": "calc.retirement._algo_result.legal_retire_age_months" }
+                  {
+                    "!=": [
+                      {
+                        "var": "calc.retirement.legal_retire_age_months"
+                      },
+                      null
+                    ]
+                  },
+                  {
+                    "var": "calc.retirement.legal_retire_age_months"
+                  },
+                  {
+                    "var": "calc.retirement._algo_result.legal_retire_age_months"
+                  }
                 ]
               }
             },
@@ -167,9 +203,20 @@
               "path": "calc.retirement.original_retire_age_years",
               "value": {
                 "if": [
-                  { "!=": [{ "var": "calc.retirement.original_retire_age_years" }, null] },
-                  { "var": "calc.retirement.original_retire_age_years" },
-                  { "var": "calc.retirement._algo_result.original_retire_age_years" }
+                  {
+                    "!=": [
+                      {
+                        "var": "calc.retirement.original_retire_age_years"
+                      },
+                      null
+                    ]
+                  },
+                  {
+                    "var": "calc.retirement.original_retire_age_years"
+                  },
+                  {
+                    "var": "calc.retirement._algo_result.original_retire_age_years"
+                  }
                 ]
               }
             }
@@ -225,5 +272,39 @@
       }
     }
   ],
-  "evidence": []
+  "evidence": [
+    {
+      "document_id": "DOC-CN-NPC-DELAYED-RETIREMENT-2024",
+      "jurisdiction_code": "CN",
+      "title": "全国人民代表大会常务委员会关于实施渐进式延迟法定退休年龄的决定",
+      "authority": "全国人民代表大会常务委员会",
+      "official_url": "https://www.mohrss.gov.cn/SYrlzyhshbzb/ztzl/zt202409/qwfb/202409/t20240913_525781.html",
+      "fetched_at": "2026-09-05T13:37:42.739Z",
+      "content_sha256": "69a02418f3ce5fbc6276135990e62731cfb6ae7c0b1524c3f2f855651ffa7d9b",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-NPC-DELAYED-RETIREMENT-2024/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "article",
+        "reference": "国务院办法第一条"
+      },
+      "excerpt": "从2025年1月1日起，男职工和原法定退休年龄为五十五周岁的女职工，法定退休年龄每四个月延迟一个月，分别逐步延迟至六十三周岁和五十八周岁；原法定退休年龄为五十周岁的女职工，法定退休年龄每二个月延迟一个月，逐步延迟至五十五周岁。"
+    },
+    {
+      "document_id": "DOC-CN-NPC-DELAYED-RETIREMENT-2024",
+      "jurisdiction_code": "CN",
+      "title": "全国人民代表大会常务委员会关于实施渐进式延迟法定退休年龄的决定",
+      "authority": "全国人民代表大会常务委员会",
+      "official_url": "https://www.mohrss.gov.cn/SYrlzyhshbzb/ztzl/zt202409/qwfb/202409/t20240913_525781.html",
+      "fetched_at": "2026-09-05T13:37:42.739Z",
+      "content_sha256": "69a02418f3ce5fbc6276135990e62731cfb6ae7c0b1524c3f2f855651ffa7d9b",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-NPC-DELAYED-RETIREMENT-2024/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "annex",
+        "reference": "附件1-3 延迟法定退休年龄对照表"
+      },
+      "excerpt": "附件：1.男职工延迟法定退休年龄对照表 2.原法定退休年龄五十五周岁的女职工延迟法定退休年龄对照表 3.原法定退休年龄五十周岁的女职工延迟法定退休年龄对照表"
+    }
+  ],
+  "operation": "baseline"
 }

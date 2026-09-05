@@ -47,10 +47,14 @@ export async function POST(
     }
 
     const asOfDate = new Date().toISOString().slice(0, 10);
-    const paramsRows = await rulesReads.getEffectiveParams("SHANGHAI_BASE", asOfDate);
+    // NRP-FR-005/006：示例执行同样按继承链取参（CN baseline垫底，SHANGHAI_BASE覆盖）。
+    const [nationalRows, paramsRows] = await Promise.all([
+      rulesReads.getEffectiveParams("CN-BASELINE", asOfDate),
+      rulesReads.getEffectiveParams("SHANGHAI_BASE", asOfDate),
+    ]);
     const baseParams: Record<string, unknown> = {};
 
-    for (const p of paramsRows) {
+    for (const p of [...nationalRows, ...paramsRows]) {
       if (p.type === "scalar") {
         baseParams[p.paramId] = p.value;
       } else if (p.type === "table" || p.type === "timeline") {

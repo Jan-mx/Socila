@@ -37,6 +37,10 @@ export const rules = pgTable("rules", {
   evidence: jsonb("evidence").default([]),
   notes: text("notes"),
   version: integer("version").notNull().default(1),
+  // 显式overlay操作（NRP-FR-007）：CN只能baseline，地区不能baseline；
+  // replace/restrict/exempt必须携带target_business_key（CHECK约束见migration 0012）。
+  operation: text("operation").notNull().default("add"),
+  targetBusinessKey: text("target_business_key"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -61,6 +65,9 @@ export const params = pgTable("params", {
   note: text("note"),
   version: integer("version").notNull().default(1),
   status: text("status").notNull().default("draft"),
+  // 显式overlay操作（NRP-FR-007），约束同rules（migration 0012）。
+  operation: text("operation").notNull().default("add"),
+  targetBusinessKey: text("target_business_key"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -91,6 +98,9 @@ export const ruleSets = pgTable("rule_sets", {
   rules: jsonb("rules").notNull(),
   conflictResolution: jsonb("conflict_resolution"),
   version: integer("version").notNull().default(1),
+  // 显式overlay操作（NRP-FR-007），约束同rules（migration 0012）。
+  operation: text("operation").notNull().default("add"),
+  targetBusinessKey: text("target_business_key"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

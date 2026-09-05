@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { rules } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { CANONICAL_DSL_VERSION, type DiscoveredRegion } from "@/lib/dsl/region-manifest";
+import { parseOverlayOperation } from "@/lib/dsl/overlay-operation";
 
 interface RuleFile {
   dsl_version: string;
@@ -21,6 +22,8 @@ interface RuleFile {
   outputs: unknown[];
   examples: unknown[];
   evidence?: unknown[];
+  operation?: string;
+  target_business_key?: string | null;
 }
 
 /**
@@ -46,6 +49,14 @@ export async function seedRules(region: DiscoveredRegion) {
         `规则 ${rule.rule_id} 的 dsl_version 不是规范值 ${CANONICAL_DSL_VERSION}`,
       );
     }
+    // NRP-FR-007：显式overlay操作，不得按地区推断。
+    const overlay = parseOverlayOperation(
+      "rule",
+      rule.rule_id,
+      rule.operation,
+      rule.target_business_key,
+      jurisdictionCode,
+    );
 
     // 地区作用域upsert（09-05复审纠正）：同一rule_id+version在不同地区必须各自成行，
     // 绝不跨地区更新覆盖。
@@ -81,6 +92,8 @@ export async function seedRules(region: DiscoveredRegion) {
       evidence: rule.evidence ?? [],
       notes: rule.notes ?? null,
       version: 1,
+      operation: overlay.operation,
+      targetBusinessKey: overlay.targetBusinessKey,
     };
 
     if (existing.length > 0) {

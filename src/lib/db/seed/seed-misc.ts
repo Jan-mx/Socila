@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ruleSets, tests } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import type { DiscoveredRegion } from "@/lib/dsl/region-manifest";
+import { parseOverlayOperation } from "@/lib/dsl/overlay-operation";
 
 interface RuleSetFile {
   rule_set_id: string;
@@ -11,6 +12,8 @@ interface RuleSetFile {
   effective_from: string;
   rules: string[];
   conflict_resolution?: unknown;
+  operation?: string;
+  target_business_key?: string | null;
 }
 
 interface TestEntry {
@@ -40,6 +43,15 @@ export async function seedMisc(region: DiscoveredRegion) {
 
   console.log(`Seeding rule set: ${ruleSet.rule_set_id}...`);
 
+  // NRP-FR-007：规则集同样持久化显式overlay操作。
+  const ruleSetOverlay = parseOverlayOperation(
+    "rule_set",
+    ruleSet.rule_set_id,
+    ruleSet.operation,
+    ruleSet.target_business_key,
+    jurisdictionCode,
+  );
+
   const existingRuleSet = await db
     .select({ id: ruleSets.id })
     .from(ruleSets)
@@ -61,6 +73,8 @@ export async function seedMisc(region: DiscoveredRegion) {
     rules: ruleSet.rules,
     conflictResolution: ruleSet.conflict_resolution ?? null,
     version: 1,
+    operation: ruleSetOverlay.operation,
+    targetBusinessKey: ruleSetOverlay.targetBusinessKey,
   };
 
   if (existingRuleSet.length > 0) {

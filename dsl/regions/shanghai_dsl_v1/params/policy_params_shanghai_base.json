@@ -10,7 +10,9 @@
       "unit": "yuan/month",
       "effective_from": "2025-07-01",
       "source": "policy:上海市人社局沪人社规〔2025〕",
-      "note": "2025年度社保缴费基数下限"
+      "note": "2025年度社保缴费基数下限",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-CONTRIB-BASE-UPPER",
@@ -18,7 +20,9 @@
       "value": 37302,
       "unit": "yuan/month",
       "effective_from": "2025-07-01",
-      "source": "policy:上海市人社局"
+      "source": "policy:上海市人社局",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-PENSION-RATE-EMPLOYER",
@@ -26,7 +30,9 @@
       "value": 0.16,
       "unit": "ratio",
       "effective_from": "2025-01-01",
-      "source": "policy"
+      "source": "policy",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-PENSION-RATE-EMPLOYEE",
@@ -34,7 +40,9 @@
       "value": 0.08,
       "unit": "ratio",
       "effective_from": "2025-01-01",
-      "source": "policy"
+      "source": "policy",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-PENSION-RATE-FLEX",
@@ -42,7 +50,9 @@
       "value": 0.2,
       "unit": "ratio",
       "effective_from": "2024-03-01",
-      "source": "policy:灵活就业养老保险费率（从24%降至20%）"
+      "source": "policy:灵活就业养老保险费率（从24%降至20%）",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-MEDICAL-RATE-EMPLOYER",
@@ -51,7 +61,9 @@
       "unit": "ratio",
       "effective_from": "2025-03-01",
       "source": "policy:阶段性降费延续至2026-02，含基本8.5%+地方附加0.5%",
-      "note": "原10%，2024-03起阶段性降至9%，延续至2026-02-28"
+      "note": "原10%，2024-03起阶段性降至9%，延续至2026-02-28",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-MEDICAL-RATE-EMPLOYEE",
@@ -59,7 +71,9 @@
       "value": 0.02,
       "unit": "ratio",
       "effective_from": "2025-01-01",
-      "source": "policy"
+      "source": "policy",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-MEDICAL-RATE-FLEX",
@@ -67,7 +81,9 @@
       "value": 0.1,
       "unit": "ratio",
       "effective_from": "2024-03-01",
-      "source": "policy:灵活就业医保费率（从11%降至10%）"
+      "source": "policy:灵活就业医保费率（从11%降至10%）",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-RATE-EMPLOYER",
@@ -76,7 +92,9 @@
       "unit": "ratio",
       "effective_from": "2025-01-01",
       "source": "policy:阶段性减费至2025-12-31",
-      "note": "法定2%总费率，阶段性降至1%（单位0.5%+个人0.5%）"
+      "note": "法定2%总费率，阶段性降至1%（单位0.5%+个人0.5%）",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-RATE-EMPLOYEE",
@@ -84,7 +102,9 @@
       "value": 0.005,
       "unit": "ratio",
       "effective_from": "2025-01-01",
-      "source": "policy"
+      "source": "policy",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-MI-WAITING-PERIOD-MONTHS",
@@ -93,7 +113,9 @@
       "unit": "months",
       "effective_from": "2025-01-01",
       "source": "policy:职工医保断缴超3个月重新参保等待期2个月",
-      "note": "断缴3个月内补缴可视为连续；超3个月重新参保有2个月等待期"
+      "note": "断缴3个月内补缴可视为连续；超3个月重新参保有2个月等待期",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-MI-GAP-WAIVER-MONTHS",
@@ -101,7 +123,9 @@
       "value": 3,
       "unit": "months",
       "effective_from": "2025-01-01",
-      "source": "policy:3个月内补缴视为连续参保"
+      "source": "policy:3个月内补缴视为连续参保",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-4050-SUBSIDY-RATE",
@@ -109,7 +133,9 @@
       "value": 0.5,
       "unit": "ratio",
       "effective_from": "2025-01-01",
-      "source": "policy:灵活就业社保补贴=最低基数缴费的50%"
+      "source": "policy:灵活就业社保补贴=最低基数缴费的50%",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-4050-MAX-YEARS-GENERAL",
@@ -118,7 +144,9 @@
       "unit": "years",
       "effective_from": "2025-01-01",
       "source": "policy:累计享受不超过3年",
-      "note": "一般就业困难人员最长享受3年"
+      "note": "一般就业困难人员最长享受3年",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-4050-MAX-YEARS-NEAR-RETIRE",
@@ -127,7 +155,9 @@
       "unit": "years",
       "effective_from": "2025-01-01",
       "source": "policy:距法定退休年龄不足5年的可延长至退休",
-      "note": "距退休5年内可延长，最长约8年"
+      "note": "距退休5年内可延长，最长约8年",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-JOB-SUBSIDY-RATE-MINWAGE",
@@ -135,15 +165,9 @@
       "value": 0.5,
       "unit": "ratio",
       "effective_from": "2025-01-01",
-      "source": "policy:就业岗位补贴=最低工资的50%"
-    },
-    {
-      "param_id": "P-SH-UNEMPLOYMENT-MAX-MONTHS",
-      "type": "number",
-      "value": 24,
-      "unit": "months",
-      "effective_from": "2010-01-01",
-      "source": "policy:单次核定最长24个月"
+      "source": "policy:就业岗位补贴=最低工资的50%",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER1",
@@ -152,7 +176,9 @@
       "unit": "yuan/month",
       "effective_from": "2024-07-01",
       "source": "policy:沪人社规〔2024〕",
-      "note": "第1-12个月失业金标准（2024.07-2025.06）"
+      "note": "第1-12个月失业金标准（2024.07-2025.06）",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER2",
@@ -161,7 +187,9 @@
       "unit": "yuan/month",
       "effective_from": "2024-07-01",
       "source": "policy",
-      "note": "第13-24个月失业金标准"
+      "note": "第13-24个月失业金标准",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED",
@@ -170,48 +198,31 @@
       "unit": "yuan/month",
       "effective_from": "2024-07-01",
       "source": "policy",
-      "note": "延长领取期间标准"
-    },
-    {
-      "param_id": "P-SH-MEDICAL-LIFETIME-REQUIRED-YEARS",
-      "type": "number",
-      "value": 15,
-      "unit": "years",
-      "effective_from": "2010-01-01",
-      "source": "policy:上海医保最低缴费年限15年（全国最低）",
-      "note": "已弃用，请使用性别区分的参数。保留用于向后兼容。"
-    },
-    {
-      "param_id": "P-SH-MEDICAL-LIFETIME-MALE-YEARS",
-      "type": "number",
-      "value": 25,
-      "unit": "years",
-      "effective_from": "2025-01-01",
-      "source": "policy:男性退休医保最低缴费年限25年（含视同缴费）",
-      "note": "含视同缴费年限：1992年底前连续工龄+1993年至医保制度启动前的养老保险缴费年限"
-    },
-    {
-      "param_id": "P-SH-MEDICAL-LIFETIME-FEMALE-YEARS",
-      "type": "number",
-      "value": 20,
-      "unit": "years",
-      "effective_from": "2025-01-01",
-      "source": "policy:女性退休医保最低缴费年限20年（含视同缴费）"
+      "note": "延长领取期间标准",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-PAY-GAP-AFFECTS-NEXT-MONTH",
       "type": "boolean",
       "value": true,
       "effective_from": "2024-01-01",
-      "source": "transcript"
+      "source": "transcript",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "T-SH-PAY-GAP-MONTHS",
       "type": "array",
-      "value": [7, 8],
+      "value": [
+        7,
+        8
+      ],
       "unit": "month_list",
       "effective_from": "2024-01-01",
-      "source": "transcript"
+      "source": "transcript",
+      "operation": "add",
+      "target_business_key": null
     },
     {
       "param_id": "P-SH-MIN-WAGE",
@@ -220,7 +231,42 @@
       "unit": "yuan/month",
       "effective_from": "2024-07-01",
       "source": "policy:上海市最低工资标准",
-      "note": "2024年7月1日起执行"
+      "note": "2024年7月1日起执行",
+      "operation": "add",
+      "target_business_key": null
+    },
+    {
+      "param_id": "P-MI-LIFETIME-MALE-YEARS",
+      "type": "number",
+      "value": 25,
+      "unit": "years",
+      "effective_from": "2025-01-01",
+      "source": "policy:男性退休医保最低缴费年限25年（含视同缴费）",
+      "note": "含视同缴费年限：1992年底前连续工龄+1993年至医保制度启动前的养老保险缴费年限。原P-SH-MEDICAL-LIFETIME-MALE-YEARS改名（值不变）",
+      "operation": "add",
+      "target_business_key": null
+    },
+    {
+      "param_id": "P-MI-LIFETIME-FEMALE-YEARS",
+      "type": "number",
+      "value": 20,
+      "unit": "years",
+      "effective_from": "2025-01-01",
+      "source": "policy:女性退休医保最低缴费年限20年（含视同缴费）",
+      "note": "原P-SH-MEDICAL-LIFETIME-FEMALE-YEARS改名（值不变）",
+      "operation": "add",
+      "target_business_key": null
+    },
+    {
+      "param_id": "P-MI-LIFETIME-REQUIRED-YEARS",
+      "type": "number",
+      "value": 15,
+      "unit": "years",
+      "effective_from": "2010-01-01",
+      "source": "policy:上海医保最低缴费年限15年（全国最低）",
+      "note": "已弃用，请使用性别区分的参数。保留用于向后兼容。原P-SH-MEDICAL-LIFETIME-REQUIRED-YEARS改名（值不变）",
+      "operation": "add",
+      "target_business_key": null
     }
   ],
   "tables": [
@@ -228,100 +274,114 @@
       "param_id": "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS",
       "type": "table",
       "effective_from": "2010-01-01",
-      "key_fields": ["insured_years"],
-      "value_fields": ["months"],
-      "rows": [
-        { "insured_years_min": 1, "insured_years_max": 2, "months": 3 },
-        { "insured_years_min": 2, "insured_years_max": 3, "months": 6 },
-        { "insured_years_min": 3, "insured_years_max": 4, "months": 9 },
-        { "insured_years_min": 4, "insured_years_max": 5, "months": 12 },
-        { "insured_years_min": 5, "insured_years_max": 6, "months": 15 },
-        { "insured_years_min": 6, "insured_years_max": 7, "months": 18 },
-        { "insured_years_min": 7, "insured_years_max": 8, "months": 21 },
-        { "insured_years_min": 8, "insured_years_max": 99, "months": 24 }
+      "key_fields": [
+        "insured_years"
       ],
-      "source": "policy"
-    },
-    {
-      "param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
-      "type": "timeline",
-      "effective_from": "2025-01-01",
-      "key_fields": ["retire_year"],
-      "value_fields": ["min_years"],
-      "rows": [
-        { "retire_year_max": 2029, "min_years": 15 },
-        { "retire_year_min": 2030, "retire_year_max": 2030, "min_years": 15.5 },
-        { "retire_year_min": 2031, "retire_year_max": 2031, "min_years": 16 },
-        { "retire_year_min": 2032, "retire_year_max": 2032, "min_years": 16.5 },
-        { "retire_year_min": 2033, "retire_year_max": 2033, "min_years": 17 },
-        { "retire_year_min": 2034, "retire_year_max": 2034, "min_years": 17.5 },
-        { "retire_year_min": 2035, "retire_year_max": 2035, "min_years": 18 },
-        { "retire_year_min": 2036, "retire_year_max": 2036, "min_years": 18.5 },
-        { "retire_year_min": 2037, "retire_year_max": 2037, "min_years": 19 },
-        { "retire_year_min": 2038, "retire_year_max": 2038, "min_years": 19.5 },
-        { "retire_year_min": 2039, "min_years": 20 }
+      "value_fields": [
+        "months"
       ],
-      "note": "2025政策：2030起每年增加6个月，至2039年达到20年",
-      "source": "policy:国务院渐进式延迟退休决定(2024)"
-    },
-    {
-      "param_id": "T-RETIREMENT-AGE-LOOKUP",
-      "type": "table",
-      "effective_from": "2025-01-01",
-      "key_fields": ["gender", "female_retire_type", "birth_year"],
-      "value_fields": ["legal_retire_age_years", "legal_retire_age_months", "original_retire_age_years"],
       "rows": [
         {
-          "gender": "male",
-          "female_retire_type": "na",
-          "birth_year_max": 1964,
-          "legal_retire_age_years": 60,
-          "legal_retire_age_months": 0,
-          "original_retire_age_years": 60
+          "insured_years_min": 1,
+          "insured_years_max": 2,
+          "months": 3
         },
         {
-          "gender": "female",
-          "female_retire_type": "worker50",
-          "birth_year_max": 1974,
-          "legal_retire_age_years": 50,
-          "legal_retire_age_months": 0,
-          "original_retire_age_years": 50
+          "insured_years_min": 2,
+          "insured_years_max": 3,
+          "months": 6
         },
         {
-          "gender": "female",
-          "female_retire_type": "cadre55",
-          "birth_year_max": 1969,
-          "legal_retire_age_years": 55,
-          "legal_retire_age_months": 0,
-          "original_retire_age_years": 55
+          "insured_years_min": 3,
+          "insured_years_max": 4,
+          "months": 9
         },
         {
-          "gender": "male",
-          "female_retire_type": "na",
-          "birth_year_min": 1977,
-          "legal_retire_age_years": 63,
-          "legal_retire_age_months": 0,
-          "original_retire_age_years": 60
+          "insured_years_min": 4,
+          "insured_years_max": 5,
+          "months": 12
         },
         {
-          "gender": "female",
-          "female_retire_type": "cadre55",
-          "birth_year_min": 1982,
-          "legal_retire_age_years": 58,
-          "legal_retire_age_months": 0,
-          "original_retire_age_years": 55
+          "insured_years_min": 5,
+          "insured_years_max": 6,
+          "months": 15
         },
         {
-          "gender": "female",
-          "female_retire_type": "worker50",
-          "birth_year_min": 1985,
-          "legal_retire_age_years": 55,
-          "legal_retire_age_months": 0,
-          "original_retire_age_years": 50
+          "insured_years_min": 6,
+          "insured_years_max": 7,
+          "months": 18
+        },
+        {
+          "insured_years_min": 7,
+          "insured_years_max": 8,
+          "months": 21
+        },
+        {
+          "insured_years_min": 8,
+          "insured_years_max": 99,
+          "months": 24
         }
       ],
-      "note": "覆盖表：用于覆盖/修正算法计算结果。不在此表范围内的出生年月由 compute_delayed_retire_age 内置函数计算。",
-      "source": "policy:国务院渐进式延迟退休决定(2024)"
+      "source": "policy",
+      "operation": "add",
+      "target_business_key": null
+    },
+    {
+      "param_id": "T-UNEMPLOYMENT-DURATION-BY-YEARS",
+      "type": "table",
+      "effective_from": "2010-01-01",
+      "key_fields": [
+        "insured_years"
+      ],
+      "value_fields": [
+        "months"
+      ],
+      "rows": [
+        {
+          "insured_years_min": 1,
+          "insured_years_max": 2,
+          "months": 3
+        },
+        {
+          "insured_years_min": 2,
+          "insured_years_max": 3,
+          "months": 6
+        },
+        {
+          "insured_years_min": 3,
+          "insured_years_max": 4,
+          "months": 9
+        },
+        {
+          "insured_years_min": 4,
+          "insured_years_max": 5,
+          "months": 12
+        },
+        {
+          "insured_years_min": 5,
+          "insured_years_max": 6,
+          "months": 15
+        },
+        {
+          "insured_years_min": 6,
+          "insured_years_max": 7,
+          "months": 18
+        },
+        {
+          "insured_years_min": 7,
+          "insured_years_max": 8,
+          "months": 21
+        },
+        {
+          "insured_years_min": 8,
+          "insured_years_max": 99,
+          "months": 24
+        }
+      ],
+      "note": "上海执行标准：按累计缴费年限细分的实际领取月数（replace国家基线表；原T-SH-UNEMPLOYMENT-DURATION-BY-YEARS，行内容不变）",
+      "source": "policy",
+      "operation": "replace",
+      "target_business_key": "T-UNEMPLOYMENT-DURATION-BY-YEARS"
     }
   ]
 }

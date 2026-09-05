@@ -93,9 +93,15 @@
               "type": "call",
               "fn": "date_add_years_months",
               "args": {
-                "date": { "var": "user.basic.birth_date" },
-                "years": { "var": "calc.retirement.legal_retire_age_years" },
-                "months": { "var": "calc.retirement.legal_retire_age_months" }
+                "date": {
+                  "var": "user.basic.birth_date"
+                },
+                "years": {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                "months": {
+                  "var": "calc.retirement.legal_retire_age_months"
+                }
               },
               "into": "calc.retirement.legal_retire_date"
             },
@@ -123,8 +129,12 @@
               "type": "call",
               "fn": "date_diff_months",
               "args": {
-                "from": { "var": "calc._today" },
-                "to": { "var": "calc.retirement.legal_retire_date" }
+                "from": {
+                  "var": "calc._today"
+                },
+                "to": {
+                  "var": "calc.retirement.legal_retire_date"
+                }
               },
               "into": "calc.retirement.months_to_legal_retire"
             }
@@ -181,5 +191,6 @@
       }
     }
   ],
-  "evidence": []
+  "evidence": [],
+  "operation": "baseline"
 }

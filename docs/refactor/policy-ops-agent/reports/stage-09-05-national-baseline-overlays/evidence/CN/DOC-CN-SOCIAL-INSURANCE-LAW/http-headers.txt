@@ -1,0 +1,29 @@
+# 200 https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394629.html
+accept-ranges: bytes
+access-control-allow-credentials: true
+access-control-allow-headers: Origin, X-Requested-With, Content-Type, Accept, Authorization
+access-control-allow-methods: GET, POST, PUT, DELETE
+access-control-allow-origin: https://www.mohrss.gov.cn
+access-control-max-age: 86400
+clear-site-data: cache, cookies, storage, executionContexts
+connection: keep-alive
+content-encoding: gzip
+content-length: 13618
+content-type: text/html
+cross-origin-opener-policy: same-origin-allow-popups
+cross-origin-resource-policy: same-site
+date: Sat, 05 Sep 2026 13:38:41 GMT
+eo-cache-status: HIT
+eo-log-uuid: 4256566939366000335
+etag: "16d6b-652a323da70c2"
+keep-alive: timeout=5, max=100
+last-modified: Mon, 25 May 2026 12:01:34 GMT
+permissions-policy: camera=(), microphone=(), geolocation=(), notifications=(), autoplay=(), fullscreen=*
+referrer-policy: strict-origin-when-cross-origin
+server: Apache
+strict-transport-security: max-age=31536000; includeSubDomains
+x-content-type-options: nosniff, nosniff
+x-download-options: unsafe
+x-frame-options: SAMEORIGIN
+x-permitted-cross-domain-policies: by-content-type
+x-xss-protection: 1; mode=block, 1
