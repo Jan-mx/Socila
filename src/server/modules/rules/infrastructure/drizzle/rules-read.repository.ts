@@ -7,7 +7,7 @@ import {
   tests,
   workflows,
 } from "@/lib/db/schema";
-import type { RulesReadRepository } from "../../application/ports";
+import type { RulesReadRepository, RuleRow } from "../../application/ports";
 
 /** rules 域只读仓储的 Drizzle 实现（自 queries.ts 逐域迁移，行为保持一致）。 */
 export class DrizzleRulesReadRepository implements RulesReadRepository {
@@ -66,10 +66,24 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
     return rows[0] ?? null;
   }
 
-  async listRules(filters?: { module?: string; status?: string }) {
+  async listRules(filters?: {
+    module?: string;
+    status?: string;
+    jurisdictionCode?: string;
+    q?: string;
+  }) {
     const conditions = [];
     if (filters?.module) conditions.push(eq(rules.module, filters.module));
     if (filters?.status) conditions.push(eq(rules.status, filters.status));
+    if (filters?.jurisdictionCode) {
+      conditions.push(eq(rules.jurisdictionCode, filters.jurisdictionCode));
+    }
+    if (filters?.q && filters.q.trim().length > 0) {
+      const pattern = `%${filters.q.trim()}%`;
+      conditions.push(
+        sql`(${rules.ruleId} ilike ${pattern} or ${rules.name} ilike ${pattern})`,
+      );
+    }
 
     return db
       .select()
@@ -78,11 +92,35 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
       .orderBy(asc(rules.priority));
   }
 
-  async listRuleVersions(ruleId: string) {
+  /** NRP-FR-021：按jurisdiction_code+entity_id+version精确定位，不跨地区猜测。 */
+  async getRuleExact(locator: {
+    ruleId: string;
+    jurisdictionCode: string;
+    version: number;
+  }): Promise<RuleRow | null> {
+    const rows = await db
+      .select()
+      .from(rules)
+      .where(
+        and(
+          eq(rules.ruleId, locator.ruleId),
+          eq(rules.jurisdictionCode, locator.jurisdictionCode),
+          eq(rules.version, locator.version),
+        ),
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async listRuleVersions(ruleId: string, jurisdictionCode?: string) {
+    const conditions = [eq(rules.ruleId, ruleId)];
+    if (jurisdictionCode) {
+      conditions.push(eq(rules.jurisdictionCode, jurisdictionCode));
+    }
     return db
       .select()
       .from(rules)
-      .where(eq(rules.ruleId, ruleId))
+      .where(and(...conditions))
       .orderBy(desc(rules.version));
   }
 
@@ -116,12 +154,16 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
     policyPackId?: string;
     type?: string;
     status?: string;
+    jurisdictionCode?: string;
   }) {
     const conditions = [];
     if (filters?.policyPackId)
       conditions.push(eq(params.policyPackId, filters.policyPackId));
     if (filters?.type) conditions.push(eq(params.type, filters.type));
     if (filters?.status) conditions.push(eq(params.status, filters.status));
+    if (filters?.jurisdictionCode) {
+      conditions.push(eq(params.jurisdictionCode, filters.jurisdictionCode));
+    }
 
     return db
       .select()
@@ -157,8 +199,16 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
     return rows[0] ?? null;
   }
 
-  async listRuleSets() {
-    return db.select().from(ruleSets).orderBy(asc(ruleSets.ruleSetId));
+  async listRuleSets(filters?: { jurisdictionCode?: string }) {
+    const conditions = [];
+    if (filters?.jurisdictionCode) {
+      conditions.push(eq(ruleSets.jurisdictionCode, filters.jurisdictionCode));
+    }
+    return db
+      .select()
+      .from(ruleSets)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(asc(ruleSets.ruleSetId));
   }
 
   async getWorkflow(workflowId: string) {

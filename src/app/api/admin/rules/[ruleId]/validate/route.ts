@@ -4,16 +4,43 @@ import { validateRuleAgainstSchema } from "@/lib/dsl/schema-validator";
 
 export const dynamic = "force-dynamic";
 
+/** NRP-FR-021：精确实体身份（jurisdiction_code+version）解析。 */
+function requireExactIdentity(searchParams: URLSearchParams): {
+  jurisdictionCode: string;
+  version: number;
+} | null {
+  const jurisdictionCode = searchParams.get("jurisdiction_code");
+  const version = Number(searchParams.get("version"));
+  if (!jurisdictionCode || !Number.isInteger(version) || version < 1) {
+    return null;
+  }
+  return { jurisdictionCode, version };
+}
+
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ ruleId: string }> },
 ) {
   try {
     const { ruleId } = await params;
-    const rule = await rulesReads.getRule(ruleId);
+    const identity = requireExactIdentity(req.nextUrl.searchParams);
+    if (!identity) {
+      return NextResponse.json(
+        { error: "缺少精确实体身份（jurisdiction_code/version，NRP-FR-021）" },
+        { status: 400 },
+      );
+    }
+    const rule = await rulesReads.getRuleExact({
+      ruleId,
+      jurisdictionCode: identity.jurisdictionCode,
+      version: identity.version,
+    });
 
     if (!rule) {
-      return NextResponse.json({ error: "未找到规则" }, { status: 404 });
+      return NextResponse.json(
+        { error: "未找到该地区与版本的规则" },
+        { status: 404 },
+      );
     }
 
     const examples = (rule.examples as unknown[]) ?? [];

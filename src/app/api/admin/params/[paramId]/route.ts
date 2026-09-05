@@ -1,7 +1,7 @@
 import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
 import {
-  resolveParamRecord,
+  resolveParamRecordExact,
   validateParamRecord,
 } from "@/lib/admin/params-service";
 
@@ -13,9 +13,16 @@ async function handleUpdate(
 ) {
   try {
     const { paramId } = await routeParams;
+    const jurisdictionCode = req.nextUrl.searchParams.get("jurisdiction_code");
+    if (!jurisdictionCode) {
+      return NextResponse.json(
+        { error: "缺少精确实体身份（jurisdiction_code，NRP-FR-021）" },
+        { status: 400 },
+      );
+    }
     const body = await req.json();
 
-    const existing = await resolveParamRecord(paramId);
+    const existing = await resolveParamRecordExact(paramId, jurisdictionCode);
     if (!existing) {
       return NextResponse.json({ error: "未找到参数" }, { status: 404 });
     }
@@ -37,10 +44,20 @@ async function handleUpdate(
   }
 }
 
-async function handleValidate(routeParams: Promise<{ paramId: string }>) {
+async function handleValidate(
+  req: NextRequest,
+  routeParams: Promise<{ paramId: string }>,
+) {
   try {
     const { paramId } = await routeParams;
-    const existing = await resolveParamRecord(paramId);
+    const jurisdictionCode = req.nextUrl.searchParams.get("jurisdiction_code");
+    if (!jurisdictionCode) {
+      return NextResponse.json(
+        { error: "缺少精确实体身份（jurisdiction_code，NRP-FR-021）" },
+        { status: 400 },
+      );
+    }
+    const existing = await resolveParamRecordExact(paramId, jurisdictionCode);
 
     if (!existing) {
       return NextResponse.json({ error: "未找到参数" }, { status: 404 });
@@ -86,7 +103,7 @@ export async function POST(
       return NextResponse.json({ error: "未知操作" }, { status: 400 });
     }
 
-    return handleValidate(routeParams);
+    return handleValidate(req, routeParams);
   } catch {
     return NextResponse.json(
       { error: "校验参数失败" },

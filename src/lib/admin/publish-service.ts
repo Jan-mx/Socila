@@ -1,10 +1,12 @@
-import { desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { params, ruleSets, rules } from "@/lib/db/schema";
 import { rulesReads } from "@/server/modules/rules/application";
+import type { RuleRow } from "@/server/modules/rules/application/ports";
 import { publishWrites } from "@/server/modules/publishing/application";
 import { validateRuleAgainstSchema } from "@/lib/dsl/schema-validator";
 import { runDbTestSuite, dbRuleToDefinition } from "@/lib/engine/test-runner";
+import { isJurisdictionBlocked } from "@/lib/policy-materialization/materialize";
 
 export type PublishEntityType = "rule" | "param" | "rule_set";
 export type PublishStage = "draft" | "staging" | "production";
@@ -15,11 +17,13 @@ interface GateCheckResult {
   results: Record<string, unknown>;
 }
 
-interface LatestEntity {
+interface ExactEntity {
   entityType: PublishEntityType;
   entityId: string;
   rowId: number;
   status: string;
+  jurisdictionCode: string;
+  version: number;
 }
 
 export class PublishServiceError extends Error {
@@ -53,43 +57,77 @@ function statusFromStage(stage: PublishStage): string {
   return stage;
 }
 
-async function getLatestEntity(
-  entityType: PublishEntityType,
-  entityId: string,
-): Promise<LatestEntity | null> {
-  if (entityType === "rule") {
-    const rows = await db
-      .select({ id: rules.id, status: rules.status, ruleId: rules.ruleId })
-      .from(rules)
-      .where(eq(rules.ruleId, entityId))
-      .orderBy(desc(rules.version))
-      .limit(1);
+export interface ExactLocator {
+  entityType: PublishEntityType;
+  jurisdictionCode: string;
+  entityId: string;
+  version: number;
+}
 
+/**
+ * NRP-FR-021：以jurisdiction_code+entity_id+version精确定位实体版本，
+ * 不按同名rule_id/param_id猜测地区。
+ */
+async function getExactEntity(
+  locator: ExactLocator,
+): Promise<ExactEntity | null> {
+  if (locator.entityType === "rule") {
+    const rows = await db
+      .select({
+        id: rules.id,
+        status: rules.status,
+        ruleId: rules.ruleId,
+        jurisdictionCode: rules.jurisdictionCode,
+        version: rules.version,
+      })
+      .from(rules)
+      .where(
+        and(
+          eq(rules.ruleId, locator.entityId),
+          eq(rules.jurisdictionCode, locator.jurisdictionCode),
+          eq(rules.version, locator.version),
+        ),
+      )
+      .limit(1);
     const row = rows[0];
     if (!row) return null;
     return {
-      entityType,
+      entityType: locator.entityType,
       entityId: row.ruleId,
       rowId: row.id,
       status: row.status,
+      jurisdictionCode: row.jurisdictionCode ?? locator.jurisdictionCode,
+      version: row.version,
     };
   }
 
-  if (entityType === "param") {
+  if (locator.entityType === "param") {
     const rows = await db
-      .select({ id: params.id, status: params.status, paramId: params.paramId })
+      .select({
+        id: params.id,
+        status: params.status,
+        paramId: params.paramId,
+        jurisdictionCode: params.jurisdictionCode,
+        version: params.version,
+      })
       .from(params)
-      .where(eq(params.paramId, entityId))
-      .orderBy(desc(params.version))
+      .where(
+        and(
+          eq(params.paramId, locator.entityId),
+          eq(params.jurisdictionCode, locator.jurisdictionCode),
+          eq(params.version, locator.version),
+        ),
+      )
       .limit(1);
-
     const row = rows[0];
     if (!row) return null;
     return {
-      entityType,
+      entityType: locator.entityType,
       entityId: row.paramId,
       rowId: row.id,
       status: row.status,
+      jurisdictionCode: row.jurisdictionCode ?? locator.jurisdictionCode,
+      version: row.version,
     };
   }
 
@@ -98,19 +136,27 @@ async function getLatestEntity(
       id: ruleSets.id,
       status: ruleSets.status,
       ruleSetId: ruleSets.ruleSetId,
+      jurisdictionCode: ruleSets.jurisdictionCode,
+      version: ruleSets.version,
     })
     .from(ruleSets)
-    .where(eq(ruleSets.ruleSetId, entityId))
-    .orderBy(desc(ruleSets.version))
+    .where(
+      and(
+        eq(ruleSets.ruleSetId, locator.entityId),
+        eq(ruleSets.jurisdictionCode, locator.jurisdictionCode),
+        eq(ruleSets.version, locator.version),
+      ),
+    )
     .limit(1);
-
   const row = rows[0];
   if (!row) return null;
   return {
-    entityType,
+    entityType: locator.entityType,
     entityId: row.ruleSetId,
     rowId: row.id,
     status: row.status,
+    jurisdictionCode: row.jurisdictionCode ?? locator.jurisdictionCode,
+    version: row.version,
   };
 }
 
@@ -134,9 +180,9 @@ async function updateEntityStatus(
 
 async function checkPromoteGates(
   entityType: PublishEntityType,
-  entityId: string,
   fromStage: PublishStage,
   toStage: PublishStage,
+  exactRule?: RuleRow | null,
 ): Promise<GateCheckResult> {
   if (fromStage === "draft" && toStage === "staging") {
     if (entityType !== "rule") {
@@ -148,7 +194,7 @@ async function checkPromoteGates(
       };
     }
 
-    const rule = await rulesReads.getRule(entityId);
+    const rule = exactRule ?? null;
     if (!rule) {
       return {
         passed: false,
@@ -198,7 +244,7 @@ async function checkPromoteGates(
 
   if (fromStage === "staging" && toStage === "production") {
     const tests = await rulesReads.listTests(
-      entityType === "rule" ? { ruleId: entityId } : undefined,
+      entityType === "rule" ? { ruleId: exactRule?.ruleId } : undefined,
     );
 
     const total = tests.length;
@@ -217,13 +263,8 @@ async function checkPromoteGates(
 
     // 把正在晋升的 staging 规则叠加进有效规则集——getEffectiveRules 只取 published，
     // 而此刻被晋升的规则还是 staging，不叠加门禁就测不到它（或拿旧版本充数）。
-    // 注：param / rule_set 晋升暂只跑 published 规则 + 全量用例（见 docs 已知限制）。
     const overrideRules =
-      entityType === "rule"
-        ? await rulesReads.getRule(entityId).then((r) =>
-            r ? [dbRuleToDefinition(r)] : [],
-          )
-        : [];
+      entityType === "rule" && exactRule ? [dbRuleToDefinition(exactRule)] : [];
 
     // 重新真实跑一遍回归测试，不信任可能已过期的 lastRunResult。
     let suite: Awaited<ReturnType<typeof runDbTestSuite>>;
@@ -310,16 +351,49 @@ function nextStageFromCurrent(current: PublishStage): PublishStage | null {
   return null;
 }
 
+function assertExactIdentity(options: {
+  jurisdictionCode?: string;
+  entityId?: string;
+  version?: number;
+}): void {
+  if (
+    !options.jurisdictionCode ||
+    !options.entityId ||
+    !Number.isInteger(options.version) ||
+    (options.version ?? 0) < 1
+  ) {
+    throw new PublishServiceError(
+      400,
+      "缺少精确实体身份（entity_type/jurisdiction_code/entity_id/version，NRP-FR-021）",
+    );
+  }
+}
+
 export async function promoteEntity(options: {
   entityType: PublishEntityType;
+  jurisdictionCode: string;
   entityId: string;
+  version: number;
   requestedToStage?: PublishStage | null;
   actor: string;
   reason?: string;
 }) {
-  const entity = await getLatestEntity(options.entityType, options.entityId);
+  assertExactIdentity(options);
+
+  const entity = await getExactEntity(options);
   if (!entity) {
-    throw new PublishServiceError(404, "Entity not found");
+    throw new PublishServiceError(
+      404,
+      "未找到该地区与版本的实体（NRP-FR-021精确身份定位）",
+    );
+  }
+
+  // NRP-FR-022：blocked地区的实体不得晋级或发布。
+  if (await isJurisdictionBlocked(entity.jurisdictionCode)) {
+    throw new PublishServiceError(
+      422,
+      "该地区存在政策覆盖缺口（blocked），实体不得晋级或发布",
+    );
   }
 
   const fromStage = stageFromStatus(entity.status);
@@ -332,7 +406,7 @@ export async function promoteEntity(options: {
   const allowedToStage = nextStageFromCurrent(fromStage);
 
   if (!allowedToStage) {
-    throw new PublishServiceError(400, "Current stage cannot be promoted");
+    throw new PublishServiceError(400, "当前阶段无法晋级");
   }
 
   if (options.requestedToStage && options.requestedToStage !== allowedToStage) {
@@ -342,15 +416,24 @@ export async function promoteEntity(options: {
     );
   }
 
+  const exactRule =
+    options.entityType === "rule"
+      ? await rulesReads.getRuleExact({
+          ruleId: entity.entityId,
+          jurisdictionCode: entity.jurisdictionCode,
+          version: entity.version,
+        })
+      : null;
+
   const gateCheck = await checkPromoteGates(
     options.entityType,
-    entity.entityId,
     fromStage,
     allowedToStage,
+    exactRule,
   );
 
   if (!gateCheck.passed) {
-    throw new PublishServiceError(422, gateCheck.reason ?? "Gate check failed", {
+    throw new PublishServiceError(422, gateCheck.reason ?? "门禁检查未通过", {
       gateResults: {
         passed: false,
         ...gateCheck.results,
@@ -370,6 +453,8 @@ export async function promoteEntity(options: {
     reason: options.reason ?? null,
     gateResults: gateCheck.results,
     diff: null,
+    jurisdictionCode: entity.jurisdictionCode,
+    entityVersion: entity.version,
   });
 
   return {
@@ -386,13 +471,20 @@ export async function promoteEntity(options: {
 
 export async function rollbackEntity(options: {
   entityType: PublishEntityType;
+  jurisdictionCode: string;
   entityId: string;
+  version: number;
   actor: string;
   reason?: string;
 }) {
-  const entity = await getLatestEntity(options.entityType, options.entityId);
+  assertExactIdentity(options);
+
+  const entity = await getExactEntity(options);
   if (!entity) {
-    throw new PublishServiceError(404, "Entity not found");
+    throw new PublishServiceError(
+      404,
+      "未找到该地区与版本的实体（NRP-FR-021精确身份定位）",
+    );
   }
 
   const fromStage = stageFromStatus(entity.status);
@@ -418,6 +510,8 @@ export async function rollbackEntity(options: {
     reason: options.reason ?? "rollback",
     gateResults: { rollback: true },
     diff: null,
+    jurisdictionCode: entity.jurisdictionCode,
+    entityVersion: entity.version,
   });
 
   return {

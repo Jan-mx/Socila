@@ -175,3 +175,11 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 四川黄金（`sichuan-overlay-golden.test.ts`）：继承国家口径、医保年限待办→needs_agent守卫语义（PRD §10）、2025年度窗口、隔离（NRP-AC-004）。
 - 落库快照（`nrp-gd-overlay.integration.test.ts`/`nrp-sc-overlay.integration.test.ts`，test:db）：GD/SC候选快照创建、同地区同日期重放哈希一致（NRP-AC-010）、单地区落库不影响SH（NRP-AC-009）。
 - 采集方式说明：官方站点（gov.cn/mohrss等）对curl返回403或JS挑战，采集使用Playwright无头Chromium保存渲染后原件+响应头+SHA-256（`evidence/*/*/meta.json`记录fetchMethod），事实仅取自抓取页面正文。
+
+## 阶段E 受控物化与地区化管理（09-05 NRP）
+
+- 物化器单元（`src/lib/policy-materialization/materializer.unit.test.ts`）：目标守卫（DATABASE_URL必须进程显式设置，.env.local存在也不回退；仅本机policyops）；目标指纹非敏感；manifest从已提交内容构建且确定性；地区就绪语义（CN/沪awaiting_approval、粤/川blocked）；草稿强制（不信任文件published）；既有键v2/新键v1版本解析；目标版本冲突拒绝。
+- 0013迁移行为（`nrp-0013-materialization-schema.integration.test.ts`，test:db）：params.evidence列、批次审计表（无连接串类字段）、publishes地区身份列（历史可空/新记录完整）、幂等重跑。
+- 物化器集成（`materializer.integration.test.ts`，独立动态库）：AC-011缺授权/错哈希/错指纹→拒绝且零写入；AC-013四地区版本与draft强制、旧行published不变；AC-014同manifest no-op与单事务回滚；AC-015固定计数49/70/5/4/528/851/117/0与GD/SC blocked、SC规则0。
+- 管理端身份：发布服务以jurisdiction_code+entity_id+version精确定位（缺失400、不存在404、blocked地区422拒绝晋级），发布审计携带地区与版本；规则列表jurisdiction/status/module/q筛选。
+- 运维工具：`scripts/restore-reconcile.mjs`（恢复逐表对账）、`scripts/planning-regression.ts`（规划行为零漂移复核）。

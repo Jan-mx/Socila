@@ -75,6 +75,8 @@ flowchart TB
 - 同级冲突和重叠有效期产生Conflict，不自动裁决。
 - 发布快照保存解析后的地区继承链、版本集合、hash和provenance（provenance含operation与targetBusinessKey，NRP-AC-005）。
 - JSON DSL继续保存在JSONB，并由AJV和JSON Schema校验（`dsl/protocol/socila_dsl_v1/schema/`）。
+- **受控物化（09-05阶段E）**：仓库权威资产进入持久库必须经`scripts/materialize-policy-regions.ts`（默认audit；apply需授权参数+manifest哈希+目标指纹三重校验；DATABASE_URL必须进程显式设置且仅限本机policyops，禁止dotenv回退）；四地区在单事务写入draft实体与批次审计（`policy_import_batches/members`），任一校验失败全部回滚；同manifest幂等no-op；CN/粤/川首次v1、上海既有键v2、新键v1；published行永不原地修改。参数携带结构化evidence（params.evidence）。地区就绪状态：CN/沪awaiting_approval、粤/川blocked（blocked实体由发布流水线强制拒绝晋级）。
+- **管理端地区身份（NRP-FR-021）**：规则/参数/规则集列表支持jurisdiction_code筛选（规则另支持module与q检索编号名称）；详情/校验/示例执行/版本/晋级/回滚以jurisdiction_code+entity_id+version精确定位（缺失400、不存在404、不跨地区猜测）；发布审计记录地区与实体版本；`GET /api/admin/policy-coverage`输出各地区就绪状态与覆盖缺口。
 
 ## 文档、OCR与RAG
 

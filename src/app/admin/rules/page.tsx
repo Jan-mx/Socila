@@ -2,6 +2,7 @@
 
 import { adminFetch } from "@/lib/client/admin-fetch";
 import { formatAdminModule, formatAdminStatus } from "@/lib/client/admin-labels";
+import { RegionCoverageBanner } from "@/components/admin/RegionCoverageBanner";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
@@ -22,6 +23,7 @@ import {
 interface Rule {
   id: number;
   ruleId: string;
+  jurisdictionCode: string | null;
   name: string;
   module: string;
   status: string;
@@ -45,6 +47,14 @@ interface RuleSet {
   conflictResolution: unknown;
   version: number;
 }
+
+const JURISDICTION_OPTIONS = [
+  { value: "", label: "全部地区" },
+  { value: "CN", label: "国家 baseline" },
+  { value: "310000", label: "上海" },
+  { value: "440000", label: "广东" },
+  { value: "510000", label: "四川" },
+];
 
 const STATUS_OPTIONS = [
   { value: "", label: "全部状态" },
@@ -82,13 +92,15 @@ function RulesTab() {
   const [search, setSearch] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [jurisdictionFilter, setJurisdictionFilter] = useState("");
 
-  const fetchRules = (q = "", mod = "", status = "") => {
+  const fetchRules = (q = "", mod = "", status = "", jur = "") => {
     setLoading(true);
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (mod) params.set("module", mod);
     if (status) params.set("status", status);
+    if (jur) params.set("jurisdiction_code", jur);
     fetch(`/api/admin/rules?${params}`)
       .then((r) => r.json())
       .then((d: { rules?: Rule[] }) =>
@@ -102,10 +114,14 @@ function RulesTab() {
     fetchRules();
   }, []);
 
-  const handleSearch = () => fetchRules(search, moduleFilter, statusFilter);
+  const handleSearch = () =>
+    fetchRules(search, moduleFilter, statusFilter, jurisdictionFilter);
 
   return (
     <>
+      <div className="mb-4">
+        <RegionCoverageBanner />
+      </div>
       <Card className="mb-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
         <CardContent className="pt-5">
           <div className="flex flex-wrap gap-3">
@@ -126,6 +142,12 @@ function RulesTab() {
               options={STATUS_OPTIONS}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
+              className="max-w-[160px]"
+            />
+            <Select
+              options={JURISDICTION_OPTIONS}
+              value={jurisdictionFilter}
+              onChange={(e) => setJurisdictionFilter(e.target.value)}
               className="max-w-[160px]"
             />
             <Button onClick={handleSearch} variant="outline" className="cursor-pointer">
@@ -156,6 +178,7 @@ function RulesTab() {
                 <thead className="border-y border-slate-200 bg-slate-50/90">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-slate-500">规则编号</th>
+                    <th className="px-4 py-3 text-left font-medium text-slate-500">地区</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-500">名称</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-500">模块</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-500">状态</th>
@@ -169,10 +192,17 @@ function RulesTab() {
                     <tr
                       key={rule.id}
                       className="cursor-pointer border-b border-slate-100 transition-colors hover:bg-cyan-50/40"
-                      onClick={() => router.push(`/admin/rules/${rule.ruleId}`)}
+                      onClick={() =>
+                        router.push(
+                          `/admin/rules/${rule.ruleId}?jurisdiction_code=${rule.jurisdictionCode ?? ""}&version=${rule.version}`,
+                        )
+                      }
                     >
                       <td className="px-4 py-3 font-mono text-xs text-primary underline-offset-2 hover:underline">
                         {rule.ruleId}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                        {rule.jurisdictionCode ?? "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-900">{rule.name}</td>
                       <td className="px-4 py-3 text-xs text-slate-500">

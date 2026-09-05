@@ -135,3 +135,48 @@
 - CN/GD/SC/SH四地区候选快照能力与继承链读取接口（`resolvePolicyContext`/`createPolicySnapshot`）。
 - 待办清单（§5）由政策管理员裁决后，通过新增版本（非原地修改）落地。
 - 采集原件与抽取文本（evidence目录）为RAG索引与DocumentTree管线的输入。
+
+## 10. 阶段E：权威资产持久化与地区化管理（2026-09-06）
+
+### 10.1 范围与授权
+
+按更新后PRD（NRP-FR-017～022、NRP-NFR-009～012、NRP-AC-011～016）执行。授权范围仅本机持久Compose库`localhost:5432/policyops`；未触碰远程数据库，未发布实体、未生成活动快照、未开放用户流量、未调用`npm run seed`、未删除数据、未修改案例库。
+
+### 10.2 只读基线核对（全部符合，未触发停止条件）
+
+- 持久库：24条上海published规则、29个published参数、1个published规则集；tests=528、cases=851、showcase_cases=117、policy_snapshots=0；policy_pack_versions=0。
+- 仓库权威资产：CN 16规则/6参数、上海8规则/27参数、广东1规则/5参数、四川0规则/3参数。
+
+### 10.3 受控物化runbook证据（§6.3顺序）
+
+| 步骤 | 结果 |
+| --- | --- |
+| 完整备份 | `pg_dump -Fc` → `backup/db/policyops-stage-e-pre-20260906-021504.dump`（668,191B）；SHA-256 `dade52d6e9427c90def26da0fa3b91eba2d2a5f12d99ebae199e0321a94b0756`（Git忽略目录，清单同存） |
+| 全新PG17+pgvector真实恢复 | 容器`nrp-e-restore`（pgvector/pgvector:pg17，仅角色GRANT告警，数据完整） |
+| 逐表对账 | `scripts/restore-reconcile.mjs`：14张表计数与规范化行哈希全部一致（NRP-AC-012/NRP-NFR-011） |
+| 显式migration | `DATABASE_URL`显式指向policyops执行0013（params.evidence、policy_import_batches/members、publishes.jurisdiction_code/entity_version），drizzle账本13条 |
+| 规划行为基线 | 物化前`scripts/planning-regression.ts`：528例/524过/4失败（既有），passSetHash=`e4fb8c3d…c0d3` |
+| audit（默认只读） | manifestHash=`6f5ac7bb…9f88`、targetFingerprint=`f3c29cb2…d711b`（哈希输出，不含连接串） |
+| apply | 携带`--i-am-authorized --manifest-hash --target-fingerprint`；单事务四地区写入成功 |
+| 事务内校验 | 固定计数`rules=49、params=70、rule_sets=5、policy_pack_versions=4、tests=528、cases=851、showcase_cases=117、policy_snapshots=0`；published行哈希不变（NRP-AC-015/NFR-012） |
+| 幂等复跑 | 同manifest再次apply返回no-op（NRP-AC-014）；audit显示`idempotentNoOp=true` |
+| 规划行为复核 | 物化后planning-regression输出与基线逐字节一致（PLANNING_IDENTICAL） |
+
+### 10.4 批次审计与地区语义
+
+- 批次：CN=awaiting_approval(16规则/6参数)、上海=awaiting_approval(8/27)、广东=blocked(1/5)、四川=blocked(0/3)（四川按PRD显示"0条地方规则、3个参数、blocked"）。
+- blocked原因（PRD §1.1缺口）：广东=2025-07基数原文缺失、失业条例原文未获取、2030年前市级口径；四川=医保年限仅征求意见稿、失业金标准原文未获取、2026年度基数未公布。
+- 版本：CN/粤/川首次v1；上海既有业务键v2（含RS-SHANGHAI-PLAN-V1规则集）；上海新键（P-MI-LIFETIME-*、T-UNEMPLOYMENT-DURATION-BY-YEARS replace行）v1；全部draft，published行零修改。
+- 成员审计74条（25规则+41参数+4规则集+4政策包），含内容哈希、来源提交、非敏感目标指纹、操作者；不含连接串/口令（NRP-NFR-009）。
+- 发布流水线（NRP-FR-021/AC-016）：promote/rollback必须携带`jurisdiction_code+entity_id+version`（缺失400、不存在404、blocked地区422拒绝晋级）；publishes新记录完整携带地区与版本（历史2条保持可空）。
+- 管理端：规则列表支持`jurisdiction_code/status/module/q`筛选与地区列；详情/校验/示例/版本/晋级按精确身份；参数列表地区筛选；新增`GET /api/admin/policy-coverage`与`RegionCoverageBanner`（四川显示0条地方规则、3个参数、blocked）。
+
+### 10.5 门禁（2026-09-06新鲜执行）
+
+Node单元434/434、数据库集成71/71（含物化器独立库3例）、TypeScript/ESLint零错误、生产构建零警告、Auth E2E 10/10（58.8s）、Gitleaks完整历史no leaks、scan-secrets 637文件零命中、allowlist哨兵通过、Compose 8服务healthy、恢复对账14表一致。
+
+### 10.6 遗留与边界
+
+- blocked地区在缺口消除（取得权威原文并新增版本）前保持blocked，不得晋级/生成活动快照（NRP-FR-022由发布流水线强制）。
+- `verified`状态仅表示持久化与恢复验证完成，不代表政策已批准或ready_for_planning；管理员批准为后续人工动作。
+- 演练容器（nrp-drill-pg、nrp-e-restore）验证后已停止；备份文件在Git忽略的`backup/db/`。

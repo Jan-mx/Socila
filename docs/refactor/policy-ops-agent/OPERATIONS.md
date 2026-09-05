@@ -108,3 +108,15 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 生产迁移、停写、入口或DNS切换、删除数据和Secret轮换必须获得用户明确授权。
 
 历史演练与切换细节见[Stage 07报告](./reports/stage-07/acceptance-report.md)和[Runbook](./reports/stage-07/runbook.md)。
+
+## 阶段E 受控物化runbook（09-05 NRP，仅本机policyops）
+
+1. 只读基线核对（规则/参数/规则集/案例计数与仓库权威资产清单）。
+2. 完整备份：`docker exec socila-postgres pg_dump -U postgres -Fc policyops > backup/db/policyops-stage-e-pre-<ts>.dump`并生成SHA-256清单（backup/为Git忽略）。
+3. 全新PG17+pgvector容器真实恢复：`cat <dump> | docker exec -i <容器> pg_restore -U postgres -d postgres --clean --if-exists`。
+4. 逐表对账：`DATABASE_URL=<源库> TARGET_DATABASE_URL=<恢复库> node scripts/restore-reconcile.mjs`——任一表不符即禁止后续步骤。
+5. 显式migration：`DATABASE_URL=<policyops> node scripts/run-migrations.mjs`（禁止dotenv回退）。
+6. audit：`npx tsx scripts/materialize-policy-regions.ts audit`（只读，输出manifestHash/targetFingerprint/计划/幂等标志）。
+7. apply：`npx tsx scripts/materialize-policy-regions.ts apply --i-am-authorized --manifest-hash <audit输出> --target-fingerprint <audit输出>`——单事务四地区draft写入+固定计数与旧行哈希事务内核验；失败自动全部回滚。
+8. 复核：固定计数、published行哈希、`scripts/planning-regression.ts`（与物化前输出一致）、`GET /api/admin/policy-coverage`地区就绪状态。
+9. 同manifest重复apply为幂等no-op；连接串/口令不得出现在日志、manifest、审计表或Git（NRP-NFR-009）。

@@ -10,8 +10,14 @@ export async function GET(req: NextRequest) {
     const policyPackId = searchParams.get("policy_pack_id") ?? undefined;
     const type = searchParams.get("type") ?? undefined;
     const status = searchParams.get("status") ?? undefined;
+    const jurisdictionCode = searchParams.get("jurisdiction_code") ?? undefined;
 
-    const paramsData = await rulesReads.listParams({ policyPackId, type, status });
+    const paramsData = await rulesReads.listParams({
+      policyPackId,
+      type,
+      status,
+      jurisdictionCode,
+    });
     return NextResponse.json({ params: paramsData });
   } catch {
     return NextResponse.json(

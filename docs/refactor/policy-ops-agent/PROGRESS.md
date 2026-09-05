@@ -174,6 +174,21 @@
 | 资源边界 | 演练容器`nrp-drill-pg`（nrp_drill/nrp_e2e两库）验证后已停止；`socila-*`持久资源未删除未重建 |
 | 披露 | 首次`npm run db:migrate`未显式指定DATABASE_URL，加载器回退`.env.local`导致已验收的0011与新增0012（均幂等/增量）被应用到本机持久开发库policyops；未重新Seed，应用行为不变；详见验收报告§7 |
 
+## 当前任务验证（09-05 阶段E 权威资产持久化与地区化管理，2026-09-06本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| 只读基线核对 | 持久库24/29/1、528/851/117、快照0、包0；仓库CN16/6、沪8/27、粤1/5、川0/3——全部符合PRD §1.1 |
+| TDD Red | 目标守卫/manifest/计划器/0013迁移/物化器集成均先于实现确认失败 |
+| 备份与真实恢复 | pg_dump -Fc 668,191B+SHA-256；全新PG17+pgvector恢复后14表计数与行哈希一致（NRP-AC-012） |
+| 显式migration | 0013（params.evidence+批次审计+publishes地区身份）在policyops执行，drizzle账本13条 |
+| audit→apply | audit只读输出manifestHash/targetFingerprint；apply携授权+哈希+指纹成功；事务内固定计数49/70/5/4/528/851/117/0、published行哈希不变 |
+| 幂等与零漂移 | 同manifest复跑no-op；planning-regression物化前后逐字节一致（528例/524过/passSetHash相同） |
+| 地区语义 | CN与沪awaiting_approval、粤/川blocked（含PRD缺口原因）；四川批次0条规则、3个参数；发布流水线blocked 422拒绝晋级 |
+| 管理端地区化 | 规则列表jurisdiction/status/module/q筛选+地区列；详情/校验/示例/版本/晋级按jurisdiction+id+version（缺失400/不存在404）；发布审计携带地区与版本；policy-coverage API+覆盖横幅（四川显示0条地方规则、3个参数、blocked） |
+| 门禁 | Node单元434/434、DB集成71/71、tsc/eslint零错误、build零警告、Auth E2E 10/10、Gitleaks no leaks、scan-secrets 637文件零命中、哨兵通过、Compose 8服务healthy |
+| 边界 | 未授权远程库/发布/活动快照/用户流量/Seed/删除数据/案例库修改——均未发生；演练容器已停止 |
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
 09-03阶段已记录**Accepted（开发分支发布准备）**。以下动作均为未来人工动作，不阻塞本阶段验收，且需用户另行授权：

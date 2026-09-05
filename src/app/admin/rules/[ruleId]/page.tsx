@@ -1,8 +1,8 @@
 "use client";
 
 import { adminFetch } from "@/lib/client/admin-fetch";
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -18,6 +18,7 @@ import { formatAdminModule, formatAdminStatus } from "@/lib/client/admin-labels"
 interface RuleDetail {
   id: number;
   ruleId: string;
+  jurisdictionCode: string | null;
   name: string;
   module: string;
   priority: number;
@@ -57,10 +58,16 @@ function statusVariant(
   return "info";
 }
 
-export default function RuleDetailPage() {
-  const params = useParams();
+function RuleDetailContent({
+  ruleId,
+  jurisdictionCode,
+  version,
+}: {
+  ruleId: string;
+  jurisdictionCode: string;
+  version: number;
+}) {
   const router = useRouter();
-  const ruleId = params.ruleId as string;
 
   const [rule, setRule] = useState<RuleDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,8 +83,10 @@ export default function RuleDetailPage() {
   >({});
   const [runningAll, setRunningAll] = useState(false);
 
+  const identityQuery = `jurisdiction_code=${jurisdictionCode}&version=${version}`;
+
   useEffect(() => {
-    fetch(`/api/admin/rules/${ruleId}`)
+    fetch(`/api/admin/rules/${ruleId}?${identityQuery}`)
       .then((r) => r.json())
       .then((data: { rule?: RuleDetail; versions?: unknown[] }) => {
         setRule(data.rule ?? null);
@@ -102,7 +111,7 @@ export default function RuleDetailPage() {
     }
     setSaving(true);
     try {
-      const res = await adminFetch(`/api/admin/rules/${ruleId}`, {
+      const res = await adminFetch(`/api/admin/rules/${ruleId}?${identityQuery}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decisionTable: parsed }),
@@ -118,9 +127,12 @@ export default function RuleDetailPage() {
   const handleValidate = async () => {
     setValidating(true);
     try {
-      const res = await adminFetch(`/api/admin/rules/${ruleId}/validate`, {
-        method: "POST",
-      });
+      const res = await adminFetch(
+        `/api/admin/rules/${ruleId}/validate?${identityQuery}`,
+        {
+          method: "POST",
+        },
+      );
       const json = await res.json();
       if (res.ok && json.valid) showMsg("ok", "校验通过");
       else showMsg("err", json.error ?? JSON.stringify(json.errors));
@@ -132,11 +144,14 @@ export default function RuleDetailPage() {
   const handlePromote = async () => {
     setPromoting(true);
     try {
-      const res = await adminFetch(`/api/admin/rules/${ruleId}/promote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toStage: "staging" }),
-      });
+      const res = await adminFetch(
+        `/api/admin/rules/${ruleId}/promote?${identityQuery}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toStage: "staging" }),
+        },
+      );
       const json = await res.json();
       if (res.ok) showMsg("ok", "已晋级至预发布");
       else showMsg("err", json.error ?? "晋级失败");
@@ -147,11 +162,14 @@ export default function RuleDetailPage() {
 
   const runExample = async (ex: Example) => {
     try {
-      const res = await adminFetch(`/api/admin/rules/${ruleId}/run-example`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ example: ex }),
-      });
+      const res = await adminFetch(
+        `/api/admin/rules/${ruleId}/run-example?${identityQuery}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ example: ex }),
+        },
+      );
       const json = await res.json();
       setExampleResults((prev) => ({ ...prev, [ex.name]: json }));
     } catch {
@@ -244,6 +262,10 @@ export default function RuleDetailPage() {
         <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <CardContent className="pt-5">
             <dl className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-slate-500">地区</dt>
+                <dd className="font-mono text-slate-900">{rule.jurisdictionCode ?? "-"}</dd>
+              </div>
               <div className="flex justify-between">
                 <dt className="text-slate-500">模块</dt>
                 <dd className="text-slate-900">{formatAdminModule(rule.module)}</dd>
@@ -371,5 +393,28 @@ export default function RuleDetailPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function RuleDetailWrapper() {
+  const params = useParams();
+  const search = useSearchParams();
+  const ruleId = params.ruleId as string;
+  const jurisdictionCode = search.get("jurisdiction_code") ?? "";
+  const version = Number(search.get("version") ?? "0");
+  return (
+    <RuleDetailContent
+      ruleId={ruleId}
+      jurisdictionCode={jurisdictionCode}
+      version={version}
+    />
+  );
+}
+
+export default function RuleDetailPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-slate-500">加载中...</div>}>
+      <RuleDetailWrapper />
+    </Suspense>
   );
 }

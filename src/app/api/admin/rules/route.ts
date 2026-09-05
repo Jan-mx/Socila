@@ -9,8 +9,15 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl;
     const ruleModule = searchParams.get("module") ?? undefined;
     const status = searchParams.get("status") ?? undefined;
+    const jurisdictionCode = searchParams.get("jurisdiction_code") ?? undefined;
+    const q = searchParams.get("q") ?? undefined;
 
-    const rules = await rulesReads.listRules({ module: ruleModule, status });
+    const rules = await rulesReads.listRules({
+      module: ruleModule,
+      status,
+      jurisdictionCode,
+      q,
+    });
     return NextResponse.json({ rules });
   } catch {
     return NextResponse.json(

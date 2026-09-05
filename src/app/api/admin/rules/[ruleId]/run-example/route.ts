@@ -46,6 +46,19 @@ export async function POST(
       );
     }
 
+    const jurisdictionCode =
+      req.nextUrl.searchParams.get("jurisdiction_code") ?? undefined;
+    const version = Number(req.nextUrl.searchParams.get("version"));
+    if (
+      !jurisdictionCode ||
+      !Number.isInteger(version) ||
+      version < 1
+    ) {
+      return NextResponse.json(
+        { error: "缺少精确实体身份（jurisdiction_code/version，NRP-FR-021）" },
+        { status: 400 },
+      );
+    }
     const asOfDate = new Date().toISOString().slice(0, 10);
     // NRP-FR-005/006：示例执行同样按继承链取参（CN baseline垫底，SHANGHAI_BASE覆盖）。
     const [nationalRows, paramsRows] = await Promise.all([

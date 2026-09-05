@@ -11,9 +11,21 @@ export async function PUT(
   try {
     const { ruleId, versionId } = await params;
     const version = parseInt(versionId, 10);
+    const jurisdictionCode =
+      req.nextUrl.searchParams.get("jurisdiction_code") ?? undefined;
+    if (!jurisdictionCode) {
+      return NextResponse.json(
+        { error: "缺少精确实体身份（jurisdiction_code，NRP-FR-021）" },
+        { status: 400 },
+      );
+    }
     const body = await req.json();
 
-    const existing = await rulesReads.getRule(ruleId, version);
+    const existing = await rulesReads.getRuleExact({
+      ruleId,
+      jurisdictionCode,
+      version,
+    });
     if (!existing) {
       return NextResponse.json(
         { error: "未找到规则版本" },
@@ -45,6 +57,14 @@ export async function POST(
   try {
     const { ruleId, versionId } = await params;
     const version = parseInt(versionId, 10);
+    const jurisdictionCode =
+      req.nextUrl.searchParams.get("jurisdiction_code") ?? undefined;
+    if (!jurisdictionCode) {
+      return NextResponse.json(
+        { error: "缺少精确实体身份（jurisdiction_code，NRP-FR-021）" },
+        { status: 400 },
+      );
+    }
     const body = await req.json();
     const { action } = body;
 

@@ -68,6 +68,9 @@ export const params = pgTable("params", {
   // 显式overlay操作（NRP-FR-007），约束同rules（migration 0012）。
   operation: text("operation").notNull().default("add"),
   targetBusinessKey: text("target_business_key"),
+  // 参数证据（NRP-FR-020，migration 0013）：document_id/artifact/
+  // content_sha256/locator/excerpt等结构化引用。
+  evidence: jsonb("evidence"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -132,7 +135,39 @@ export const publishes = pgTable("publishes", {
   reason: text("reason"),
   gateResults: jsonb("gate_results"),
   diff: jsonb("diff"),
+  // 地区身份（NRP-FR-021，migration 0013）：历史记录允许为空，新记录必须完整。
+  jurisdictionCode: text("jurisdiction_code"),
+  entityVersion: integer("entity_version"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─── Policy Import Batches（09-05 阶段E，NRP-FR-019）────────────────────────
+// 受控物化批次审计：不含连接串、口令或完整URL（NRP-NFR-009）。
+
+export const policyImportBatches = pgTable("policy_import_batches", {
+  id: serial("id").primaryKey(),
+  jurisdictionCode: text("jurisdiction_code").notNull(),
+  manifestHash: text("manifest_hash").notNull(),
+  sourceCommit: text("source_commit").notNull(),
+  targetFingerprint: text("target_fingerprint").notNull(),
+  status: text("status").notNull().default("prepared"),
+  readiness: text("readiness").notNull(),
+  blockingReasons: jsonb("blocking_reasons").notNull().default([]),
+  entityCounts: jsonb("entity_counts").notNull().default({}),
+  actor: text("actor").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const policyImportBatchMembers = pgTable("policy_import_batch_members", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id")
+    .notNull()
+    .references(() => policyImportBatches.id),
+  entityType: text("entity_type").notNull(),
+  entityRowId: integer("entity_row_id").notNull(),
+  businessKey: text("business_key").notNull(),
+  version: integer("version").notNull(),
+  contentHash: text("content_hash").notNull(),
 });
 
 // ─── Plans ──────────────────────────────────────────────────────────────────

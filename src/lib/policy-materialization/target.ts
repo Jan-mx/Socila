@@ -1,0 +1,191 @@
+/**
+ * NRP-NFR-009 / NRP-FR-017 目标保护：
+ * - 数据库目标只来自进程级DATABASE_URL，禁止任何dotenv/.env回退；
+ * - 阶段E只允许本机 localhost:5432/policyops；
+ * - 目标指纹 = 对既有政策行与固定计数的规范化哈希（不含连接串/口令/完整URL）。
+ */
+import { createHash } from "node:crypto";
+
+export interface MaterializationTarget {
+  host: string;
+  port: string;
+  database: string;
+}
+
+export class TargetGuardError extends Error {}
+
+/** 解析并校验目标：必须显式设置进程级DATABASE_URL（不得dotenv回退）。
+ * 默认只允许本机 localhost:5432/policyops（NRP-NFR-009）；测试可通过
+ * allowedDatabases注入演练库名，生产CLI不传任何放宽参数。 */
+export function resolveTarget(
+  env: Partial<NodeJS.ProcessEnv> = process.env,
+  options: { allowedDatabases?: string[] } = {},
+): MaterializationTarget {
+  const allowedDatabases = options.allowedDatabases ?? ["policyops"];
+  const url = env.DATABASE_URL;
+  if (!url || url.trim().length === 0) {
+    throw new TargetGuardError(
+      "[materialize-target] DATABASE_URL 未在进程环境中显式设置（禁止dotenv/.env回退，NRP-FR-017）",
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new TargetGuardError("[materialize-target] DATABASE_URL 不是合法连接串");
+  }
+  const host = parsed.hostname;
+  const port = parsed.port || "5432";
+  const database = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
+  const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1";
+  if (!isLocal || !allowedDatabases.includes(database)) {
+    throw new TargetGuardError(
+      `[materialize-target] 目标不在授权范围（仅允许本机 localhost:5432/${allowedDatabases.join("|")}，实际 host=${host} db=${database}，NRP-NFR-009）`,
+    );
+  }
+  return { host, port, database };
+}
+
+/** 规范化JSON（键排序）——与快照/黄金对账同一哈希口径。 */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(sortKeys(value));
+}
+
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeys);
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(value as Record<string, unknown>).sort()) {
+      out[k] = sortKeys((value as Record<string, unknown>)[k]);
+    }
+    return out;
+  }
+  return value;
+}
+
+export function sha256(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/** 最小SQL接口（便于单测注入假实现）。 */
+export interface SqlLike {
+  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+}
+
+/** 固定计数核对表（NRP-AC-015 / PRD §9）。 */
+export const EXPECTED_TOTAL_COUNTS = {
+  rules: 49,
+  params: 70,
+  rule_sets: 5,
+  policy_pack_versions: 4,
+  tests: 528,
+  cases: 851,
+  showcase_cases: 117,
+  policy_snapshots: 0,
+} as const;
+
+export interface ExistingState {
+  counts: Record<string, number>;
+  /** published政策行的规范化哈希（旧行保护，NFR-012）。 */
+  publishedRowsHash: string;
+  /** (jurisdiction, entity_type, business_key) → 最大版本。 */
+  maxVersions: Map<string, number>;
+  /** 已存在的 pack (jurisdiction, packId) → 最大版本。 */
+  packVersions: Map<string, number>;
+}
+
+interface CountRow {
+  table_name: string;
+  n: string;
+}
+
+/**
+ * 读取既有状态：固定计数、published行规范化哈希、每键最大版本。
+ * published行哈希覆盖 rules/params/rule_sets 的全部业务列（旧行保护基线）。
+ */
+export async function loadExistingState(sql: SqlLike): Promise<ExistingState> {
+  const tables = [
+    "rules",
+    "params",
+    "rule_sets",
+    "policy_pack_versions",
+    "tests",
+    "cases",
+    "showcase_cases",
+    "policy_snapshots",
+  ];
+  const countRows = await sql.query(
+    `select 'rules' as table_name, count(*)::text as n from rules
+     union all select 'params', count(*)::text from params
+     union all select 'rule_sets', count(*)::text from rule_sets
+     union all select 'policy_pack_versions', count(*)::text from policy_pack_versions
+     union all select 'tests', count(*)::text from tests
+     union all select 'cases', count(*)::text from cases
+     union all select 'showcase_cases', count(*)::text from showcase_cases
+     union all select 'policy_snapshots', count(*)::text from policy_snapshots`,
+  );
+  const counts: Record<string, number> = {};
+  for (const row of countRows.rows as unknown as CountRow[]) {
+    counts[row.table_name] = Number(row.n);
+  }
+
+  // 全行查询：版本解析需要看到draft行（幂等重跑不得复用已存在的draft版本号）。
+  const ruleRows = await sql.query(
+    `select rule_id as business_key, jurisdiction_code, version, status, name, module,
+            dsl_version, priority, effective_from::text as effective_from, effective_to::text as effective_to, decision_table::text as payload,
+            operation, target_business_key
+     from rules order by id`,
+  );
+  const paramRows = await sql.query(
+    `select param_id as business_key, jurisdiction_code, version, status, type,
+            value::text as payload, effective_from::text as effective_from, effective_to::text as effective_to, operation, target_business_key
+     from params order by id`,
+  );
+  const ruleSetRows = await sql.query(
+    `select rule_set_id as business_key, jurisdiction_code, version, status,
+            rules::text as payload, operation, target_business_key
+     from rule_sets order by id`,
+  );
+
+  // 旧行保护哈希只覆盖published行（NFR-012：新draft不得改变既有published内容）；
+  // 日期列显式::text，消除simple/extended协议解析差异。
+  const hash = sha256(
+    canonicalJson({
+      rules: ruleRows.rows.filter((r) => r.status === "published"),
+      params: paramRows.rows.filter((r) => r.status === "published"),
+      rule_sets: ruleSetRows.rows.filter((r) => r.status === "published"),
+    }),
+  );
+
+  const maxVersions = new Map<string, number>();
+  for (const row of [...ruleRows.rows, ...paramRows.rows, ...ruleSetRows.rows]) {
+    const key = `${row.jurisdiction_code}|${row.business_key}`;
+    const current = maxVersions.get(key) ?? 0;
+    maxVersions.set(key, Math.max(current, Number(row.version)));
+  }
+
+  const packRows = await sql.query(
+    `select jurisdiction_code, policy_pack_id, version from policy_pack_versions`,
+  );
+  const packVersions = new Map<string, number>();
+  for (const row of packRows.rows) {
+    const key = `${row.jurisdiction_code}|${row.policy_pack_id}`;
+    packVersions.set(key, Math.max(packVersions.get(key) ?? 0, Number(row.version)));
+  }
+
+  return { counts, publishedRowsHash: hash, maxVersions, packVersions };
+}
+
+/** 目标指纹：主机:端口/库名 + 固定计数 + published行哈希（不含连接串/口令）。 */
+export function computeTargetFingerprint(
+  target: MaterializationTarget,
+  state: ExistingState,
+): string {
+  return sha256(
+    canonicalJson({
+      target: `${target.host}:${target.port}/${target.database}`,
+      counts: state.counts,
+      publishedRowsHash: state.publishedRowsHash,
+    }),
+  );
+}

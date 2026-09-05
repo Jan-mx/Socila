@@ -14,6 +14,7 @@ import {
 
 interface PublishEntity {
   entityType: string;
+  jurisdictionCode: string | null;
   entityId: string;
   status: string;
   version: number;
@@ -88,7 +89,9 @@ export default function PublishPage() {
 
   const handlePromote = async (
     entityType: string,
+    jurisdictionCode: string | null,
     entityId: string,
+    entityVersion: number,
     fromStage: string,
   ) => {
     const key = `${entityType}:${entityId}`;
@@ -100,7 +103,14 @@ export default function PublishPage() {
       const res = await fetch("/api/admin/publish/promote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entityType, entityId, fromStage, toStage }),
+        body: JSON.stringify({
+          entityType,
+          jurisdiction_code: jurisdictionCode,
+          entity_id: entityId,
+          version: entityVersion,
+          fromStage,
+          toStage,
+        }),
       });
       const json = await res.json();
       if (json.gateResults) {
@@ -116,7 +126,12 @@ export default function PublishPage() {
     }
   };
 
-  const handleRollback = async (entityType: string, entityId: string) => {
+  const handleRollback = async (
+    entityType: string,
+    jurisdictionCode: string | null,
+    entityId: string,
+    entityVersion: number,
+  ) => {
     const key = `${entityType}:${entityId}`;
     setRolling(key);
     setActionError(null);
@@ -124,7 +139,12 @@ export default function PublishPage() {
       const res = await fetch("/api/admin/publish/rollback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entityType, entityId }),
+        body: JSON.stringify({
+          entityType,
+          jurisdiction_code: jurisdictionCode,
+          entity_id: entityId,
+          version: entityVersion,
+        }),
       });
       if (res.ok) {
         fetchAll();
@@ -215,7 +235,14 @@ export default function PublishPage() {
                             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                               {formatAdminEntityType(entity.entityType)}
                             </p>
-                            <p className="truncate font-mono text-sm text-slate-900">{entity.entityId}</p>
+                            <p className="truncate font-mono text-sm text-slate-900">
+                              {entity.entityId}
+                              {entity.jurisdictionCode && (
+                                <span className="ml-1 text-xs text-slate-400">
+                                  @{entity.jurisdictionCode}
+                                </span>
+                              )}
+                            </p>
                             <div className="mt-1 flex items-center gap-1">
                               <Badge variant={statusVariant(entity.status)}>
                                 {formatAdminStatus(entity.status)}
@@ -230,7 +257,13 @@ export default function PublishPage() {
                                 variant="outline"
                                 loading={isPromoting}
                                 onClick={() =>
-                                  handlePromote(entity.entityType, entity.entityId, stage)
+                                  handlePromote(
+                                    entity.entityType,
+                                    entity.jurisdictionCode,
+                                    entity.entityId,
+                                    entity.version,
+                                    stage,
+                                  )
                                 }
                                 className="cursor-pointer"
                               >
@@ -241,7 +274,14 @@ export default function PublishPage() {
                                 size="sm"
                                 variant="ghost"
                                 loading={isRolling}
-                                onClick={() => handleRollback(entity.entityType, entity.entityId)}
+                                onClick={() =>
+                                  handleRollback(
+                                    entity.entityType,
+                                    entity.jurisdictionCode,
+                                    entity.entityId,
+                                    entity.version,
+                                  )
+                                }
                                 className="cursor-pointer"
                               >
                                 <RotateCcw size={11} />

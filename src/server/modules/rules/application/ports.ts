@@ -23,18 +23,34 @@ export interface RulesReadRepository {
     asOfDate: string,
   ): Promise<{ ruleSet: RuleSetRow | null; rules: RuleRow[] }>;
   getRule(ruleId: string, version?: number): Promise<RuleRow | null>;
-  listRules(filters?: { module?: string; status?: string }): Promise<RuleRow[]>;
-  listRuleVersions(ruleId: string): Promise<RuleRow[]>;
+  /** NRP-FR-021：地区精确身份定位（jurisdiction_code + entity_id + version）。 */
+  getRuleExact(locator: {
+    ruleId: string;
+    jurisdictionCode: string;
+    version: number;
+  }): Promise<RuleRow | null>;
+  listRules(filters?: {
+    module?: string;
+    status?: string;
+    jurisdictionCode?: string;
+    /** q检索规则编号与名称（NRP-FR-021）。 */
+    q?: string;
+  }): Promise<RuleRow[]>;
+  listRuleVersions(
+    ruleId: string,
+    jurisdictionCode?: string,
+  ): Promise<RuleRow[]>;
   getEffectiveParams(policyPackId: string, asOfDate: string): Promise<ParamRow[]>;
   listParams(filters?: {
     policyPackId?: string;
     type?: string;
     status?: string;
+    jurisdictionCode?: string;
   }): Promise<ParamRow[]>;
   getRuleSet(ruleSetId: string): Promise<RuleSetRow | null>;
   /** 最新版本规则集（不限状态）——管理后台草稿编辑入口使用。 */
   getLatestRuleSetVersion(ruleSetId: string): Promise<RuleSetRow | null>;
-  listRuleSets(): Promise<RuleSetRow[]>;
+  listRuleSets(filters?: { jurisdictionCode?: string }): Promise<RuleSetRow[]>;
   getWorkflow(workflowId: string): Promise<WorkflowRow | null>;
   listTests(filters?: { ruleId?: string; source?: string }): Promise<TestRow[]>;
   getTest(id: number): Promise<TestRow | null>;

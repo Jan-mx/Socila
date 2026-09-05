@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 
 interface PipelineEntity {
   entityType: string;
+  jurisdictionCode: string | null;
   entityId: string;
   status: string;
   version: number;
@@ -55,11 +56,12 @@ export async function GET() {
       prod: [],
     };
 
-    for (const rule of dedupeLatest(rules, (row) => row.ruleId)) {
+    for (const rule of dedupeLatest(rules, (row) => `${row.jurisdictionCode}|${row.ruleId}`)) {
       const stage = toStage(rule.status);
       if (!stage) continue;
       pipeline[stage].push({
         entityType: "rule",
+        jurisdictionCode: rule.jurisdictionCode,
         entityId: rule.ruleId,
         status: rule.status,
         version: rule.version,
@@ -67,11 +69,12 @@ export async function GET() {
       });
     }
 
-    for (const param of dedupeLatest(params, (row) => row.paramId)) {
+    for (const param of dedupeLatest(params, (row) => `${row.jurisdictionCode}|${row.paramId}`)) {
       const stage = toStage(param.status);
       if (!stage) continue;
       pipeline[stage].push({
         entityType: "param",
+        jurisdictionCode: param.jurisdictionCode,
         entityId: param.paramId,
         status: param.status,
         version: param.version,
@@ -79,11 +82,12 @@ export async function GET() {
       });
     }
 
-    for (const ruleSet of dedupeLatest(ruleSets, (row) => row.ruleSetId)) {
+    for (const ruleSet of dedupeLatest(ruleSets, (row) => `${row.jurisdictionCode}|${row.ruleSetId}`)) {
       const stage = toStage(ruleSet.status);
       if (!stage) continue;
       pipeline[stage].push({
         entityType: "rule_set",
+        jurisdictionCode: ruleSet.jurisdictionCode,
         entityId: ruleSet.ruleSetId,
         status: ruleSet.status,
         version: ruleSet.version,

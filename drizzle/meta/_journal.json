@@ -85,6 +85,13 @@
       "when": 1788818400000,
       "tag": "0012_nrp_explicit_overlay_operation",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788904800000,
+      "tag": "0013_nrp_stage_e_materialization",
+      "breakpoints": true
     }
   ]
 }
