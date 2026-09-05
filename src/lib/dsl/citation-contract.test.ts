@@ -26,7 +26,7 @@ interface EvidenceEntry {
 }
 
 const REPO_ROOT = process.cwd();
-const REGION_DIRS = ["cn_dsl_v1", "guangdong_dsl_v1"].map((d) =>
+const REGION_DIRS = ["cn_dsl_v1", "guangdong_dsl_v1", "sichuan_dsl_v1"].map((d) =>
   path.join(REPO_ROOT, "dsl/regions", d),
 );
 

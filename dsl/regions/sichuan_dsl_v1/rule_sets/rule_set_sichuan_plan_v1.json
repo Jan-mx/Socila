@@ -1,0 +1,30 @@
+{
+  "rule_set_id": "RS-SC-PLAN-V1",
+  "description": "四川省规划规则集：继承国家baseline全部16条规则（四川v1无新增可执行地方规则；医保退休年限省级统一文件尚为征求意见状态，按PRD停止编码转人工裁决）",
+  "status": "published",
+  "effective_from": "2024-01-01",
+  "operation": "add",
+  "target_business_key": null,
+  "rules": [
+    "R-010-PARSE-BIRTH-YEAR",
+    "R-011-BUILD-BIRTH-DATE",
+    "R-012-NORMALIZE-GENDER",
+    "R-020-FEMALE-RETIRE-TYPE",
+    "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "R-115-FLEXIBLE-RETIREMENT",
+    "R-120-COMPUTE-RETIRE-DATE",
+    "R-200-MIN-PENSION-YEARS",
+    "R-210-PENSION-GAP",
+    "R-220-MEDICAL-LIFETIME-GAP",
+    "R-300-MI-GAP-MONTHS",
+    "R-400-UNEMPLOYMENT-ELIGIBILITY",
+    "R-410-UNEMPLOYMENT-DURATION",
+    "R-420-UI-MEDICAL-COVERAGE",
+    "R-700-PLAN-TEMPLATE",
+    "R-900-FINAL-GATE"
+  ],
+  "conflict_resolution": {
+    "same_rule_id_multiple_versions": "latest_effective_from",
+    "policy_params": "latest_effective_from"
+  }
+}

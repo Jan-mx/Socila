@@ -109,8 +109,10 @@ function parseManifest(regionDir: string): RegionDslManifest {
   if (typeof m.bundle_version !== "number" || !Number.isInteger(m.bundle_version) || m.bundle_version < 1) {
     throw new Error(`${MANIFEST_FILE}: bundle_version 必须为正整数`);
   }
-  if (!Array.isArray(m.rules) || m.rules.length === 0) {
-    throw new Error(`${MANIFEST_FILE}: rules 必须为非空数组`);
+  // NRP-FR-006：地区overlay可以仅提供参数（如四川v1无可执行地方规则），
+  // rules数组允许为空；数组本身必须存在。
+  if (!Array.isArray(m.rules)) {
+    throw new Error(`${MANIFEST_FILE}: rules 必须为数组`);
   }
   for (const entry of m.rules as RegionRuleEntry[]) {
     if (typeof entry?.rule_id !== "string" || typeof entry?.file !== "string") {

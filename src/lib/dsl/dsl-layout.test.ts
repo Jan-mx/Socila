@@ -270,3 +270,31 @@ describe("广东overlay目录 dsl/regions/guangdong_dsl_v1（NRP-FR-006/FR-008�
     expect(male?.effective_from).toBe("2030-01-01");
   });
 });
+
+describe("四川overlay目录 dsl/regions/sichuan_dsl_v1（NRP-FR-006/FR-011待办语义）", () => {
+  const SC_DIR = path.join(DSL_ROOT, "regions/sichuan_dsl_v1");
+
+  it("Manifest声明510000且无可执行地方规则（医保年限待人工裁决）", () => {
+    const manifest = JSON.parse(
+      readFileSync(path.join(SC_DIR, "rules_manifest.json"), "utf8"),
+    ) as { jurisdiction_code: string; region_slug: string; rules: unknown[] };
+    expect(manifest.jurisdiction_code).toBe("510000");
+    expect(manifest.region_slug).toBe("sichuan");
+    expect(manifest.rules).toHaveLength(0);
+  });
+
+  it("SC参数包显式add且基数参数限定2025年度窗口", () => {
+    const pack = JSON.parse(
+      readFileSync(path.join(SC_DIR, "params/policy_params_sichuan_base.json"), "utf8"),
+    ) as {
+      policy_pack_id: string;
+      params: Array<{ param_id: string; operation?: string; effective_from?: string; effective_to?: string | null }>;
+    };
+    expect(pack.policy_pack_id).toBe("SC-BASE");
+    for (const p of pack.params) {
+      expect(p.operation).toBe("add");
+      expect(p.effective_from).toBe("2025-01-01");
+      expect(p.effective_to).toBe("2025-12-31");
+    }
+  });
+});

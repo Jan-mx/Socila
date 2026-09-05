@@ -73,9 +73,9 @@ describe("CANONICAL_DSL_VERSION（SDL-FR-001 协议标识）", () => {
 });
 
 describe("discoverRegionDsl（SDL-FR-002/003/004）", () => {
-  it("从仓库默认根发现国家、广东、上海三地区（NRP-FR-005/006）", () => {
+  it("从仓库默认根发现国家、广东、四川、上海四地区（NRP-FR-005/006）", () => {
     const regions = discoverRegionDsl();
-    expect(regions).toHaveLength(3);
+    expect(regions).toHaveLength(4);
 
     const shanghai = regions.find((r) => r.manifest.region_slug === "shanghai")!;
     expect(shanghai).toBeTruthy();

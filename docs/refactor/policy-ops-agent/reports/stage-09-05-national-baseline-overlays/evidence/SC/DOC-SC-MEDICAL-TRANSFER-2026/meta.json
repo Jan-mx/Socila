@@ -1,0 +1,11 @@
+{
+  "docId": "DOC-SC-MEDICAL-TRANSFER-2026",
+  "title": "四川省医疗保障局",
+  "officialUrl": "https://ylbzj.sc.gov.cn/scsybj/nc010105/2026/5/22/26b3f7d73af8413c8639186066a4d469.shtml",
+  "finalUrl": "https://ylbzj.sc.gov.cn/scsybj/nc010105/2026/5/22/26b3f7d73af8413c8639186066a4d469.shtml",
+  "httpStatus": 200,
+  "fetchedAt": "2026-09-05T16:10:50.284Z",
+  "fetchMethod": "playwright-chromium-headless",
+  "sha256": "f287d1b36666c2b5de6a11ce2264958e2b0b16880e750c85278277485ca6ed15",
+  "byteSize": 36878
+}
