@@ -1,0 +1,12 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "region_slug": "guangdong",
+  "jurisdiction_code": "440000",
+  "bundle_version": 1,
+  "params_file": "params/policy_params_guangdong_base.json",
+  "rule_set_file": "rule_sets/rule_set_guangdong_plan_v1.json",
+  "tests_file": "tests/rule_examples_as_tests.json",
+  "rules": [
+    { "rule_id": "R-GD-MI-RETIRE-RESTRICT", "file": "R-GD-MI-RETIRE-RESTRICT.json" }
+  ]
+}

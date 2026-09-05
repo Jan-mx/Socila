@@ -234,3 +234,39 @@ describe("国家baseline目录 dsl/regions/cn_dsl_v1（NRP-FR-005/FR-007）", ()
     expect([...ruleSet.rules].sort()).toEqual([...files].sort());
   });
 });
+
+describe("广东overlay目录 dsl/regions/guangdong_dsl_v1（NRP-FR-006/FR-008）", () => {
+  const GD_DIR = path.join(DSL_ROOT, "regions/guangdong_dsl_v1");
+
+  it("Manifest声明440000且资产齐备", () => {
+    const manifest = JSON.parse(
+      readFileSync(path.join(GD_DIR, "rules_manifest.json"), "utf8"),
+    ) as { jurisdiction_code: string; region_slug: string; rules: Array<{ rule_id: string }> };
+    expect(manifest.jurisdiction_code).toBe("440000");
+    expect(manifest.region_slug).toBe("guangdong");
+    expect(manifest.rules).toHaveLength(1);
+    expect(existsSync(path.join(GD_DIR, "params/policy_params_guangdong_base.json"))).toBe(true);
+    expect(existsSync(path.join(GD_DIR, "rule_sets/rule_set_guangdong_plan_v1.json"))).toBe(true);
+  });
+
+  it("GD restrict实体显式指向国家R-220（NRP-FR-007）", () => {
+    const rule = JSON.parse(
+      readFileSync(path.join(GD_DIR, "rules/R-GD-MI-RETIRE-RESTRICT.json"), "utf8"),
+    ) as { operation?: string; target_business_key?: string };
+    expect(rule.operation).toBe("restrict");
+    expect(rule.target_business_key).toBe("R-220-MEDICAL-LIFETIME-GAP");
+  });
+
+  it("GD参数包显式add且医保年限参数生效日为2030-01-01", () => {
+    const pack = JSON.parse(
+      readFileSync(path.join(GD_DIR, "params/policy_params_guangdong_base.json"), "utf8"),
+    ) as {
+      policy_pack_id: string;
+      params: Array<{ param_id: string; operation?: string; effective_from?: string; effective_to?: string | null }>;
+    };
+    expect(pack.policy_pack_id).toBe("GD-BASE");
+    for (const p of pack.params) expect(p.operation).toBe("add");
+    const male = pack.params.find((x) => x.param_id === "P-MI-LIFETIME-MALE-YEARS");
+    expect(male?.effective_from).toBe("2030-01-01");
+  });
+});

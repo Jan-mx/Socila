@@ -1,0 +1,44 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-GD-MI-RETIRE-RESTRICT",
+  "name": "广东职工医保退休待遇附加条件（restrict国家框架）",
+  "module": "medical_insurance",
+  "status": "published",
+  "priority": 221,
+  "effective_from": "2022-07-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "本实体是显式restrict overlay（NRP-FR-007）：目标为国家baseline规则R-220-MEDICAL-LIFETIME-GAP。广东省在社保法第二十七条国家框架之上附加退休地实际缴费年限条件（粤医保规〔2022〕6号第八条），限制条件保存于decision_table.restriction并由合并器挂载到目标实体的restrictions，不作为独立可执行规则。",
+  "inputs": [],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [],
+    "restriction": {
+      "restriction_id": "RES-GD-MI-LOCAL-ACTUAL-YEARS",
+      "target_rule": "R-220-MEDICAL-LIFETIME-GAP",
+      "additional_condition": "在退休后待遇享受地参加职工医保实际缴费年限累计满10年（军人服现役年限视同实际缴费年限）",
+      "consequence": "两个条件（累计缴费年限+退休地实际缴费满10年）同时满足，退休后不再缴纳职工医保费",
+      "note": "叠加在国家框架（社保法第27条）之上；退休后待遇享受地按粤医保规〔2022〕6号第九条确定"
+    }
+  },
+  "outputs": [],
+  "examples": [],
+  "operation": "restrict",
+  "target_business_key": "R-220-MEDICAL-LIFETIME-GAP",
+  "evidence": [
+    {
+      "document_id": "DOC-GD-MEDICAL-TRANSFER-2022",
+      "jurisdiction_code": "440000",
+      "title": "广东省医疗保障局 广东省财政厅 国家税务总局广东省税务局关于印发《广东省基本医疗保险关系省内转移接续暂行办法》的通知（粤医保规〔2022〕6号）",
+      "authority": "广东省医疗保障局等三部门",
+      "official_url": "https://hsa.gd.gov.cn/zwgk/zfxxgkml/bmwj/gfxwj/content/post_3953355.html",
+      "fetched_at": "2026-09-05T15:48:13.814Z",
+      "content_sha256": "18b4c198fbc46bec9034584c579137725a2021ae7797fe2d5b51f3014e1076a2",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-MEDICAL-TRANSFER-2022/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": { "type": "article", "reference": "第八条" },
+      "excerpt": "职工医保参保人员达到法定退休年龄，缴费年限同时符合下列条件的，退休后不再缴纳职工医保费，按照规定享受职工医保待遇：（一）参加职工医保的累计缴费年限符合退休后待遇享受地规定的职工医保累计缴费年限要求。（二）在退休后待遇享受地参加职工医保实际缴费年限累计满10年。"
+    }
+  ]
+}

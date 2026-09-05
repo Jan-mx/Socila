@@ -11,6 +11,7 @@ interface ScalarParamEntry {
   value: unknown;
   unit?: string;
   effective_from?: string;
+  effective_to?: string | null;
   source?: string;
   operation?: string;
   target_business_key?: string | null;
@@ -20,6 +21,7 @@ interface TableParamEntry {
   param_id: string;
   type: "table" | "timeline";
   effective_from?: string;
+  effective_to?: string | null;
   key_fields: string[];
   value_fields: string[];
   rows: unknown[];
@@ -79,6 +81,7 @@ export async function seedParams(region: DiscoveredRegion) {
       value: p.value,
       unit: p.unit ?? null,
       effectiveFrom: p.effective_from ?? pack.as_of,
+      effectiveTo: p.effective_to ?? null,
       source: p.source ?? null,
       keyFields: null,
       valueFields: null,
@@ -140,6 +143,7 @@ export async function seedParams(region: DiscoveredRegion) {
       value: null,
       unit: null,
       effectiveFrom: t.effective_from ?? pack.as_of,
+      effectiveTo: t.effective_to ?? null,
       source: t.source ?? null,
       keyFields: t.key_fields,
       valueFields: t.value_fields,
