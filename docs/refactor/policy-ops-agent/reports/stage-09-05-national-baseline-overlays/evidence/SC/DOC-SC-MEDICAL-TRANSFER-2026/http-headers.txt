@@ -1,8 +1,0 @@
-# 200 https://ylbzj.sc.gov.cn/scsybj/nc010105/2026/5/22/26b3f7d73af8413c8639186066a4d469.shtml
-cache-control: max-age=300
-connection: keep-alive
-content-type: text/html; charset=utf-8
-date: Sat, 05 Sep 2026 16:10:45 GMT
-expires: Sat, 05 Sep 2026 16:15:45 GMT
-server: nginx
-transfer-encoding: chunked

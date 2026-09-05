@@ -63,15 +63,17 @@ flowchart TB
 
 ## 政策与规则模型
 
-- DSL资产按"通用协议/地区资产"两层组织（09-05 SDL-FR-002）：通用Schema与发布工作流位于`dsl/protocol/socila_dsl_v1`，地区规则、参数、规则集、示例与Manifest位于`dsl/regions/<slug>_dsl_v1`（当前仅上海）。
-- 规则格式的唯一规范值为`SOCILA-DSL-1.0`（schema以`const`钉死）；`dsl_version`只表示JSON格式，不编码地区——地区由Manifest的`jurisdiction_code`表达（上海固定`310000`），资产版本由`bundle_version`与实体版本独立递增（SDL-FR-001）。
-- Seed经地区Manifest发现器（`src/lib/dsl/region-manifest.ts`）装载资产：校验Manifest与实际文件集合一致后把`jurisdiction_code`与路径交给装载器；装载代码不硬编码地区目录或行政区划（SDL-FR-004，新增地区无需修改装载代码）。
+- DSL资产按"通用协议/地区资产"两层组织（09-05 SDL-FR-002）：通用Schema与发布工作流位于`dsl/protocol/socila_dsl_v1`，地区规则、参数、规则集、示例与Manifest位于`dsl/regions/<slug>_dsl_v1`（当前：`cn_dsl_v1`国家baseline、`guangdong_dsl_v1`广东、`sichuan_dsl_v1`四川、`shanghai_dsl_v1`上海）。
+- 规则格式的唯一规范值为`SOCILA-DSL-1.0`（schema以`const`钉死）；`dsl_version`只表示JSON格式，不编码地区——地区由Manifest的`jurisdiction_code`表达（国家为`CN`，省级为行政区划代码），资产版本由`bundle_version`与实体版本独立递增（SDL-FR-001）。
+- Seed经地区Manifest发现器（`src/lib/dsl/region-manifest.ts`）装载资产：校验Manifest与实际文件集合一致后把`jurisdiction_code`与路径交给装载器；装载代码不硬编码地区目录或行政区划（SDL-FR-004）。地区overlay允许仅提供参数（rules数组为空，如四川v1）。
+- **显式overlay操作（09-05 NRP-FR-007）**：规则、参数、规则集均持久化`operation`（baseline/add/replace/restrict/exempt）与`target_business_key`列（drizzle/0012，CHECK约束强制：CN实体只能baseline、地区实体不能baseline、replace/restrict/exempt必带目标键、baseline/add不得带目标键）；合并器与快照服务不得按地区代码推断操作。replace/restrict/exempt必须解析到继承链上唯一上级业务键，add不得覆盖已存在键，冲突（missing-target/same-level-target/unknown-key/duplicate-add/same-level-overlap）阻止快照并落PolicyConflict。
+- 国家baseline（NRP-FR-005）：全国统一的归一化/退休/养老/医保/失业框架规则与参数（渐进式延迟退休覆盖表、最低缴费年限时间线、失业金法定期限档、灵活就业基数区间）归属`CN`（规则集`RS-CN-PLAN-V1`、参数包`CN-BASELINE`）；地区执行标准以显式overlay落地（如上海失业金期限档表replace国家基线表、GD医保退休年限2030统一参数、GD医保退休restrict附加条件）。引擎与Seed按继承链装载参数（CN垫底、地区覆盖同名键）。
+- 每个政策事实的evidence引用官方原件（document_id/artifact/content_sha256/locator/逐字excerpt）；`citation-contract.test.ts`验证摘录逐字存在于仓库内抓取原件，防伪造引用。政策含义无法从权威来源确定时不编码、转人工裁决（如四川医保退休年限待办）。
 - 广东、四川示例包（`GD-EXAMPLE-BASE`、`SC-EXAMPLE-BASE`及四个示例参数）只是测试夹具（`src/server/modules/policy/__tests__/fixtures/regional-examples.ts`），生产Seed不写入（SDL-FR-012）。
 - `Jurisdiction`保存国家、省、市、区县层级。
-- 国家政策形成baseline，地方版本使用add、replace、restrict和exempt overlay。
-- 规则、参数、测试和政策携带business key、版本、地区、状态和有效期。
+- 规则、参数、测试和政策携带business key、版本、地区、状态和有效期（params支持effective_to窗口装载）。
 - 同级冲突和重叠有效期产生Conflict，不自动裁决。
-- 发布快照保存解析后的地区继承链、版本集合、hash和provenance。
+- 发布快照保存解析后的地区继承链、版本集合、hash和provenance（provenance含operation与targetBusinessKey，NRP-AC-005）。
 - JSON DSL继续保存在JSONB，并由AJV和JSON Schema校验（`dsl/protocol/socila_dsl_v1/schema/`）。
 
 ## 文档、OCR与RAG

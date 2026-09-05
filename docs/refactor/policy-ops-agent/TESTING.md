@@ -162,3 +162,16 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - reports记录实际命令、退出码、环境、时间和结论。
 - 降低质量阈值必须获得用户批准并记录新ADR。
 - 阶段和当前历史证据见[reports](./reports/README.md)。
+
+## 国家baseline与地区overlay（09-05 NRP）
+
+- 显式overlay操作（`src/server/modules/policy/__tests__/overlay.test.ts`）：baseline+四种操作的合并语义、目标键解析（missing-target/unknown-key/same-level-target）、CN↔baseline不变量、输入不可变与顺序稳定。
+- 0012约束落库（`nrp-explicit-overlay.integration.test.ts`，test:db）：CHECK约束拒绝矩阵（CN+add、地区+baseline、replace无目标、add带目标、非法枚举）、显式replace在解析结果生效且provenance含操作与目标键（NRP-AC-005）、CN/SH/GD隔离、未知目标键→PolicyConflict阻止快照（NRP-AC-006）。
+- 引用契约（`src/lib/dsl/citation-contract.test.ts`）：全部地区evidence的SHA-256与meta.json一致、摘录经空白归一化逐字出现在抓取原件文本中（防伪造引用）、参数与政策承载规则引用覆盖率100%（计算框架规则白名单除外）。
+- CN baseline黄金（`cn-baseline-golden.test.ts`）：19个示例用例+完整编排，全部政策数值锚定官方摘录（NRP-AC-001）。
+- 上海重分类零漂移对账（`shanghai-reclassification-drift.test.ts`）：改动前44例冻结基线（evidence/shanghai-reclassification/pre-reclass-baseline.json）与重分类后链式装载逐案对账，plan/calc/user逐字节一致，trace差异必须被参数改名映射完全解释（NRP-AC-002）。
+- 黄金回归与快照（`golden.test.ts`/`golden-snapshot.test.ts`）：语料升级为CN+SH继承链合并（28例），已知偏差清单收敛为浮点噪声1条；重复执行零漂移+提交快照比对。
+- 广东黄金（`guangdong-overlay-golden.test.ts`）：GD restrict挂载与provenance、2030统一口径、缴费基数有效期窗口内外、地区隔离（NRP-AC-003/005）。
+- 四川黄金（`sichuan-overlay-golden.test.ts`）：继承国家口径、医保年限待办→needs_agent守卫语义（PRD §10）、2025年度窗口、隔离（NRP-AC-004）。
+- 落库快照（`nrp-gd-overlay.integration.test.ts`/`nrp-sc-overlay.integration.test.ts`，test:db）：GD/SC候选快照创建、同地区同日期重放哈希一致（NRP-AC-010）、单地区落库不影响SH（NRP-AC-009）。
+- 采集方式说明：官方站点（gov.cn/mohrss等）对curl返回403或JS挑战，采集使用Playwright无头Chromium保存渲染后原件+响应头+SHA-256（`evidence/*/*/meta.json`记录fetchMethod），事实仅取自抓取页面正文。

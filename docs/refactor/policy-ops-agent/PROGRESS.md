@@ -17,7 +17,7 @@
 - 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）：**Accepted**（验收证据：`reports/feature-09-05-socila-naming/acceptance-report.md`）。SDL-FR-001～014、SDL-NFR-001～007全部有实现与测试映射，SDL-AC-001～010新鲜证据通过：通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层（24规则/29参数/`SOCILA-DSL-1.0`/Manifest `jurisdiction_code=310000`）、Seed经Manifest发现（零硬编码地区）、活动代码与配置SSP/SSRP→Socila硬切换（命名扫描零命中，无旧变量/Cookie/localStorage/服务身份兼容）、Node与Python服务JWT身份原子切换`socila-next-core`（固定向量重签+CI冒烟同步）、粤川示例转测试夹具（生产Seed不写入）、0010迁移完成dsl_version规范化与六条示例精确清理（删除前新鲜pg_dump+SHA-256清单+PG17+pgvector真实恢复逐表对账25表一致；删除后diff仅params 33→29、packs 2→0及0009补齐空表；备份/旧卷/历史快照未动）；Gitleaks完整历史19条历史命中经人工核实为测试合成值并以`.gitleaks.toml`精确allowlist闭环（ADR-0008）。
 - 09-05 Feature **复审纠正完成并重新Accepted（2026-09-05）**：三项复审缺漏全部纠正——①命名契约扫描器收敛到`src/lib/naming/socila-naming-contract.ts`并以"允许片段剥离"区分精确旧协议值与独立品牌标识（npm test恢复359/359全绿）；②`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`+`condition="AND"`，新增哨兵回归`scripts/verify-gitleaks-allowlist.mjs`接入CI（ADR-0009替代ADR-0008；哨兵证明允许路径上其他规则照常检测、trace无整文件跳过）；③多地区Seed补齐jurisdiction作用域（seed-rules/seed-params/seed-misc/excel-import，tests行写入jurisdictionCode，协议workflow只装载一次，0011回填存量NULL），新增multi-region-seed落库级集成测试。全部门禁新鲜复验通过后恢复Accepted。
 - 09-05 Feature复审历史：曾因命名契约、Gitleaks allowlist和多地区Seed缺漏Reopened；相关缺漏及第二轮扫描器/Gitleaks/Build复审均已修复并取得新鲜门禁，当前最终状态为**Accepted**，详见任务验收报告§8～§10。
-- 09-05全国政策与案例治理执行顺序：`Socila命名统一与地区DSL分层`（**已实施并验收**）→`国家baseline及广东、四川权威overlay`（Draft/Planned）→`案例库精简、质量治理与原始数据归档`（Draft，Blocked by前项）→`用户规划按地区快照触发`（Draft，Blocked by案例治理）。不得把Draft或Blocked需求记为已交付能力。
+- 09-05全国政策与案例治理执行顺序：`Socila命名统一与地区DSL分层`（**已实施并验收**）→`国家baseline及广东、四川权威overlay`（**已实施并验证，2026-09-05**：里程碑A/B/C/D四个独立提交500db14/b4cba62/8779e02/2c4c19e；候选快照管理员批准与待办裁决为后续人工动作，见`reports/stage-09-05-national-baseline-overlays/acceptance-report.md`）→`案例库精简、质量治理与原始数据归档`（Draft，Blocked by前项）→`用户规划按地区快照触发`（Draft，Blocked by案例治理）。不得把Draft或Blocked需求记为已交付能力。
 
 ## 已完成能力
 
@@ -39,7 +39,7 @@
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
-| 国家baseline及粤川权威政策 | Planned（依赖前项） | 使用官方来源建立核心可规划集和地区候选快照 |
+| 国家baseline及粤川权威政策 | 已实施并验证（2026-09-05）：CN baseline16规则+粤川overlay、显式overlay操作、四地区黄金与候选快照 | 待办裁决（四川医保年限/粤川失业待遇与2025基数等）后按新版本落地；候选快照待管理员批准 |
 | 案例库治理 | Blocked（依赖权威政策） | 归档并精简至452/36/528，建立来源链、质量和候选快照校验 |
 | 地区感知用户规划 | Blocked（依赖案例治理） | 只为政策与案例门禁通过的活动快照逐地区开放，缺失地区不默认上海 |
 
@@ -157,6 +157,22 @@
 | Gitleaks历史修复 | PASS；改写当前`.gitleaksignore`说明并为已进入历史的`08a92a1:.gitleaksignore:generic-api-key:5`登记精确fingerprint；哨兵3场景保持通过；完整历史43提交复跑`no leaks found`、exit 0 |
 | 资源受控Build | PASS；`next.config.ts`显式`experimental.cpus=2`，原命令`npm run build`使用2 workers完整生成8/8静态页面、exit 0；未改变运行时业务行为 |
 | 最终状态 | 三项用户指定门禁均有新鲜exit 0证据，任务一恢复Accepted |
+
+## 当前任务验证（09-05 Stage 国家baseline及粤川overlay，2026-09-05本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 已记录；overlay显式操作测试首跑10失败、0012约束测试在无约束库失败、CN/GD/SC黄金与44例对账测试均先于实现确认失败 |
+| Node单元（2 workers） | PASS；47文件/423通过、skip 0（含显式overlay 13例、引用契约3例、CN黄金21例、GD黄金10例、SC黄金7例、零漂移对账2例） |
+| TypeScript / ESLint / Build | PASS；全部退出0、build零warning |
+| 数据库集成（全新PG17+pgvector `nrp_drill`，四地区Seed） | PASS；14文件/64通过、skip 0（0012约束矩阵、显式replace/restrict解析、四地区候选快照与重放、沪迁移对账、multi-region Seed） |
+| Agent迁移与Python集成 | PASS；`agent.migrate --with-roles`幂等、pytest -m integration 20通过skip 0 |
+| Python静态与单元 | PASS；ruff 0问题、mypy 33文件0错误、pytest非集成94通过 |
+| Auth E2E（全新`nrp_e2e`库+bootstrap+seed+standalone+mock） | PASS；10通过（40.2s） |
+| 安全门禁 | PASS；scan-secrets --all 626文件零命中、Gitleaks 8.29.1完整历史45 commits零发现、allowlist哨兵3场景全过 |
+| 权威采集 | CN 4份（mohrss×3、gov.cn×1）+GD 2份（hsa/hrss.gd.gov.cn）+SC 1份（rst.sc.gov.cn）官方原件+HTTP元数据+SHA-256+逐字摘录，全部白名单域名 |
+| 资源边界 | 演练容器`nrp-drill-pg`（nrp_drill/nrp_e2e两库）验证后已停止；`socila-*`持久资源未删除未重建 |
+| 披露 | 首次`npm run db:migrate`未显式指定DATABASE_URL，加载器回退`.env.local`导致已验收的0011与新增0012（均幂等/增量）被应用到本机持久开发库policyops；未重新Seed，应用行为不变；详见验收报告§7 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 

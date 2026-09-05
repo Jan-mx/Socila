@@ -64,3 +64,9 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 - PRD或Work Item验收后链接对应acceptance report或PROGRESS证据。
 - 需求增加、删除或拆分时，同步更新当前PRD、Work Item、架构和本矩阵。
 - 不允许用一个泛化测试链接替代未实际覆盖的需求。
+
+## 09-05 Stage 国家baseline及广东四川权威overlay（2026-09-05）
+
+| 需求范围 | 实现位置 | 测试路径 | 验收证据 | 状态 |
+| --- | --- | --- | --- | --- |
+| NRP-FR-001～016、NRP-NFR-001～008、NRP-AC-001～010 | `drizzle/0012_nrp_explicit_overlay_operation.sql`、`src/lib/db/schema.ts`、`src/server/modules/policy/domain/overlay.ts`、`src/server/modules/policy/application/snapshot-service.ts`、`src/lib/dsl/{overlay-operation.ts,region-manifest.ts,citation-contract.test.ts}`、`src/lib/db/seed/{seed-rules,seed-params,seed-misc}.ts`、`src/lib/engine/{test-runner.ts,orchestrator.ts}`、`dsl/regions/cn_dsl_v1/`（16规则+CN-BASELINE）、`dsl/regions/guangdong_dsl_v1/`、`dsl/regions/sichuan_dsl_v1/`、`dsl/regions/shanghai_dsl_v1/`（重分类后8规则+显式replace）、`docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/`（CN/GD/SC官方原件+HTTP元数据+SHA-256+逐字摘录） | `src/server/modules/policy/__tests__/{overlay.test.ts,nrp-explicit-overlay.integration.test.ts,nrp-gd-overlay.integration.test.ts,nrp-sc-overlay.integration.test.ts,snapshot-service.integration.test.ts}`、`src/lib/engine/__tests__/{cn-baseline-golden.test.ts,guangdong-overlay-golden.test.ts,sichuan-overlay-golden.test.ts,shanghai-reclassification-drift.test.ts,golden.test.ts,golden-snapshot.test.ts}`、`src/lib/dsl/{overlay-operation.test.ts,dsl-layout.test.ts,region-manifest.test.ts}` | `docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/acceptance-report.md`；提交`500db14`（里程碑A国家baseline）、`b4cba62`（里程碑B上海重分类零漂移）、`8779e02`（里程碑C广东overlay）、`2c4c19e`（里程碑D四川overlay），均已推送上游 | 里程碑A/B/C/D交付并验证；候选快照管理员批准与待办裁决为后续人工动作 |
