@@ -122,7 +122,7 @@ flowchart LR
 
 ## 部署
 
-Personal Demo使用单机Docker Compose：Caddy、Next.js、FastAPI、Celery Worker、Beat、PostgreSQL 17 + pgvector、Redis和MinIO。只有反向代理对外；其他服务使用内部网络。详细资源和恢复规则见[OPERATIONS](./OPERATIONS.md)。
+Personal Demo使用单机Docker Compose：Caddy、Next.js、FastAPI、Celery Worker、Beat、PostgreSQL 17 + pgvector、Redis和MinIO。只有反向代理对外；其他服务使用内部网络。Next生产构建在`next.config.ts`固定使用2个CPU worker，避免按开发机逻辑CPU数并行生成页面时超出本机或4GB Demo资源口径；该设置不改变运行时并发。详细资源和恢复规则见[OPERATIONS](./OPERATIONS.md)。
 
 ### 运行配置与凭据（09-03 CFG）
 
@@ -144,7 +144,7 @@ GitHub Actions六job工作流（`.github/workflows/ci.yml`），触发`pull_requ
 | `database-gates` | 全新pgvector PG17：Core migration/引导各两次（幂等）、seed、`npm run test:db`、Agent migration+角色授权、Python集成 |
 | `e2e-gates` | 全新库+standalone构建+mock模型：`npm run test:e2e:auth`（10项Auth流程含助手回复） |
 | `container-gates` | 构建web/agent最终镜像；合成env+临时卷Compose冒烟（健康检查后执行SJWT-AC-017双向冒烟：合法双向调用通过、伪造服务名拒绝，随后无条件`down -v`）；Trivy 0.74.0扫描（HIGH/CRITICAL，ignore-unfixed，`scanners: vuln`） |
-| `security-gates` | `scan-secrets.mjs --all` + Gitleaks 8.29.1完整历史（`fetch-depth: 0`，`.gitleaksignore`仅6个已核实fingerprint）+ allowlist哨兵回归`verify-gitleaks-allowlist.mjs`（09-05复审纠正ADR-0009：`.gitleaks.toml`采用`[[allowlists]]`+`targetRules`+`condition="AND"`按"规则×路径"精确忽略——禁止旧式全局allowlist的按路径整文件跳过；哨兵断言允许路径上其他规则照常检测） |
+| `security-gates` | `scan-secrets.mjs --all` + Gitleaks 8.29.1完整历史（`fetch-depth: 0`，`.gitleaksignore`仅7个已核实fingerprint）+ allowlist哨兵回归`verify-gitleaks-allowlist.mjs`（09-05复审纠正ADR-0009：`.gitleaks.toml`采用`[[allowlists]]`+`targetRules`+`condition="AND"`按"规则×路径"精确忽略——禁止旧式全局allowlist的按路径整文件跳过；哨兵断言允许路径上其他规则照常检测） |
 
 运行镜像加固：web基于node:22-alpine，`apk upgrade`后删除npm/npx/corepack完整目录（`/usr/local/lib/node_modules`与`/usr/bin`），非root `node`用户；agent基于python:3.11-slim，运行层`apt-get upgrade`后删除全局pip/setuptools/wheel，uv仅存在于build stage，非root `appuser`。占位配置不使用Docker ARG/ENV保存Secret名称，仅在执行build的单层命令中使用非真实占位值。
 

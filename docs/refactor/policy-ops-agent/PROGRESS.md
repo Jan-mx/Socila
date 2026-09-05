@@ -147,6 +147,16 @@
 | 安全门禁 | PASS；`scan-secrets`默认与`--all`（576文件）零命中；Gitleaks 8.29.1完整历史42 commits零发现（新增1条已核实fingerprint：ADR-0008引用的业务字段名样例）；哨兵回归3场景全过（误报精确忽略/允许路径其他规则哨兵被检测/trace无整文件跳过） |
 | 资源与边界 | PASS；演练容器删除零残留；持久policyops库全程未连接未修改；0011仅交付代码未对持久库执行；用户未提交文档保持原样 |
 
+## 当前任务验证（09-05第二次复审闭环，2026-09-05本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| 第二次复审Red | `npm test` 358/359：命名扫描器实现文件顶部注释保留完整历史协议/品牌字符串并命中自身；Gitleaks 8.29.1完整历史43提交发现1条：修复提交`08a92a1`在`.gitleaksignore`第5行新增的业务字段示例说明触发`generic-api-key`；默认Build在静态页面19 workers阶段连续两次因可用内存不足/Windows worker异常退出 |
+| 命名契约修复 | PASS；移除扫描器注释中的完整历史标识，目标测试9/9通过；`npm test`新鲜复验41文件/359通过、skip 0 |
+| Gitleaks历史修复 | PASS；改写当前`.gitleaksignore`说明并为已进入历史的`08a92a1:.gitleaksignore:generic-api-key:5`登记精确fingerprint；哨兵3场景保持通过；完整历史43提交复跑`no leaks found`、exit 0 |
+| 资源受控Build | PASS；`next.config.ts`显式`experimental.cpus=2`，原命令`npm run build`使用2 workers完整生成8/8静态页面、exit 0；未改变运行时业务行为 |
+| 最终状态 | 三项用户指定门禁均有新鲜exit 0证据，任务一恢复Accepted |
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
 09-03阶段已记录**Accepted（开发分支发布准备）**。以下动作均为未来人工动作，不阻塞本阶段验收，且需用户另行授权：

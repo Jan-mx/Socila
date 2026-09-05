@@ -36,6 +36,8 @@ node scripts/scan-secrets.mjs --all
 uv run --project services/agent pytest -q
 ```
 
+`npm run build`保持原生产构建入口；`next.config.ts`将构建CPU worker固定为2，确保在本机和Personal Demo 4GB资源口径下可重复完成静态页面生成，不影响运行时并发。
+
 测试分层（09-03 PMG-FR-005/006/018）：
 
 ```powershell
@@ -117,7 +119,7 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 | `database-gates` | 全新PG17：migration×2、引导×2、seed、`npm run test:db`、`agent.migrate --with-roles`、`pytest -m integration` | 幂等no-op；集成skip为0 |
 | `e2e-gates` | `npm run test:e2e:auth`（standalone构建+mock模型+全新库） | 10项Auth流程与助手回复通过 |
 | `container-gates` | 构建web/agent镜像；合成env+临时卷`compose up`→健康检查→SJWT-AC-017双向冒烟（合法双向调用200、伪造服务名/错误方向/重放401）→`down -v`；Trivy 0.74.0 | 健康通过、双向冒烟通过、临时资源删除、可修复HIGH/CRITICAL为0 |
-| `security-gates` | `node scripts/scan-secrets.mjs --all`；Gitleaks 8.29.1完整历史（09-05起使用`.gitleaks.toml`：默认规则集+精确路径/规则allowlist） | 除5个已核实fingerprint与`.gitleaks.toml`已核实测试合成值allowlist外0发现 |
+| `security-gates` | `node scripts/scan-secrets.mjs --all`；Gitleaks 8.29.1完整历史（09-05起使用`.gitleaks.toml`：默认规则集+精确路径/规则allowlist） | 除7个已核实fingerprint与`.gitleaks.toml`已核实测试合成值allowlist外0发现 |
 
 ## SiliconFlow
 

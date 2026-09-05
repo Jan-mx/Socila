@@ -232,3 +232,49 @@ gitleaks allowlist哨兵回归            # 3场景全过：已核实误报exit 
 ### 9.5 重新验收结论
 
 **PASS。** §8三项缺漏全部纠正并取得新鲜证据：`npm test`从1失败恢复到359/359全绿且命名契约语义满足"精确片段允许、独立品牌阻断"；Gitleaks allowlist不再整文件跳过（哨兵回归与trace证明），检测能力恢复"不降低"；多地区Seed具备地区作用域并有落库级测试。任务恢复**Accepted**。
+
+## 10. 第二次复审纠正与最终恢复Accepted（2026-09-05）
+
+### 10.1 第二次复审发现
+
+首轮修复提交`08a92a1`后再次独立复验发现：
+
+1. `npm test`仍为358/359：新扫描器虽然把token值拆分构造，但实现文件顶部注释仍直接包含完整历史协议和品牌标识，`scanActiveFiles()`扫描自身时命中。
+2. Gitleaks 8.29.1完整历史43提交仍发现1条：`08a92a1`新增到`.gitleaksignore`第5行的业务字段示例说明触发`generic-api-key`；哨兵回归通过不能替代完整历史扫描。
+3. 默认`npm run build`在本机静态页面19-worker阶段连续失败：一次报告多个Node worker OOM，单独重跑以Windows worker异常码退出。失败发生在编译和TypeScript通过之后；当时系统约16GB物理内存但仅约1.9GB可用，Next按逻辑CPU数启动19个页面worker。
+
+因此§9.5的Accepted在第二次复审期间再次打开，直至以下修复和三项用户指定门禁全部取得新鲜exit 0。
+
+### 10.2 最小修复
+
+- 命名扫描器：改写实现文件注释，不再在被扫描源文件中写出完整历史协议/品牌标识；扫描逻辑、禁止token和精确片段例外范围不放宽。
+- Gitleaks历史：改写当前`.gitleaksignore`说明以避免生成新命中，并为已进入历史的`08a92a1a9bf616116b15633498a3fd93e2c305a1:.gitleaksignore:generic-api-key:5`登记单条精确fingerprint；不扩大路径或规则allowlist。
+- Build资源：`next.config.ts`显式设置`experimental.cpus=2`，使生产Build在本机和Personal Demo 4GB资源口径下使用2个页面worker；不修改路由、运行时并发或业务逻辑。
+
+### 10.3 用户指定三项最终复验
+
+```text
+npm test
+  Test Files 41 passed (41)
+  Tests 359 passed (359)
+  exit 0
+
+Gitleaks 8.29.1完整历史
+  43 commits scanned
+  scanned ~4.29 MB
+  no leaks found
+  exit 0
+
+npm run build
+  Compiled successfully
+  TypeScript finished
+  Collecting/Generating static pages using 2 workers
+  8/8 static pages generated
+  exit 0
+```
+
+补充安全复验：`node scripts/verify-gitleaks-allowlist.mjs`三场景全部通过——已核实误报exit 0、允许路径上的其他规则哨兵被检测、trace无整文件跳过。
+
+### 10.4 最终结论
+
+**PASS，任务恢复Accepted。** 用户指定的`npm test`、Gitleaks完整历史和资源受控生产Build三项均取得本次新鲜exit 0；命名和Secret门禁未放宽，Build并发限制只影响构建期资源使用。原SDL-FR/NFR/AC实现、数据库清理、上海黄金结果和多地区Seed证据保持有效。

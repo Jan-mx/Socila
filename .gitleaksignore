@@ -1,9 +1,9 @@
-# Gitleaks 基线（09-03 PMG-FR-028）：仅允许以下五个已核实的历史误报 fingerprint
+# Gitleaks基线：仅允许以下七个已核实的历史误报fingerprint
 # （dsl 规则 JSON 中的业务示例字段，generic-api-key 规则误报）。
 # 不得创建目录级忽略；任何新 fingerprint 必须阻断并人工核实。
-# 09-05复审（2026-09-05）：ADR-0008第14行引用的DSL业务字段名样例
-# （"key": "calc.subsidy.4050_eligible"）与dsl规则JSON为同一批已核实误报，
-# 经人工核实为非凭据的业务字段描述文字，登记历史提交fingerprint。
+# 09-05复审（2026-09-05）：ADR-0008引用的DSL业务字段名样例与规则JSON为
+# 同一批已核实误报；另登记修复提交中说明文字自身产生的历史误报。
+08a92a1a9bf616116b15633498a3fd93e2c305a1:.gitleaksignore:generic-api-key:5
 7537fb7ba86437fc3f1b46e1d3840b358a68d695:docs/refactor/policy-ops-agent/decisions/ADR-0008-Gitleaks测试合成值allowlist.md:generic-api-key:14
 2fb225a325e7fe8cb12bd0b3d08b4cc2a4b5648f:dsl/ssp_dsl_v1/rules/R-500-4050-ELIGIBILITY.json:generic-api-key:121
 2fb225a325e7fe8cb12bd0b3d08b4cc2a4b5648f:dsl/ssp_dsl_v1/rules/R-510-4050-AMOUNT.json:generic-api-key:14
