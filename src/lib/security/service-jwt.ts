@@ -4,8 +4,9 @@
  * 协议常量（PRD §6.1）：
  * - 仅允许HS256；Header必须alg=HS256且typ=JWT（拒绝none/其他算法/缺失typ/算法混淆）。
  * - TTL固定300秒（exp=iat+300）；时钟偏差最多30秒。
- * - Next→Agent：iss=ssp-next-core、aud=policy-agent、sub=next-core。
- * - Agent→Core：iss=policy-agent、aud=ssp-next-core、sub=agent-runtime。
+ * - Next→Agent：iss=socila-next-core、aud=policy-agent、sub=next-core。
+ * - Agent→Core：iss=policy-agent、aud=socila-next-core、sub=agent-runtime。
+ * 09-05 SDL-FR-008：身份一次性硬切换为socila-next-core，旧身份不提供兼容。
  *
  * 安全约束（NFR-001～006）：
  * - 验证显式固定算法列表，不按令牌Header动态选择算法。
@@ -20,17 +21,17 @@ import { SignJWT, jwtVerify } from "jose";
 export const SERVICE_JWT_TTL_SECONDS = 300;
 export const SERVICE_JWT_CLOCK_SKEW_SECONDS = 30;
 
-/** Next Core签发、FastAPI验证的固定身份（SJWT-FR-004）。 */
+/** Next Core签发、FastAPI验证的固定身份（SJWT-FR-004、SDL-FR-008）。 */
 export const NEXT_IDENTITY = {
-  issuer: "ssp-next-core",
+  issuer: "socila-next-core",
   audience: "policy-agent",
   subject: "next-core",
 } as const;
 
-/** Agent签发、Next Core验证的固定身份（SJWT-FR-005）。 */
+/** Agent签发、Next Core验证的固定身份（SJWT-FR-005、SDL-FR-008）。 */
 export const AGENT_IDENTITY = {
   issuer: "policy-agent",
-  audience: "ssp-next-core",
+  audience: "socila-next-core",
   subject: "agent-runtime",
 } as const;
 

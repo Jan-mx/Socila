@@ -1,0 +1,107 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "region_slug": "shanghai",
+  "jurisdiction_code": "310000",
+  "bundle_version": 1,
+  "params_file": "params/policy_params_shanghai_base.json",
+  "rule_set_file": "rule_sets/rule_set_shanghai_plan_v1.json",
+  "tests_file": "tests/rule_examples_as_tests.json",
+  "rules": [
+    {
+      "rule_id": "R-010-PARSE-BIRTH-YEAR",
+      "file": "R-010-PARSE-BIRTH-YEAR.json"
+    },
+    {
+      "rule_id": "R-011-BUILD-BIRTH-DATE",
+      "file": "R-011-BUILD-BIRTH-DATE.json"
+    },
+    {
+      "rule_id": "R-012-NORMALIZE-GENDER",
+      "file": "R-012-NORMALIZE-GENDER.json"
+    },
+    {
+      "rule_id": "R-020-FEMALE-RETIRE-TYPE",
+      "file": "R-020-FEMALE-RETIRE-TYPE.json"
+    },
+    {
+      "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+      "file": "R-110-LOOKUP-LEGAL-RETIRE-AGE.json"
+    },
+    {
+      "rule_id": "R-115-FLEXIBLE-RETIREMENT",
+      "file": "R-115-FLEXIBLE-RETIREMENT.json"
+    },
+    {
+      "rule_id": "R-120-COMPUTE-RETIRE-DATE",
+      "file": "R-120-COMPUTE-RETIRE-DATE.json"
+    },
+    {
+      "rule_id": "R-200-MIN-PENSION-YEARS",
+      "file": "R-200-MIN-PENSION-YEARS.json"
+    },
+    {
+      "rule_id": "R-210-PENSION-GAP",
+      "file": "R-210-PENSION-GAP.json"
+    },
+    {
+      "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+      "file": "R-220-MEDICAL-LIFETIME-GAP.json"
+    },
+    {
+      "rule_id": "R-300-MI-GAP-MONTHS",
+      "file": "R-300-MI-GAP-MONTHS.json"
+    },
+    {
+      "rule_id": "R-310-MI-WAITING-PERIOD",
+      "file": "R-310-MI-WAITING-PERIOD.json"
+    },
+    {
+      "rule_id": "R-400-UNEMPLOYMENT-ELIGIBILITY",
+      "file": "R-400-UNEMPLOYMENT-ELIGIBILITY.json"
+    },
+    {
+      "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+      "file": "R-410-UNEMPLOYMENT-DURATION.json"
+    },
+    {
+      "rule_id": "R-420-UI-MEDICAL-COVERAGE",
+      "file": "R-420-UI-MEDICAL-COVERAGE.json"
+    },
+    {
+      "rule_id": "R-500-4050-ELIGIBILITY",
+      "file": "R-500-4050-ELIGIBILITY.json"
+    },
+    {
+      "rule_id": "R-510-4050-AMOUNT",
+      "file": "R-510-4050-AMOUNT.json"
+    },
+    {
+      "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+      "file": "R-520-JOB-SUBSIDY-ELIGIBILITY.json"
+    },
+    {
+      "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+      "file": "R-521-JOB-SUBSIDY-AMOUNT.json"
+    },
+    {
+      "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+      "file": "R-530-OLDER-UI-PENSION-FUND-COVERAGE.json"
+    },
+    {
+      "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+      "file": "R-540-SUBSIDY-MUTUAL-EXCLUSION.json"
+    },
+    {
+      "rule_id": "R-600-PAY-GAP-REMINDER",
+      "file": "R-600-PAY-GAP-REMINDER.json"
+    },
+    {
+      "rule_id": "R-700-PLAN-TEMPLATE",
+      "file": "R-700-PLAN-TEMPLATE.json"
+    },
+    {
+      "rule_id": "R-900-FINAL-GATE",
+      "file": "R-900-FINAL-GATE.json"
+    }
+  ]
+}

@@ -1,0 +1,171 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+  "name": "大龄领失业金人员养老最低档由基金承担（资格初判）",
+  "module": "subsidy",
+  "status": "published",
+  "priority": 530,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "该政策与4050/岗位补贴存在互斥可能；互斥由 R-540 处理。",
+  "inputs": [
+    {
+      "key": "user.status.on_unemployment_benefit",
+      "type": "boolean",
+      "required": false
+    },
+    {
+      "key": "user.subsidy.months_to_legal_retire",
+      "type": "number",
+      "required": false
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_missing_months",
+        "when": {
+          "==": [
+            {
+              "var": "user.subsidy.months_to_legal_retire"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.older_ui_pension_fund_eligible",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-MONTHS-TO-RETIRE",
+                "text": "缺少距退休月数，无法判断是否进入“大龄领失业金养老费基金承担”窗口（常见≤12个月）。",
+                "field": "user.subsidy.months_to_legal_retire"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_not_on_ui",
+        "when": {
+          "or": [
+            {
+              "==": [
+                {
+                  "var": "user.status.on_unemployment_benefit"
+                },
+                false
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.status.on_unemployment_benefit"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.older_ui_pension_fund_eligible",
+              "value": false
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_eligible",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.status.on_unemployment_benefit"
+                },
+                true
+              ]
+            },
+            {
+              "<=": [
+                {
+                  "var": "user.subsidy.months_to_legal_retire"
+                },
+                12
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.older_ui_pension_fund_eligible",
+              "value": true
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-OLDER-UI-PENSION",
+                "text": "如符合大龄条件，失业金期间养老最低档可能由失业基金承担；通常需要先缴后退并在退休前后办理，需按经办要求操作。"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.subsidy.older_ui_pension_fund_eligible",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.warnings",
+      "type": "array"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    }
+  ],
+  "examples": [
+    {
+      "name": "领失业金且距退休10个月 -> eligible",
+      "input": {
+        "user": {
+          "status": {
+            "on_unemployment_benefit": true
+          },
+          "subsidy": {
+            "months_to_legal_retire": 10
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "older_ui_pension_fund_eligible": true
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

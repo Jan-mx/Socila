@@ -2,13 +2,13 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-03
+> Updated: 2026-09-05
 
 ## 当前Profile
 
 Personal Demo面向个人展示和试用：总用户不超过100、并发不超过5、单机4核4GB，不承诺正式SLA、RPO或RTO。
 
-本机是开发机，socila生产Compose数据卷保留但不常驻；远程服务器部署仍在路线图中。开发测试需要时启动`infra/dev/docker-compose.dev.yml`。
+本机是开发机，socila生产Compose数据卷保留但不常驻；远程服务器部署仍在路线图中。开发测试需要时启动`infra/dev/docker-compose.dev.yml`（09-05 SDL-FR-009起容器/卷/网络命名为`socila-pg-dev`等；历史`ssp-*`开发资源不自动删除，需要时由运维人工处置）。
 
 ## 服务预算
 

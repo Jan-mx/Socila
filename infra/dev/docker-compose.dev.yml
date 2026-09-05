@@ -1,20 +1,20 @@
 # 本地演练环境：PostgreSQL 17 + pgvector、Redis、MinIO。
 # 阶段04 Agent / 阶段05 RAG / 阶段06 Drafting 的集成测试与演练库依赖本文件。
 # 生产单机 Compose 在阶段07按 REL-FR-001 另建，不复用本文件。
-# 凭据不落仓库：SSP_PG_DEV_PASSWORD 与 MINIO_ROOT_PASSWORD 从同目录 .env 读取
+# 凭据不落仓库：SOCILA_PG_DEV_PASSWORD 与 MINIO_ROOT_PASSWORD 从同目录 .env 读取
 # （.gitignore 的 .env* 已覆盖）；端口映射错开本机默认端口。
 services:
   postgres:
     image: pgvector/pgvector:pg17
-    container_name: ssp-pg-dev
+    container_name: socila-pg-dev
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${SSP_PG_DEV_PASSWORD:?需要在 infra/dev/.env 设置 SSP_PG_DEV_PASSWORD}
+      POSTGRES_PASSWORD: ${SOCILA_PG_DEV_PASSWORD:?需要在 infra/dev/.env 设置 SOCILA_PG_DEV_PASSWORD}
       POSTGRES_DB: postgres
     ports:
       - "5433:5432"
     volumes:
-      - ssp-pg-dev-data:/var/lib/postgresql/data
+      - socila-pg-dev-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -23,7 +23,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: ssp-redis-dev
+    container_name: socila-redis-dev
     ports:
       - "6379:6379"
     healthcheck:
@@ -34,7 +34,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: ssp-minio-dev
+    container_name: socila-minio-dev
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?需要在 infra/dev/.env 设置 MINIO_ROOT_USER}
@@ -43,7 +43,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - ssp-minio-data:/data
+      - socila-minio-data:/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -51,5 +51,5 @@ services:
       retries: 10
 
 volumes:
-  ssp-pg-dev-data:
-  ssp-minio-data:
+  socila-pg-dev-data:
+  socila-minio-data:

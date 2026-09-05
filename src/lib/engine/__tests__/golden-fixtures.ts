@@ -7,15 +7,24 @@
  * trace 的 Date.now() 时间戳在快照中剔除——这是仅有的两个引擎时间源。
  */
 import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { RuleDefinition, TraceEntry } from "@/types/engine";
+import { discoverRegionDsl } from "@/lib/dsl/region-manifest";
 import { runTestSuite, type TestCase } from "../test-runner";
 
-export const DSL_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../../../dsl/ssp_dsl_v1",
-);
+/**
+ * 上海地区资产经地区Manifest发现（SDL-FR-004）：黄金回归与生产Seed共用同一
+ * 发现器，不硬编码地区目录。
+ */
+const shanghaiRegion = (() => {
+  const region = discoverRegionDsl().find(
+    (r) => r.manifest.region_slug === "shanghai",
+  );
+  if (!region) throw new Error("shanghai region manifest not found");
+  return region;
+})();
+
+export const DSL_DIR = shanghaiRegion.regionDir;
 
 /** 快照基准日期：显式传给编排器，消除 orchestrateInMemory 缺省取当天的不确定性。 */
 export const FIXED_AS_OF_DATE = "2026-01-01";
@@ -32,10 +41,7 @@ export function loadRules(): RuleDefinition[] {
 
 export function loadBaseParams(): Record<string, unknown> {
   const pack = JSON.parse(
-    readFileSync(
-      path.join(DSL_DIR, "params/policy_params_shanghai_base.json"),
-      "utf8",
-    ),
+    readFileSync(shanghaiRegion.paramsPath, "utf8"),
   ) as {
     params: Array<{ param_id: string; value: unknown }>;
     tables: Array<{ param_id: string; rows: unknown[] }>;
@@ -49,10 +55,7 @@ export function loadBaseParams(): Record<string, unknown> {
 
 export function loadGoldenCases(): TestCase[] {
   const seed = JSON.parse(
-    readFileSync(
-      path.join(DSL_DIR, "tests/rule_examples_as_tests.json"),
-      "utf8",
-    ),
+    readFileSync(shanghaiRegion.testsPath, "utf8"),
   ) as { tests: TestCase[] };
   return seed.tests;
 }

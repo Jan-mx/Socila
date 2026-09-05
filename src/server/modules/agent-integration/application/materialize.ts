@@ -187,7 +187,7 @@ export async function materializeDraftBundle(
           ruleId: r.rule_id,
           name: r.name,
           module: r.module ?? "draft",
-          dslVersion: "ssp_dsl_v1",
+          dslVersion: "SOCILA-DSL-1.0",
           priority: r.priority ?? 0,
           status: "draft",
           effectiveFrom: r.effective_from,

@@ -1,0 +1,183 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-210-PENSION-GAP",
+  "name": "计算养老缴费年限缺口（以月计）",
+  "module": "pension",
+  "status": "published",
+  "priority": 210,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "gap_years_ceil 仅用于展示；实际补缴/续缴按月规划。",
+  "inputs": [
+    {
+      "key": "user.social.pension_contrib_months",
+      "type": "number",
+      "required": true,
+      "desc": "养老累计缴费月数"
+    },
+    {
+      "key": "calc.pension.min_years_required",
+      "type": "number",
+      "required": true,
+      "desc": "最低养老缴费年限(年)"
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_missing",
+        "when": {
+          "or": [
+            {
+              "==": [
+                {
+                  "var": "user.social.pension_contrib_months"
+                },
+                null
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "calc.pension.min_years_required"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-PENSION-MONTHS",
+                "text": "请提供养老累计缴费月数（可从随申办/社保查询导出）。",
+                "field": "user.social.pension_contrib_months"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_compute",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.social.pension_contrib_months"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.pension.min_years_required"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.pension.gap_months",
+              "value": {
+                "max": [
+                  0,
+                  {
+                    "-": [
+                      {
+                        "*": [
+                          {
+                            "var": "calc.pension.min_years_required"
+                          },
+                          12
+                        ]
+                      },
+                      {
+                        "var": "user.social.pension_contrib_months"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.pension.gap_years_ceil",
+              "value": {
+                "ceil": [
+                  {
+                    "/": [
+                      {
+                        "var": "calc.pension.gap_months"
+                      },
+                      12
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.pension.gap_months",
+      "type": "number"
+    },
+    {
+      "key": "calc.pension.gap_years_ceil",
+      "type": "number"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "已缴14年(168月)，要求15年(180月) -> 缺12月",
+      "input": {
+        "user": {
+          "social": {
+            "pension_contrib_months": 168
+          }
+        },
+        "calc": {
+          "pension": {
+            "min_years_required": 15
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "pension": {
+            "gap_months": 12,
+            "gap_years_ceil": 1
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

@@ -1,7 +1,7 @@
 # Socila命名统一与地区DSL分层 PRD
 
 > Author: Jan
-> Status: Draft
+> Status: Active
 > Updated: 2026-09-05
 
 ## 文档元数据
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-socila-naming-regional-dsl.md` |
 | 类型 | Feature |
-| 状态 | Draft |
+| 状态 | Active |
 | 前置依赖 | PolicyOps七阶段重构、09-03运行配置整改、Core与Agent服务JWT鉴权 |
 | 可并行阶段 | 无；目录、协议标识、服务身份和数据库迁移必须按同一命名契约切换 |
 | 后续消费者 | 国家baseline及粤川overlay Stage、地区感知规划Feature |

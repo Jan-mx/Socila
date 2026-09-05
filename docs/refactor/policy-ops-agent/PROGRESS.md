@@ -11,10 +11,11 @@
 - 当前运行事实源：单机Docker Compose中的PostgreSQL、MinIO和Agent存储；Neon不再承接运行时读写。
 - 本机定位：开发机，生产Compose数据卷保留但不常驻；远程服务器部署列入路线图。
 - 09-02 Feature（用户与管理员双角色鉴权，PRD `docs/prd/09-02-feature-user-admin-auth.md`）：**Accepted**（验收证据：`reports/feature-09-02-auth/acceptance-report.md`）。
-- 09-03 阶段（`docs/prd/09-03-stage-policyops-pre-merge-release.md`，P0合并质量门禁与v0.2.0发布准备）：**Accepted（开发分支发布准备）**（验收证据：`reports/stage-09-03-pre-merge-release/acceptance-report.md`）。本阶段仅验收开发分支`refactor/policy-ops-agent-platform`：六类门禁全部本地新鲜复现（全部退出0、零skip）、workflow经actionlint 1.7.7静态校验零发现、`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）。workflow已静态校验、六类门禁已本地复现，不声称GitHub-hosted六项checks已经运行。PR、main ruleset、merge与tag/Release为未来人工动作（见“精确下一步”），不阻塞本阶段验收。
+- 09-03 阶段（`docs/prd/09-03-stage-policyops-pre-merge-release.md`，P0合并质量门禁与v2.0.0发布准备）：**Accepted（开发分支发布准备）**（验收证据：`reports/stage-09-03-pre-merge-release/acceptance-report.md`）。本阶段仅验收开发分支`refactor/policy-ops-agent-platform`：六类门禁全部本地新鲜复现（全部退出0、零skip）、workflow经actionlint 1.7.7静态校验零发现、`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）。workflow已静态校验、六类门禁已本地复现，不声称GitHub-hosted六项checks已经运行。重构前`main`已由annotated tag `v1.0.0`标记；PR、main ruleset、merge与`v2.0.0` Release为未来人工动作（见“精确下一步”），不阻塞本阶段验收。
 - 09-03 阶段（`docs/prd/09-03-stage-runtime-configuration-remediation.md`，本地运行配置与凭据整改）：**Accepted**（验收证据：`reports/stage-09-03-runtime-config-remediation/acceptance-report.md`）。CFG-FR-001～010、CFG-NFR-001～007、CFG-AC-001～013全部通过：统一环境加载、模板与入口收口、管理员引导一次性化、新鲜备份+PG17+pgvector真实恢复对账、PostgreSQL口令轮换与轮换前后逐表对账（34表/1610行一致）、全部门禁本地新鲜复验（全部退出0、零skip）；复审确认本阶段演练容器零残留。
 - 09-03 Feature（`docs/prd/09-03-feature-core-agent-service-jwt.md`，Core与Agent双向服务JWT鉴权）：**Accepted**（主体提交`35d673c`，修复提交`fix: 补齐服务JWT复审缺漏`；验收证据：`reports/feature-09-03-service-jwt/acceptance-report.md` §7.4～§7.6）。SJWT-FR-001～009、SJWT-NFR-001～007、SJWT-AC-001～019全部通过：复审四项缺漏逐条修复并重新验收——FastAPI文档/OpenAPI入口统一关闭（四路径一律404、`/internal/health`唯一豁免）、Web Node运行时启动入口`src/instrumentation.ts`对无效Secret fail-fast拒绝启动（standalone真实启动拒绝D2/E2）+Compose`AGENT_SERVICE_JWT_CURRENT`必填插值（缺失/空值`docker compose config`失败）、Python重放存储缺表/权限/连接中断统一映射503且业务异常原样传播不包装（JTI与业务写同事务回滚）、宿主`.env.example`补齐两变量且实际值安全同步至Git忽略的`.env.local`（零输出验证、未轮换）；全部门禁在修复后的全新演练库上重跑（全部退出0、零skip）、AC-017完全隔离Compose双向真实TCP冒烟（10断言+台账恰好1行）与Docker任务资源零残留复核（`socila-*`未动）。2026-09-04复查新发现2项缺漏并修复重验：公开模板可预测占位符通过校验→模板current/previous改空值（故意设计，直接复制未填写的模板被启动校验拒绝，已加防回归测试）+ `psycopg.connect`缺确定性超时→`PostgresReplayGuard`新增`connect_timeout_seconds`（正整数构造期校验、默认5秒、测试不可达连接1秒、超时统一映射503 no-store、既有异常边界不变）；全部门禁新鲜复验（除`pip-audit`因本机到PyPI连接被代理重置而环境阻塞、依赖集零diff外全部退出0）、完整集成测试不再挂起（15通过/5.27s）、演练资源零残留（`socila-*`未动），Feature保持**Accepted**（详见`reports/feature-09-03-service-jwt/acceptance-report.md` §7.7）。2026-09-04 Edge构建警告复查修复：`src/instrumentation.ts`被Next.js同时构建为Node与Edge运行时bundle，静态`process.exit(1)`触发Turbopack警告（`process.exit is not supported in the Edge Runtime`，违反AC-018）→启动校验与进程终止收敛至Node专用模块`src/lib/security/service-jwt-startup-node.ts`（`register`改async、仅`NEXT_RUNTIME=nodejs`分支动态import、Edge运行时不执行启动校验、fail-fast语义不变），`npm run build`零警告、standalone四种真实启动复验（无current/31字节/previous===current均退出1且`/api/health`不可访问、合法合成Secret成功启动Ready）、源码契约测试防回归（§7.8），Feature保持**Accepted**。
-- 09-05全国政策能力三阶段需求：**仅完成Draft PRD编写，尚未实施**。执行顺序固定为`Socila命名统一与地区DSL分层`→`国家baseline及广东、四川权威overlay`→`用户规划按地区快照触发`；三份PRD均位于`docs/prd/`，不得把Draft需求记为已交付能力。
+- 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）：**Accepted**（验收证据：`reports/feature-09-05-socila-naming/acceptance-report.md`）。SDL-FR-001～014、SDL-NFR-001～007全部有实现与测试映射，SDL-AC-001～010新鲜证据通过：通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层（24规则/29参数/`SOCILA-DSL-1.0`/Manifest `jurisdiction_code=310000`）、Seed经Manifest发现（零硬编码地区）、活动代码与配置SSP/SSRP→Socila硬切换（命名扫描零命中，无旧变量/Cookie/localStorage/服务身份兼容）、Node与Python服务JWT身份原子切换`socila-next-core`（固定向量重签+CI冒烟同步）、粤川示例转测试夹具（生产Seed不写入）、0010迁移完成dsl_version规范化与六条示例精确清理（删除前新鲜pg_dump+SHA-256清单+PG17+pgvector真实恢复逐表对账25表一致；删除后diff仅params 33→29、packs 2→0及0009补齐空表；备份/旧卷/历史快照未动）；Gitleaks完整历史19条历史命中经人工核实为测试合成值并以`.gitleaks.toml`精确allowlist闭环（ADR-0008）。
+- 09-05全国政策能力三阶段需求：执行顺序固定为`Socila命名统一与地区DSL分层`（**已实施并验收**）→`国家baseline及广东、四川权威overlay`（Draft）→`用户规划按地区快照触发`（Draft）；后两份PRD尚未实施，不得把Draft需求记为已交付能力。
 
 ## 已完成能力
 
@@ -35,7 +36,7 @@
 | 国家独立baseline实体 | 最小实现 | 按权威政策分批抽取 |
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
-| Socila命名与地区DSL | Planned | 先验收`09-05-feature-socila-naming-regional-dsl.md` |
+| Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 国家baseline及粤川权威政策 | Planned（依赖前项） | 使用官方来源建立核心可规划集和地区候选快照 |
 | 地区感知用户规划 | Planned（依赖前项） | 只为门禁通过的活动快照逐地区开放，缺失地区不默认上海 |
 
@@ -116,19 +117,35 @@
 | Compose config / Secret扫描 | PASS；`config --quiet`退出0、`scan-secrets`默认候选文件零命中、`--all`全部候选文件零命中 |
 | Docker零任务残留（SJWT-NFR-007/AC-019） | PASS；本轮未新建演练设施，最终枚举`sjwt*`容器/卷/网络全0；`socila-*`九个容器与三个数据卷同基线、未删除未重建 |
 
+## 当前任务验证（09-05 Feature Socila命名统一与地区DSL分层，2026-09-05本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 已记录；单元批次6文件/15失败（命名契约/Manifest/dsl布局/数据文件/Seed契约/文档路径）+ Node JWT身份3失败 + Python JWT身份3失败（SDL-FR-008） |
+| 静态与构建 | PASS；`tsc --noEmit`、`eslint src`（0 error/0 warning）、`npm run build`（零warning）全部exit 0 |
+| Node单元（`npm test`） | PASS；41文件/351通过、skip 0（含命名契约扫描、dsl布局、Manifest发现、数据文件SHA-256、黄金回归） |
+| Python门禁 | PASS；ruff 0问题、mypy 48文件0错误、`pytest -m "not integration"` 94通过（skip 0）、pip-audit无已知漏洞 |
+| 数据库门禁（全新PG17+pgvector `sdl_drill`库） | PASS；Core migration×2幂等、bootstrap×2幂等、seed（Manifest发现）、`test:db` 11文件/47通过skip 0、`agent.migrate --with-roles`幂等、`pytest -m integration` 20通过；落库直查24规则/29参数/310000/SOCILA-DSL-1.0、粤川示例0 |
+| Auth E2E（全新`sdl_e2e`库+standalone+mock，`SOCILA_E2E_*`） | PASS；10通过（47.7s） |
+| Compose双向服务JWT冒烟（完全隔离`sdljwt-smoke`栈+合成Secret+临时卷） | PASS；`config --quiet`通过、8服务running/6健康healthy、smoke库migration exit 0、PyJWT双向9断言（新身份双向200、旧身份401无兼容、伪造/重放/错误方向401）、`down -v`后零残留、`socila-*`未动 |
+| 持久库备份与恢复对账（SDL-NFR-002） | PASS；`pg_dump -Fc` 664,823B + SHA-256清单；临时PG17+pgvector `pg_restore` exit 0/0错误；public+agent 25表逐表行数一致 |
+| 持久库示例清理（SDL-AC-007） | PASS；删除前6目标精确确认（2包/4参数/预期地区版本/引用0）；0010迁移×2幂等；删除后diff仅`params 33→29`、`policy_pack_versions 2→0`、新增0009空表；其余23表不变；web/agent/worker/beat以新镜像重建（JWT身份同步生效）、健康检查全过；备份/旧卷/快照未删除 |
+| Secret与Gitleaks | PASS；`scan-secrets --all`563文件零命中；Gitleaks 8.29.1完整历史40 commits：首跑19条历史命中逐条核实为测试合成值（提交35d673c引入），`.gitleaks.toml`精确allowlist（ADR-0008）后复跑零发现 |
+| 演练资源清理 | PASS；`sdl-drill-pg`、`sdl-restore-verify`容器删除，`sdl*`容器/卷0残留，冒烟临时文件删除 |
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
 09-03阶段已记录**Accepted（开发分支发布准备）**。以下动作均为未来人工动作，不阻塞本阶段验收，且需用户另行授权：
 
-1. 用户人工发布流程（PRD §17.2）：
-   1. 确认`origin/main`未变化，在该提交创建并推送annotated tag `v0.1.0`（Pre-PolicyOps baseline）；
-   2. 人工创建Draft PR：`refactor/policy-ops-agent-platform → main`（六项checks与Actions运行链接在PR创建后产生）；
-   3. 六项检查（`gates`、`agent-gates`、`database-gates`、`e2e-gates`、`container-gates`、`security-gates`）出现后，为`main`配置Active ruleset（只允许PR合并、解决所有对话、分支保持最新、六项必需检查）；
-   4. 审阅全部差异并解决对话，PR转Ready，六项检查通过且分支最新后选择merge commit；
-   5. 等待main上六项CI再次全部通过；
-   6. 在main merge commit创建并推送annotated tag `v0.2.0`，发布PolicyOps+Auth Release；
-   7. 将PR、merge SHA、tag与Release链接交回执行Agent，另建docs-only任务完成最终文档记录。
-2. 按ROADMAP准备远程Personal Demo服务器部署（需单独授权）。
-3. 建立首批官方政策采集和RAG索引。
+1. 重构前版本基线：**已完成**。annotated tag `v1.0.0`已推送至origin，并精确指向`main`提交`1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`；不得移动或重建。
+2. 用户未来人工发布流程（PRD §17.2）：
+   1. 人工创建Draft PR：`refactor/policy-ops-agent-platform → main`（六项checks与Actions运行链接在PR创建后产生）；
+   2. 六项检查（`gates`、`agent-gates`、`database-gates`、`e2e-gates`、`container-gates`、`security-gates`）出现后，为`main`配置Active ruleset（只允许PR合并、解决所有对话、分支保持最新、六项必需检查）；
+   3. 审阅全部差异并解决对话，PR转Ready，六项检查通过且分支最新后选择merge commit；
+   4. 等待main上六项CI再次全部通过；
+   5. 在main merge commit创建并推送annotated tag `v2.0.0`，发布PolicyOps+Auth Release；
+   6. 将PR、merge SHA、tag与Release链接交回执行Agent，另建docs-only任务完成最终文档记录。
+3. 按ROADMAP准备远程Personal Demo服务器部署（需单独授权）。
+4. 建立首批官方政策采集和RAG索引。
 
 历史逐步执行日志已归档至[archive/memory-bank/progress.md](./archive/memory-bank/progress.md)，阶段证据见[reports](./reports/README.md)。

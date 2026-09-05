@@ -11,15 +11,21 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { RuleDefinition } from "@/types/engine";
+import { discoverRegionDsl } from "@/lib/dsl/region-manifest";
 import { runTestSuite, type TestCase } from "../test-runner";
 
-const DSL_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../../../dsl/ssp_dsl_v1",
-);
+// 上海地区资产经地区Manifest发现（SDL-FR-004），与生产Seed共用同一发现器。
+const shanghaiRegion = (() => {
+  const region = discoverRegionDsl().find(
+    (r) => r.manifest.region_slug === "shanghai",
+  );
+  if (!region) throw new Error("shanghai region manifest not found");
+  return region;
+})();
+
+const DSL_DIR = shanghaiRegion.regionDir;
 
 /**
  * 已知偏差：以 example_name 为键。每条都已核对过根因，属示例过期 / 策略语义 / 浮点噪声，
@@ -50,10 +56,7 @@ function loadRules(): RuleDefinition[] {
 
 function loadBaseParams(): Record<string, unknown> {
   const pack = JSON.parse(
-    readFileSync(
-      path.join(DSL_DIR, "params/policy_params_shanghai_base.json"),
-      "utf8",
-    ),
+    readFileSync(shanghaiRegion.paramsPath, "utf8"),
   ) as {
     params: Array<{ param_id: string; value: unknown }>;
     tables: Array<{ param_id: string; rows: unknown[] }>;
@@ -67,10 +70,7 @@ function loadBaseParams(): Record<string, unknown> {
 
 function loadGoldenCases(): TestCase[] {
   const seed = JSON.parse(
-    readFileSync(
-      path.join(DSL_DIR, "tests/rule_examples_as_tests.json"),
-      "utf8",
-    ),
+    readFileSync(shanghaiRegion.testsPath, "utf8"),
   ) as { tests: TestCase[] };
   return seed.tests;
 }

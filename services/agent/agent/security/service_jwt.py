@@ -3,8 +3,8 @@
 协议常量（PRD §6.1）：
 - 仅允许HS256；Header必须alg=HS256且typ=JWT（拒绝none/其他算法/缺失typ/算法混淆）。
 - TTL固定300秒（exp=iat+300）；时钟偏差最多30秒。
-- Next→Agent：iss=ssp-next-core、aud=policy-agent、sub=next-core。
-- Agent→Core：iss=policy-agent、aud=ssp-next-core、sub=agent-runtime。
+- Next→Agent：iss=socila-next-core、aud=policy-agent、sub=next-core。
+- Agent→Core：iss=policy-agent、aud=socila-next-core、sub=agent-runtime。
 
 安全约束（SJWT-NFR-001～006）：
 - 验签显式固定算法列表["HS256"]，不按令牌Header动态选择算法。
@@ -49,8 +49,8 @@ class ServiceIdentity(dict):
         return dict(self)
 
 
-NEXT_IDENTITY = ServiceIdentity("ssp-next-core", "policy-agent", "next-core")
-AGENT_IDENTITY = ServiceIdentity("policy-agent", "ssp-next-core", "agent-runtime")
+NEXT_IDENTITY = ServiceIdentity("socila-next-core", "policy-agent", "next-core")
+AGENT_IDENTITY = ServiceIdentity("policy-agent", "socila-next-core", "agent-runtime")
 
 
 class ServiceJwtConfigError(Exception):

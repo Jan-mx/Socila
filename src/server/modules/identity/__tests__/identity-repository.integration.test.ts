@@ -1,6 +1,6 @@
 /**
  * identity PostgreSQL 集成测试（09-02，AUTH-FR-001/004/008-012，AUTH-AC-003/010/013/014/015）。
- * 前提：SSP_TEST_DATABASE_URL 指向已执行全部迁移（含 0008_auth_identity）的 PostgreSQL 17 演练库。
+ * 前提：SOCILA_TEST_DATABASE_URL 指向已执行全部迁移（含 0008_auth_identity）的 PostgreSQL 17 演练库。
  * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -22,7 +22,7 @@ import type { IdentityDeps } from "../application/ports";
 const TEST_PASSWORD = ["password", "123"].join("-");
 
 
-const DRILL_URL = process.env.SSP_TEST_DATABASE_URL;
+const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
 
 // 测试用户名（规范化形）；每个用例开始前先清理，保证可重复执行。
 const TEST_NORMALIZED = [
@@ -46,7 +46,7 @@ describe("identity repositories (PostgreSQL 17)", () => {
   beforeAll(async () => {
     if (!DRILL_URL) {
       throw new Error(
-        "SSP_TEST_DATABASE_URL 未设置：identity 集成测试需要已执行全部迁移（含 0008_auth_identity）的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+        "SOCILA_TEST_DATABASE_URL 未设置：identity 集成测试需要已执行全部迁移（含 0008_auth_identity）的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
       );
     }
     process.env.DATABASE_URL = DRILL_URL;

@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AGENT_", env_file=None, extra="ignore")
 
     # 数据库（agent 角色；core schema 不可访问由 GRANT 保证）
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/ssp_ci"
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/socila_ci"
     # Redis
     redis_url: str = "redis://localhost:6379/0"
     # Next Core 内部 API（服务身份）

@@ -1,0 +1,174 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-300-MI-GAP-MONTHS",
+  "name": "计算医保断缴月数（上次结束 -> 本次参保）",
+  "module": "medical_insurance",
+  "status": "published",
+  "priority": 300,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "date_diff_months 建议按“自然月差”计算（与经办口径一致），并在文档中定义清楚。",
+  "inputs": [
+    {
+      "key": "user.mi.prev_end_date",
+      "type": "date",
+      "required": false,
+      "desc": "上次医保结束日期（职工/居民）"
+    },
+    {
+      "key": "user.mi.enroll_date",
+      "type": "date",
+      "required": true,
+      "desc": "本次参保日期（例如灵活就业医保起始）"
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_missing_enroll",
+        "when": {
+          "==": [
+            {
+              "var": "user.mi.enroll_date"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-MI-ENROLL-DATE",
+                "text": "请提供本次医保参保日期（用于计算等待期/衔接）。",
+                "field": "user.mi.enroll_date"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_missing_prev_end",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.mi.enroll_date"
+                },
+                null
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.mi.prev_end_date"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.mi.gap_months",
+              "value": null
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-MI-PREV-END-MISSING",
+                "text": "缺少上次医保结束日期，将无法精确判断是否触发等待期；建议上传参保记录或补充信息。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_compute",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.mi.enroll_date"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.mi.prev_end_date"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "call",
+              "fn": "date_diff_months",
+              "args": {
+                "from": {
+                  "var": "user.mi.prev_end_date"
+                },
+                "to": {
+                  "var": "user.mi.enroll_date"
+                }
+              },
+              "into": "calc.mi.gap_months"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.mi.gap_months",
+      "type": "number"
+    },
+    {
+      "key": "calc.warnings",
+      "type": "array"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    }
+  ],
+  "examples": [
+    {
+      "name": "断缴2个月",
+      "input": {
+        "user": {
+          "mi": {
+            "prev_end_date": "2025-12-31",
+            "enroll_date": "2026-03-01"
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "mi": {
+            "gap_months": 2
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

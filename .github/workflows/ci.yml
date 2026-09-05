@@ -108,7 +108,7 @@ jobs:
           --health-retries 20
     env:
       DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
-      SSP_TEST_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
+      SOCILA_TEST_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
       AGENT_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
       AGENT_DB_PASSWORD: ci-synthetic-agent-role-pw-not-real
       ADMIN_USERNAME: ci-admin
@@ -164,9 +164,9 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     env:
-      SSRP_E2E_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
-      SSRP_E2E_NEXTAUTH_SECRET: ci-e2e-nextauth-secret-not-real
-      SSRP_E2E_REFRESH_PEPPER: ci-e2e-refresh-pepper-not-real
+      SOCILA_E2E_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
+      SOCILA_E2E_NEXTAUTH_SECRET: ci-e2e-nextauth-secret-not-real
+      SOCILA_E2E_REFRESH_PEPPER: ci-e2e-refresh-pepper-not-real
       # 管理员引导账号不在此覆盖：bootstrap 与 run-auth-e2e.mjs 必须与
       # e2e/auth.spec.ts 的既有验收契约一致（Jan + 规格内拆分构造的一次性口令）。
     steps:
@@ -181,11 +181,11 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: migration
         env:
-          DATABASE_URL: ${{ env.SSRP_E2E_DATABASE_URL }}
+          DATABASE_URL: ${{ env.SOCILA_E2E_DATABASE_URL }}
         run: npm run db:migrate
       - name: admin bootstrap
         env:
-          DATABASE_URL: ${{ env.SSRP_E2E_DATABASE_URL }}
+          DATABASE_URL: ${{ env.SOCILA_E2E_DATABASE_URL }}
         run: |
           # 与 e2e/auth.spec.ts 的既有验收契约一致：用户名 Jan；口令按规格
           # 相同的拆分构造生成，不在本文件引入新的凭据字面量。
@@ -195,7 +195,7 @@ jobs:
           node scripts/bootstrap-admin.mjs
       - name: seed
         env:
-          DATABASE_URL: ${{ env.SSRP_E2E_DATABASE_URL }}
+          DATABASE_URL: ${{ env.SOCILA_E2E_DATABASE_URL }}
         run: npm run seed
       - name: production build
         run: npm run build
@@ -343,7 +343,7 @@ jobs:
           s, b = call("http://127.0.0.1:8100/internal/ready", {"X-Service-Name": "next-core"})
           assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
           # 4) 合法Next→Agent调用（Next身份令牌）→ 200。
-          next_tok = sign("ssp-next-core", "policy-agent", "next-core")
+          next_tok = sign("socila-next-core", "policy-agent", "next-core")
           s, b = call("http://127.0.0.1:8100/internal/ready", {"Authorization": "Bearer " + next_tok})
           assert s == 200 and b == {"status": "ready"}, (s, b)
 
@@ -362,7 +362,7 @@ jobs:
           s, b = call(draft_url, {"X-Service-Name": "agent-runtime"}, bundle)
           assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
           # 6) 合法Agent→Core调用（Agent身份令牌）→ 200且台账入库。
-          agent_tok = sign("policy-agent", "ssp-next-core", "agent-runtime")
+          agent_tok = sign("policy-agent", "socila-next-core", "agent-runtime")
           s, b = call(draft_url, {"Authorization": "Bearer " + agent_tok,
                                   "X-Service-Name": "agent-runtime"}, bundle)
           assert s == 200 and b["idempotent"] is False, (s, b)
@@ -372,7 +372,7 @@ jobs:
                       {**bundle, "idempotency_key": "smoke-key-2"})
           assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
           # 8) 错误方向（Next身份令牌到Core）→ 401。
-          wrong = sign("ssp-next-core", "policy-agent", "next-core")
+          wrong = sign("socila-next-core", "policy-agent", "next-core")
           s, b = call(draft_url, {"Authorization": "Bearer " + wrong,
                                   "X-Service-Name": "agent-runtime"},
                       {**bundle, "idempotency_key": "smoke-key-3"})

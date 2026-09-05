@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-04
+> Updated: 2026-09-05
 
 ## 测试先行
 
@@ -42,8 +42,8 @@ uv run --project services/agent pytest -q
 # 单元测试：零数据库依赖、零 skip（vitest.config.ts 排除 *.integration.test.ts）
 npm test
 # 数据库集成测试：仅 *.integration.test.ts，必须指向已迁移的全新 PostgreSQL 17 库；
-# 未设置 SSP_TEST_DATABASE_URL 时直接失败（不允许以 skip 关闭）
-$env:SSP_TEST_DATABASE_URL="postgresql://..."; npm run test:db
+# 未设置 SOCILA_TEST_DATABASE_URL 时直接失败（不允许以 skip 关闭）
+$env:SOCILA_TEST_DATABASE_URL="postgresql://..."; npm run test:db
 ```
 
 Repository集成测试需要本地PostgreSQL；真实部署、恢复和切换按[OPERATIONS](./OPERATIONS.md)及对应报告执行。
@@ -52,9 +52,9 @@ identity与鉴权专项（09-02）：
 
 ```powershell
 # Chromium E2E（前提：全新PG17库已完成migration、bootstrap-admin、seed；npm run build）
-$env:SSRP_E2E_DATABASE_URL="postgresql://..."
-$env:SSRP_E2E_NEXTAUTH_SECRET="..."
-$env:SSRP_E2E_REFRESH_PEPPER="..."
+$env:SOCILA_E2E_DATABASE_URL="postgresql://..."
+$env:SOCILA_E2E_NEXTAUTH_SECRET="..."
+$env:SOCILA_E2E_REFRESH_PEPPER="..."
 npm run test:e2e:auth
 ```
 
@@ -69,7 +69,7 @@ uv run mypy agent
 uv run pytest -m "not integration"   # 单元：零环境skip，DeprecationWarning提升为error
 uv run pip-audit
 # 数据库集成：必须指向已迁移的全新PG17库；缺环境变量时测试直接失败（不允许skip）
-$env:SSP_TEST_DATABASE_URL="postgresql://..."
+$env:SOCILA_TEST_DATABASE_URL="postgresql://..."
 $env:AGENT_DATABASE_URL="postgresql://..."
 $env:AGENT_DB_PASSWORD="..."
 uv run pytest -m integration
@@ -88,12 +88,21 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 
 ## 服务JWT跨语言契约（09-03 SJWT）
 
-`testdata/service-jwt-vectors.json`保存非真实固定向量：同一组claims（固定`fixedNow`）由Node（`jose`）与Python（`PyJWT`）各自独立签名，两端测试套件互验对方签发的令牌（iss/aud/sub/jti/iat/exp精确一致、current/previous命中分类正确），并双向复验全部拒绝向量（`alg=none`、过期、跨方向）；协议常量（HS256/300s/30s）漂移由guard测试拦截。
+`testdata/service-jwt-vectors.json`保存非真实固定向量：同一组claims（固定`fixedNow`）由Node（`jose`）与Python（`PyJWT`）各自独立签名，两端测试套件互验对方签发的令牌（iss/aud/sub/jti/iat/exp精确一致、current/previous命中分类正确），并双向复验全部拒绝向量（`alg=none`、过期、跨方向）；协议常量（HS256/300s/30s）漂移由guard测试拦截。09-05 SDL-FR-008将固定身份原子切换为`socila-next-core`：向量文件全部令牌以同一组测试Secret/`fixedNow`/JTI重签，新增"旧身份（`ssp-next-core`）令牌统一401"双向拒绝用例（Node `service-jwt.test.ts`、Python `test_service_jwt.py`）。
 
 ```powershell
 npm test                                   # 含 service-jwt.test.ts 与 service-jwt-vectors.contract.test.ts
 uv run --project services/agent pytest -m "not integration"   # 含 test_service_jwt.py 与 test_service_jwt_vectors.py
 ```
+
+## Socila命名契约与地区DSL（09-05 SDL）
+
+- 命名契约扫描（`src/lib/naming/socila-naming-contract.test.ts`，npm test）：扫描Git跟踪的活动代码与配置（排除docs/历史与package-lock），禁止`SSP-DSL-1.0`、`ssp_dsl_v1`、`SSP_TEST_DATABASE_URL`、`SSP_PG_DEV_PASSWORD`、`SSRP_E2E_*`、`ssp-next-core`、`ssp-anon-session`、`ssp-session-id`、`ssp-web`、开发Compose旧资源名、`__sspRateLimitBuckets`等历史标识；唯一例外为`drizzle/0010_*.sql`（SDL-FR-011要求migration显式枚举已知旧值）与负向守卫/自扫描测试文件（SDL-AC-003）。
+- DSL布局契约（`src/lib/dsl/dsl-layout.test.ts`）：协议目录`dsl/protocol/socila_dsl_v1`（Socila命名Schema、`dsl_version` const钉死`SOCILA-DSL-1.0`）与地区目录`dsl/regions/shanghai_dsl_v1`（24规则全SOCILA-DSL-1.0、SHANGHAI_BASE 29参数、RS-SHANGHAI-PLAN-V1覆盖24规则、旧目录不存在）。
+- 地区Manifest发现（`src/lib/dsl/region-manifest.test.ts`）：Manifest必备字段、清单与目录双向一致、越界路径拒绝、未知`dsl_version`拒绝、未来地区无需修改上海常量即可发现（SDL-AC-002）。
+- migration行为（`src/server/modules/policy/__tests__/sdl-0010-migration.integration.test.ts`，test:db）：已知旧值规范化、未知值中止、六条示例精确删除+对照行不变、非预期地区/版本/引用中止、重复执行幂等（SDL-AC-007）。
+- 生产Seed干净（`seed-regional-clean.integration.test.ts`）：全新库Seed后无粤川示例包与参数（SDL-AC-005）；区域隔离测试经`fixtures/regional-examples.ts`显式安装夹具并在afterAll清理零残留（SDL-AC-006）。
+- 数据文件契约（`src/lib/data/data-file-contract.test.ts`）：`data/shanghai-test-cases-from-transcripts.xlsx` SHA-256与重命名前一致（SDL-AC-010）。
 
 ## CI六项门禁（09-03 PMG-FR-020～025）
 
@@ -106,7 +115,7 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 | `database-gates` | 全新PG17：migration×2、引导×2、seed、`npm run test:db`、`agent.migrate --with-roles`、`pytest -m integration` | 幂等no-op；集成skip为0 |
 | `e2e-gates` | `npm run test:e2e:auth`（standalone构建+mock模型+全新库） | 10项Auth流程与助手回复通过 |
 | `container-gates` | 构建web/agent镜像；合成env+临时卷`compose up`→健康检查→SJWT-AC-017双向冒烟（合法双向调用200、伪造服务名/错误方向/重放401）→`down -v`；Trivy 0.74.0 | 健康通过、双向冒烟通过、临时资源删除、可修复HIGH/CRITICAL为0 |
-| `security-gates` | `node scripts/scan-secrets.mjs --all`；Gitleaks 8.29.1完整历史 | 除5个已核实fingerprint外0发现 |
+| `security-gates` | `node scripts/scan-secrets.mjs --all`；Gitleaks 8.29.1完整历史（09-05起使用`.gitleaks.toml`：默认规则集+精确路径/规则allowlist） | 除5个已核实fingerprint与`.gitleaks.toml`已核实测试合成值allowlist外0发现 |
 
 ## SiliconFlow
 

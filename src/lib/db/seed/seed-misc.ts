@@ -1,10 +1,11 @@
 import fs from "fs";
-import path from "path";
 import { db } from "@/lib/db";
 import { ruleSets, workflows, tests } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-
-const DSL_DIR = path.join(process.cwd(), "dsl/ssp_dsl_v1");
+import {
+  protocolWorkflowPath,
+  type DiscoveredRegion,
+} from "@/lib/dsl/region-manifest";
 
 interface RuleSetFile {
   rule_set_id: string;
@@ -37,13 +38,15 @@ interface TestsFile {
   tests: TestEntry[];
 }
 
-export async function seedMisc() {
+/**
+ * 装载规则集与示例测试（SDL-FR-004：路径来自地区Manifest）；发布工作流是
+ * 协议级资产（SDL-FR-002），从协议目录装载。
+ */
+export async function seedMisc(region: DiscoveredRegion) {
+  const jurisdictionCode = region.manifest.jurisdiction_code;
+
   // Seed rule set
-  const ruleSetPath = path.join(
-    DSL_DIR,
-    "rule_sets/rule_set_shanghai_plan_v1.json",
-  );
-  const ruleSetRaw = fs.readFileSync(ruleSetPath, "utf-8");
+  const ruleSetRaw = fs.readFileSync(region.ruleSetPath, "utf-8");
   const ruleSet: RuleSetFile = JSON.parse(ruleSetRaw);
 
   console.log(`Seeding rule set: ${ruleSet.rule_set_id}...`);
@@ -55,7 +58,7 @@ export async function seedMisc() {
     .limit(1);
 
   const ruleSetData = {
-    jurisdictionCode: "310000",
+    jurisdictionCode,
     ruleSetId: ruleSet.rule_set_id,
     description: ruleSet.description ?? null,
     status: ruleSet.status,
@@ -76,12 +79,8 @@ export async function seedMisc() {
     console.log(`  Inserted rule set: ${ruleSet.rule_set_id}`);
   }
 
-  // Seed workflow
-  const workflowPath = path.join(
-    DSL_DIR,
-    "workflows/publish_workflow_default.json",
-  );
-  const workflowRaw = fs.readFileSync(workflowPath, "utf-8");
+  // Seed workflow（协议级资产）
+  const workflowRaw = fs.readFileSync(protocolWorkflowPath(), "utf-8");
   const workflow: WorkflowFile = JSON.parse(workflowRaw);
 
   console.log(`Seeding workflow: ${workflow.workflow_id}...`);
@@ -114,8 +113,7 @@ export async function seedMisc() {
   }
 
   // Seed tests from rule examples
-  const testsPath = path.join(DSL_DIR, "tests/rule_examples_as_tests.json");
-  const testsRaw = fs.readFileSync(testsPath, "utf-8");
+  const testsRaw = fs.readFileSync(region.testsPath, "utf-8");
   const testsFile: TestsFile = JSON.parse(testsRaw);
 
   console.log(`Seeding ${testsFile.tests.length} example tests...`);

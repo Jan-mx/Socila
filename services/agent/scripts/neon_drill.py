@@ -5,7 +5,7 @@
 对账（数量+共享列哈希）→ JSON 报告。
 
 用法（在仓库根，DATABASE_URL 指向 Neon，只读使用）：
-  DRILL_ROUND=1 SSP_PG_DEV_PASSWORD=... DATABASE_URL=<neon> \
+  DRILL_ROUND=1 SOCILA_PG_DEV_PASSWORD=... DATABASE_URL=<neon> \
     uv run --project services/agent python services/agent/scripts/neon_drill.py
 """
 
@@ -73,7 +73,7 @@ def sh(cmd: list[str], *, binary_out: bool = False, stdin_file=None, **extra) ->
 
 
 def pg_conn(db: str, autocommit: bool = False):
-    password = os.environ["SSP_PG_DEV_PASSWORD"]
+    password = os.environ["SOCILA_PG_DEV_PASSWORD"]
     conn = psycopg.connect(f"postgresql://postgres:{password}@{PG_HOST}:{PG_PORT}/{db}")
     conn.autocommit = autocommit or False
     return conn
@@ -121,7 +121,7 @@ def main() -> None:
         with pg_conn("postgres", autocommit=True) as conn:
             conn.execute(f'DROP DATABASE IF EXISTS "{TARGET_DB}"')
             conn.execute(f'CREATE DATABASE "{TARGET_DB}"')
-        env = dict(os.environ, DATABASE_URL=f"postgresql://postgres:{os.environ['SSP_PG_DEV_PASSWORD']}@{PG_HOST}:{PG_PORT}/{TARGET_DB}")
+        env = dict(os.environ, DATABASE_URL=f"postgresql://postgres:{os.environ['SOCILA_PG_DEV_PASSWORD']}@{PG_HOST}:{PG_PORT}/{TARGET_DB}")
         npm = shutil.which("npm")
         if not npm:
             raise RuntimeError("npm not found on PATH")

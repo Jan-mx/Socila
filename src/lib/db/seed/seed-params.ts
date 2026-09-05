@@ -1,13 +1,8 @@
 import fs from "fs";
-import path from "path";
 import { db } from "@/lib/db";
 import { params } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-
-const PARAMS_FILE = path.join(
-  process.cwd(),
-  "dsl/ssp_dsl_v1/params/policy_params_shanghai_base.json",
-);
+import type { DiscoveredRegion } from "@/lib/dsl/region-manifest";
 
 interface ScalarParamEntry {
   param_id: string;
@@ -36,10 +31,15 @@ interface PolicyPackFile {
   tables: TableParamEntry[];
 }
 
-export async function seedParams() {
-  const raw = fs.readFileSync(PARAMS_FILE, "utf-8");
+/**
+ * 按地区Manifest装载参数包（SDL-FR-004）：参数文件与地区代码来自
+ * DiscoveredRegion，装载器不硬编码地区目录或行政区划。
+ */
+export async function seedParams(region: DiscoveredRegion) {
+  const raw = fs.readFileSync(region.paramsPath, "utf-8");
   const pack: PolicyPackFile = JSON.parse(raw);
   const policyPackId = pack.policy_pack_id;
+  const jurisdictionCode = region.manifest.jurisdiction_code;
 
   console.log(`Seeding params for policy pack: ${policyPackId}...`);
 
@@ -59,7 +59,7 @@ export async function seedParams() {
 
     const data = {
       policyPackId,
-      jurisdictionCode: "310000",
+      jurisdictionCode,
       businessKey: p.param_id,
       paramId: p.param_id,
       type: p.type,
@@ -109,7 +109,7 @@ export async function seedParams() {
 
     const data = {
       policyPackId,
-      jurisdictionCode: "310000",
+      jurisdictionCode,
       businessKey: t.param_id,
       paramId: t.param_id,
       type: t.type,

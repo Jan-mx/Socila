@@ -1,0 +1,229 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+  "name": "查表计算法定退休年龄（参数表驱动）",
+  "module": "retirement",
+  "status": "published",
+  "priority": 110,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "本规则本身不内置延迟退休算法；由参数表/外部服务决定退休年龄。这样才能满足“政策更新不改代码”。",
+  "inputs": [
+    {
+      "key": "user.basic.gender",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "user.basic.female_retire_type",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "user.basic.birth_year",
+      "type": "number",
+      "required": true
+    }
+  ],
+  "parameter_refs": [
+    {
+      "param_id": "T-RETIREMENT-AGE-LOOKUP",
+      "purpose": "退休年龄映射表"
+    }
+  ],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_missing_inputs",
+        "when": {
+          "or": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.gender"
+                },
+                null
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.basic.female_retire_type"
+                },
+                null
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.basic.birth_year"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-RETIRE-INPUTS",
+                "text": "计算退休年龄需要：性别、女性50/55口径、出生年份。请补齐。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_lookup",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.basic.gender"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.basic.female_retire_type"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.basic.birth_year"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "lookup",
+              "table_param_id": "T-RETIREMENT-AGE-LOOKUP",
+              "key": {
+                "gender": { "var": "user.basic.gender" },
+                "female_retire_type": { "var": "user.basic.female_retire_type" },
+                "birth_year": { "var": "user.basic.birth_year" }
+              },
+              "into": "calc.retirement._table_override",
+              "into_map": {
+                "legal_retire_age_years": "calc.retirement.legal_retire_age_years",
+                "legal_retire_age_months": "calc.retirement.legal_retire_age_months",
+                "original_retire_age_years": "calc.retirement.original_retire_age_years"
+              }
+            },
+            {
+              "type": "call",
+              "fn": "compute_delayed_retire_age",
+              "args": {
+                "gender": { "var": "user.basic.gender" },
+                "female_retire_type": { "var": "user.basic.female_retire_type" },
+                "birth_year": { "var": "user.basic.birth_year" },
+                "birth_month": { "var": "user.basic.birth_month" }
+              },
+              "into": "calc.retirement._algo_result"
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement.legal_retire_age_years",
+              "value": {
+                "if": [
+                  { "!=": [{ "var": "calc.retirement.legal_retire_age_years" }, null] },
+                  { "var": "calc.retirement.legal_retire_age_years" },
+                  { "var": "calc.retirement._algo_result.legal_retire_age_years" }
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement.legal_retire_age_months",
+              "value": {
+                "if": [
+                  { "!=": [{ "var": "calc.retirement.legal_retire_age_months" }, null] },
+                  { "var": "calc.retirement.legal_retire_age_months" },
+                  { "var": "calc.retirement._algo_result.legal_retire_age_months" }
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.retirement.original_retire_age_years",
+              "value": {
+                "if": [
+                  { "!=": [{ "var": "calc.retirement.original_retire_age_years" }, null] },
+                  { "var": "calc.retirement.original_retire_age_years" },
+                  { "var": "calc.retirement._algo_result.original_retire_age_years" }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.retirement.legal_retire_age_years",
+      "type": "number",
+      "desc": "法定退休年龄(岁)"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "1973 男 -> 60",
+      "input": {
+        "user": {
+          "basic": {
+            "gender": "male",
+            "female_retire_type": "na",
+            "birth_year": 1973
+          }
+        }
+      },
+      "params": {
+        "T-RETIREMENT-AGE-LOOKUP": [
+          {
+            "gender": "male",
+            "female_retire_type": "na",
+            "birth_year_min": 1900,
+            "birth_year_max": 2100,
+            "legal_retire_age_years": 60
+          }
+        ]
+      },
+      "expected": {
+        "calc": {
+          "retirement": {
+            "legal_retire_age_years": 60
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

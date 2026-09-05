@@ -1,19 +1,19 @@
 /**
  * 步骤03.1 地区树真库集成测试（POL-AC-002 基础）。
- * 前提：SSP_TEST_DATABASE_URL 指向已迁移且已 seed 的全新 PostgreSQL 17 库；
+ * 前提：SOCILA_TEST_DATABASE_URL 指向已迁移且已 seed 的全新 PostgreSQL 17 库；
  * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { createJurisdictionTreeService } from "@/server/modules/jurisdiction/application/tree-service";
 import { DrizzleJurisdictionReadRepository } from "@/server/modules/jurisdiction/infrastructure/drizzle/jurisdiction-read.repository";
 
-const DRILL_URL = process.env.SSP_TEST_DATABASE_URL;
+const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
 
 describe("jurisdiction tree (drill DB)", () => {
   beforeAll(() => {
     if (!DRILL_URL) {
       throw new Error(
-        "SSP_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移且已 seed 的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+        "SOCILA_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移且已 seed 的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
       );
     }
     process.env.DATABASE_URL = DRILL_URL;

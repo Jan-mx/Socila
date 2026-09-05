@@ -1,0 +1,233 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+  "name": "失业金可领取月数核算（按失业险年限查表 + 上限）",
+  "module": "unemployment",
+  "status": "published",
+  "priority": 410,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "lookup 需支持区间匹配：insured_years 落在 [min,max) 则命中。",
+  "inputs": [
+    {
+      "key": "calc.unemployment.eligible",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "key": "user.social.unemployment_insurance_years",
+      "type": "number",
+      "required": false
+    },
+    {
+      "key": "params.P-SH-UNEMPLOYMENT-MAX-MONTHS",
+      "type": "number",
+      "required": true
+    }
+  ],
+  "parameter_refs": [
+    {
+      "param_id": "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS",
+      "purpose": "失业金领取月数表"
+    },
+    {
+      "param_id": "P-SH-UNEMPLOYMENT-MAX-MONTHS",
+      "purpose": "失业金上限月数"
+    }
+  ],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_not_eligible",
+        "when": {
+          "==": [
+            {
+              "var": "calc.unemployment.eligible"
+            },
+            false
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.duration_months",
+              "value": 0
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_unknown",
+        "when": {
+          "==": [
+            {
+              "var": "calc.unemployment.eligible"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.duration_months",
+              "value": null
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_missing_years",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.unemployment_insurance_years"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.duration_months",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-UI-YEARS",
+                "text": "缺少失业险缴费年限，无法核算可领失业金月数。",
+                "field": "user.social.unemployment_insurance_years"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_4_lookup",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.unemployment_insurance_years"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "lookup",
+              "table_param_id": "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS",
+              "key": {
+                "insured_years": {
+                  "var": "user.social.unemployment_insurance_years"
+                }
+              },
+              "into": "calc.unemployment.duration_months_raw"
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.duration_months",
+              "value": {
+                "min": [
+                  {
+                    "var": "calc.unemployment.duration_months_raw"
+                  },
+                  {
+                    "var": "params.P-SH-UNEMPLOYMENT-MAX-MONTHS"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.unemployment.duration_months",
+      "type": "number"
+    },
+    {
+      "key": "calc.unemployment.duration_months_raw",
+      "type": "number"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "失业险8年 -> 24月(上限)",
+      "input": {
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        },
+        "user": {
+          "social": {
+            "unemployment_insurance_years": 8
+          }
+        },
+        "params": {
+          "P-SH-UNEMPLOYMENT-MAX-MONTHS": 24,
+          "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS": [
+            {
+              "insured_years_min": 8,
+              "insured_years_max": 99,
+              "months": 24
+            }
+          ]
+        }
+      },
+      "expected": {
+        "calc": {
+          "unemployment": {
+            "duration_months": 24
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

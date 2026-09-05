@@ -20,8 +20,9 @@
 | `stage-06/` | Diff、草案、审核和物化验收 |
 | `stage-07/` | 部署、迁移、恢复、回退和切换验收 |
 | `feature-09-02-auth/` | 用户与管理员双角色鉴权Feature验收 |
-| `stage-09-03-pre-merge-release/` | P0合并质量门禁与v0.2.0发布阶段验收（六job门禁、镜像加固、Secret/Trivy/Gitleaks、发布治理） |
+| `stage-09-03-pre-merge-release/` | P0合并质量门禁与v2.0.0发布准备阶段验收（六job门禁、镜像加固、Secret/Trivy/Gitleaks、发布治理） |
 | `stage-09-03-runtime-config-remediation/` | 09-03本地运行配置与凭据整改阶段验收（环境加载统一、模板收口、一次性引导、新鲜备份+真实恢复对账、口令轮换与演练资源清理） |
+| `feature-09-05-socila-naming/` | 09-05 Socila命名统一与地区DSL分层Feature验收（协议/地区DSL分层、命名硬切换、服务JWT身份socila-next-core、粤川示例夹具化、0010迁移与持久库精确清理对账） |
 | `feature-09-03-service-jwt/` | Core与Agent双向服务JWT鉴权Feature验收与复审（4项缺漏已修复闭环并重新验收：文档入口关闭、启动期fail-fast、重放异常503映射、宿主配置补齐） |
 | `documentation/` | 文档体系和补充决策验收 |
 | `traceability.md` | 需求、实现、测试和报告追踪 |

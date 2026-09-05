@@ -3,7 +3,7 @@
  * Agent → Core 的唯一 draft 导入入口。
  *
  * 服务身份（ADR-0005 服务JWT）：
- * - 解析请求体前验证固定Agent身份Bearer令牌（iss=policy-agent/aud=ssp-next-core/
+ * - 解析请求体前验证固定Agent身份Bearer令牌（iss=policy-agent/aud=socila-next-core/
  *   sub=agent-runtime）；`X-Service-Name` 仅可作结构化日志上下文，不参与允许/拒绝
  *   判断（SJWT-FR-006）；
  * - 鉴权失败（缺失/格式/签名/claims/过期/重放）统一 401 SERVICE_AUTH_INVALID；

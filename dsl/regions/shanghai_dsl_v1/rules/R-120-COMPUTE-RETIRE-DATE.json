@@ -1,0 +1,185 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-120-COMPUTE-RETIRE-DATE",
+  "name": "计算法定退休日期（出生日期 + 退休年龄）",
+  "module": "retirement",
+  "status": "published",
+  "priority": 120,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "date_add_years 的实现需考虑当月退休、待遇起算月等地区口径；建议返回 retire_month（YYYY-MM）供后续规则使用。",
+  "inputs": [
+    {
+      "key": "user.basic.birth_date",
+      "type": "date",
+      "required": true
+    },
+    {
+      "key": "calc.retirement.legal_retire_age_years",
+      "type": "number",
+      "required": true
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_missing",
+        "when": {
+          "or": [
+            {
+              "==": [
+                {
+                  "var": "user.basic.birth_date"
+                },
+                null
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-RETIRE-DATE",
+                "text": "计算退休日期需要出生日期（年/月/日）与退休年龄。请补齐出生月日，或上传参保档案截图。",
+                "field": "user.basic.birth_date"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_compute",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.basic.birth_date"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.retirement.legal_retire_age_years"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "call",
+              "fn": "date_add_years_months",
+              "args": {
+                "date": { "var": "user.basic.birth_date" },
+                "years": { "var": "calc.retirement.legal_retire_age_years" },
+                "months": { "var": "calc.retirement.legal_retire_age_months" }
+              },
+              "into": "calc.retirement.legal_retire_date"
+            },
+            {
+              "type": "call",
+              "fn": "date_year",
+              "args": {
+                "date": {
+                  "var": "calc.retirement.legal_retire_date"
+                }
+              },
+              "into": "calc.retirement.legal_retire_year"
+            },
+            {
+              "type": "call",
+              "fn": "date_month",
+              "args": {
+                "date": {
+                  "var": "calc.retirement.legal_retire_date"
+                }
+              },
+              "into": "calc.retirement.legal_retire_month"
+            },
+            {
+              "type": "call",
+              "fn": "date_diff_months",
+              "args": {
+                "from": { "var": "calc._today" },
+                "to": { "var": "calc.retirement.legal_retire_date" }
+              },
+              "into": "calc.retirement.months_to_legal_retire"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.retirement.legal_retire_date",
+      "type": "date"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    },
+    {
+      "key": "calc.retirement.legal_retire_year",
+      "type": "number"
+    },
+    {
+      "key": "calc.retirement.legal_retire_month",
+      "type": "number"
+    }
+  ],
+  "examples": [
+    {
+      "name": "1973-05-12 男 60 -> 2033-05-12",
+      "input": {
+        "user": {
+          "basic": {
+            "birth_date": "1973-05-12"
+          }
+        },
+        "calc": {
+          "retirement": {
+            "legal_retire_age_years": 60
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "retirement": {
+            "legal_retire_date": "2033-05-12",
+            "legal_retire_year": 2033,
+            "legal_retire_month": 5
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

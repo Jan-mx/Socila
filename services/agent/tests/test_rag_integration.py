@@ -14,11 +14,11 @@ from agent.rag.pipeline import IngestService, RetrievalService
 from agent.rag.siliconflow import FakeSiliconFlowClient
 from agent.rag.storage import InMemoryObjectStore
 
-DRILL = os.environ.get("SSP_TEST_DATABASE_URL")
+DRILL = os.environ.get("SOCILA_TEST_DATABASE_URL")
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not DRILL, reason="requires SSP_TEST_DATABASE_URL")
+@pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
 class TestIngestAndRetrieval:
     @pytest.fixture()
     def services(self):

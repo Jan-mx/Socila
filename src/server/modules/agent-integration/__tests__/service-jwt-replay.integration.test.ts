@@ -9,7 +9,7 @@
  * draft-imports-auth.integration.test.ts（路由层测试不位于模块目录内，
  * 模块边界扫描禁止 next/* 导入）。
  *
- * 前提：SSP_TEST_DATABASE_URL 指向已迁移的全新 PostgreSQL 17 库；
+ * 前提：SOCILA_TEST_DATABASE_URL 指向已迁移的全新 PostgreSQL 17 库；
  * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -25,7 +25,7 @@ import { AGENT_IDENTITY, NEXT_IDENTITY, type ServiceJwtClaims } from "@/lib/secu
 import { resetServiceJwtInstance } from "@/lib/security/service-jwt-provider";
 import { materializeDraftBundle, parseAndReject } from "../application/materialize";
 
-const DRILL = process.env.SSP_TEST_DATABASE_URL;
+const DRILL = process.env.SOCILA_TEST_DATABASE_URL;
 
 // 合成测试Secret（非生产）：与契约向量无关，仅本文件内签发/验证。
 const CURRENT_SECRET = "sjwt-it-current-secret-0123456789-abcdef-0123456789";
@@ -79,7 +79,7 @@ describe("SJWT JTI事务消费（drill DB）", () => {
   beforeAll(() => {
     if (!DRILL) {
       throw new Error(
-        "SSP_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+        "SOCILA_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
       );
     }
     process.env.DATABASE_URL = DRILL;
@@ -196,13 +196,13 @@ describe("SJWT JTI事务消费（drill DB）", () => {
 
   it("AC-015对称：Next→Agent方向的固定身份常量与向量同源", async () => {
     expect(NEXT_IDENTITY).toEqual({
-      issuer: "ssp-next-core",
+      issuer: "socila-next-core",
       audience: "policy-agent",
       subject: "next-core",
     });
     expect(AGENT_IDENTITY).toEqual({
       issuer: "policy-agent",
-      audience: "ssp-next-core",
+      audience: "socila-next-core",
       subject: "agent-runtime",
     });
   });

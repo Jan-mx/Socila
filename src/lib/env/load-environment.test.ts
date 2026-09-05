@@ -18,7 +18,7 @@ async function environmentModule(): Promise<Required<EnvironmentModule>> {
 }
 
 function withTemporaryEnvironment(files: Record<string, string>, run: (cwd: string) => Promise<void>) {
-  const cwd = mkdtempSync(join(tmpdir(), "ssp-environment-"));
+  const cwd = mkdtempSync(join(tmpdir(), "socila-environment-"));
   for (const [file, contents] of Object.entries(files)) {
     writeFileSync(join(cwd, file), contents);
   }

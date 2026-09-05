@@ -349,3 +349,50 @@ describe("SJWT-NFR-004 失败关闭", () => {
     }
   });
 });
+
+// 09-05 SDL-FR-008/AC-004：服务JWT身份一次性硬切换为socila-next-core，
+// 旧身份不提供兼容（统一401，不新增可枚举错误）。
+describe("SDL-FR-008 服务身份硬切换", () => {
+  it("Next签发身份issuer与Agent验证audience为socila-next-core", () => {
+    expect(NEXT_IDENTITY.issuer).toBe("socila-next-core");
+    expect(AGENT_IDENTITY.audience).toBe("socila-next-core");
+  });
+
+  it("旧issuer身份令牌统一拒绝（无兼容别名）", async () => {
+    const svc = new ServiceJwt({ current: CURRENT }, ctx());
+    const legacyIssuer = ["ssp-nex", "t-core"].join("");
+    const legacyToken = await rawSign(
+      {
+        iss: legacyIssuer,
+        aud: NEXT_IDENTITY.audience,
+        sub: NEXT_IDENTITY.subject,
+        jti: FIXED_JTI,
+        iat: FIXED_NOW,
+        exp: FIXED_NOW + SERVICE_JWT_TTL_SECONDS,
+      },
+      CURRENT,
+    );
+    await expect(svc.verifyNextToken(legacyToken)).rejects.toBeInstanceOf(
+      ServiceAuthInvalidError,
+    );
+  });
+
+  it("旧audience身份令牌统一拒绝（无兼容别名）", async () => {
+    const svc = new ServiceJwt({ current: CURRENT }, ctx());
+    const legacyAudience = ["ssp-nex", "t-core"].join("");
+    const legacyToken = await rawSign(
+      {
+        iss: AGENT_IDENTITY.issuer,
+        aud: legacyAudience,
+        sub: AGENT_IDENTITY.subject,
+        jti: FIXED_JTI,
+        iat: FIXED_NOW,
+        exp: FIXED_NOW + SERVICE_JWT_TTL_SECONDS,
+      },
+      CURRENT,
+    );
+    await expect(svc.verifyAgentToken(legacyToken)).rejects.toBeInstanceOf(
+      ServiceAuthInvalidError,
+    );
+  });
+});

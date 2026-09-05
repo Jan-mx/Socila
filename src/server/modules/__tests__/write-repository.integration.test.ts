@@ -1,6 +1,6 @@
 /**
  * 步骤02.3 写仓储集成测试（CORE-FR-004/005）：CRUD、事务回滚、并发。
- * 前提：SSP_TEST_DATABASE_URL 指向已迁移的全新 PostgreSQL 17 库；
+ * 前提：SOCILA_TEST_DATABASE_URL 指向已迁移的全新 PostgreSQL 17 库；
  * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -12,7 +12,7 @@ import { DrizzleRulesReadRepository } from "@/server/modules/rules/infrastructur
 import { DrizzlePlanningWriteRepository } from "@/server/modules/planning/infrastructure/drizzle/planning-write.repository";
 import { DrizzleConversationWriteRepository } from "@/server/modules/conversation/infrastructure/drizzle/conversation-write.repository";
 
-const DRILL_URL = process.env.SSP_TEST_DATABASE_URL;
+const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
 
 describe("write repositories (CRUD/rollback/concurrency)", () => {
   const rulesWrites = new DrizzleRulesWriteRepository();
@@ -23,7 +23,7 @@ describe("write repositories (CRUD/rollback/concurrency)", () => {
   beforeAll(() => {
     if (!DRILL_URL) {
       throw new Error(
-        "SSP_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+        "SOCILA_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
       );
     }
     process.env.DATABASE_URL = DRILL_URL;
@@ -39,7 +39,7 @@ describe("write repositories (CRUD/rollback/concurrency)", () => {
   });
 
   const makeTestRule = (ruleId: string, name: string) => ({
-    dslVersion: "ssp_dsl_v1",
+    dslVersion: "SOCILA-DSL-1.0",
     ruleId,
     name,
     module: "parity",

@@ -1,0 +1,162 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-600-PAY-GAP-REMINDER",
+  "name": "社保补差提醒（社平/基数发布滞后导致7-8月差额）",
+  "module": "contribution",
+  "status": "published",
+  "priority": 600,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "when 中使用自定义 JSONLogic 操作符 intersects(a,b)：判断两个数组是否有交集。该规则用于输出“补差提醒”，具体补多少/如何补由经办页面展示为准。",
+  "inputs": [
+    {
+      "key": "user.social.paid_months_in_year",
+      "type": "array",
+      "required": false,
+      "desc": "当年已缴费月份列表（1-12）"
+    }
+  ],
+  "parameter_refs": [
+    {
+      "param_id": "T-SH-PAY-GAP-MONTHS",
+      "purpose": "可能触发补差的月份列表"
+    }
+  ],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_no_data",
+        "when": {
+          "==": [
+            {
+              "var": "user.social.paid_months_in_year"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.contribution.pay_gap_needed",
+              "value": null
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_intersects",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.social.paid_months_in_year"
+                },
+                null
+              ]
+            },
+            {
+              "intersects": [
+                {
+                  "var": "user.social.paid_months_in_year"
+                },
+                {
+                  "var": "params.T-SH-PAY-GAP-MONTHS"
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.contribution.pay_gap_needed",
+              "value": true
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-PAY-GAP",
+                "text": "你的缴费月份包含可能需要补差的月份（常见7-8月，视社平/基数发布时间）。请关注随申办/税务通知并及时补差，避免影响后续扣费。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_not_needed",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "user.social.paid_months_in_year"
+                },
+                null
+              ]
+            },
+            {
+              "!": {
+                "intersects": [
+                  {
+                    "var": "user.social.paid_months_in_year"
+                  },
+                  {
+                    "var": "params.T-SH-PAY-GAP-MONTHS"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.contribution.pay_gap_needed",
+              "value": false
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.contribution.pay_gap_needed",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.warnings",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "缴费月份包含7 -> 需要补差提醒",
+      "input": {
+        "user": {
+          "social": {
+            "paid_months_in_year": [
+              6,
+              7,
+              8
+            ]
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "contribution": {
+            "pay_gap_needed": true
+          }
+        }
+      }
+    }
+  ],
+  "evidence": []
+}

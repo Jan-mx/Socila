@@ -64,6 +64,13 @@
       "when": 1788431784774,
       "tag": "0009_service_jwt_replays",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788645600000,
+      "tag": "0010_sdl_dsl_normalization_example_cleanup",
+      "breakpoints": true
     }
   ]
 }

@@ -34,5 +34,5 @@
 ## 测试
 
 - 单元（无框架/数据库）：`__tests__/domain.test.ts`、`__tests__/application.test.ts`（Fake 时钟/随机数/哈希/HMAC，AUTH-NFR-007）。
-- PostgreSQL 集成（需 `SSP_TEST_DATABASE_URL` 指向已迁移演练库，否则整组跳过）：`__tests__/identity-repository.integration.test.ts`——并发注册唯一性（AUTH-AC-003）、刷新轮换并发宽限（AUTH-AC-010）、最后管理员并发保护（AUTH-AC-014）、审计无 Secret（AUTH-AC-015）。
+- PostgreSQL 集成（需 `SOCILA_TEST_DATABASE_URL` 指向已迁移演练库，否则整组跳过）：`__tests__/identity-repository.integration.test.ts`——并发注册唯一性（AUTH-AC-003）、刷新轮换并发宽限（AUTH-AC-010）、最后管理员并发保护（AUTH-AC-014）、审计无 Secret（AUTH-AC-015）。
 - Chromium E2E：`e2e/auth.spec.ts`（运行方式见 `scripts/run-auth-e2e.sh` 与 [验收报告](../../../../../docs/refactor/policy-ops-agent/reports/feature-09-02-auth/acceptance-report.md)）。

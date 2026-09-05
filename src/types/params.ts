@@ -1,4 +1,4 @@
-// Param types matching ssp_policy_params.schema.json
+// Param types matching socila_policy_params.schema.json
 
 export interface PolicyPack {
   policy_pack_id: string;

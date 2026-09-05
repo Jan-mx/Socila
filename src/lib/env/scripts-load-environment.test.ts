@@ -35,7 +35,7 @@ function withTemporaryEnvironment(
   files: Record<string, string>,
   run: (cwd: string) => Promise<void>,
 ) {
-  const cwd = mkdtempSync(join(tmpdir(), "ssp-scripts-environment-"));
+  const cwd = mkdtempSync(join(tmpdir(), "socila-scripts-environment-"));
   for (const [file, contents] of Object.entries(files)) {
     writeFileSync(join(cwd, file), contents);
   }

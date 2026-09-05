@@ -1,10 +1,8 @@
 import fs from "fs";
-import path from "path";
 import { db } from "@/lib/db";
 import { rules } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-
-const RULES_DIR = path.join(process.cwd(), "dsl/ssp_dsl_v1/rules");
+import { CANONICAL_DSL_VERSION, type DiscoveredRegion } from "@/lib/dsl/region-manifest";
 
 interface RuleFile {
   dsl_version: string;
@@ -25,18 +23,29 @@ interface RuleFile {
   evidence?: unknown[];
 }
 
-export async function seedRules() {
-  const files = fs
-    .readdirSync(RULES_DIR)
-    .filter((f) => f.endsWith(".json"))
-    .sort();
+/**
+ * 按地区Manifest装载规则（SDL-FR-004）：规则文件、地区代码全部来自
+ * DiscoveredRegion，装载器不硬编码地区目录或行政区划。
+ */
+export async function seedRules(region: DiscoveredRegion) {
+  const jurisdictionCode = region.manifest.jurisdiction_code;
 
-  console.log(`Seeding ${files.length} rules...`);
+  console.log(
+    `Seeding ${region.ruleFiles.length} rules for ${region.manifest.region_slug} (${jurisdictionCode})...`,
+  );
 
-  for (const file of files) {
-    const filePath = path.join(RULES_DIR, file);
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const rule: RuleFile = JSON.parse(raw);
+  for (const ruleFile of region.ruleFiles) {
+    const rule = JSON.parse(fs.readFileSync(ruleFile.absolutePath, "utf-8")) as RuleFile;
+    if (rule.rule_id !== ruleFile.ruleId) {
+      throw new Error(
+        `规则文件 ${ruleFile.fileName} 的 rule_id 与 Manifest 不一致（${rule.rule_id} != ${ruleFile.ruleId}）`,
+      );
+    }
+    if (rule.dsl_version !== CANONICAL_DSL_VERSION) {
+      throw new Error(
+        `规则 ${rule.rule_id} 的 dsl_version 不是规范值 ${CANONICAL_DSL_VERSION}`,
+      );
+    }
 
     const existing = await db
       .select({ id: rules.id })
@@ -46,7 +55,7 @@ export async function seedRules() {
 
     const data = {
       ruleId: rule.rule_id,
-      jurisdictionCode: "310000",
+      jurisdictionCode,
       businessKey: rule.rule_id,
       name: rule.name,
       module: rule.module ?? "",

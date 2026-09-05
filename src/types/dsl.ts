@@ -1,4 +1,4 @@
-// DSL types matching ssp_rule_dsl.schema.json
+// DSL types matching socila_rule_dsl.schema.json
 
 export interface RuleDSL {
   dsl_version: string;

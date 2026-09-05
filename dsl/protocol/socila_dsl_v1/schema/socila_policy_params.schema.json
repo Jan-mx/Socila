@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Socila Policy Params Schema v1",
+  "type": "object",
+  "required": [
+    "policy_pack_id",
+    "as_of",
+    "params",
+    "tables"
+  ],
+  "properties": {
+    "policy_pack_id": {
+      "type": "string"
+    },
+    "as_of": {
+      "type": "string"
+    },
+    "params": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

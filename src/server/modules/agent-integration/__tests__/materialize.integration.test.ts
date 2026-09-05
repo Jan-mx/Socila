@@ -1,7 +1,7 @@
 /**
  * 步骤06.7 Core 物化服务集成测试（DRF-FR-013 / AC-005/006）：
  * 幂等、stale 快照拒绝、draft 创建与清理。
- * 前提：SSP_TEST_DATABASE_URL 指向已迁移且已 seed 的全新 PostgreSQL 17 库；
+ * 前提：SOCILA_TEST_DATABASE_URL 指向已迁移且已 seed 的全新 PostgreSQL 17 库；
  * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll } from "vitest";
@@ -9,7 +9,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { materializeDraftBundle, parseAndReject } from "../application/materialize";
 
-const DRILL = process.env.SSP_TEST_DATABASE_URL;
+const DRILL = process.env.SOCILA_TEST_DATABASE_URL;
 
 function validBundle() {
   return {
@@ -41,7 +41,7 @@ describe("core materialize service (drill DB)", () => {
   beforeAll(() => {
     if (!DRILL) {
       throw new Error(
-        "SSP_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移且已 seed 的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+        "SOCILA_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移且已 seed 的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
       );
     }
     process.env.DATABASE_URL = DRILL;

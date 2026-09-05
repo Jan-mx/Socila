@@ -12,7 +12,7 @@
  * src/server/modules 下导入 next/*，故此处直接调用路由函数并以标准
  * Web Request 构造请求（路由实现只使用 req.headers/req.json 标准接口）。
  *
- * 前提：SSP_TEST_DATABASE_URL 指向已迁移的全新 PostgreSQL 17 库；
+ * 前提：SOCILA_TEST_DATABASE_URL 指向已迁移的全新 PostgreSQL 17 库；
  * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -23,7 +23,7 @@ import { ServiceJwt } from "@/lib/security/service-jwt";
 import { resetServiceJwtInstance } from "@/lib/security/service-jwt-provider";
 import { POST } from "@/app/api/internal/v1/draft-imports/route";
 
-const DRILL = process.env.SSP_TEST_DATABASE_URL;
+const DRILL = process.env.SOCILA_TEST_DATABASE_URL;
 
 // 合成测试Secret（非生产）：仅本文件内签发/验证，与契约向量无关。
 const CURRENT_SECRET = "sjwt-rt-current-secret-0123456789-abcdef-0123456789";
@@ -75,7 +75,7 @@ describe("SJWT-FR-005/006：draft-imports路由鉴权（Agent→Core方向，dri
   beforeAll(() => {
     if (!DRILL) {
       throw new Error(
-        "SSP_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+        "SOCILA_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
       );
     }
     process.env.DATABASE_URL = DRILL;

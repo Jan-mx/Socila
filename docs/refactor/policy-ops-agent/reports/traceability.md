@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-04
+> Updated: 2026-09-05
 
 ## 用途
 
@@ -47,6 +47,8 @@
 AUTH-AC 对应：AC-001/004/005/008/013/015/016/006/007 由 E2E 与单元覆盖；AC-002/003/010/011/012/014/018/019 由单元、集成与引导执行覆盖；AC-017 由集成（旧行不变）与路由 404 语义覆盖；AC-020 为门禁汇总（见验收报告 §4）。AC-009 由 15 分钟窗口单元（domain/application）与 NextAuth jwt 集成路径覆盖。
 
 SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-vectors.json`跨语言契约向量覆盖；AC-010由Python模块级配置校验、Node provider校验与Web Node运行时启动入口`src/instrumentation.ts`fail-fast覆盖（2026-09-04运行时隔离：启动校验与退出码1终止位于Node专用模块`src/lib/security/service-jwt-startup-node.ts`，`register`为async且仅`NEXT_RUNTIME=nodejs`分支动态导入该模块，instrumentation本体零Node专用API引用——源码契约测试防回归、Edge构建零警告；无效Secret时进程退出1，standalone真实启动拒绝D2/E2及2026-09-04四场景复验收），Compose`AGENT_SERVICE_JWT_CURRENT`必填插值使缺失/空值时`docker compose config`失败；AC-011～014由Node/Python数据库集成覆盖（Python重放SQL阶段缺表/权限不足/连接中断/连接超时（确定性`connect_timeout`默认5秒、测试1秒）统一映射`ServiceAuthStoreUnavailable`→503，`JtiReplayConflict`单独传播→401，业务阶段异常原样传播不包装，JTI与业务写同事务回滚）；AC-015由集成路由矩阵覆盖（`/internal/docs`/`/docs`/`/redoc`/`/openapi.json`全部404、`/internal/health`唯一豁免、`/internal/ready`与业务端点必须JWT）；AC-016由零泄漏约定（日志/响应/测试产物无Token/Secret）与Secret扫描门禁覆盖；AC-017由完整隔离Compose双向真实TCP冒烟覆盖（本地演练+CI container-gates同构步骤）；AC-018为全项目门禁新鲜复现（验收报告§7.4）；AC-019由2026-09-03复审删除`sjwt-drill-pg`及匿名卷、以及本轮修复演练资源（`sjwfx-pg`容器/卷/网络）创建前清单记录与最终零残留复核覆盖（验收报告§7.1/§7.5）。最终状态见验收报告§7。
+
+| 09-05 Socila命名统一与地区DSL分层 | SDL-FR-001～014、SDL-NFR-001～007、SDL-AC-001～010 | `dsl/protocol/socila_dsl_v1/`（Socila Schema+发布工作流+README）、`dsl/README.md`、`dsl/regions/shanghai_dsl_v1/`（24规则SOCILA-DSL-1.0+params+rule_sets+tests+rules_manifest.json）、`src/lib/dsl/region-manifest.ts`、`src/lib/db/seed/{index.ts,seed-rules.ts,seed-params.ts,seed-misc.ts}`（删除seed-regional.ts）、`drizzle/0010_sdl_dsl_normalization_example_cleanup.sql`+journal、`src/server/modules/policy/__tests__/fixtures/regional-examples.ts`、`src/lib/{security/service-jwt.ts,security/anon-session.ts,security/rate-limit.ts,client/session.ts}`、`services/agent/agent/security/service_jwt.py`、`testdata/service-jwt-vectors.json`（重签）、`package.json`/`package-lock.json`（socila-web）、`scripts/run-auth-e2e.mjs`、`playwright.config.ts`、`infra/dev/docker-compose.dev.yml`、`data/shanghai-test-cases-from-transcripts.xlsx`（git mv）、`.github/workflows/ci.yml`、`.gitleaks.toml`、各SSP/SSRP活动标识硬切换（约40文件） | `src/lib/naming/socila-naming-contract.test.ts`、`src/lib/dsl/{region-manifest.test.ts,dsl-layout.test.ts}`、`src/lib/data/data-file-contract.test.ts`、`src/lib/db/seed/index.test.ts`、`src/lib/documentation-copy.test.ts`、`src/lib/ui-copy.test.ts`、`src/lib/security/{service-jwt.test.ts,service-jwt-vectors.contract.test.ts}`、`services/agent/tests/{test_service_jwt.py,test_service_jwt_vectors.py}`、`src/server/modules/policy/__tests__/{sdl-0010-migration.integration.test.ts,regional-isolation.integration.test.ts,seed-regional-clean.integration.test.ts}` | `docs/refactor/policy-ops-agent/reports/feature-09-05-socila-naming/acceptance-report.md`；ADR：`docs/refactor/policy-ops-agent/decisions/ADR-0008-Gitleaks测试合成值allowlist.md` | Accepted |
 
 ## 当前Work Item
 

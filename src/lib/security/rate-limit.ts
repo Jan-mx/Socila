@@ -18,12 +18,12 @@ export interface RateLimitOptions {
 }
 
 const globalState = globalThis as typeof globalThis & {
-  __sspRateLimitBuckets?: Map<string, RateLimitBucket>;
+  __socilaRateLimitBuckets?: Map<string, RateLimitBucket>;
 };
 
 const buckets =
-  globalState.__sspRateLimitBuckets ??
-  (globalState.__sspRateLimitBuckets = new Map<string, RateLimitBucket>());
+  globalState.__socilaRateLimitBuckets ??
+  (globalState.__socilaRateLimitBuckets = new Map<string, RateLimitBucket>());
 
 function cleanupBuckets(now: number): void {
   for (const [key, value] of buckets.entries()) {

@@ -641,3 +641,49 @@ def test_guard_connect_timeout_rejects_invalid_values(invalid):
             "postgresql://sjwt-unit:sjwt-unit@127.0.0.1:5432/sjwt_unit",
             connect_timeout_seconds=invalid,
         )
+
+
+# 09-05 SDL-FR-008/AC-004：服务JWT身份一次性硬切换为socila-next-core，
+# 旧身份不提供兼容（统一ServiceAuthInvalid，不新增可枚举错误）。
+def test_sdl_fr_008_identity_is_socila_next_core():
+    """固定身份：Next签发issuer与Agent验证audience均为socila-next-core。"""
+    assert NEXT_IDENTITY.issuer == "socila-next-core"
+    assert AGENT_IDENTITY.audience == "socila-next-core"
+
+
+def test_sdl_fr_008_legacy_issuer_rejected_without_compat():
+    """旧issuer身份令牌统一拒绝（无兼容别名）。"""
+    svc = make_jwt()
+    legacy_issuer = "ssp-nex" + "t-core"
+    token = _sign_raw(
+        {
+            "iss": legacy_issuer,
+            "aud": NEXT_IDENTITY.audience,
+            "sub": NEXT_IDENTITY.subject,
+            "jti": FIXED_JTI,
+            "iat": FIXED_NOW,
+            "exp": FIXED_NOW + 300,
+        },
+        CURRENT,
+    )
+    with pytest.raises(ServiceAuthInvalid):
+        svc.verify_next_token(token)
+
+
+def test_sdl_fr_008_legacy_audience_rejected_without_compat():
+    """旧audience身份令牌统一拒绝（无兼容别名）。"""
+    svc = make_jwt()
+    legacy_audience = "ssp-nex" + "t-core"
+    token = _sign_raw(
+        {
+            "iss": AGENT_IDENTITY.issuer,
+            "aud": legacy_audience,
+            "sub": AGENT_IDENTITY.subject,
+            "jti": FIXED_JTI,
+            "iat": FIXED_NOW,
+            "exp": FIXED_NOW + 300,
+        },
+        CURRENT,
+    )
+    with pytest.raises(ServiceAuthInvalid):
+        svc.verify_agent_token(token)

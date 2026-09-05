@@ -1,0 +1,273 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-700-PLAN-TEMPLATE",
+  "name": "规划方案模板选择（规则引擎可直接输出的主骨架）",
+  "module": "plan",
+  "status": "published",
+  "priority": 700,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "模板仅决定“方案骨架”。具体 Timeline 由模板渲染器/Agent 根据 calc 结果填充细节。",
+  "inputs": [
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean",
+      "required": false
+    },
+    {
+      "key": "user.status.employment_status",
+      "type": "string",
+      "required": false
+    },
+    {
+      "key": "calc.unemployment.eligible",
+      "type": "boolean",
+      "required": false
+    },
+    {
+      "key": "calc.subsidy.selected_option",
+      "type": "string",
+      "required": false
+    },
+    {
+      "key": "calc.mi.waiting_required",
+      "type": "boolean",
+      "required": false
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_needs_agent",
+        "when": {
+          "==": [
+            {
+              "var": "calc.needs_agent"
+            },
+            true
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "plan.conclusion_level",
+              "value": "needs_agent"
+            },
+            {
+              "type": "set",
+              "path": "plan.template_id",
+              "value": "T-AGENT-ASSIST"
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-NEEDS-AGENT",
+                "text": "关键信息不完整或存在互斥冲突，建议进入 Agent 追问/细化模式后再生成完整方案。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_unemployed_path",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "calc.needs_agent"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "unemployed"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "plan.conclusion_level",
+              "value": "direct"
+            },
+            {
+              "type": "set",
+              "path": "plan.template_id",
+              "value": "T-UNEMPLOYMENT-PLANNING"
+            },
+            {
+              "type": "set",
+              "path": "plan.primary_strategy",
+              "value": "失业路径：优先用失业金期覆盖社保/医保衔接，再衔接补贴或灵活就业"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_flexible_path",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "calc.needs_agent"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "flexible"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "plan.conclusion_level",
+              "value": "direct"
+            },
+            {
+              "type": "set",
+              "path": "plan.template_id",
+              "value": "T-FLEXIBLE-PLANNING"
+            },
+            {
+              "type": "set",
+              "path": "plan.primary_strategy",
+              "value": "灵活就业路径：按目标选择基数与补贴，重点控制医保等待期与补贴互斥"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_4_employed_path",
+        "when": {
+          "and": [
+            {
+              "!=": [
+                {
+                  "var": "calc.needs_agent"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "employed"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "plan.conclusion_level",
+              "value": "direct"
+            },
+            {
+              "type": "set",
+              "path": "plan.template_id",
+              "value": "T-EMPLOYED-PLANNING"
+            },
+            {
+              "type": "set",
+              "path": "plan.primary_strategy",
+              "value": "在职路径：保持连续缴费，关注基数变动/补差，评估未来失业金与补贴窗口"
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_5_default",
+        "when": {},
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "plan.conclusion_level",
+              "value": "needs_agent"
+            },
+            {
+              "type": "set",
+              "path": "plan.template_id",
+              "value": "T-AGENT-ASSIST"
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-STATUS",
+                "text": "请确认当前状态：在职/失业/灵活就业/退休。不同状态规划路径完全不同。",
+                "field": "user.status.employment_status"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "plan.template_id",
+      "type": "string"
+    },
+    {
+      "key": "plan.conclusion_level",
+      "type": "string"
+    },
+    {
+      "key": "plan.primary_strategy",
+      "type": "string"
+    },
+    {
+      "key": "calc.warnings",
+      "type": "array"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "信息齐全且失业 -> 失业模板",
+      "input": {
+        "calc": {
+          "needs_agent": false
+        },
+        "user": {
+          "status": {
+            "employment_status": "unemployed"
+          }
+        }
+      },
+      "expected": {
+        "plan": {
+          "template_id": "T-UNEMPLOYMENT-PLANNING",
+          "conclusion_level": "direct"
+        }
+      }
+    }
+  ],
+  "evidence": []
+}
