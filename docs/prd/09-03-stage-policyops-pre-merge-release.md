@@ -1,4 +1,4 @@
-# PolicyOps P0 合并质量门禁与 v0.2.0 发布准备
+# PolicyOps P0 合并质量门禁与 v2.0.0 发布准备
 
 > Author: Jan
 > Status: Active
@@ -52,7 +52,7 @@ Auth E2E假阳性及配置缺口也会随版本发布，后续Agent还会继续�
 - 构建并冒烟Web与Agent镜像，验证生产Compose配置和健康检查。
 - 对完整Git历史执行Secret扫描，对运行镜像执行可修复HIGH/CRITICAL漏洞扫描。
 - 交付六个GitHub必需状态检查和禁止直接/强推`main`的人工合并流程的配置规范与操作清单（外部动作执行属于未来人工发布）。
-- 将Web与Agent版本元数据统一为0.2.0；`v0.1.0`基线与`v0.2.0`标签/Release由未来人工发布创建和发布。
+- 将Web与Agent内部版本元数据统一为0.2.0；重构前`main`已由annotated tag `v1.0.0`建立基线，`v2.0.0`标签/Release由未来人工发布创建和发布。
 - 清理活动文档中的过期状态和统计，保留archive与历史报告原貌。
 
 ## 3. 非目标
@@ -71,7 +71,7 @@ Auth E2E假阳性及配置缺口也会随版本发布，后续Agent还会继续�
 - **PMG-US-001** 作为维护者，我需要每个PR自动执行完整的Node、Python、数据库、浏览器、容器和安全门禁，从而不能以局部测试代替发布证据。
 - **PMG-US-002** 作为维护者，我需要Auth E2E验证真实助手回复而不是只验证消息落库，从而消除成功状态下的协议404假阳性。
 - **PMG-US-003** 作为发布者，我需要通过受保护的`main`和人工PR审阅合并重构，从而禁止直接强推绕过门禁。
-- **PMG-US-004** 作为发布者，我需要重构前后的明确版本锚点，从而可以比较、审计和回退`v0.1.0`与`v0.2.0`。
+- **PMG-US-004** 作为发布者，我需要重构前后的明确版本锚点，从而可以比较、审计和回退`v1.0.0`与`v2.0.0`。
 - **PMG-US-005** 作为后续Agent，我需要当前文档只展示有效状态、实际测试数量和精确下一步，从而不会按过期记录执行。
 
 ## 5. 功能与工程需求
@@ -218,9 +218,11 @@ Auth E2E假阳性及配置缺口也会随版本发布，后续Agent还会继续�
   不启用linear history，以允许本次merge commit。
 - **PMG-FR-039 人工PR合并**：PR必须由用户人工创建并从Draft转Ready；六项检查和完整审阅通过后，
   使用merge commit合入。Agent不得直接创建/合并PR或推送`main`。
-- **PMG-FR-040 版本边界**：合并前在当前`origin/main`精确提交创建annotated tag `v0.1.0`并发布
-  “Pre-PolicyOps baseline”；合并后等待main六项CI再次通过，再在merge commit创建annotated tag
-  `v0.2.0`并发布PolicyOps+Auth Release。
+- **PMG-FR-040 版本边界**：重构前`origin/main`提交
+  `1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`已由annotated tag `v1.0.0`标记为
+  “Pre-PolicyOps refactor baseline”；合并后等待main六项CI再次通过，再在merge commit创建
+  annotated tag `v2.0.0`并发布PolicyOps+Auth Release。Git发布标签与私有Web/Agent manifest的
+  内部0.2.0版本口径相互独立。
 - **PMG-FR-041 强制暂停**：配置GitHub ruleset、创建/合并PR、创建/推送tag、发布Release以及任何
   生产迁移、Secret轮换或入口切换前，Agent必须停止并取得用户对该外部动作的明确授权。
 
@@ -238,7 +240,7 @@ Auth E2E假阳性及配置缺口也会随版本发布，后续Agent还会继续�
 - **PMG-NFR-006 最小权限**：CI token只读，数据库和服务使用临时合成凭据，镜像以非root运行，
   PR与发布动作不由CI自动执行。
 - **PMG-NFR-007 可审计**：需求、实现、测试、CI check、提交、PR、tag和Release之间有唯一追踪路径。
-- **PMG-NFR-008 可回退**：CI改造可通过revert单一P0提交恢复；应用仍可回退`v0.1.0`镜像，
+- **PMG-NFR-008 可回退**：CI改造可通过revert单一P0提交恢复；应用仍可回退`v1.0.0`基线，
   不需要删除Auth新增表或改写历史数据。
 - **PMG-NFR-009 时限**：单元/静态job目标15分钟内、数据库/E2E/容器job目标30分钟内完成；
   超时视为失败，不通过降低覆盖面解决。
@@ -341,11 +343,12 @@ security-gates
 
 - 本阶段只在一次性测试数据库应用迁移，不接触本机保留的生产Compose数据卷。
 - Core migration和管理员引导重复执行必须成功且不产生重复管理员、重复Schema或凭据输出。
-- Auth旧匿名数据保持原样；新应用和`v0.1.0`回退行为继续遵循Auth PRD。
-- `v0.1.0`指向合并前当前`origin/main`，不得指向refactor分支或重写已有提交。
-- `v0.2.0`只在merge commit的main CI通过后创建，不得指向PR head。
+- Auth旧匿名数据保持原样；新应用和`v1.0.0`回退行为继续遵循Auth PRD。
+- 已创建的`v1.0.0`精确指向合并前`origin/main`提交
+  `1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`，不得移动、重建或改指向refactor分支。
+- `v2.0.0`只在merge commit的main CI通过后创建，不得指向PR head。
 - 如果main在准备期间前进，先把最新main合入refactor分支、解决冲突并重跑六项门禁，
-  再重新确认v0.1.0目标与PR差异。
+  再重新确认`v1.0.0`仍指向原基线，并重新审阅PR差异。
 
 ## 11. 安全、隐私与可观测
 
@@ -451,13 +454,13 @@ Agent必须向用户报告：
 
 ### 17.2 未来人工动作（本阶段不执行）
 
-1. 确认`origin/main`未变化，在该提交创建并推送annotated tag `v0.1.0`，发布Pre-PolicyOps baseline。
+1. 核验已创建并推送的annotated tag `v1.0.0`仍精确指向重构前`main`提交`1c0f6e7`；不得移动或重建该标签。
 2. 人工创建Draft PR：`refactor/policy-ops-agent-platform → main`。
 3. 在六个check出现后配置main Active ruleset，检查名称与PMG-FR-038完全一致。
 4. 审阅全部差异并解决所有对话，将PR转Ready。
 5. 六项检查通过且分支最新后选择merge commit。
 6. 等待main上的六项CI全部再次通过。
-7. 在main merge commit创建并推送annotated tag `v0.2.0`，发布PolicyOps+Auth Release。
+7. 在main merge commit创建并推送annotated tag `v2.0.0`，发布PolicyOps+Auth Release。
 8. 将PR、merge SHA、tag和Release链接交回执行Agent完成最终文档记录。
 
 ## 18. 下一阶段输入
@@ -467,5 +470,5 @@ Agent必须向用户报告：
 - 可重复的Node、Python、PostgreSQL、Chromium和Docker质量入口，以及六个CI检查名称（workflow已通过actionlint静态校验）；
 - 无Auth对话协议假阳性的0.2.0版本元数据代码基线；
 - 后续功能可直接复用的CI job、测试数据库初始化和发布证据格式；
-- 未来人工发布检查单（§17）：用户人工完成PR、main ruleset、merge、`v0.1.0`/`v0.2.0`标签与Release后，`main`才获得受保护分支和版本锚点；
+- 未来人工发布检查单（§17）：`v1.0.0`重构前基线已完成；用户人工完成PR、main ruleset、merge、`v2.0.0`标签与Release后，`main`才获得受保护分支和重构后版本锚点；
 - 仍需单独授权的远程Personal Demo部署、生产migration、Secret配置/轮换和入口切换。

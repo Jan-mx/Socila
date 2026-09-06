@@ -1,4 +1,4 @@
-# 09-03 阶段验收报告：PolicyOps P0 合并质量门禁与 v0.2.0 发布准备
+# 09-03 阶段验收报告：PolicyOps P0 合并质量门禁与 v2.0.0 发布准备
 
 > Author: Jan
 > Status: Active
@@ -108,14 +108,17 @@ Auth 由提交 `71da7fc feat: 完成用户与管理员双角色鉴权` 交付，
 
 - **开发分支发布准备验收结论：PASS。** PMG-AC-001～014 全部取得新鲜本地证据：AC-001～010 为六类自动门禁的本地复现（§5，全部退出 0、零 skip、零未解释 warning）；AC-011 为 actionlint 1.7.7 静态校验零发现；AC-012 为全 8 服务 running + 6 健康检查 healthy；AC-013 为以修正提交 `ced6a5a` 为 HEAD 的完整差异审阅（§9，统计与 SHA 准确）；AC-014 为活动文档同步（本报告、PRD、traceability、PROGRESS、README，无过期状态）。
 - 本阶段只交付开发分支证据：workflow 已静态校验、六类门禁已本地复现；**不声称 GitHub-hosted 六项 checks 已经运行**（分支推送不触发运行，checks 在 Draft PR 创建后产生）。
-- 以下未来外部动作均未执行，需用户另行授权：
+- 重构前版本基线已在开发分支验收后由用户授权完成：annotated tag `v1.0.0`已推送至origin，
+  并精确指向`main`提交`1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`。
+- 以下未来外部动作仍未执行，需用户另行授权：
 
 | 未来动作 | 状态 |
 | --- | --- |
 | 创建 Draft PR / 转 Ready / merge commit 合并 | 未执行 |
 | 配置 main Active ruleset（六项必需检查） | 未执行 |
 | 直接/force-push `main` | 未执行 |
-| 创建/推送 `v0.1.0`、`v0.2.0` tag 与 Release | 未执行 |
+| 已有`v1.0.0`基线tag的移动、重建或改指向 | 禁止执行 |
+| 创建/推送 `v2.0.0` tag 与PolicyOps+Auth Release | 未执行 |
 | 生产 migration、Secret 配置/轮换、入口切换 | 未执行 |
 
 - 本阶段在 PROGRESS 记录为 `Accepted（开发分支发布准备）`；未来人工发布完成后另建 docs-only 任务记录 PR、merge SHA、tag 与 Release 链接。
