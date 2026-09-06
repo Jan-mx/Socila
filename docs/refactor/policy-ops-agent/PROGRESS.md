@@ -39,7 +39,7 @@
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
-| 国家baseline及粤川权威政策 | Reopened（2026-09-06）：11项复审缺陷已有首轮修复；WI-20260906-01 repair加固已Accepted（指纹绑定draft包、事务锁定、确定性repaired审计、专用集成测试）；持久库仍有4包快照漂移且0014未应用 | 持久库repair已就绪待执行：另行申请一次0014+repair授权（fresh audit输入）；再补齐粤川权威缺口和管理员候选快照 |
+| 国家baseline及粤川权威政策 | Reopened（2026-09-06）：11项复审缺陷已有首轮修复；WI-20260906-01 repair加固已Accepted（指纹绑定draft包、事务锁定、确定性repaired审计、专用集成测试）；持久库仍有4包快照漂移且0014未应用 | 执行WI-20260906-02：先只读备份/恢复/fresh audit，单独获授权后再做一次0014+repair；随后补齐粤川权威缺口和管理员候选快照 |
 | 案例库治理 | Blocked（依赖权威政策） | 归档并精简至452/36/528，建立来源链、质量和候选快照校验 |
 | 地区感知用户规划 | Blocked（依赖案例治理） | 只为政策与案例门禁通过的活动快照逐地区开放，缺失地区不默认上海 |
 
@@ -232,9 +232,21 @@
 | 持久库（只读核对） | 计数49/70/5/4/528/851/117/0、members=74、batches=4、上海published规则24、Drizzle账本13条——全程未连接写入、未执行0014、未执行repair |
 | 状态 | 任务2整体保持**Reopened**：repair待授权、管理员批准未完成、粤/川blocked缺口未消除 |
 
+## 当前任务计划（WI-20260906-02 阶段E持久库政策包快照repair）
+
+| 项目 | 结论 |
+| --- | --- |
+| 状态 | Ready；只有真实执行完成并取得验收证据后才能标记Accepted |
+| 阶段A | 只读基线、新备份、全新PG17+pgvector恢复、37表+18 sequence对账、当前HEAD fresh audit；完成后必须停下报告 |
+| 阶段B | 仅在同一任务取得用户明确授权后执行一次本机0014和一次四包repair；旧audit、旧hash和旧指纹禁止复用 |
+| 预期结果 | 迁移14、业务计数49/70/5/4/528/851/117/0、batches=8、members=78、snapshots=0、上海published规则24；粤川保持blocked |
+| 禁止范围 | apply/Seed、发布、管理员批准、PolicySnapshot、删除、远程库、Secret轮换和流量切换 |
+| 交接 | 完整runbook、授权语句、回退和其他Agent提示词见`docs/work-items/WI-20260906-02-stage-e-persistent-repair.md` |
+| 交接文档验证 | PASS；Markdown相对链接和状态一致，`git diff --check`通过，`npm test` 51文件/469通过，`scan-secrets --all` 662个候选文件零命中 |
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
-任务2的`WI-20260906-01-stage-e-pack-repair-hardening.md`已完成：专用Red/Green、全量门禁齐备，Work Item已标记Accepted（验收报告§14）。随后重新备份/恢复、fresh audit，并单独申请用户对“一次0014 migration + 一次repair”的明确授权；不得复用旧audit输入（旧指纹未绑定draft包状态，已不可用）。repair后仍须补齐粤川权威来源、完成管理员批准和四地区候选快照，任务2才可恢复Accepted。任务2重新Accepted、至少一个地区形成持久可重放候选快照前，任务4和任务3不得进入最终实施。09-03发布动作仍为未来人工动作：
+任务2的`WI-20260906-01-stage-e-pack-repair-hardening.md`已Accepted（验收报告§14）。下一步执行`WI-20260906-02-stage-e-persistent-repair.md`：先完成只读基线、新备份、37表+18 sequence恢复对账和当前HEAD fresh audit，向用户报告后停止；仅在同一任务取得明确授权后执行一次本机0014 migration和一次四包repair，不得复用旧audit输入。repair后仍须补齐粤川权威来源、完成管理员批准和四地区候选快照，任务2才可恢复Accepted。任务2重新Accepted、至少一个地区形成持久可重放候选快照前，任务4和任务3不得进入最终实施。09-03发布动作仍为未来人工动作：
 
 1. 重构前版本基线：**已完成**。annotated tag `v1.0.0`已推送至origin，并精确指向`main`提交`1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`；不得移动或重建。
 2. 用户未来人工发布流程（PRD §17.2）：

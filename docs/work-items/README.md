@@ -51,5 +51,6 @@ Draft → Ready → In Progress → Blocked / Accepted → Archived
 
 | Work Item | 状态 | 用途 |
 | --- | --- | --- |
-| `WI-20260906-01-stage-e-pack-repair-hardening.md` | Ready | 在任何持久库repair前加固政策包快照修复的事务、指纹、审计与集成测试 |
+| `WI-20260906-02-stage-e-persistent-repair.md` | Ready | 在独立授权门禁下执行本机0014迁移、四包draft快照repair及前后完整恢复对账 |
+| `WI-20260906-01-stage-e-pack-repair-hardening.md` | Accepted | 已加固政策包快照repair的事务、指纹、审计与集成测试；未执行持久库repair |
 | `WI-20260901-01-docs-reorganization.md` | Accepted | Docs目录重组与当前文档治理 |
