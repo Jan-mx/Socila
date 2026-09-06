@@ -337,3 +337,39 @@ Node单元434/434、数据库集成71/71（含物化器独立库3例）、TypeSc
 - **未执行持久库0014、未执行repair、未修改持久库**；repair执行门禁不变：需用户对"一次0014 migration + 一次repair"另行明确授权，且必须基于当前HEAD fresh audit（旧audit的hash/指纹一律不得复用——其指纹未绑定draft包状态）。
 - 演练设施仅限`nrp-drill-pg`容器内动态库（`nrp_e_mat_*`、`nrp_e2e_wi`），已清理；`socila-*`持久资源未删除未重建。
 - Work Item标记**Accepted**；任务2整体保持**Reopened**：repair待授权、管理员批准未完成、粤/川blocked缺口未消除。
+
+## 15. WI-20260906-02：持久库政策包快照repair真实执行（2026-09-06，任务2保持Reopened）
+
+按`docs/work-items/WI-20260906-02-stage-e-persistent-repair.md`执行。阶段A完成后按WI固定授权语句向用户报告并停止；用户于同一任务中回复"允许以上操作"（即报告所列且仅限该范围的阶段B操作：一次0014迁移+一次四包repair及其验证），语义等价于固定授权语句，方进入阶段B。
+
+### 15.1 阶段A（只读准备）
+
+- 前置：工作区干净、HEAD `a43ba0c` 与origin同步、WI-20260906-01 Accepted。
+- 基线只读核对：49/70/5/4/528/851/117/0、batches=4、members=74、Drizzle账本13（0013已应用、0014对象不存在）、上海published规则24、CN/沪awaiting_approval、粤/川blocked且各3条原因——与WI基线逐项一致。
+- 备份：`backup/db/policyops-wi-02-pre-20260906-203412.dump`（702,645B；SHA-256 `fb87d39443a6caf95f9e4063ed9e950fd6b91edff97d1b40909350f2c8a53667`，Git忽略目录）。
+- 恢复对账：任务专属容器`wi02-restore-pg`（pgvector/pgvector:pg17）零错误恢复；`scripts/restore-reconcile.ts` 37表+18 sequence、表集合/行数/规范化整行哈希全部一致（退出0）。
+- fresh audit（当前HEAD，显式DATABASE_URL，audit零写入）：目标精确`localhost:5432/policyops`、worktreeClean=true；**恰好4个draft包漂移**——CN `CN-BASELINE` v1（行4）、440000 `GD-BASE` v1（行5）、510000 `SC-BASE` v1（行6）、310000 `SHANGHAI_BASE` v1（行7）；manifestHash `f33ebd75fd1f21c9ea62377b6a9f49369995ba1c2631ccea7538c6ba8989b297`、targetFingerprint `385456831cbed82138730366ebd2e86b92a4366e2e1a13c9b9e3f0fed82d4afa`；证据`audit-policyops-wi-02.json`。旧`audit-policyops-stage-e-fix.json`未复用。
+- repair前规划回归基线（只读）：528/524过/4失败（既有基线）、passSetHash `e4fb8c3dfd4ae3be60d80c6f1c6b4e1c329d9bf18a93ff368b9161a87c09c0d3`。
+
+### 15.2 阶段B（受控写入，全部成功）
+
+| 步骤 | 结果 |
+| --- | --- |
+| 0014迁移（显式DATABASE_URL） | 账本13→14；`policy_import_batches_jurisdiction_manifest_idx`、`policy_import_batch_members_unique_idx`与status/readiness/entity_type三项CHECK全部存在；业务数据零变化 |
+| 迁移后fresh audit | hash/指纹与阶段A一致（0014为纯DDL）；4漂移不变；以此为唯一输入 |
+| 一次repair | 退出0；4包修复（CN/粤/川/沪 v1，旧→新内容哈希成对记录于`repair-policyops-wi-02.json`）；新增4个`repaired`批次（id 5-8，readiness CN/沪awaiting_approval、粤/川blocked且3条原因完整，批次哈希64位十六进制）与4个`policy_pack_version`成员（id 75-78，指向行4-7 v1） |
+| 原审计不可变 | 原4个applied批次原样；原4个pack成员content_hash仍为旧值（逐一核对） |
+| 幂等 | repair后再audit `packSnapshotDrift=[]`；新audit输入（新指纹`e4889868…723e9`）复跑repair返回`noop:true`，batches=8、members=78不再增加 |
+| 零漂移 | 计数49/70/5/4/528/851/117/0、上海published规则24、policy_snapshots=0；`planning-regression.ts`与repair前**逐字节一致**（528/524/4，passSetHash相同） |
+| 地区边界 | 最新批次per地区：CN/沪awaiting_approval、粤/川blocked且3条原因完整；无发布、无PolicySnapshot、无流量变化 |
+| repair后备份与恢复对账 | `backup/db/policyops-wi-02-post-20260906-205122.dump`（705,375B；SHA-256 `5e8f5abb704d9edf85b4d991de01cfaa16b36369be197ddbdc8fbbf39c98510a`）；全新库`pg_restore`退出0零错误；`restore-reconcile.ts`再次37表+18 sequence全一致 |
+
+### 15.3 安全与边界
+
+- 全程仅连接本机`localhost:5432/policyops`；连接串与口令未进入命令行输出、文档、审计表或Git；证据JSON（`audit-policyops-wi-02.json`、`repair-policyops-wi-02.json`）经扫描零凭据特征。
+- 未执行apply/Seed、发布、管理员批准、PolicySnapshot生成、数据删除、远程库、Secret轮换或流量切换；演练容器`wi02-restore-pg`已删除，`socila-*`持久资源未删除未重建。
+- 执行中一次因shell变量多行匹配导致复跑命令参数解析失败，CLI按守卫拒绝且未产生任何写入（batches/members保持8/78），修正提取后复跑得no-op——该事件本身构成守卫有效的正例证据。
+
+### 15.4 状态
+
+WI-20260906-02标记**Accepted**。任务2整体保持**Reopened**：剩余缺口为粤川权威来源补齐、管理员批准与四地区候选快照；案例治理与地区感知规划继续Blocked。

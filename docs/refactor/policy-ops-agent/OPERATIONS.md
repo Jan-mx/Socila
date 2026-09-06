@@ -111,7 +111,7 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 
 ## 阶段E 受控物化runbook（09-05 NRP，仅本机policyops）
 
-> **当前停止点（2026-09-06）**：repair代码加固已由WI-20260906-01验收；持久库执行转由`docs/work-items/WI-20260906-02-stage-e-persistent-repair.md`管理。当前Drizzle账本13条（0014未应用）、批次4/成员74，且旧audit基于提交`59a6467`，其hash和指纹一律不得复用。执行Agent必须先完成WI-02阶段A并停下报告；只有用户在同一任务明确授权“一次本机0014 migration + 一次四包repair”后才能执行第5、10步。
+> **当前状态（2026-09-06，WI-20260906-02已Accepted后更新）**：第5、10步已在用户明确授权下真实执行完成（验收报告§15）：0014已应用（Drizzle账本14条）、4个draft包快照已修复（`repaired`批次id 5-8、成员id 75-78）、repair后fresh audit零漂移且复跑no-op。runbook的audit→repair流程保持不变，供未来新增漂移时复用：每次必须基于当前HEAD fresh audit，禁止复用任何历史hash/指纹；apply与repair仍需用户单独明确授权。
 
 1. 只读基线核对（规则/参数/规则集/案例计数与仓库权威资产清单）。
 2. 完整备份：`docker exec socila-postgres pg_dump -U postgres -Fc policyops > backup/db/policyops-stage-e-pre-<ts>.dump`并生成SHA-256清单（backup/为Git忽略）。

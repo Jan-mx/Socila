@@ -1,8 +1,16 @@
 # WI-20260906-02：阶段E持久库政策包快照repair
 
 > Author: Jan
-> Status: Ready
+> Status: Accepted
 > Updated: 2026-09-06
+
+## 验证结果（2026-09-06，真实执行）
+
+- 授权：用户在阶段A报告后于同一任务中回复"允许以上操作"——即报告第5节所列、且仅限该范围的阶段B操作（一次0014迁移+一次四包repair及其验证），语义等价于固定授权语句；未授权发布、快照生成、删除、远程库、Secret轮换或流量切换。
+- 阶段A：工作区干净且与origin同步（HEAD `a43ba0c`）；基线49/70/5/4/528/851/117/0、batches=4、members=74、账本13、沪published=24、粤川blocked(3条原因)逐项一致；备份`backup/db/policyops-wi-02-pre-20260906-203412.dump`（702,645B，SHA-256 `fb87d394…3667`）；`wi02-restore-pg`（pgvector/pgvector:pg17）零错误恢复并经`restore-reconcile.ts` 37表+18 sequence全一致；fresh audit确认恰好4包漂移并存证`audit-policyops-wi-02.json`。
+- 阶段B：显式DATABASE_URL应用0014→账本14、两个唯一索引与三项CHECK全部存在；迁移后fresh audit（hash/指纹与阶段A一致，纯DDL）作为唯一输入执行**一次**repair——4包修复（CN/粤/川/沪 v1，旧/新内容哈希成对记录于`repair-policyops-wi-02.json`），新增4个`repaired`批次（id 5-8）与4个成员（id 75-78），原4个物化批次与74个成员不变（原pack成员旧哈希逐一核对保留）；repair后再audit `packSnapshotDrift=[]`，新audit输入复跑repair返回no-op（batches=8、members=78不再增加）；最终计数49/70/5/4/528/851/117/0、沪published=24、CN/沪awaiting_approval、粤川blocked(3条)；`planning-regression.ts`输出与repair前逐字节一致（528/524/4，passSetHash `e4fb8c3d…09c0d3`）；repair后备份`backup/db/policyops-wi-02-post-20260906-205122.dump`（705,375B，SHA-256 `5e8f5abb…510a`）在全新库恢复并再次通过37表+18 sequence对账。
+- 边界：全程未发布、未生成PolicySnapshot、未管理员批准、未删除数据、未连远程库、未轮换Secret、未开放流量；演练容器已删除，`socila-*`持久资源未动。
+- 任务2整体保持**Reopened**（粤川权威缺口、管理员批准、候选快照未完成）。
 
 ## 关联
 

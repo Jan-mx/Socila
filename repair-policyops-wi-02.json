@@ -1,0 +1,63 @@
+{
+  "mode": "repair",
+  "purpose": "WI-20260906-02 阶段B：持久库socila-postgres/policyops一次repair（用户明确授权）",
+  "databaseTarget": "localhost:5432/policyops",
+  "auditInput": {
+    "manifestHash": "f33ebd75fd1f21c9ea62377b6a9f49369995ba1c2631ccea7538c6ba8989b297",
+    "targetFingerprint": "385456831cbed82138730366ebd2e86b92a4366e2e1a13c9b9e3f0fed82d4afa",
+    "sourceCommit": "a43ba0c43fb29cf61f09b3c11174a5b9ca664365"
+  },
+  "noop": false,
+  "repaired": [
+    {
+      "jurisdictionCode": "CN",
+      "packId": "CN-BASELINE",
+      "version": 1,
+      "oldContentHash": "d3a0c900bb63fc9ff852fa0b43663c65c6994243334b305b8a3a35a808f8972d",
+      "newContentHash": "2ac7f2703ec92c6c0d0f885f8272375c8946929fac82468e6cbe100240cb0db3"
+    },
+    {
+      "jurisdictionCode": "440000",
+      "packId": "GD-BASE",
+      "version": 1,
+      "oldContentHash": "d3e079a0edd2281bc02a3f9dcaab93881677e2125aa50b0e0c7393498942d915",
+      "newContentHash": "424e545279dacb59f2fb6f5fd04ffd6375046aa5d72b2f5f0a04d48dd3058292"
+    },
+    {
+      "jurisdictionCode": "510000",
+      "packId": "SC-BASE",
+      "version": 1,
+      "oldContentHash": "989b3199a12018a791f73dd95cbab7f3debf0f9a519c284b1e340cc6372c92ce",
+      "newContentHash": "a985949c20a2b1406d2d29367c55c8e757d84b908ca796a501c2c00e4721ccf2"
+    },
+    {
+      "jurisdictionCode": "310000",
+      "packId": "SHANGHAI_BASE",
+      "version": 1,
+      "oldContentHash": "9ca9f8c529575010568dc3c1da39e0dac482f95d97f5613260f1c96c09634c2a",
+      "newContentHash": "3c0fb75c63069304452bc25e3b6e1396c3dfa12cc19f7aa8b966e8fe3cb13e56"
+    }
+  ],
+  "audits": [
+    {
+      "batchId": 5,
+      "jurisdictionCode": "CN"
+    },
+    {
+      "batchId": 6,
+      "jurisdictionCode": "440000"
+    },
+    {
+      "batchId": 7,
+      "jurisdictionCode": "510000"
+    },
+    {
+      "batchId": 8,
+      "jurisdictionCode": "310000"
+    }
+  ],
+  "idempotencyRerun": {
+    "noop": true,
+    "note": "repair后fresh audit packSnapshotDrift=[]；新audit输入复跑no-op，批次8/成员78不再增加"
+  }
+}
