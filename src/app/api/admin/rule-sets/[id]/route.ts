@@ -1,3 +1,4 @@
+import { sanitizeRuleSetEdit } from "@/lib/admin/entity-edit-policy";
 import { rulesReads, rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -9,7 +10,19 @@ async function handleUpdate(
 ) {
   try {
     const { id } = await paramsPromise;
-    const body = await req.json();
+    const body = (await req.json()) as Record<string, unknown>;
+    // 审查缺陷2：规则集编辑白名单——status/jurisdiction/version等受控字段拒绝。
+    const sanitized = sanitizeRuleSetEdit(body);
+    if (!sanitized.ok) {
+      return NextResponse.json(
+        {
+          error: "请求包含不允许修改的字段（NRP-FR-021白名单）",
+          controlledFields: sanitized.controlledFields,
+          unknownFields: sanitized.unknownFields,
+        },
+        { status: 400 },
+      );
+    }
 
     const existing = await rulesReads.getLatestRuleSetVersion(id);
 
@@ -24,17 +37,8 @@ async function handleUpdate(
       );
     }
 
-    const payload: Record<string, unknown> = {};
-    if (Array.isArray(body.rules)) payload.rules = body.rules;
-    if (
-      Object.prototype.hasOwnProperty.call(body, "description") &&
-      (typeof body.description === "string" || body.description === null)
-    ) {
-      payload.description = body.description;
-    }
-    if (Object.prototype.hasOwnProperty.call(body, "conflictResolution")) {
-      payload.conflictResolution = body.conflictResolution;
-    }
+    // 白名单后的字段直接构成更新载荷。
+    const payload: Record<string, unknown> = { ...sanitized.fields };
 
     if (Object.keys(payload).length === 0) {
       return NextResponse.json(

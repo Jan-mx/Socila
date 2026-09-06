@@ -161,6 +161,38 @@ function planRuleSet(
   );
 }
 
+/** NRP-FR-020（审查缺陷4）：参数快照载荷——全部参数的实际内容：
+ * paramId/businessKey、原始type、value或rows、key_fields、value_fields、
+ * unit、effective窗口、operation、目标业务键、evidence与内容哈希。 */
+export function buildPackSnapshotPayload(
+  region: ManifestRegion,
+): Array<Record<string, unknown>> {
+  return region.params.map((p) => {
+    const payload = p.payload as Record<string, unknown>;
+    return {
+      paramId: p.businessKey,
+      businessKey: p.businessKey,
+      type: payload.type ?? (p.kind === "table" ? "table" : "number"),
+      // 标量保存value；table/timeline保存rows；array保存value（同为数组）。
+      value: payload.value ?? null,
+      rows: payload.rows ?? null,
+      key_fields: payload.key_fields ?? null,
+      value_fields: payload.value_fields ?? null,
+      unit: payload.unit ?? null,
+      effective_from: payload.effective_from ?? null,
+      effective_to: payload.effective_to ?? null,
+      operation:
+        typeof payload.operation === "string" ? payload.operation : "add",
+      target_business_key:
+        typeof payload.target_business_key === "string"
+          ? payload.target_business_key
+          : null,
+      evidence: payload.evidence ?? [],
+      contentHash: p.contentHash,
+    };
+  });
+}
+
 function planPack(
   region: ManifestRegion,
   state: ExistingState,
@@ -168,26 +200,7 @@ function planPack(
   const packKey = `${region.jurisdictionCode}|${region.packId}`;
   const existing = state.packVersions.get(packKey);
   const version = existing === undefined ? 1 : existing + 1;
-  // NRP-FR-020：参数快照包含原值、有效期、operation、目标业务键和引用。
-  const paramSnapshot = region.params.map((p) => ({
-    businessKey: p.businessKey,
-    kind: p.kind,
-    value: (p.payload as { value?: unknown }).value ?? null,
-    unit: (p.payload as { unit?: unknown }).unit ?? null,
-    effective_from: (p.payload as { effective_from?: unknown }).effective_from ?? null,
-    effective_to: (p.payload as { effective_to?: unknown }).effective_to ?? null,
-    operation:
-      typeof (p.payload as { operation?: unknown }).operation === "string"
-        ? (p.payload as { operation: string }).operation
-        : "add",
-    target_business_key:
-      typeof (p.payload as { target_business_key?: unknown }).target_business_key ===
-      "string"
-        ? (p.payload as { target_business_key: string }).target_business_key
-        : null,
-    evidence: (p.payload as { evidence?: unknown }).evidence ?? [],
-    contentHash: p.contentHash,
-  }));
+  const paramSnapshot = buildPackSnapshotPayload(region);
   return {
     entityType: "policy_pack_version",
     jurisdictionCode: region.jurisdictionCode,

@@ -28,24 +28,11 @@ export async function POST(
     const body = (await req.json()) as { example?: ExampleInput };
 
     if (!body.example) {
-      return NextResponse.json(
-        { error: "缺少示例数据" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "缺少示例数据" }, { status: 400 });
     }
 
-    const rule = await rulesReads.getRule(ruleId);
-    if (!rule) {
-      return NextResponse.json({ error: "未找到规则" }, { status: 404 });
-    }
-    const normalizedStatus = normalizeRuleStatus(rule.status);
-    if (!normalizedStatus) {
-      return NextResponse.json(
-        { error: `不支持的规则状态：${rule.status}` },
-        { status: 400 },
-      );
-    }
-
+    // NRP-FR-021/审查缺陷5：先校验精确实身身份，getRuleExact定位——
+    // 不得先按rule_id取“最新版本”（同名CN/上海实体曾因此串区）。
     const jurisdictionCode =
       req.nextUrl.searchParams.get("jurisdiction_code") ?? undefined;
     const version = Number(req.nextUrl.searchParams.get("version"));
@@ -59,19 +46,41 @@ export async function POST(
         { status: 400 },
       );
     }
+
+    const rule = await rulesReads.getRuleExact({
+      ruleId,
+      jurisdictionCode,
+      version,
+    });
+    if (!rule) {
+      return NextResponse.json(
+        { error: "未找到该地区与版本的规则" },
+        { status: 404 },
+      );
+    }
+    const normalizedStatus = normalizeRuleStatus(rule.status);
+    if (!normalizedStatus) {
+      return NextResponse.json(
+        { error: `不支持的规则状态：${rule.status}` },
+        { status: 400 },
+      );
+    }
+
     const asOfDate = new Date().toISOString().slice(0, 10);
-    // NRP-FR-005/006：示例执行同样按继承链取参（CN baseline垫底，SHANGHAI_BASE覆盖）。
-    const [nationalRows, paramsRows] = await Promise.all([
-      rulesReads.getEffectiveParams("CN-BASELINE", asOfDate),
-      rulesReads.getEffectiveParams("SHANGHAI_BASE", asOfDate),
-    ]);
+    // NRP-FR-005/006/审查缺陷5：参数按目标地区解析继承链——国家baseline
+    // （published）+目标地区（published与draft预览），按as_of_date过滤有效期；
+    // 不得混入其他省份参数。
+    const paramsRows = await rulesReads.listParamsForPreview(
+      jurisdictionCode,
+      asOfDate,
+    );
     const baseParams: Record<string, unknown> = {};
 
-    for (const p of [...nationalRows, ...paramsRows]) {
-      if (p.type === "scalar") {
+    for (const p of paramsRows) {
+      if (p.type === "table" || p.type === "timeline") {
+        baseParams[p.paramId] = p.rows ?? [];
+      } else {
         baseParams[p.paramId] = p.value;
-      } else if (p.type === "table" || p.type === "timeline") {
-        baseParams[p.paramId] = p.rows;
       }
     }
 
@@ -120,9 +129,6 @@ export async function POST(
       error: result.pass ? undefined : "示例断言失败",
     });
   } catch {
-    return NextResponse.json(
-      { error: "运行示例失败" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "运行示例失败" }, { status: 500 });
   }
 }

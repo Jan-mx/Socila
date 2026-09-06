@@ -21,17 +21,18 @@ import {
   applyMaterialization,
   auditMaterialization,
   ApplyGuardError,
+  repairPackSnapshots,
 } from "@/lib/policy-materialization/materialize";
 
 function parseArgs(argv: string[]): {
-  mode: "audit" | "apply";
+  mode: "audit" | "apply" | "repair";
   authorized: boolean;
   manifestHash: string;
   targetFingerprint: string;
   actor: string;
 } {
   const [modeArg, ...rest] = argv;
-  const mode = modeArg === "apply" ? "apply" : "audit";
+  const mode = modeArg === "apply" ? "apply" : modeArg === "repair" ? "repair" : "audit";
   const opts = {
     mode,
     authorized: false,
@@ -54,6 +55,33 @@ async function main() {
   const manifest = buildManifest(productionGitReader);
   const worktreeClean = !productionGitReader.isWorktreeDirty("dsl/regions");
 
+  if (opts.mode === "repair") {
+    // 审查缺陷4受控修复：同样强制授权+manifest哈希+目标指纹（未授权停在audit）。
+    if (!opts.authorized || !opts.manifestHash || !opts.targetFingerprint) {
+      console.error(
+        "[materialize] repair需要 --i-am-authorized --manifest-hash --target-fingerprint（未授权时只允许audit）",
+      );
+      process.exit(1);
+    }
+    const repaired = await repairPackSnapshots(
+      manifest,
+      {
+        authorized: opts.authorized,
+        expectedManifestHash: opts.manifestHash,
+        expectedTargetFingerprint: opts.targetFingerprint,
+        actor: opts.actor,
+      },
+    );
+    if (repaired.noop) {
+      console.log(JSON.stringify({ mode: "repair", noop: true }, null, 2));
+      console.log("[materialize] 包快照与已提交DSL一致，修复为no-op。");
+      return;
+    }
+    console.log(JSON.stringify({ mode: "repair", noop: false, repaired: repaired.repaired, audits: repaired.audits }, null, 2));
+    console.log("[materialize] 4个draft政策包快照已修复（单事务）。");
+    return;
+  }
+
   if (opts.mode === "audit") {
     const report = await auditMaterialization(manifest, worktreeClean);
     console.log(
@@ -69,6 +97,7 @@ async function main() {
           expectedPostCounts: report.expectedPostCounts,
           existingBatches: report.existingBatches,
           idempotentNoOp: report.idempotentNoOp,
+          packSnapshotDrift: report.packSnapshotDrift,
           planCounts: report.plan.counts,
           regions: report.plan.regions.map((r) => ({
             jurisdictionCode: r.jurisdictionCode,

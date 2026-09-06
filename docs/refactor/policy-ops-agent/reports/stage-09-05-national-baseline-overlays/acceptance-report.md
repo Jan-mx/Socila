@@ -228,3 +228,42 @@ Node单元434/434、数据库集成71/71（含物化器独立库3例）、TypeSc
 5. 对public/drizzle/agent/rag全部37张表及必要sequence执行真实恢复对账，并扩展published完整业务字段哈希。
 6. 在没有`.env.local`的干净检出中重跑Node、数据库集成、Auth E2E、TypeScript、ESLint、Build和Secret门禁。
 7. 纠正§10与PROGRESS中的旧验收表述，取得独立复审通过后方可恢复Accepted。
+
+## 11. 阶段E复审缺陷修复（2026-09-06，任务2保持Reopened）
+
+复审确认11项缺陷。本节记录缺陷、Red证据、修复与新鲜证据；**修复后持久库的repair流程未执行**（等待用户对本次修复的明确授权），任务2保持Reopened。
+
+### 11.1 前次报告的不准确表述纠正
+
+- §10.4"管理端地区化"：前次声称"精确身份完成"，实际`run-example`仍先调用`getRule(ruleId)`取"最新版本"（同名CN/上海实体可串区），`versions/[versionId]` POST、参数详情/更新/校验未携带version或未用getRuleExact。已全部改为`getRuleExact`/`resolveParamRecordExact`（jurisdiction_code+entity_id+version），缺失身份400、不存在404。
+- §10.3"逐表对账"：前次只对账14张表且表述为"全部表计数与行哈希一致"。已重写为系统目录确定性枚举public/drizzle/agent/rag全部BASE TABLE（本次37张）+全部sequence（18个），同时比较表集合、行计数、整行规范化哈希与sequence值。
+- §10.3"published行哈希"：前次哈希仅覆盖部分列（notes/supersedes/evidence等遗漏）。已改为`to_jsonb`整行规范化哈希（服务器端序列化+UTC会话），并新增字段矩阵测试。
+- §10.4"包快照"：前次4个draft政策包快照丢失6个table/timeline参数的rows/key_fields/value_fields/type/有效期——audit已确认4包全部漂移；修复流程已实现并停在audit（见§11.4）。
+
+### 11.2 缺陷与Red/Green证据
+
+| 缺陷 | Red证据 | 修复 | Green证据 |
+| --- | --- | --- | --- |
+| 1 目标守卫绕过（?host=/?port=覆盖——pg-connection-string实证连接remote.example:6543） | target-guard.test.ts 9失败/4过 | resolveTarget：仅pg协议、host白名单（IPv6归一）、端口精确5432、拒绝全部search/fragment/socket、路径不解码、pg解析交叉一致；指纹基于实际目标 | 13/13 |
+| 2 PATCH直改发布状态 | identity路由级测试：PATCH {"status":"published"}成功改名+注入 | entity-edit-policy.ts白名单（受控字段/未知字段400）接入rules PATCH/PUT、rule-sets PATCH、params PUT/PATCH | identity 4/4 |
+| 3 参数类型契约（scalar不存在） | params-service.test.ts 6失败/1过 | validateParamRecord按number/boolean/string/array读value、table/timeline读rows+类型运行时校验、标量禁rows；后台页TYPE_LABELS与值显示修正、显示有效期窗口/地区 | 7/7 |
+| 4 包快照丢失表格数据 | materializer.unit.test.ts包快照完整性失败（type=undefined） | plan.ts抽出buildPackSnapshotPayload（全字段）；repairPackSnapshots受控修复（定位当前draft行、单事务修paramSnapshot+成员contentHash+修复审计批次、幂等） | 单测1/1；持久库audit确认4包漂移，repair停在audit |
+| 5 示例执行/版本校验跨地区 | identity路由级：run-example缺身份400缺失、错版本200（bypass） | run-example/versions POST改getRuleExact+身份前置 | identity 4/4 |
+| 6 参数接口缺版本身份 | identity路由级：GET缺失400断言失败（无GET端点） | params/[paramId]新增GET；PUT/PATCH/POST要求jurisdiction+version | 4/4 |
+| 7 恢复对账只覆盖14表 | ——（工具缺陷，复审确认） | restore-reconcile重写：目录枚举4 schema 37表+18 sequence；表集合/计数/整行哈希/sequence全比 | policyops新鲜恢复37表+18 sequence全部OK |
+| 8 published哈希字段不完整 | fix集成：notes变更不改变哈希 | to_jsonb整行规范化哈希（UTC会话） | 哈希矩阵：8字段+行删除全部敏感 |
+| 9 单测依赖.env.local | materializer.unit断言.env.local存在 | 改为直接构造干净环境对象；干净检出（.env.local临时移除）npm test 467/467复现 | 51文件全过 |
+| 10 发布测试不隔离 | fix集成：CN staging在仅沪测试时晋级成功（bypass） | listTests按jurisdiction_codes（地区+CN继承链）；CN规则只认CN测试 | 隔离测试：沪测试不充数→失败；补CN测试→通过 |
+| 11 缺少约束与并发幂等 | 0014缺失（ENOENT）+重复批次插入成功 | 0014：批次(jurisdiction,manifest_hash)唯一、成员唯一+entity_type CHECK、status/readiness CHECK；apply捕获唯一冲突转no-op | 0014迁移幂等测试+约束测试通过 |
+
+### 11.3 持久库状态与边界
+
+- 只读核对：计数仍为49/70/5/4/528/851/117/0、members=74、published上海规则24。
+- 新鲜备份：`backup/db/policyops-stage-e-post-20260906-125318.dump`（SHA-256 e7e6083d…4e9c2，Git忽略）。
+- 全量对账：37表+18 sequence计数与行哈希一致（修复后对账，未含任何repair写入）。
+- **repair未执行**：audit显示4个draft包快照漂移（CN/粤/川/沪 v1），等待用户明确授权后执行`scripts/materialize-policy-regions.ts repair --i-am-authorized --manifest-hash … --target-fingerprint …`；repair为单事务draft修正+幂等，不新增/修改published实体、不改变任何计数。
+- 演练容器已停止；socila持久卷未触碰。
+
+### 11.4 状态
+
+任务2补充阶段保持**Reopened**：repair待授权、管理员批准未完成、粤/川blocked缺口未消除。全部P1/P2关闭并独立复审通过后才可恢复Accepted。

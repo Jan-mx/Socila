@@ -183,3 +183,14 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 物化器集成（`materializer.integration.test.ts`，独立动态库）：AC-011缺授权/错哈希/错指纹→拒绝且零写入；AC-013四地区版本与draft强制、旧行published不变；AC-014同manifest no-op与单事务回滚；AC-015固定计数49/70/5/4/528/851/117/0与GD/SC blocked、SC规则0。
 - 管理端身份：发布服务以jurisdiction_code+entity_id+version精确定位（缺失400、不存在404、blocked地区422拒绝晋级），发布审计携带地区与版本；规则列表jurisdiction/status/module/q筛选。
 - 运维工具：`scripts/restore-reconcile.mjs`（恢复逐表对账）、`scripts/planning-regression.ts`（规划行为零漂移复核）。
+
+## 阶段E复审缺陷修复（09-05 NRP，2026-09-06）
+
+- 目标守卫加固（`src/lib/policy-materialization/target-guard.test.ts` 13例）：协议白名单、端口精确5432、拒绝全部query/fragment/socket/percent编码路径、pg-connection-string交叉一致、指纹非敏感、无dotenv导入源码契约。
+- 编辑白名单（`src/lib/admin/entity-edit-policy.test.ts` 9例）：受控字段与未知字段拒绝、业务字段放行（rules/params/rule_sets）。
+- 参数类型契约（`src/lib/admin/params-service.test.ts` 7例）：number/boolean/string/array读value、table/timeline读rows、类型运行时校验、标量禁rows。
+- 包快照完整性（materializer.unit新增）：快照携带rows/key_fields/value_fields/type/有效期/operation/evidence/contentHash。
+- 路由级身份与隔离（`src/app/api/admin/__tests__/{nrp-identity-regional,nrp-stage-e-fix}.integration.test.ts`）：缺失身份400/错版本404/同名CN-SH不串区；PATCH注入status/version/jurisdictionCode被400且库不变；发布门禁按jurisdiction_codes继承链加载测试（沪测试不替CN充数）；发布审计携带地区与版本。
+- published哈希矩阵（fix集成）：修改name/module/priority/effective窗口/notes/dsl_version/supersedes及删除行均改变哈希，还原恢复。
+- 并发与约束（0014）：批次(jurisdiction,manifest_hash)唯一、成员唯一+entity_type CHECK、status/readiness枚举CHECK；并发apply单事务成功/另一no-op。
+- 对账工具（`scripts/restore-reconcile.ts`）：目录驱动枚举public/drizzle/agent/rag全部BASE TABLE与sequence，整行to_jsonb规范化哈希，表集合/计数/哈希/sequence任一不符退出1。

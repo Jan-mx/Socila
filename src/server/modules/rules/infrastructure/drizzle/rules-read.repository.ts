@@ -1,4 +1,4 @@
-import { and, eq, lte, desc, asc, isNull, or, sql, inArray } from "drizzle-orm";
+import { and, eq, lte, gte, desc, asc, isNull, or, sql, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   params,
@@ -124,6 +124,38 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
       .orderBy(desc(rules.version));
   }
 
+  /** NRP审查缺陷5：地区预览参数——国家baseline（published）+目标地区
+   * （published与draft预览），按as_of_date过滤有效期，不混入其他省份。 */
+  async listParamsForPreview(
+    jurisdictionCode: string,
+    asOfDate: string,
+  ) {
+    return db
+      .select()
+      .from(params)
+      .where(
+        and(
+          or(
+            eq(params.jurisdictionCode, "CN"),
+            eq(params.jurisdictionCode, jurisdictionCode),
+          ),
+          or(
+            eq(params.status, "published"),
+            and(
+              eq(params.status, "draft"),
+              eq(params.jurisdictionCode, jurisdictionCode),
+            ),
+          ),
+          lte(params.effectiveFrom, asOfDate),
+          or(
+            isNull(params.effectiveTo),
+            gte(params.effectiveTo, asOfDate),
+          ),
+        ),
+      )
+      .orderBy(desc(params.effectiveFrom), desc(params.version));
+  }
+
   async getEffectiveParams(policyPackId: string, asOfDate: string) {
     const allParams = await db
       .select()
@@ -221,10 +253,21 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
     return rows[0] ?? null;
   }
 
-  async listTests(filters?: { ruleId?: string; source?: string }) {
+  async listTests(filters?: {
+    ruleId?: string;
+    source?: string;
+    jurisdictionCode?: string;
+    jurisdictionCodes?: string[];
+  }) {
     const conditions = [];
     if (filters?.ruleId) conditions.push(eq(tests.ruleId, filters.ruleId));
     if (filters?.source) conditions.push(eq(tests.source, filters.source));
+    if (filters?.jurisdictionCode) {
+      conditions.push(eq(tests.jurisdictionCode, filters.jurisdictionCode));
+    }
+    if (filters?.jurisdictionCodes && filters.jurisdictionCodes.length > 0) {
+      conditions.push(inArray(tests.jurisdictionCode, filters.jurisdictionCodes));
+    }
 
     return db
       .select()

@@ -19,6 +19,7 @@ interface Param {
   value: unknown;
   unit: string | null;
   effectiveFrom: string;
+  effectiveTo: string | null;
   source: string | null;
   rows: unknown[] | null;
   keyFields: string[] | null;
@@ -33,11 +34,18 @@ interface GroupedParams {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  scalar: "标量参数",
+  number: "数值参数",
+  boolean: "布尔参数",
+  string: "字符串参数",
+  array: "数组参数",
   table: "表格参数",
   timeline: "时间线参数",
-  array: "数组参数",
 };
+
+/** 行式参数（编辑用textarea渲染JSON）；其余读取value（审查缺陷3）。 */
+function isRowType(type: string): boolean {
+  return type === "table" || type === "timeline";
+}
 
 function statusVariant(s: string): "published" | "draft" | "retired" | "info" {
   if (s === "published") return "published";
@@ -80,14 +88,17 @@ export default function ParamsPage() {
     fetchParams();
   }, []);
 
+  // 审查缺陷3：类型契约——number/boolean/string/array读取value；
+  // table/timeline读取rows。标量数值直显，其余JSON序列化。
   const getEditValue = (p: Param) => {
     if (p.id in editing) return editing[p.id];
-    if (p.type === "scalar") return String(p.value ?? "");
-    return JSON.stringify(
-      p.type === "table" ? p.rows : p.type === "timeline" ? p.rows : p.value,
-      null,
-      2,
-    );
+    if (isRowType(p.type)) {
+      return JSON.stringify(p.rows ?? [], null, 2);
+    }
+    if (p.type === "number" || p.type === "boolean") {
+      return String(p.value ?? "");
+    }
+    return JSON.stringify(p.value ?? null, null, 2);
   };
 
   const showMsg = (id: number, type: "ok" | "err", text: string) => {
@@ -99,7 +110,7 @@ export default function ParamsPage() {
     const rawVal = editing[p.id];
     if (rawVal === undefined) return;
     let parsed: unknown = rawVal;
-    if (p.type !== "scalar") {
+    if (isRowType(p.type) || p.type === "array") {
       try {
         parsed = JSON.parse(rawVal);
       } catch {
@@ -109,9 +120,13 @@ export default function ParamsPage() {
     }
     setSaving((prev) => ({ ...prev, [p.id]: true }));
     try {
-      const body: Record<string, unknown> =
-        p.type === "scalar" ? { value: parsed } : { rows: parsed };
-      const res = await adminFetch(`/api/admin/params/${p.id}`, {
+      // 审查缺陷3+6：按类型契约写字段；携带jurisdiction_code+version精确身份。
+      const body: Record<string, unknown> = isRowType(p.type)
+        ? { rows: parsed }
+        : { value: parsed };
+      const res = await adminFetch(
+        `/api/admin/params/${p.paramId}?jurisdiction_code=${p.jurisdictionCode ?? ""}&version=${p.version}`,
+        {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -134,7 +149,9 @@ export default function ParamsPage() {
   };
 
   const handleValidate = async (p: Param) => {
-    const res = await adminFetch(`/api/admin/params/${p.id}/validate`, {
+    const res = await adminFetch(
+      `/api/admin/params/${p.paramId}/validate?jurisdiction_code=${p.jurisdictionCode ?? ""}&version=${p.version}`,
+      {
       method: "POST",
     });
     const json = await res.json();
@@ -197,14 +214,15 @@ export default function ParamsPage() {
                               {formatAdminStatus(p.status)}
                             </Badge>
                             <span className="text-xs text-slate-500">v{p.version}</span>
+                            <span className="font-mono text-xs text-slate-400">@{p.jurisdictionCode ?? "-"}</span>
                             {p.unit && <span className="text-xs text-slate-500">单位: {p.unit}</span>}
                           </div>
                           <p className="mb-2 text-xs text-slate-500">
-                            生效日期：{p.effectiveFrom}
+                            有效期：{p.effectiveFrom} ~ {p.effectiveTo ?? "长期"}
                             {p.note && ` · ${p.note}`}
                           </p>
 
-                          {type === "scalar" ? (
+                          {!isRowType(type) ? (
                             <Input
                               value={editVal}
                               onChange={(e) =>

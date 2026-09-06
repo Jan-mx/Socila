@@ -1,4 +1,5 @@
 import { rulesReads } from "@/server/modules/rules/application";
+import { sanitizeRuleEdit } from "@/lib/admin/entity-edit-policy";
 import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -31,7 +32,10 @@ async function handleUpdate(
   try {
     const { ruleId } = await params;
     const body = (await req.json()) as Record<string, unknown>;
-    const identity = requireExactIdentity(body);
+    // 身份可来自query或body（详情页经query携带，兼容body携带）。
+    const identity =
+      requireExactIdentity(req.nextUrl.searchParams) ??
+      requireExactIdentity(body);
     if (!identity) {
       return NextResponse.json(
         {
@@ -41,6 +45,20 @@ async function handleUpdate(
         { status: 400 },
       );
     }
+
+    // 审查缺陷2：编辑字段白名单——受控字段/未知字段出现即400。
+    const sanitized = sanitizeRuleEdit(body);
+    if (!sanitized.ok) {
+      return NextResponse.json(
+        {
+          error: "请求包含不允许修改的字段（NRP-FR-021白名单）",
+          controlledFields: sanitized.controlledFields,
+          unknownFields: sanitized.unknownFields,
+        },
+        { status: 400 },
+      );
+    }
+    void body;
 
     const existing = await rulesReads.getRuleExact({
       ruleId,
@@ -58,7 +76,7 @@ async function handleUpdate(
       );
     }
 
-    const updated = await rulesWrites.updateRule(existing.id, body);
+    const updated = await rulesWrites.updateRule(existing.id, sanitized.fields);
     return NextResponse.json({ rule: updated });
   } catch {
     return NextResponse.json(

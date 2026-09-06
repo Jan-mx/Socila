@@ -56,6 +56,34 @@ export async function resolveParamRecord(paramKey: string): Promise<ParamRecord 
 }
 
 export function validateParamRecord(record: ParamRecord) {
+  // 审查缺陷3：参数类型契约统一——
+  // 标量类型 number|boolean|string|array 读取value；
+  // 行式类型 table|timeline 读取rows；按类型做运行时校验。
+  const VALUE_TYPES = ["number", "boolean", "string", "array"];
+  const ROW_TYPES = ["table", "timeline"];
+
+  let valueValid: boolean;
+  if (VALUE_TYPES.includes(record.type)) {
+    if (record.type === "number") {
+      valueValid =
+        typeof record.value === "number" && Number.isFinite(record.value);
+    } else if (record.type === "boolean") {
+      valueValid = typeof record.value === "boolean";
+    } else if (record.type === "string") {
+      valueValid = typeof record.value === "string";
+    } else {
+      valueValid = Array.isArray(record.value);
+    }
+    // 标量不得写rows（内容互斥）。
+    if (valueValid && record.rows !== null && record.rows !== undefined) {
+      valueValid = false;
+    }
+  } else if (ROW_TYPES.includes(record.type)) {
+    valueValid = Array.isArray(record.rows);
+  } else {
+    valueValid = false;
+  }
+
   const checks = [
     {
       name: "schema",
@@ -64,14 +92,12 @@ export function validateParamRecord(record: ParamRecord) {
     },
     {
       name: "value",
-      passed:
-        record.type === "scalar"
-          ? record.value !== null
-          : Array.isArray(record.rows),
-      detail:
-        record.type === "scalar"
-          ? "scalar 需要 value"
-          : "table/timeline/array 需要 rows",
+      passed: valueValid,
+      detail: VALUE_TYPES.includes(record.type)
+        ? `${record.type} 需要 ${record.type === "array" ? "数组" : record.type} 类型的 value`
+        : ROW_TYPES.includes(record.type)
+          ? `${record.type} 需要 rows 数组`
+          : `未知参数类型：${record.type}`,
     },
   ];
 

@@ -72,7 +72,11 @@ export async function POST(
       return NextResponse.json({ error: "未知操作" }, { status: 400 });
     }
 
-    const existing = await rulesReads.getRule(ruleId, version);
+    const existing = await rulesReads.getRuleExact({
+      ruleId,
+      jurisdictionCode,
+      version,
+    });
     if (!existing) {
       return NextResponse.json(
         { error: "未找到规则版本" },

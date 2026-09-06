@@ -41,6 +41,11 @@ export interface RulesReadRepository {
     jurisdictionCode?: string,
   ): Promise<RuleRow[]>;
   getEffectiveParams(policyPackId: string, asOfDate: string): Promise<ParamRow[]>;
+  /** NRP审查缺陷5：地区预览参数——CN published + 目标地区published与draft，按有效期过滤。 */
+  listParamsForPreview(
+    jurisdictionCode: string,
+    asOfDate: string,
+  ): Promise<ParamRow[]>;
   listParams(filters?: {
     policyPackId?: string;
     type?: string;
@@ -52,7 +57,13 @@ export interface RulesReadRepository {
   getLatestRuleSetVersion(ruleSetId: string): Promise<RuleSetRow | null>;
   listRuleSets(filters?: { jurisdictionCode?: string }): Promise<RuleSetRow[]>;
   getWorkflow(workflowId: string): Promise<WorkflowRow | null>;
-  listTests(filters?: { ruleId?: string; source?: string }): Promise<TestRow[]>;
+  listTests(filters?: {
+    ruleId?: string;
+    source?: string;
+    jurisdictionCode?: string;
+    /** NRP审查缺陷10：继承链地区集合（目标地区+CN）。 */
+    jurisdictionCodes?: string[];
+  }): Promise<TestRow[]>;
   getTest(id: number): Promise<TestRow | null>;
   countRules(status?: string): Promise<number>;
   countParams(status?: string): Promise<number>;

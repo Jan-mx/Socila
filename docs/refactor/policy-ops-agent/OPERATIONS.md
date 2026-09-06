@@ -120,3 +120,5 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 7. apply：`npx tsx scripts/materialize-policy-regions.ts apply --i-am-authorized --manifest-hash <audit输出> --target-fingerprint <audit输出>`——单事务四地区draft写入+固定计数与旧行哈希事务内核验；失败自动全部回滚。
 8. 复核：固定计数、published行哈希、`scripts/planning-regression.ts`（与物化前输出一致）、`GET /api/admin/policy-coverage`地区就绪状态。
 9. 同manifest重复apply为幂等no-op；连接串/口令不得出现在日志、manifest、审计表或Git（NRP-NFR-009）。
+10. 包快照修复（审查缺陷4）：audit输出`packSnapshotDrift`后，获授权执行`npx tsx scripts/materialize-policy-regions.ts repair --i-am-authorized --manifest-hash <hash> --target-fingerprint <fp>`——单事务修正draft包paramSnapshot与成员contentHash并写修复审计批次；快照一致时no-op；不新增实体、不改published、计数不变。
+11. 对账必须以`scripts/restore-reconcile.ts`的目录驱动结果为准（public/drizzle/agent/rag全部BASE TABLE+sequence，当前37表+18 sequence），不得以部分表清单宣称"完整恢复"。
