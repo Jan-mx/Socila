@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-05
+> Updated: 2026-09-06
 
 ## 当前状态
 
@@ -10,7 +10,7 @@
 
 09-02用户与管理员双角色鉴权Feature已Accepted；09-03 P0合并质量门禁与v2.0.0发布准备**Accepted（开发分支发布准备）**：六类门禁全部本地新鲜复现（全部退出0、零skip），workflow经actionlint 1.7.7静态校验零发现，`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）；重构前`main`已由`v1.0.0`标记，PR、main ruleset、merge与`v2.0.0` Release为未来人工动作（见`PROGRESS.md`精确下一步与PRD §17）。
 
-09-05 Stage（`docs/prd/09-05-stage-national-baseline-regional-overlays.md`，国家baseline及广东四川权威overlay）**里程碑A/B/C/D已实施并验证（2026-09-05）**：显式overlay操作数据模型（0012迁移+CHECK约束，快照服务不再按地区推断）、CN国家baseline（16规则+CN-BASELINE参数包，全部政策事实引用人社部/中国政府网/省厅原件）、上海重分类零漂移对账（44例冻结基线逐字节一致）、广东/四川权威overlay（GD restrict与有效期窗口、SC待办语义黄金化）；四地区候选快照可在演练库创建且可重放；管理员批准、待办裁决（四川医保年限等）与用户流量开放为后续人工动作。证据见`reports/stage-09-05-national-baseline-overlays/acceptance-report.md`。
+09-05 Stage（`docs/prd/09-05-stage-national-baseline-regional-overlays.md`，国家baseline及广东四川权威overlay）**Reopened（2026-09-06独立复审）**：里程碑A/B/C/D的权威来源、DSL与黄金测试仍保留；阶段E已将CN/沪/粤/川资产以draft物化到本机持久库，计数49/70/5/4/528/851/117/0且粤川保持blocked。但复审确认目标库守卫可被连接参数绕过、普通PATCH可绕过发布门禁、参数后台类型与政策包表格快照不完整、部分规则/参数操作仍非地区精确身份、恢复对账只覆盖14/37表、published哈希字段不全及单测依赖私有`.env.local`。全部P1/P2修复并重新验收前不得恢复Accepted，案例治理与地区感知规划继续Blocked。证据见`reports/stage-09-05-national-baseline-overlays/acceptance-report.md` §11。
 
 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）**Accepted（2026-09-05两轮复审纠正后重新验收）**：首轮复审三项缺漏已纠正——命名契约区分"允许的精确旧协议片段"与"独立品牌标识"、`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`并新增哨兵回归（ADR-0009）、多地区Seed补齐jurisdiction作用域并有落库级测试；第二轮复审又修复扫描器注释自命中与`.gitleaksignore`说明文字历史误报，并将Next生产构建worker限制为2以适配本机及4GB Demo资源档。最终新鲜复验：`npm test` 359/359、Gitleaks 8.29.1完整历史43提交零发现、`npm run build`以2 workers退出0。通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层，规则格式唯一规范值`SOCILA-DSL-1.0`；活动代码与配置完成Socila硬切换；服务JWT身份为`socila-next-core`；粤川示例仅保留测试夹具，生产Seed与持久库均为0。证据见`reports/feature-09-05-socila-naming/acceptance-report.md`。
 

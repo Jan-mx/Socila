@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-05
+> Updated: 2026-09-06
 
 ## 当前结论
 
@@ -17,7 +17,7 @@
 - 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）：**Accepted**（验收证据：`reports/feature-09-05-socila-naming/acceptance-report.md`）。SDL-FR-001～014、SDL-NFR-001～007全部有实现与测试映射，SDL-AC-001～010新鲜证据通过：通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层（24规则/29参数/`SOCILA-DSL-1.0`/Manifest `jurisdiction_code=310000`）、Seed经Manifest发现（零硬编码地区）、活动代码与配置SSP/SSRP→Socila硬切换（命名扫描零命中，无旧变量/Cookie/localStorage/服务身份兼容）、Node与Python服务JWT身份原子切换`socila-next-core`（固定向量重签+CI冒烟同步）、粤川示例转测试夹具（生产Seed不写入）、0010迁移完成dsl_version规范化与六条示例精确清理（删除前新鲜pg_dump+SHA-256清单+PG17+pgvector真实恢复逐表对账25表一致；删除后diff仅params 33→29、packs 2→0及0009补齐空表；备份/旧卷/历史快照未动）；Gitleaks完整历史19条历史命中经人工核实为测试合成值并以`.gitleaks.toml`精确allowlist闭环（ADR-0008）。
 - 09-05 Feature **复审纠正完成并重新Accepted（2026-09-05）**：三项复审缺漏全部纠正——①命名契约扫描器收敛到`src/lib/naming/socila-naming-contract.ts`并以"允许片段剥离"区分精确旧协议值与独立品牌标识（npm test恢复359/359全绿）；②`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`+`condition="AND"`，新增哨兵回归`scripts/verify-gitleaks-allowlist.mjs`接入CI（ADR-0009替代ADR-0008；哨兵证明允许路径上其他规则照常检测、trace无整文件跳过）；③多地区Seed补齐jurisdiction作用域（seed-rules/seed-params/seed-misc/excel-import，tests行写入jurisdictionCode，协议workflow只装载一次，0011回填存量NULL），新增multi-region-seed落库级集成测试。全部门禁新鲜复验通过后恢复Accepted。
 - 09-05 Feature复审历史：曾因命名契约、Gitleaks allowlist和多地区Seed缺漏Reopened；相关缺漏及第二轮扫描器/Gitleaks/Build复审均已修复并取得新鲜门禁，当前最终状态为**Accepted**，详见任务验收报告§8～§10。
-- 09-05全国政策与案例治理执行顺序：`Socila命名统一与地区DSL分层`（**已实施并验收**）→`国家baseline及广东、四川权威overlay`（**已实施并验证，2026-09-05**：里程碑A/B/C/D四个独立提交500db14/b4cba62/8779e02/2c4c19e；候选快照管理员批准与待办裁决为后续人工动作，见`reports/stage-09-05-national-baseline-overlays/acceptance-report.md`）→`案例库精简、质量治理与原始数据归档`（Draft，Blocked by前项）→`用户规划按地区快照触发`（Draft，Blocked by案例治理）。不得把Draft或Blocked需求记为已交付能力。
+- 09-05全国政策与案例治理执行顺序：`Socila命名统一与地区DSL分层`（**已实施并验收**）→`国家baseline及广东、四川权威overlay`（**Reopened，2026-09-06独立复审发现9项P1/P2缺陷**；阶段E draft已落库但验收结论撤回，详见任务报告§11）→`案例库精简、质量治理与原始数据归档`（Draft，Blocked by任务2重新Accepted并提供可重放候选快照）→`用户规划按地区快照触发`（Draft，Blocked by案例治理）。不得把已物化draft、历史演练快照或局部准备工作记为已交付能力。
 
 ## 已完成能力
 
@@ -39,7 +39,7 @@
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
-| 国家baseline及粤川权威政策 | 已实施并验证（2026-09-05）：CN baseline16规则+粤川overlay、显式overlay操作、四地区黄金与候选快照 | 待办裁决（四川医保年限/粤川失业待遇与2025基数等）后按新版本落地；候选快照待管理员批准 |
+| 国家baseline及粤川权威政策 | Reopened（2026-09-06）：阶段E draft计数已核实，但目标保护、发布旁路、参数/政策包完整性、地区精确身份、恢复与哈希证据、干净CI仍有9项P1/P2缺陷 | 先修复并独立复审；完整37表恢复和全部门禁通过后再申请恢复Accepted，随后由管理员批准候选快照 |
 | 案例库治理 | Blocked（依赖权威政策） | 归档并精简至452/36/528，建立来源链、质量和候选快照校验 |
 | 地区感知用户规划 | Blocked（依赖案例治理） | 只为政策与案例门禁通过的活动快照逐地区开放，缺失地区不默认上海 |
 
@@ -189,9 +189,29 @@
 | 门禁 | Node单元434/434、DB集成71/71、tsc/eslint零错误、build零警告、Auth E2E 10/10、Gitleaks no leaks、scan-secrets 637文件零命中、哨兵通过、Compose 8服务healthy |
 | 边界 | 未授权远程库/发布/活动快照/用户流量/Seed/删除数据/案例库修改——均未发生；演练容器已停止 |
 
+> 本节是提交`6cf2468`的执行记录；2026-09-06独立复审发现其验收覆盖不足，当前状态由下节取代。
+
+## 当前任务复审（09-05 阶段E，2026-09-06）
+
+| 项目 | 复审结论 |
+| --- | --- |
+| 持久库事实 | 49 rules、70 params、5 rule_sets、4 policy_pack_versions、528 tests、851 cases、117 showcase_cases、0 snapshots、74批次成员；CN/沪awaiting_approval，粤/川blocked；8个Compose服务healthy |
+| P1目标保护 | `DATABASE_URL`只校验URL authority，未固定5432且未拒绝`?host=`/`?port=`覆盖；node-postgres可实际连接远程目标，NRP-NFR-009未满足 |
+| P1发布旁路 | 规则与参数PATCH把未过滤body写入Repository，可用`status=published`绕过publishing用例、blocked检查和发布审计 |
+| P1参数契约 | 35个标量draft保存为number/boolean/string/array，但后台仅按scalar处理，导致显示、校验和编辑路径错误 |
+| P1政策包完整性 | 4个draft政策包中的6个table/timeline参数未保存rows/key_fields/value_fields，不能确定性重放 |
+| P2地区身份 | run-example、规则版本校验及参数更新/校验仍存在非精确查询；同名CN/上海实体可能串区 |
+| P2恢复证据 | 恢复脚本只核对14张表；当前库实际有public/drizzle/agent/rag共37张表，不能据此声称完整数据库恢复一致 |
+| P2完整性哈希 | published哈希遗漏规则输入/输出/引用/evidence及参数rows/evidence等政策字段，零漂移证据不足 |
+| P1干净CI | 单测断言Git忽略的`.env.local`必须存在；本地434/434通过不证明干净检出或CI可运行 |
+| 新鲜只读验证 | `npm test` 48文件/434通过，`npx tsc --noEmit`退出0；这些结果不覆盖上述反例，不能恢复Accepted |
+| 下游门禁 | 持久库`policy_snapshots=0`且任务2未Accepted；案例治理仅可准备只读审计/评分，地区规划仅可准备契约/UI骨架，二者均不得进入持久写、激活或最终验收 |
+
+任务2保持**Reopened**。退出条件为上述P1/P2逐项补失败测试与修复、在无`.env.local`干净检出重跑门禁、完成全部37表及sequence的真实恢复对账、纠正验收报告不准确表述并通过独立复审。执行顺序继续为任务2修复并Accepted→任务4案例治理→任务3地区感知规划。
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
-09-03阶段已记录**Accepted（开发分支发布准备）**。以下动作均为未来人工动作，不阻塞本阶段验收，且需用户另行授权：
+任务2首先执行复审缺陷修复；对本机持久库运行修复migration/apply仍需用户针对该次操作明确授权。任务2重新Accepted、至少一个地区获管理员批准并形成持久可重放候选快照前，任务4和任务3不得进入最终实施。09-03发布动作仍为未来人工动作：
 
 1. 重构前版本基线：**已完成**。annotated tag `v1.0.0`已推送至origin，并精确指向`main`提交`1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`；不得移动或重建。
 2. 用户未来人工发布流程（PRD §17.2）：

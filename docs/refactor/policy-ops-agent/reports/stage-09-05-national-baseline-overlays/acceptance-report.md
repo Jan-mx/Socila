@@ -1,12 +1,14 @@
 # 09-05 Stage 国家baseline及广东四川权威overlay 验收报告
 
 > Author: Jan
-> Status: Active（里程碑A/B/C/D代码与证据已交付；候选快照的管理员批准与用户流量开放为后续人工动作）
-> Updated: 2026-09-05
+> Status: Reopened（里程碑A/B/C/D资产保留；阶段E于2026-09-06独立复审发现阻断缺陷，修复并重新验收前不得恢复Accepted）
+> Updated: 2026-09-06
 
 ## 1. 范围与结论
 
 本阶段执行权威PRD `docs/prd/09-05-stage-national-baseline-regional-overlays.md`（Draft）的任务2：按国家baseline、上海重分类、广东overlay、四川overlay四个里程碑建立权威政策事实、显式overlay操作数据模型、黄金测试与候选快照能力。
+
+当前结论以§11独立复审为准：阶段E物化计数与draft/blocked状态真实存在，但其目标保护、发布门禁、参数与政策包完整性、地区身份、恢复和完整性证据存在P1/P2缺陷，原阶段E验收结论已撤回。
 
 | 里程碑 | 提交 | 核心交付 | 状态 |
 | --- | --- | --- | --- |
@@ -138,6 +140,8 @@
 
 ## 10. 阶段E：权威资产持久化与地区化管理（2026-09-06）
 
+> 本节保留提交`6cf2468`执行时记录；其中“精确身份完成”“完整恢复一致”和门禁足以验收的结论已被§11独立复审取代。
+
 ### 10.1 范围与授权
 
 按更新后PRD（NRP-FR-017～022、NRP-NFR-009～012、NRP-AC-011～016）执行。授权范围仅本机持久Compose库`localhost:5432/policyops`；未触碰远程数据库，未发布实体、未生成活动快照、未开放用户流量、未调用`npm run seed`、未删除数据、未修改案例库。
@@ -180,3 +184,47 @@ Node单元434/434、数据库集成71/71（含物化器独立库3例）、TypeSc
 - blocked地区在缺口消除（取得权威原文并新增版本）前保持blocked，不得晋级/生成活动快照（NRP-FR-022由发布流水线强制）。
 - `verified`状态仅表示持久化与恢复验证完成，不代表政策已批准或ready_for_planning；管理员批准为后续人工动作。
 - 演练容器（nrp-drill-pg、nrp-e-restore）验证后已停止；备份文件在Git忽略的`backup/db/`。
+
+## 11. 独立复审与Reopened结论（2026-09-06）
+
+### 11.1 只读复核事实
+
+- 提交范围：`6cf2468 feat: 落地权威资产受控物化与地区化管理`。
+- 持久库计数：rules=49、params=70、rule_sets=5、policy_pack_versions=4、tests=528、cases=851、showcase_cases=117、policy_snapshots=0、policy_import_batch_members=74。
+- 地区状态：CN/上海为`awaiting_approval`，广东/四川为`blocked`；四川保持0条地方规则、3个参数。
+- 资源状态：8个`socila-*`服务healthy；阶段E备份文件、大小及SHA-256与§10记录一致；演练容器已停止。
+- 新鲜验证：`npm test`为48文件/434通过，`npx tsc --noEmit`退出0。复审反例不在现有测试覆盖内，因此以上通过不足以维持验收。
+
+### 11.2 阻断缺陷
+
+| 级别 | 缺陷 | 违反要求/影响 |
+| --- | --- | --- |
+| P1 | 目标守卫只校验URL authority，接受非5432端口，且`?host=remote.example&port=6543`可让node-postgres实际连接远程库 | NRP-NFR-009目标保护失效，目标指纹可能与实际连接不一致 |
+| P1 | 规则和参数草稿PATCH未过滤`status/version/jurisdiction`等受控字段，可直接写`published` | 绕过publishing用例、blocked门禁和发布审计，违反NRP-FR-022 |
+| P1 | 35个标量draft保存为DSL类型，但后台和校验只识别`scalar` | 数值显示为空、校验失败、编辑可能误写`rows` |
+| P1 | 四个政策包快照未保存6个table/timeline参数的`rows/key_fields/value_fields` | 参数快照不完整，违反NRP-FR-020和可重放要求 |
+| P2 | run-example与规则版本POST校验仍使用非地区精确查询，且示例固定加载CN+上海参数 | CN/上海同名实体可能串区，NRP-AC-016未满足 |
+| P2 | 参数更新/校验未完整要求并使用`jurisdiction_code+entity_id+version` | 可能静默选择该地区最新或其他地区参数，精确身份契约未闭环 |
+| P2 | 恢复脚本硬编码14张表，而数据库实际有public/drizzle/agent/rag共37张表 | §10“全部表恢复一致”的验收表述证据不足 |
+| P2 | published哈希遗漏规则输入/输出/参数引用/evidence、参数rows/evidence及规则集关键字段 | 政策字段变化可能不改变指纹，零运行漂移证据不足 |
+| P1 | 单测要求Git忽略的`.env.local`真实存在 | 干净检出和CI可能失败，本地434/434不能证明可移植性 |
+
+### 11.3 状态与下游影响
+
+任务2补充阶段状态改为**Reopened**。里程碑A/B/C/D的权威原件、DSL和既有黄金证据不作废；阶段E数据库draft不删除、不发布，继续保持CN/沪`awaiting_approval`与粤/川`blocked`。
+
+持久库当前没有PolicySnapshot，任务2也未Accepted，因此：
+
+- 案例库治理只能准备只读审计、来源链、评分和确定性选择代码；不得执行归档、删除、快照校验或最终验收。
+- 地区感知规划只能准备请求契约、领域接口和未激活UI；不得激活地区、写活动快照发布记录或完成最终E2E。
+- 完整任务不得并行验收；执行顺序保持任务2修复并Accepted→任务4案例治理→任务3地区感知规划。
+
+### 11.4 恢复Accepted条件
+
+1. 为全部P1/P2反例先增加失败测试并完成修复，关闭普通写接口的状态旁路。
+2. 使用与node-postgres一致的目标解析，严格限制本机5432/policyops并拒绝查询参数覆盖。
+3. 修复标量参数后台契约和四个draft政策包表格快照，计数保持49/70/5/4/528/851/117/0及74成员。
+4. 全部规则、参数、示例、版本和发布操作使用地区+实体ID+版本精确定位。
+5. 对public/drizzle/agent/rag全部37张表及必要sequence执行真实恢复对账，并扩展published完整业务字段哈希。
+6. 在没有`.env.local`的干净检出中重跑Node、数据库集成、Auth E2E、TypeScript、ESLint、Build和Secret门禁。
+7. 纠正§10与PROGRESS中的旧验收表述，取得独立复审通过后方可恢复Accepted。
