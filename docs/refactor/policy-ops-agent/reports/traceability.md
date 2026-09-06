@@ -56,7 +56,7 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 
 | Work Item | 规格 | 实现位置 | 测试路径 | 验收证据 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| WI-20260906-01 | `docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md` | 计划：`src/lib/policy-materialization/{target.ts,materialize.ts}`、`scripts/materialize-policy-regions.ts`；实际路径由执行Agent验收后回填 | 计划：`src/lib/policy-materialization/materializer.integration.test.ts`及必要的聚焦单测；不得以全量门禁替代repair专用反例 | 任务2验收报告§13；当前只有执行准备复审，无Green证据 | Ready；禁止持久库0014/repair |
+| WI-20260906-01 | `docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md` | 实际：`src/lib/policy-materialization/target.ts`（PackTargetBinding+loadPackTargets+指纹绑定draft包）、`src/lib/policy-materialization/materialize.ts`（repair重写：事务内FOR UPDATE锁定重校验/REPAIR_TARGET_CHANGED/computeRepairBatchHash确定性repaired批次+新成员/原成员不可变/isJurisdictionBlocked纳入repaired）、`scripts/materialize-policy-regions.ts`（按实际数量输出）、`src/lib/db/index.ts`（池error监听） | 实际：`src/lib/policy-materialization/materializer.integration.test.ts`（+6场景：守卫/目标绑定/正常修复/回滚/并发/幂等零漂移）、`materializer.unit.test.ts`（+2：指纹绑定/CLI源码契约）、`target-guard.test.ts`、`src/lib/engine/__tests__/{guangdong,sichuan}-overlay-golden.test.ts`（既有any→unknown类型修复） | 任务2验收报告§14（Red/Green+全量门禁） | Accepted；代码就绪但持久库0014/repair仍禁止，需用户另行授权 |
 | WI-20260901-01 | `docs/work-items/WI-20260901-01-docs-reorganization.md` | `docs/README.md`、`docs/prd/`、`docs/standards/`、`docs/refactor/policy-ops-agent/`、`AGENTS.md`、`.gitignore` | 文档任务无新增业务测试文件；执行链接、状态、ignore、Secret和项目回归命令 | `docs/refactor/policy-ops-agent/PROGRESS.md` | Accepted |
 
 ## 更新规则

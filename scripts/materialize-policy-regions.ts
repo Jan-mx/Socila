@@ -6,11 +6,15 @@
  *   node scripts/materialize-policy-regions.mjs audit
  *   node scripts/materialize-policy-regions.mjs apply \
  *     --i-am-authorized --manifest-hash <hash> --target-fingerprint <fp> [--actor 名字]
+ *   node scripts/materialize-policy-regions.mjs repair \
+ *     --i-am-authorized --manifest-hash <hash> --target-fingerprint <fp> [--actor 名字]
  *
  * 约束：
  * - DATABASE_URL必须显式设置在进程环境中（禁止dotenv/.env回退），且只允许
  *   本机 localhost:5432/policyops（NRP-NFR-009）；
- * - 默认只audit；apply同时校验授权参数、manifest哈希与目标指纹，缺一拒绝；
+ * - 默认只audit；apply/repair同时校验授权参数、manifest哈希与目标指纹，缺一拒绝；
+ * - repair目标指纹绑定draft政策包行状态（WI-20260906-01），必须使用同一次
+ *   fresh audit输出的hash与指纹；repair只追加确定性`repaired`审计，原批次/成员不可变；
  * - 不调用npm run seed；只写draft实体与批次审计，单事务原子提交。
  * 输出不含连接串与凭据（NRP-NFR-009）。
  */
@@ -77,8 +81,11 @@ async function main() {
       console.log("[materialize] 包快照与已提交DSL一致，修复为no-op。");
       return;
     }
+    // WI-20260906-01：按实际修复数量输出，不固定声称4个。
     console.log(JSON.stringify({ mode: "repair", noop: false, repaired: repaired.repaired, audits: repaired.audits }, null, 2));
-    console.log("[materialize] 4个draft政策包快照已修复（单事务）。");
+    console.log(
+      `[materialize] ${repaired.repaired.length}个draft政策包快照已修复（单事务）。`,
+    );
     return;
   }
 
@@ -111,7 +118,8 @@ async function main() {
       ),
     );
     console.log(
-      "[materialize] audit完成（只读，零写入）。apply命令请携带 --i-am-authorized --manifest-hash --target-fingerprint。",
+      "[materialize] audit完成（只读，零写入）。apply命令请携带 --i-am-authorized --manifest-hash --target-fingerprint。" +
+        "repair使用同一次audit输出的manifestHash与targetFingerprint（repair目标指纹已绑定draft包行状态，audit后变化会被拒绝）。",
     );
     return;
   }

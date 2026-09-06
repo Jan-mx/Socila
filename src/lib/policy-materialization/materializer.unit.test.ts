@@ -115,6 +115,89 @@ describe("目标守卫（NRP-FR-017/NRP-NFR-009）", () => {
   });
 });
 
+describe("repair目标绑定与指纹（WI-20260906-01）", () => {
+  const target = { host: "localhost", port: "5432", database: "policyops" };
+
+  function packTargetSql(
+    pack: {
+      row_id: number;
+      jurisdiction_code: string;
+      policy_pack_id: string;
+      version: number;
+      status: string;
+      param_snapshot: unknown;
+    } | null,
+    member: { member_id: number; entity_row_id: number; content_hash: string } | null,
+  ): SqlLike {
+    return {
+      query: async (text) => {
+        if (text.includes("policy_import_batch_members")) {
+          return { rows: member ? [member] : [] };
+        }
+        if (text.includes("from policy_pack_versions p")) {
+          return { rows: pack ? [pack] : [] };
+        }
+        return { rows: [] };
+      },
+    };
+  }
+
+  const PACK = {
+    row_id: 11,
+    jurisdiction_code: "310000",
+    policy_pack_id: "SHANGHAI_BASE",
+    version: 2,
+    status: "draft",
+    param_snapshot: { b: 2, a: 1 } as unknown,
+  };
+  const MEMBER = { member_id: 21, entity_row_id: 11, content_hash: "member-hash-old" };
+
+  it("目标指纹绑定draft包行ID/版本/状态/快照哈希/成员哈希——任一变化都改变指纹", async () => {
+    const stateA = await loadExistingState(packTargetSql(PACK, MEMBER));
+    const fpA = computeTargetFingerprint(target, stateA);
+    expect(stateA.packTargets).toHaveLength(1);
+    expect(stateA.packTargets[0]).toMatchObject({
+      rowId: 11,
+      jurisdictionCode: "310000",
+      packId: "SHANGHAI_BASE",
+      version: 2,
+      status: "draft",
+      memberRowId: 21,
+      memberHash: "member-hash-old",
+    });
+    expect(stateA.packTargets[0].snapshotHash).toMatch(/^[0-9a-f]{64}$/);
+
+    // 未变化 → 指纹稳定。
+    const stateAgain = await loadExistingState(packTargetSql(PACK, MEMBER));
+    expect(computeTargetFingerprint(target, stateAgain)).toBe(fpA);
+
+    // 快照内容、状态、版本、行ID、成员哈希任一变化 → 指纹必须变化。
+    const variants = [
+      { ...PACK, param_snapshot: { b: 2, a: 1, edited: true } },
+      { ...PACK, status: "staging" },
+      { ...PACK, version: 3 },
+      { ...PACK, row_id: 12 },
+    ];
+    for (const variant of variants) {
+      const state = await loadExistingState(packTargetSql(variant, MEMBER));
+      expect(computeTargetFingerprint(target, state)).not.toBe(fpA);
+    }
+    const stateMember = await loadExistingState(
+      packTargetSql(PACK, { ...MEMBER, content_hash: "member-hash-new" }),
+    );
+    expect(computeTargetFingerprint(target, stateMember)).not.toBe(fpA);
+  });
+
+  it("CLI按实际修复数量输出，不固定声称4个（源码契约）", () => {
+    const source = readFileSync(
+      path.join(REPO, "scripts", "materialize-policy-regions.ts"),
+      "utf8",
+    );
+    expect(source).not.toContain("4个draft政策包");
+    expect(source).toContain("repaired.repaired.length");
+  });
+});
+
 describe("manifest（NRP-FR-019，确定性）", () => {
   it("四地区计数与仓库权威资产一致（CN16/6、沪8/27、粤1/5、川0/3）", () => {
     const manifest = buildManifest(fakeGitReader());
@@ -170,6 +253,7 @@ describe("计划器（NRP-FR-018/NRP-AC-013）", () => {
       publishedRowsHash: "old-hash",
       maxVersions: new Map(),
       packVersions: new Map(),
+      packTargets: [],
     };
   }
 
@@ -227,7 +311,6 @@ describe("计划器（NRP-FR-018/NRP-AC-013）", () => {
   });
 
   it("目标版本冲突拒绝", () => {
-    const state = emptyState();
     // 已存在同地区同键v2 → 计划解析为3正常；但同名v3已存在时max=3→4，不冲突。
     // 冲突场景：manifest内同一键出现两次（人为构造）。
     const state2 = emptyState();
@@ -266,6 +349,7 @@ function makeEmptyState(): ExistingState {
     publishedRowsHash: "old-hash",
     maxVersions: new Map(),
     packVersions: new Map(),
+    packTargets: [],
   };
 }
 

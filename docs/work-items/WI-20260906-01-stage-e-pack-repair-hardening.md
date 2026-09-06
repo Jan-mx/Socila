@@ -1,8 +1,16 @@
 # WI-20260906-01：阶段E政策包快照repair加固
 
 > Author: Jan
-> Status: Ready
+> Status: Accepted
 > Updated: 2026-09-06
+
+## 验证结果（2026-09-06）
+
+- TDD Red：单元2失败（指纹未绑定draft包、CLI固定"4个"）；集成4失败（audit后变化被覆盖、repaired批次/新成员缺失、注入失败仍提交、并发双成功）+2护栏通过。记录见验收报告§14.1。
+- 修复与Green：目标指纹绑定draft包行ID/地区/pack ID/版本/状态/快照哈希/成员哈希（`target.ts`）；repair事务内`FOR UPDATE`锁定重校验+`REPAIR_TARGET_CHANGED`零写入退出、确定性`repaired`批次+每批次1条新成员、原物化批次/成员不可变、粤川阻断原因继承（`materialize.ts`）；CLI按实际数量输出；`isJurisdictionBlocked`纳入`repaired`。集成9/9、单元13/13。
+- 门禁：npm test 469/469（含无.env.local干净环境复现）、test:db 85/85零skip零unhandled、tsc/eslint退出0、build零警告、Auth E2E 10/10、ruff/mypy/pytest 94+20零skip、Gitleaks no leaks、scan-secrets 662文件零命中、allowlist哨兵通过。详见验收报告§14.3。
+- 边界：**未执行持久库0014、未执行repair、未修改持久库**（提交后只读复核计数49/70/5/4/528/851/117/0、members=74、batches=4、上海published规则24、Drizzle账本13条）。持久库执行门禁（§持久库后续执行门禁）保持不变。
+- 任务2整体保持Reopened。
 
 ## 关联
 

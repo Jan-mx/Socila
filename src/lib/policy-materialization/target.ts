@@ -152,6 +152,22 @@ export interface ExistingState {
   maxVersions: Map<string, number>;
   /** 已存在的 pack (jurisdiction, packId) → 最大版本。 */
   packVersions: Map<string, number>;
+  /** draft政策包目标绑定（WI-20260906-01）：repair指纹必须绑定待修复行。 */
+  packTargets: PackTargetBinding[];
+}
+
+/** repair目标绑定（WI-20260906-01实现要求1）：draft政策包行ID、地区、pack ID、
+ * 版本、状态、param_snapshot规范化哈希及对应批次成员行ID与内容哈希。
+ * 只含业务身份与哈希，不含连接串/口令（NRP-NFR-009）。 */
+export interface PackTargetBinding {
+  rowId: number;
+  jurisdictionCode: string;
+  packId: string;
+  version: number;
+  status: string;
+  snapshotHash: string;
+  memberRowId: number | null;
+  memberHash: string | null;
 }
 
 interface CountRow {
@@ -164,16 +180,6 @@ interface CountRow {
  * published行哈希覆盖 rules/params/rule_sets 的全部业务列（旧行保护基线）。
  */
 export async function loadExistingState(sql: SqlLike): Promise<ExistingState> {
-  const tables = [
-    "rules",
-    "params",
-    "rule_sets",
-    "policy_pack_versions",
-    "tests",
-    "cases",
-    "showcase_cases",
-    "policy_snapshots",
-  ];
   const countRows = await sql.query(
     `select 'rules' as table_name, count(*)::text as n from rules
      union all select 'params', count(*)::text from params
@@ -243,10 +249,57 @@ export async function loadExistingState(sql: SqlLike): Promise<ExistingState> {
     packVersions.set(key, Math.max(packVersions.get(key) ?? 0, Number(row.version)));
   }
 
-  return { counts, publishedRowsHash: hash, maxVersions, packVersions };
+  const packTargets = await loadPackTargets(sql);
+
+  return {
+    counts,
+    publishedRowsHash: hash,
+    maxVersions,
+    packVersions,
+    packTargets,
+  };
 }
 
-/** 目标指纹：主机:端口/库名 + 固定计数 + published行哈希（不含连接串/口令）。 */
+/** draft政策包目标绑定读取（WI-20260906-01）：全部包行按rowId排序，成员取
+ * entity_row_id对应的最大成员行（最新审计），成员缺失时为null。 */
+export async function loadPackTargets(sql: SqlLike): Promise<PackTargetBinding[]> {
+  const packRows = await sql.query(
+    `select p.id as row_id, p.jurisdiction_code, p.policy_pack_id, p.version,
+            p.status, p.param_snapshot
+     from policy_pack_versions p order by p.id`,
+  );
+  const memberRows = await sql.query(
+    `select m.id as member_id, m.entity_row_id, m.content_hash
+     from policy_import_batch_members m
+     where m.entity_type = 'policy_pack_version'
+     order by m.id`,
+  );
+  // 同一包行可能存在多条成员（原物化+修复审计）；按成员行ID取最新一条。
+  const latestMemberByRow = new Map<number, { memberRowId: number; hash: string }>();
+  for (const row of memberRows.rows) {
+    latestMemberByRow.set(Number(row.entity_row_id), {
+      memberRowId: Number(row.member_id),
+      hash: String(row.content_hash),
+    });
+  }
+  return packRows.rows.map((row) => {
+    const member = latestMemberByRow.get(Number(row.row_id)) ?? null;
+    return {
+      rowId: Number(row.row_id),
+      jurisdictionCode: String(row.jurisdiction_code ?? ""),
+      packId: String(row.policy_pack_id),
+      version: Number(row.version),
+      status: String(row.status),
+      snapshotHash: sha256(canonicalJson(row.param_snapshot)),
+      memberRowId: member?.memberRowId ?? null,
+      memberHash: member?.hash ?? null,
+    };
+  });
+}
+
+/** 目标指纹：主机:端口/库名 + 固定计数 + published行哈希 + draft包目标绑定
+ * （WI-20260906-01：repair指纹必须绑定待修复行，audit后任何draft变化都改变指纹；
+ * 不含连接串/口令/完整URL，NRP-NFR-009）。 */
 export function computeTargetFingerprint(
   target: MaterializationTarget,
   state: ExistingState,
@@ -256,6 +309,7 @@ export function computeTargetFingerprint(
       target: `${target.host}:${target.port}/${target.database}`,
       counts: state.counts,
       publishedRowsHash: state.publishedRowsHash,
+      packTargets: state.packTargets,
     }),
   );
 }

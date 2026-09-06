@@ -41,6 +41,12 @@ function getInstance(): { pool: Pool; db: DrizzleDb } {
       idleTimeoutMillis: POOL_IDLE_TIMEOUT_MS,
       connectionTimeoutMillis: POOL_CONNECTION_TIMEOUT_MS,
     });
+    // node-postgres要求池必须挂error监听：空闲客户端连接被服务器强制终止
+    // （数据库重启/测试teardown删库）时，无监听会以uncaughtException击穿进程；
+    // 在途查询仍照常向调用方报错，此处只记录非致命的空闲连接事件（不含凭据）。
+    _pool.on("error", (err) => {
+      console.error("[db] pool idle client connection error:", err.message);
+    });
     _db = drizzle(_pool, { schema });
   }
   return { pool: _pool, db: _db };

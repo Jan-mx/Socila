@@ -294,3 +294,46 @@ Node单元434/434、数据库集成71/71（含物化器独立库3例）、TypeSc
 该Work Item Accepted后，仍需用户针对持久库的一次0014 migration和一次repair另行明确授权。获授权时必须先创建新备份并完成37表+18 sequence恢复对账，再基于当前HEAD fresh audit；旧audit输入不得复用。repair成功后再次audit应为零漂移，使用新audit输入复跑应no-op，并对repair后备份再次完成37表+18 sequence恢复对账。
 
 本节不改变任务2整体状态：仍为**Reopened**，案例治理与地区感知规划继续Blocked。
+
+## 14. WI-20260906-01：政策包快照repair加固（2026-09-06，任务2保持Reopened）
+
+按`docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md`执行：只完成repair代码加固、测试与文档同步；**未执行持久库0014、未执行repair、未修改持久库**（提交后只读复核：计数49/70/5/4/528/851/117/0、members=74、batches=4、上海published规则24、Drizzle账本13条）。
+
+### 14.1 TDD Red证据（先于实现）
+
+| 场景 | Red输出（实现前首跑） |
+| --- | --- |
+| 单元·指纹绑定draft包 | `materializer.unit.test.ts` 2失败/11通过：`stateA.packTargets`不存在、CLI仍含固定"4个draft政策包" |
+| 集成·目标绑定 | audit后修改CN快照→`repairPackSnapshots` **resolved（noop:false）并覆盖编辑**（应拒绝）；状态/版本/成员哈希变体同样被覆盖 |
+| 集成·正常修复 | repaired批次数组为空（`status='applied'`、粤川`blocking_reasons=[]`、无新成员、原成员content_hash被改写、批次哈希含`Date.now()`非确定性） |
+| 集成·事务回滚 | 注入失败被忽略，repair照常提交 |
+| 集成·并发 | 两个repair均成功（双组审计，唯一约束未参与裁决） |
+| 护栏通过 | 守卫拒绝（缺授权/错哈希/错指纹）与成功后fresh audit复跑no-op在Red阶段即通过，作为既有行为护栏保留 |
+
+### 14.2 修复内容与Green证据
+
+- `target.ts`：新增`PackTargetBinding`/`loadPackTargets`（draft包行ID、地区、pack ID、版本、状态、`param_snapshot`规范化哈希、对应批次成员行ID/内容哈希——最新成员口径）；`computeTargetFingerprint`纳入`packTargets`，audit与repair共用同一指纹（不含连接串/口令）。
+- `materialize.ts`：repair重写——事务内对全部绑定目标`FOR UPDATE`锁定并重校验，与audit不一致抛`REPAIR_TARGET_CHANGED`零写入退出；逐目标更新（断言恰好1行）+确定性`repaired`批次（`computeRepairBatchHash`=基础manifest哈希+地区+pack ID+版本+旧/新内容哈希）+每批次1条`policy_pack_version`新成员；原物化批次/成员不可变；readiness/blockingReasons继承Manifest地区语义（粤川blocked原因完整）；事务内核验快照一致、业务计数与published行哈希不变；23505/目标变化后复核快照已完全一致则no-op，否则原样报错。`isJurisdictionBlocked`纳入`repaired`状态。
+- CLI：repair按实际数量输出（`${repaired.repaired.length}个`）；audit提示repair使用同次audit的hash/指纹。
+- Green：`materializer.integration.test.ts` 9/9（守卫、目标绑定四变体、正常修复+审计语义+零漂移、注入回滚、并发单结果+ loser no-op、复跑no-op）、`materializer.unit.test.ts` 13/13（含指纹绑定矩阵与CLI源码契约）。
+
+### 14.3 门禁汇总（2026-09-06本地新鲜执行）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm test`（无.env.local干净环境复跑） | PASS；51文件/469通过、skip 0（干净环境469/469） |
+| `npm run test:db`（演练PG17+pgvector） | PASS；19文件/85通过、skip 0、unhandled errors 0 |
+| `npx tsc --noEmit` | PASS；退出0 |
+| `npx eslint src scripts` | PASS；退出0（0 error；7个warning均为HEAD既有，与本Work Item无关） |
+| `npm run build` | PASS；退出0、零warning |
+| `npm run test:e2e:auth`（全新库migration+bootstrap+seed+standalone+mock） | PASS；10通过（40.0s） |
+| Agent ruff / mypy / pytest非集成 / pytest集成 | PASS；0问题、48文件0错误、94通过、20通过（skip 0） |
+| Gitleaks 8.29.1完整历史 / scan-secrets --all / allowlist哨兵 | PASS；56 commits no leaks、662文件零命中、哨兵全过 |
+
+顺带修复（已披露）：HEAD既有的golden测试6处`no-explicit-any`改为`Record<string, unknown>`（非本次引入，HEAD worktree复验确认；不改变任何断言）；集成teardown改为`closeDatabase()`→显式终止残留会话→删库，测试客户端挂error监听（此前Red/Green运行暴露测试基建的连接泄漏与57P01噪声，已修复，run零unhandled errors）；`src/lib/db/index.ts`为池挂`error`监听（node-postgres官方要求，空闲客户端被服务器终止时不再击穿进程，在途查询照常报错）。
+
+### 14.4 边界与状态
+
+- **未执行持久库0014、未执行repair、未修改持久库**；repair执行门禁不变：需用户对"一次0014 migration + 一次repair"另行明确授权，且必须基于当前HEAD fresh audit（旧audit的hash/指纹一律不得复用——其指纹未绑定draft包状态）。
+- 演练设施仅限`nrp-drill-pg`容器内动态库（`nrp_e_mat_*`、`nrp_e2e_wi`），已清理；`socila-*`持久资源未删除未重建。
+- Work Item标记**Accepted**；任务2整体保持**Reopened**：repair待授权、管理员批准未完成、粤/川blocked缺口未消除。

@@ -6,7 +6,6 @@
  * - 写入后核对固定计数与旧行规范化哈希（NRP-AC-015/NFR-012）。
  * 本模块不读取dotenv/.env（目标解析见target.ts）。
  */
-import { createHash } from "node:crypto";
 import { and, eq, inArray, sql as dsql } from "drizzle-orm";
 import { db, withTransaction, type DbClient } from "@/lib/db";
 import {
@@ -23,6 +22,7 @@ import {
   computeTargetFingerprint,
   loadExistingState,
   resolveTarget,
+  sha256,
   type ExistingState,
   type SqlLike,
 } from "./target";
@@ -56,7 +56,8 @@ export type ApplyRejectReason =
   | "FINGERPRINT_MISMATCH"
   | "WORKTREE_DIRTY"
   | "TARGET_UNAVAILABLE"
-  | "ALREADY_APPLIED_INCONSISTENT";
+  | "ALREADY_APPLIED_INCONSISTENT"
+  | "REPAIR_TARGET_CHANGED";
 
 export class ApplyGuardError extends Error {
   constructor(
@@ -169,11 +170,12 @@ export async function auditMaterialization(
   );
 
   // 审查缺陷4：audit报告包快照漂移（已物化draft包与已提交DSL完整快照的差异，
-  // 按当前draft版本定位，不受idempotentNoOp门控）。
+  // 按当前draft版本定位，不受idempotentNoOp门控）。rowId供runbook核对目标行。
   const packSnapshotDrift: Array<{
     jurisdictionCode: string;
     packId: string;
     version: number;
+    rowId: number;
   }> = [];
   for (const region of manifest.regions) {
     const packId =
@@ -201,6 +203,7 @@ export async function auditMaterialization(
         jurisdictionCode: region.jurisdictionCode,
         packId,
         version: currentVersion,
+        rowId: rows[0].id,
       });
     }
   }
@@ -451,9 +454,6 @@ export async function applyMaterialization(
   }
 
   const plan: MaterializationPlan = buildPlan(opts.manifest, state, existingBatches);
-  const packIdByJurisdiction = new Map<string, string>(
-    opts.manifest.regions.map((r) => [r.jurisdictionCode, r.packId] as const),
-  );
   const hashBefore = state.publishedRowsHash;
 
   // 审查缺陷11：并发apply——(jurisdiction, manifest_hash)唯一约束保证只有一个
@@ -591,7 +591,9 @@ export async function loadRegionReadiness(): Promise<
   }));
 }
 
-/** blocked地区判定（发布流水线阻断用，NRP-FR-022）。 */
+/** blocked地区判定（发布流水线阻断用，NRP-FR-022）。
+ * WI-20260906-01：`repaired`批次同样表达地区readiness，阻断判定必须纳入，
+ * 否则repair后（最新批次为repaired）粤川阻断语义可能丢失。 */
 export async function isJurisdictionBlocked(
   jurisdictionCode: string,
 ): Promise<boolean> {
@@ -601,14 +603,19 @@ export async function isJurisdictionBlocked(
     .where(
       and(
         eq(policyImportBatches.jurisdictionCode, jurisdictionCode),
-        inArray(policyImportBatches.status, ["applied", "verified"]),
+        inArray(policyImportBatches.status, ["applied", "verified", "repaired"]),
       ),
     );
   return rows.some((r) => r.readiness === "blocked");
 }
 
-/** 审查缺陷4：policy_pack_versions参数快照修复（draft行，单事务，幂等）。
+/** WI-20260906-01：policy_pack_versions参数快照受控修复（draft行，单事务，幂等）。
  * 快照必须携带全部参数实际内容（rows/key_fields/value_fields/type等）。
+ * 目标绑定：目标指纹（见target.ts）已包含全部draft包行ID/版本/状态/快照哈希/
+ * 成员哈希——audit后的任何draft变化都会使指纹失配而拒绝。
+ * 事务内对全部绑定目标FOR UPDATE并重校验，与audit不一致时零写入退出；
+ * 原物化批次/成员不可变；每个目标追加确定性`repaired`批次与一条新成员；
+ * 并发由0014唯一约束裁决，冲突后复核目标快照已完全一致则no-op。
  * 未获用户明确授权不得对持久库执行（CLI repair同样要求授权+哈希+指纹）。 */
 export interface PackRepairResult {
   noop: boolean;
@@ -625,6 +632,49 @@ export interface PackRepairResult {
   }>;
 }
 
+/** 单个修复目标（事务内重校验与结果回执使用）。 */
+export interface RepairTargetInfo {
+  jurisdictionCode: string;
+  packId: string;
+  version: number;
+  rowId: number;
+  oldSnapshotHash: string;
+  oldContentHash: string;
+  newContentHash: string;
+  expectedSnapshot: unknown;
+}
+
+/** repair批次manifest哈希（WI-20260906-01实现要求4，确定性）：由基础manifest
+ * 哈希、地区、pack ID、版本、旧/新内容哈希生成——并发或重复repair产生相同
+ * 身份，由0014 (jurisdiction_code, manifest_hash)唯一约束裁决。 */
+export function computeRepairBatchHash(
+  baseManifestHash: string,
+  target: {
+    jurisdictionCode: string;
+    packId: string;
+    version: number;
+    oldContentHash: string;
+    newContentHash: string;
+  },
+): string {
+  return sha256(
+    canonicalJson({
+      kind: "policy_pack_version_repair",
+      baseManifestHash,
+      jurisdictionCode: target.jurisdictionCode,
+      packId: target.packId,
+      version: target.version,
+      oldContentHash: target.oldContentHash,
+      newContentHash: target.newContentHash,
+    }),
+  );
+}
+
+export interface RepairHooks {
+  /** 测试注入：第index个目标包在事务内更新后调用；抛错则整个事务回滚。 */
+  afterPackUpdate?: (index: number, target: RepairTargetInfo) => void;
+}
+
 export async function repairPackSnapshots(
   manifest: PolicyMaterializationManifest,
   guard: {
@@ -637,6 +687,7 @@ export async function repairPackSnapshots(
     allowedDatabases?: string[];
     allowedPorts?: string[];
   } = {},
+  hooks: RepairHooks = {},
 ): Promise<PackRepairResult> {
   const target = resolveTarget(process.env, targetOptions);
   const currentState = await loadExistingState(drizzleSqlLike(db));
@@ -657,29 +708,20 @@ export async function repairPackSnapshots(
   if (guard.expectedTargetFingerprint !== currentFingerprint) {
     throw new ApplyGuardError(
       "FINGERPRINT_MISMATCH",
-      "[repair] 目标指纹不符：请先运行audit核对目标状态",
+      "[repair] 目标指纹不符：draft包状态或内容在audit后已变化，请重新audit（WI-20260906-01）",
     );
   }
-  const state = currentState;
-  const plan = buildPlan(manifest, state, []);
-  const packIdByJurisdiction = new Map<string, string>(
-    manifest.regions.map((r) => [r.jurisdictionCode, r.packId] as const),
+
+  const hash = computeManifestHash(manifest);
+  const pending: RepairTargetInfo[] = [];
+  const bindingsByRow = new Map(
+    currentState.packTargets.map((t) => [t.rowId, t] as const),
   );
 
-  const pending: Array<{
-    jurisdictionCode: string;
-    packId: string;
-    version: number;
-    rowId: number;
-    oldContentHash: string;
-    newContentHash: string;
-    expectedSnapshot: unknown;
-  }> = [];
-
-  // 审查缺陷4修复定位：按state.packVersions的当前版本找到已物化draft包行
+  // 目标识别（audit口径）：按state.packVersions的当前版本找到已物化draft包行
   // （buildPlan解析出的版本是"下一个版本"，不能用于定位既有行）。
   for (const region of manifest.regions) {
-    const packId = packIdByJurisdiction.get(region.jurisdictionCode)!;
+    const packId = region.packId;
     const currentVersion = currentState.packVersions.get(
       `${region.jurisdictionCode}|${packId}`,
     );
@@ -699,11 +741,14 @@ export async function repairPackSnapshots(
     const expected = buildPackSnapshotPayload(region);
     const stored = rows[0].paramSnapshot;
     if (canonicalJson(stored) === canonicalJson(expected)) continue;
+    const binding = bindingsByRow.get(rows[0].id);
     pending.push({
       jurisdictionCode: region.jurisdictionCode,
       packId,
       version: currentVersion,
       rowId: rows[0].id,
+      oldSnapshotHash:
+        binding?.snapshotHash ?? sha256(canonicalJson(stored)),
       oldContentHash: entityContentHash(
         "policy_pack_version",
         region.jurisdictionCode,
@@ -726,60 +771,178 @@ export async function repairPackSnapshots(
     return { noop: true, repaired: [], audits: [] };
   }
 
-  const audits: PackRepairResult["audits"] = [];
-  const repaired: PackRepairResult["repaired"] = [];
+  const preCounts = currentState.counts;
+  const prePublishedHash = currentState.publishedRowsHash;
+  const regionByJurisdiction = new Map<string, (typeof manifest.regions)[number]>(
+    manifest.regions.map((r) => [r.jurisdictionCode as string, r] as const),
+  );
 
-  await withTransaction(async (tx) => {
-    for (const item of pending) {
-      await tx
-        .update(policyPackVersions)
-        .set({ paramSnapshot: item.expectedSnapshot as Record<string, unknown> })
-        .where(eq(policyPackVersions.id, item.rowId));
+  try {
+    return await withTransaction(async (tx) => {
+      // 1) 事务内锁定全部绑定目标行并重校验（audit后的任何draft变化→零写入退出）。
+      for (const b of currentState.packTargets) {
+        const locked = await tx
+          .select()
+          .from(policyPackVersions)
+          .where(eq(policyPackVersions.id, b.rowId))
+          .for("update");
+        if (
+          locked.length !== 1 ||
+          locked[0].jurisdictionCode !== b.jurisdictionCode ||
+          locked[0].policyPackId !== b.packId ||
+          locked[0].version !== b.version ||
+          locked[0].status !== b.status ||
+          sha256(canonicalJson(locked[0].paramSnapshot)) !== b.snapshotHash
+        ) {
+          throw new ApplyGuardError(
+            "REPAIR_TARGET_CHANGED",
+            `[repair] 目标在audit后发生变化（pack行${b.rowId} ${b.jurisdictionCode}/${b.packId}），零写入退出`,
+          );
+        }
+        if (b.memberRowId !== null) {
+          const member = await tx
+            .select()
+            .from(policyImportBatchMembers)
+            .where(eq(policyImportBatchMembers.id, b.memberRowId));
+          if (member.length !== 1 || member[0].contentHash !== b.memberHash) {
+            throw new ApplyGuardError(
+              "REPAIR_TARGET_CHANGED",
+              `[repair] 目标批次成员在audit后发生变化（成员行${b.memberRowId}），零写入退出`,
+            );
+          }
+        }
+      }
 
-      // 同步原物化批次的成员content_hash（draft实体仍可修正，published无关）。
-      await tx
-        .update(policyImportBatchMembers)
-        .set({ contentHash: item.newContentHash })
-        .where(
-          and(
-            eq(policyImportBatchMembers.entityType, "policy_pack_version"),
-            eq(policyImportBatchMembers.businessKey, item.packId),
-            eq(policyImportBatchMembers.version, item.version),
-          ),
-        );
+      // 2) 逐目标更新快照（断言恰好影响一行）并追加确定性repaired批次+新成员；
+      //    原物化批次与成员保持不可变。
+      const audits: PackRepairResult["audits"] = [];
+      const repaired: PackRepairResult["repaired"] = [];
+      for (const [index, item] of pending.entries()) {
+        const updated = await tx
+          .update(policyPackVersions)
+          .set({
+            paramSnapshot: item.expectedSnapshot as Record<string, unknown>,
+          })
+          .where(eq(policyPackVersions.id, item.rowId))
+          .returning({ id: policyPackVersions.id });
+        if (updated.length !== 1) {
+          throw new Error(
+            `[repair] 目标行${item.rowId}更新影响了${updated.length}行（预期1行）——全部回滚`,
+          );
+        }
+        hooks.afterPackUpdate?.(index, item);
 
-      const [batch] = await tx
-        .insert(policyImportBatches)
-        .values({
+        const region = regionByJurisdiction.get(item.jurisdictionCode)!;
+        const [batch] = await tx
+          .insert(policyImportBatches)
+          .values({
+            jurisdictionCode: item.jurisdictionCode,
+            manifestHash: computeRepairBatchHash(hash, item),
+            sourceCommit: manifest.sourceCommit,
+            targetFingerprint: currentFingerprint,
+            status: "repaired",
+            readiness: region.readiness,
+            blockingReasons: region.blockingReasons,
+            entityCounts: { packs_repaired: 1 },
+            actor: guard.actor,
+          })
+          .returning({ id: policyImportBatches.id });
+        await tx.insert(policyImportBatchMembers).values({
+          batchId: batch.id,
+          entityType: "policy_pack_version",
+          entityRowId: item.rowId,
+          businessKey: item.packId,
+          version: item.version,
+          contentHash: item.newContentHash,
+        });
+        audits.push({
+          batchId: batch.id,
           jurisdictionCode: item.jurisdictionCode,
-          manifestHash: `${computeManifestHash(manifest)}:repair:${Date.now()}`,
-          sourceCommit: manifest.sourceCommit,
-          targetFingerprint: currentFingerprint,
-          status: "applied",
-          readiness: readinessOfRepair(item.jurisdictionCode),
-          blockingReasons: [],
-          entityCounts: { packs_repaired: 1 },
-          actor: guard.actor,
-        })
-        .returning({ id: policyImportBatches.id });
-      audits.push({ batchId: batch.id, jurisdictionCode: item.jurisdictionCode });
-      repaired.push({
-        jurisdictionCode: item.jurisdictionCode,
-        packId: item.packId,
-        version: item.version,
-        oldContentHash: item.oldContentHash,
-        newContentHash: item.newContentHash,
-      });
+        });
+        repaired.push({
+          jurisdictionCode: item.jurisdictionCode,
+          packId: item.packId,
+          version: item.version,
+          oldContentHash: item.oldContentHash,
+          newContentHash: item.newContentHash,
+        });
+      }
+
+      // 3) 事务内核验：快照一致、业务计数不变、published行哈希不变——任一失败全部回滚。
+      for (const item of pending) {
+        const row = await tx
+          .select()
+          .from(policyPackVersions)
+          .where(eq(policyPackVersions.id, item.rowId));
+        if (
+          row.length !== 1 ||
+          canonicalJson(row[0].paramSnapshot) !==
+            canonicalJson(item.expectedSnapshot)
+        ) {
+          throw new Error(
+            `[repair] 事务内核验失败：pack行${item.rowId}快照与预期不一致——全部回滚`,
+          );
+        }
+      }
+      const post = await loadExistingState(drizzleSqlLike(tx));
+      for (const [table, n] of Object.entries(preCounts)) {
+        if (post.counts[table] !== n) {
+          throw new Error(
+            `[repair] 事务内核验失败：${table}计数${post.counts[table]}≠操作前${n}——全部回滚`,
+          );
+        }
+      }
+      if (post.publishedRowsHash !== prePublishedHash) {
+        throw new Error(
+          "[repair] 事务内核验失败：published行哈希发生变化——全部回滚",
+        );
+      }
+
+      return { noop: false, repaired, audits };
+    });
+  } catch (err) {
+    // 并发裁决（PRD §6.4/§11）：0014唯一约束冲突或目标已被并发repair修改时，
+    // 复核最终快照；全部目标与已提交DSL完全一致则返回no-op，否则原样报错。
+    const pgCode = (err as { cause?: { code?: string } }).cause?.code;
+    const isUniqueConflict = pgCode === "23505";
+    const isTargetChanged =
+      err instanceof ApplyGuardError && err.reason === "REPAIR_TARGET_CHANGED";
+    if ((isUniqueConflict || isTargetChanged) && (await repairTargetsFullyConsistent(manifest))) {
+      return { noop: true, repaired: [], audits: [] };
     }
-  });
-
-  return { noop: false, repaired, audits };
-
+    throw err;
+  }
 }
 
-function readinessOfRepair(jurisdictionCode: string): string {
-  return jurisdictionCode === "440000" || jurisdictionCode === "510000"
-    ? "blocked"
-    : "awaiting_approval";
+/** 复核：全部已物化draft包快照与已提交DSL完全一致（零漂移）。 */
+async function repairTargetsFullyConsistent(
+  manifest: PolicyMaterializationManifest,
+): Promise<boolean> {
+  const state = await loadExistingState(drizzleSqlLike(db));
+  for (const region of manifest.regions) {
+    const currentVersion = state.packVersions.get(
+      `${region.jurisdictionCode}|${region.packId}`,
+    );
+    if (currentVersion === undefined) continue;
+    const rows = await db
+      .select()
+      .from(policyPackVersions)
+      .where(
+        and(
+          eq(policyPackVersions.jurisdictionCode, region.jurisdictionCode),
+          eq(policyPackVersions.policyPackId, region.packId),
+          eq(policyPackVersions.version, currentVersion),
+          eq(policyPackVersions.status, "draft"),
+        ),
+      );
+    if (rows.length !== 1) return false;
+    if (
+      canonicalJson(rows[0].paramSnapshot) !==
+      canonicalJson(buildPackSnapshotPayload(region))
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 

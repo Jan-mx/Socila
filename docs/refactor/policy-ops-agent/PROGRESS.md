@@ -39,7 +39,7 @@
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
-| 国家baseline及粤川权威政策 | Reopened（2026-09-06）：11项复审缺陷已有首轮修复；持久库仍有4包快照漂移，0014未应用，repair路径还缺draft状态绑定、事务并发、不可变审计和专用集成测试 | 先执行WI-20260906-01代码加固；Accepted后另行申请一次0014+repair授权；再补齐粤川权威缺口和管理员候选快照 |
+| 国家baseline及粤川权威政策 | Reopened（2026-09-06）：11项复审缺陷已有首轮修复；WI-20260906-01 repair加固已Accepted（指纹绑定draft包、事务锁定、确定性repaired审计、专用集成测试）；持久库仍有4包快照漂移且0014未应用 | 持久库repair已就绪待执行：另行申请一次0014+repair授权（fresh audit输入）；再补齐粤川权威缺口和管理员候选快照 |
 | 案例库治理 | Blocked（依赖权威政策） | 归档并精简至452/36/528，建立来源链、质量和候选快照校验 |
 | 地区感知用户规划 | Blocked（依赖案例治理） | 只为政策与案例门禁通过的活动快照逐地区开放，缺失地区不默认上海 |
 
@@ -220,21 +220,21 @@
 | 干净检出 | .env.local临时移除后npm test 467/467复现，恢复原状 |
 | 状态 | 任务2保持Reopened：repair待授权、管理员批准未完成、粤/川blocked缺口未消除 |
 
-## 当前任务计划（WI-20260906-01 阶段E政策包快照repair加固）
+## 当前任务验证（WI-20260906-01 阶段E政策包快照repair加固，2026-09-06本地新鲜执行）
 
-| 项目 | 结论 |
+| 验证 | 结果 |
 | --- | --- |
-| 状态 | Ready；尚未开始代码实现，不存在本节对应的Green证据 |
-| 只读复核 | 持久库Drizzle账本13条、最新0013；0014唯一索引与CHECK约束不存在；批次4、成员74 |
-| 旧audit | `audit-policyops-stage-e-fix.json`基于`sourceCommit=59a6467`，早于当前HEAD，禁止把其中hash/fingerprint用于未来repair |
-| 新阻断 | repair目标指纹未绑定draft包状态；待修复行在事务外读取；修复批次审计状态/阻断原因/历史成员语义不完整；缺少数据库集成测试 |
-| 执行边界 | 本Work Item只加固代码、测试和文档；不得执行持久库0014、repair、发布、快照或流量激活 |
-| 交接 | 规格及可复制Agent提示词见`docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md` |
-| 交接文档验证 | PASS；Markdown相对链接与§11/§12/§13编号核对通过，`git diff --check`通过，`npm test` 51文件/467通过，`scan-secrets --all` 661个候选文件零命中 |
+| Work Item状态 | **Accepted**（代码+测试+文档；持久库0014/repair仍未执行，需用户另行明确授权） |
+| TDD Red | 已记录；单元2失败（指纹未绑定draft包/CLI固定“4个”）+集成4失败（audit后变化被覆盖、repaired批次/新成员缺失、注入失败仍提交、并发双成功）+2护栏通过（守卫拒绝、复跑no-op） |
+| repair专用Green | 集成9/9（守卫/目标绑定/正常修复/回滚/并发/幂等零漂移）+单元13/13；audit后修改快照、状态、版本或成员哈希均以`FINGERPRINT_MISMATCH`拒绝且不覆盖新值；repair批次`repaired`+确定性哈希+粤川阻断原因继承；原物化批次/成员不可变+每批次1条新成员；事务内`FOR UPDATE`重校验+`REPAIR_TARGET_CHANGED`零写入退出；并发单组修复+另一复核no-op |
+| 门禁 | npm test 469/469（51文件零skip）；test:db 85/85（19文件零skip）；tsc/eslint退出0（0 error，7个既有warning）；build零警告；Auth E2E 10/10；ruff 0问题、mypy 48文件0错误、pytest 94非集成+20集成零skip；Gitleaks 56 commits no leaks；scan-secrets --all 662文件零命中；allowlist哨兵通过；无.env.local干净环境npm test 469/469复现 |
+| 顺带修复 | golden测试6处既有`no-explicit-any`（HEAD即存在，非本次引入）改为`unknown`类型；集成teardown改为closeDatabase→显式终止残留会话→删库并挂error监听，run零unhandled errors；`isJurisdictionBlocked`纳入`repaired`批次 |
+| 持久库（只读核对） | 计数49/70/5/4/528/851/117/0、members=74、batches=4、上海published规则24、Drizzle账本13条——全程未连接写入、未执行0014、未执行repair |
+| 状态 | 任务2整体保持**Reopened**：repair待授权、管理员批准未完成、粤/川blocked缺口未消除 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
-任务2首先执行`WI-20260906-01-stage-e-pack-repair-hardening.md`，取得专用Red/Green、全量门禁和独立复审后将该Work Item标记Accepted。随后重新备份/恢复、fresh audit，并单独申请用户对“一次0014 migration + 一次repair”的明确授权；不得复用旧audit输入。repair后仍须补齐粤川权威来源、完成管理员批准和四地区候选快照，任务2才可恢复Accepted。任务2重新Accepted、至少一个地区形成持久可重放候选快照前，任务4和任务3不得进入最终实施。09-03发布动作仍为未来人工动作：
+任务2的`WI-20260906-01-stage-e-pack-repair-hardening.md`已完成：专用Red/Green、全量门禁齐备，Work Item已标记Accepted（验收报告§14）。随后重新备份/恢复、fresh audit，并单独申请用户对“一次0014 migration + 一次repair”的明确授权；不得复用旧audit输入（旧指纹未绑定draft包状态，已不可用）。repair后仍须补齐粤川权威来源、完成管理员批准和四地区候选快照，任务2才可恢复Accepted。任务2重新Accepted、至少一个地区形成持久可重放候选快照前，任务4和任务3不得进入最终实施。09-03发布动作仍为未来人工动作：
 
 1. 重构前版本基线：**已完成**。annotated tag `v1.0.0`已推送至origin，并精确指向`main`提交`1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`；不得移动或重建。
 2. 用户未来人工发布流程（PRD §17.2）：

@@ -154,7 +154,7 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 - 并发repair由数据库唯一约束裁决；唯一冲突后仅在目标已完全一致时返回no-op。
 - repair只改变draft包快照和新增修复审计行，不改变published资产、业务实体计数、规划行为或地区开放状态。
 
-执行准备由`docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md`约束；该Work Item Accepted及用户另行明确授权前，不得对持久库执行0014或repair。旧audit只能作为历史证据，每次repair必须使用当前HEAD产生的fresh audit输入。
+执行准备与实现由`docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md`约束，该Work Item已于2026-09-06完成实现、专用Red/Green测试与全量门禁并标记Accepted（证据见验收报告§14）。持久库仍不得执行0014或repair：两者必须等待用户针对该次操作的另行明确授权。旧audit只能作为历史证据，每次repair必须使用当前HEAD产生的fresh audit输入（repair目标指纹已绑定draft包行状态与内容）。
 
 ## 7. 数据模型与不变量
 

@@ -195,15 +195,17 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 并发与约束（0014）：批次(jurisdiction,manifest_hash)唯一、成员唯一+entity_type CHECK、status/readiness枚举CHECK；并发apply单事务成功/另一no-op。
 - 对账工具（`scripts/restore-reconcile.ts`）：目录驱动枚举public/drizzle/agent/rag全部BASE TABLE与sequence，整行to_jsonb规范化哈希，表集合/计数/哈希/sequence任一不符退出1。
 
-## draft政策包repair加固（WI-20260906-01，待执行）
+## draft政策包repair加固（WI-20260906-01，已实现并验收；持久库repair仍未执行）
 
-本节是待实施测试规格，不是既有PASS证据。专用测试必须先取得Red，再实现Green：
+专用测试已按Red→Green完成（2026-09-06，Red/Green证据见验收报告§14），全部位于`src/lib/policy-materialization/`：
 
-- 守卫：缺授权、错manifest hash、错目标指纹全部拒绝，政策包、批次和成员零变化。
-- 状态绑定：audit后修改任一目标draft的快照、状态、版本或成员hash，repair必须拒绝且不得覆盖新值。
-- 原子修复：四个旧格式draft包在一个事务内修复，快照逐字段等于Manifest；第2～4项注入失败时全部回滚。
-- 审计：原物化批次和74个成员不变；成功后新增4个`repaired`批次和4个成员，粤川blocking reasons完整。
-- 并发幂等：同一fresh audit并发repair只产生一组结果；成功后重新audit并repair返回no-op，审计行不再增加。
-- 零漂移：业务计数保持49/70/5/4/528/851/117/0，上海published规则24条及published整行哈希不变。
+- 单元（`materializer.unit.test.ts`、`target-guard.test.ts`）：目标指纹绑定draft包行ID/地区/pack ID/版本/状态/快照哈希/成员哈希——任一变化都改变指纹；CLI按实际修复数量输出的源码契约；指纹不含连接串与口令。
+- 数据库集成（`materializer.integration.test.ts`，独立动态演练库，先写失败测试再实现）：
+  - 守卫：缺授权/错manifest哈希/错指纹全部拒绝，政策包、批次、成员零变化；
+  - 目标绑定：audit后修改任一目标draft的快照、状态、版本或成员哈希，repair以`FINGERPRINT_MISMATCH`拒绝且不覆盖新值；
+  - 正常修复：四个旧格式draft包单事务修复，快照逐字段等于Manifest，4个`repaired`批次（readiness/阻断原因继承Manifest地区语义）+4个新成员（记录目标行、版本、新内容哈希）落库，原物化批次和全部原成员不变，repair批次哈希由基础manifest哈希+地区+pack ID+版本+旧/新内容哈希确定性生成；
+  - 事务回滚：第2个包更新后注入失败，四包、批次、成员全部回到操作前状态；
+  - 并发：同一fresh audit两个repair并发，仅一组修复审计，另一调用复核后no-op（0014唯一约束+事务内`FOR UPDATE`重校验+`REPAIR_TARGET_CHANGED`零写入退出共同裁决）；
+  - 幂等与零漂移：成功后fresh audit复跑repair为no-op且批次、成员不再增加；业务计数49/70/5/4/528/851/117/0、published整行哈希不变。
 
-实现测试优先扩展`src/lib/policy-materialization/materializer.integration.test.ts`。全量门禁不能替代这些专用反例；持久库audit、migration或repair不得作为测试步骤。
+全量门禁不能替代这些专用反例；持久库audit、migration或repair不得作为测试步骤。集成测试teardown先`closeDatabase()`、再显式终止残留会话、最后删库，测试客户端挂error监听（错误仅记录，查询失败仍经promise拒绝暴露），保证run零unhandled errors。

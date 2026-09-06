@@ -135,7 +135,7 @@ describe("四川overlay黄金（NRP-AC-004，零数据库依赖）", () => {
       if (testCase.params_override) {
         Object.assign(mergedParams, testCase.params_override);
       }
-      const inputAny = input as Record<string, any>;
+      const inputAny = input as Record<string, unknown>;
       const ctx: Record<string, unknown> = {
         user: inputAny.user ?? {},
         params: mergedParams,
@@ -154,29 +154,29 @@ describe("四川overlay黄金（NRP-AC-004，零数据库依赖）", () => {
 
   it("有效期：SC缴费基数参数2025年度有效、2026-01-01起失效（测试矩阵·有效期）", () => {
     const chain = ["CN", "510000"];
-    const toEntity = (p: Record<string, any>): MergeInputEntity => ({
-      businessKey: p.param_id,
+    const toEntity = (p: Record<string, unknown>): MergeInputEntity => ({
+      businessKey: p.param_id as string,
       jurisdictionCode: "510000",
       packId: "SC-BASE",
       version: 1,
       payload: p,
       operation: "add",
       targetBusinessKey: null,
-      effectiveFrom: p.effective_from,
-      effectiveTo: p.effective_to ?? null,
+      effectiveFrom: p.effective_from as string,
+      effectiveTo: (p.effective_to as string | undefined) ?? null,
     });
     const scEntities = [...scPack.params, ...scPack.tables].map(toEntity);
     const cnEntities = [
-      ...(cnPack.params as Array<Record<string, any>>).map((p) => ({
-        businessKey: p.param_id,
+      ...(cnPack.params as Array<Record<string, unknown>>).map((p) => ({
+        businessKey: p.param_id as string,
         jurisdictionCode: "CN",
         packId: "CN-BASELINE",
         version: 1,
         payload: p,
         operation: "baseline" as const,
         targetBusinessKey: null,
-        effectiveFrom: p.effective_from ?? "2025-01-01",
-        effectiveTo: p.effective_to ?? null,
+        effectiveFrom: (p.effective_from as string) ?? "2025-01-01",
+        effectiveTo: (p.effective_to as string | undefined) ?? null,
       })),
     ];
     const inWindow = mergePolicyContext(
