@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-06
 
 ## 用途
 
@@ -46,3 +46,10 @@ Draft → Ready → In Progress → Blocked / Accepted → Archived
 ```
 
 实现前编写或更新测试；实现后把实际测试路径写入traceability，把执行结果写入PROGRESS或验收报告。
+
+## 当前Work Item
+
+| Work Item | 状态 | 用途 |
+| --- | --- | --- |
+| `WI-20260906-01-stage-e-pack-repair-hardening.md` | Ready | 在任何持久库repair前加固政策包快照修复的事务、指纹、审计与集成测试 |
+| `WI-20260901-01-docs-reorganization.md` | Accepted | Docs目录重组与当前文档治理 |

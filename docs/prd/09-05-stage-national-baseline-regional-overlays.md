@@ -143,6 +143,19 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 
 物化manifest只包含规则、参数、规则集和政策包版本，不包含`tests`、`cases`、`showcase_cases`、快照或发布事件。apply前选中的DSL及证据文件必须来自已提交内容；任何目标、哈希、计数或工作树来源不确定时停止。
 
+### 6.4 draft政策包快照repair加固
+
+阶段E已物化draft政策包若与当前已提交Manifest的完整参数快照不一致，只能通过受控`repair`纠正。repair复用显式DATABASE_URL、授权参数、manifest哈希和目标指纹门禁，并额外满足：
+
+- 目标指纹绑定待修复draft包的行ID、地区、pack ID、版本、状态、快照哈希及批次成员哈希，避免audit后发生的编辑被覆盖。
+- 在同一事务内锁定并重新校验全部目标行；状态、版本或旧哈希不符时零写入退出。
+- 原物化批次与成员保持不可变；每个修复包创建确定性的`repaired`批次和一条新成员记录。
+- 修复批次继承地区readiness和blocking reasons；粤川不得因repair丢失阻断原因。
+- 并发repair由数据库唯一约束裁决；唯一冲突后仅在目标已完全一致时返回no-op。
+- repair只改变draft包快照和新增修复审计行，不改变published资产、业务实体计数、规划行为或地区开放状态。
+
+执行准备由`docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md`约束；该Work Item Accepted及用户另行明确授权前，不得对持久库执行0014或repair。旧audit只能作为历史证据，每次repair必须使用当前HEAD产生的fresh audit输入。
+
 ## 7. 数据模型与不变量
 
 为政策实体补充或规范：
@@ -167,7 +180,7 @@ interface PolicyImportBatch {
   manifestHash: string;
   sourceCommit: string;
   targetFingerprint: string;
-  status: "prepared" | "applied" | "verified" | "failed";
+  status: "prepared" | "applied" | "verified" | "failed" | "repaired";
   readiness: "awaiting_approval" | "blocked";
   blockingReasons: string[];
   entityCounts: Record<string, number>;
@@ -193,6 +206,7 @@ interface PolicyImportBatchMember {
 - 未确认OCR关键字段不得进入可审核DraftBundle。
 - 快照成员和内容哈希创建后不可修改或删除。
 - 批次和成员审计不得存储连接串、口令、Authorization或原始用户数据。
+- 已写入的物化批次和成员是历史审计记录；repair不得改写原记录，只能新增确定性的修复批次和成员。
 - `verified`只表示持久化与恢复验证完成，不代表政策已批准、published或ready_for_planning。
 - 四川批次的规则成员数必须为0；任何占位规则都属于验收失败。
 
@@ -263,6 +277,8 @@ interface PublishEntityRequest {
 | 备份恢复计数或行哈希不符 | 禁止migration和物化 | 修复备份/恢复流程后重试 |
 | 发现既有published实体需要原地更新 | 拒绝物化 | 生成下一版本并重新audit |
 | 四地区任一写入或验证失败 | 整个物化事务回滚 | 保留备份和失败证据后重试 |
+| repair目标在audit后发生变化 | 拒绝repair且零写入 | 重新audit并人工核对新的目标状态 |
+| 并发repair命中唯一约束 | 事务复核最终快照 | 已完全一致则no-op，否则报错并人工检查 |
 | 广东或四川存在覆盖缺口 | draft可见但保持blocked | 取得权威原件并新增版本后重新验收 |
 
 ## 12. 交付物
@@ -297,6 +313,8 @@ interface PublishEntityRequest {
 | 事务与恢复 | 中途失败、完整dump、全新PG17恢复 | 无部分写入；恢复计数和行哈希一致 |
 | 管理身份 | 同名CN/上海实体、粤川筛选 | 详情和发布不串区；四川覆盖状态准确 |
 | 持久库回归 | 物化前后业务表与上海规划 | 固定计数满足；528/851/117及旧上海行为不变 |
+| repair守卫与原子性 | 错授权/hash/指纹、audit后变化、中途失败 | 零写入或整事务回滚，不覆盖新draft状态 |
+| repair审计与幂等 | 四包修复、并发、成功后fresh audit复跑 | `repaired`批次/成员完整；并发单结果；复跑no-op |
 
 ## 14. 验收场景
 
@@ -314,6 +332,7 @@ interface PublishEntityRequest {
 - **NRP-AC-012** Given物化前完整备份，When在全新PG17+pgvector中恢复，Then逐表计数和规范化行哈希与源库一致，否则不得继续。
 - **NRP-AC-013** Given旧上海运行基线，When物化四地区资产，ThenCN/粤/川首次实体为v1、上海已有业务键为v2、新业务键为v1，且旧published行内容不变。
 - **NRP-AC-014** Given相同地区和manifest哈希已验证，When再次apply，Then返回幂等no-op；任一地区失败时四地区新增实体和批次全部回滚。
+- **NRP-AC-014 repair补充** Givenfresh audit绑定四个draft政策包，When执行repair或发生并发，Then只修复完全匹配的目标、保留原审计记录、仅新增一组`repaired`审计；任一失败全部回滚，成功后fresh audit复跑为no-op。
 - **NRP-AC-015** Given阶段E成功，When核对持久库，Then计数严格为49/70/5/4/528/851/117/0，广东和四川保持blocked且四川规则成员为0。
 - **NRP-AC-016** GivenCN与上海存在同名业务键，When管理员查看详情或请求发布，Then必须用地区、实体ID和版本精确定位；缺失身份被拒绝且不得跨地区操作。
 
@@ -326,6 +345,7 @@ interface PublishEntityRequest {
 - 无未解决Conflict的地区才可形成候选快照。
 - Agent只创建draft，管理员审核和发布门禁保持有效。
 - 阶段E备份真实恢复、确定性manifest、单事务物化、固定计数和幂等复跑全部通过。
+- draft政策包repair具有专用数据库集成Red/Green证据，证明目标绑定、事务锁、并发裁决、审计不可变和幂等。
 - 旧上海published资产及规划行为无漂移，tests/cases/showcase_cases和policy_snapshots计数不变。
 - 广东、四川政策缺口和管理员批准未完成时，任务2整体不得标记Accepted；阶段E的`verified`不得被描述为地区已开放。
 - README、架构、测试、运维、traceability、PROGRESS和报告同步。

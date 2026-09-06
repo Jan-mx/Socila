@@ -17,7 +17,7 @@
 - 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）：**Accepted**（验收证据：`reports/feature-09-05-socila-naming/acceptance-report.md`）。SDL-FR-001～014、SDL-NFR-001～007全部有实现与测试映射，SDL-AC-001～010新鲜证据通过：通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层（24规则/29参数/`SOCILA-DSL-1.0`/Manifest `jurisdiction_code=310000`）、Seed经Manifest发现（零硬编码地区）、活动代码与配置SSP/SSRP→Socila硬切换（命名扫描零命中，无旧变量/Cookie/localStorage/服务身份兼容）、Node与Python服务JWT身份原子切换`socila-next-core`（固定向量重签+CI冒烟同步）、粤川示例转测试夹具（生产Seed不写入）、0010迁移完成dsl_version规范化与六条示例精确清理（删除前新鲜pg_dump+SHA-256清单+PG17+pgvector真实恢复逐表对账25表一致；删除后diff仅params 33→29、packs 2→0及0009补齐空表；备份/旧卷/历史快照未动）；Gitleaks完整历史19条历史命中经人工核实为测试合成值并以`.gitleaks.toml`精确allowlist闭环（ADR-0008）。
 - 09-05 Feature **复审纠正完成并重新Accepted（2026-09-05）**：三项复审缺漏全部纠正——①命名契约扫描器收敛到`src/lib/naming/socila-naming-contract.ts`并以"允许片段剥离"区分精确旧协议值与独立品牌标识（npm test恢复359/359全绿）；②`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`+`condition="AND"`，新增哨兵回归`scripts/verify-gitleaks-allowlist.mjs`接入CI（ADR-0009替代ADR-0008；哨兵证明允许路径上其他规则照常检测、trace无整文件跳过）；③多地区Seed补齐jurisdiction作用域（seed-rules/seed-params/seed-misc/excel-import，tests行写入jurisdictionCode，协议workflow只装载一次，0011回填存量NULL），新增multi-region-seed落库级集成测试。全部门禁新鲜复验通过后恢复Accepted。
 - 09-05 Feature复审历史：曾因命名契约、Gitleaks allowlist和多地区Seed缺漏Reopened；相关缺漏及第二轮扫描器/Gitleaks/Build复审均已修复并取得新鲜门禁，当前最终状态为**Accepted**，详见任务验收报告§8～§10。
-- 09-05全国政策与案例治理执行顺序：`Socila命名统一与地区DSL分层`（**已实施并验收**）→`国家baseline及广东、四川权威overlay`（**Reopened，2026-09-06独立复审发现9项P1/P2缺陷**；阶段E draft已落库但验收结论撤回，详见任务报告§11）→`案例库精简、质量治理与原始数据归档`（Draft，Blocked by任务2重新Accepted并提供可重放候选快照）→`用户规划按地区快照触发`（Draft，Blocked by案例治理）。不得把已物化draft、历史演练快照或局部准备工作记为已交付能力。
+- 09-05全国政策与案例治理执行顺序：`Socila命名统一与地区DSL分层`（**已实施并验收**）→`国家baseline及广东、四川权威overlay`（**Reopened**；独立复审确认11项缺陷，提交`b2bd64f`已完成首轮修复，但repair执行准备复审又发现draft状态绑定、事务并发、不可变修复审计和专用集成测试缺口，详见任务报告§11～§13）→`案例库精简、质量治理与原始数据归档`（Draft，Blocked by任务2重新Accepted并提供可重放候选快照）→`用户规划按地区快照触发`（Draft，Blocked by案例治理）。不得把已物化draft、历史演练快照或局部准备工作记为已交付能力。
 
 ## 已完成能力
 
@@ -39,7 +39,7 @@
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
-| 国家baseline及粤川权威政策 | Reopened（2026-09-06）：阶段E draft计数已核实，但目标保护、发布旁路、参数/政策包完整性、地区精确身份、恢复与哈希证据、干净CI仍有9项P1/P2缺陷 | 先修复并独立复审；完整37表恢复和全部门禁通过后再申请恢复Accepted，随后由管理员批准候选快照 |
+| 国家baseline及粤川权威政策 | Reopened（2026-09-06）：11项复审缺陷已有首轮修复；持久库仍有4包快照漂移，0014未应用，repair路径还缺draft状态绑定、事务并发、不可变审计和专用集成测试 | 先执行WI-20260906-01代码加固；Accepted后另行申请一次0014+repair授权；再补齐粤川权威缺口和管理员候选快照 |
 | 案例库治理 | Blocked（依赖权威政策） | 归档并精简至452/36/528，建立来源链、质量和候选快照校验 |
 | 地区感知用户规划 | Blocked（依赖案例治理） | 只为政策与案例门禁通过的活动快照逐地区开放，缺失地区不默认上海 |
 
@@ -220,9 +220,21 @@
 | 干净检出 | .env.local临时移除后npm test 467/467复现，恢复原状 |
 | 状态 | 任务2保持Reopened：repair待授权、管理员批准未完成、粤/川blocked缺口未消除 |
 
+## 当前任务计划（WI-20260906-01 阶段E政策包快照repair加固）
+
+| 项目 | 结论 |
+| --- | --- |
+| 状态 | Ready；尚未开始代码实现，不存在本节对应的Green证据 |
+| 只读复核 | 持久库Drizzle账本13条、最新0013；0014唯一索引与CHECK约束不存在；批次4、成员74 |
+| 旧audit | `audit-policyops-stage-e-fix.json`基于`sourceCommit=59a6467`，早于当前HEAD，禁止把其中hash/fingerprint用于未来repair |
+| 新阻断 | repair目标指纹未绑定draft包状态；待修复行在事务外读取；修复批次审计状态/阻断原因/历史成员语义不完整；缺少数据库集成测试 |
+| 执行边界 | 本Work Item只加固代码、测试和文档；不得执行持久库0014、repair、发布、快照或流量激活 |
+| 交接 | 规格及可复制Agent提示词见`docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md` |
+| 交接文档验证 | PASS；Markdown相对链接与§11/§12/§13编号核对通过，`git diff --check`通过，`npm test` 51文件/467通过，`scan-secrets --all` 661个候选文件零命中 |
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
-任务2首先执行复审缺陷修复；对本机持久库运行修复migration/apply仍需用户针对该次操作明确授权。任务2重新Accepted、至少一个地区获管理员批准并形成持久可重放候选快照前，任务4和任务3不得进入最终实施。09-03发布动作仍为未来人工动作：
+任务2首先执行`WI-20260906-01-stage-e-pack-repair-hardening.md`，取得专用Red/Green、全量门禁和独立复审后将该Work Item标记Accepted。随后重新备份/恢复、fresh audit，并单独申请用户对“一次0014 migration + 一次repair”的明确授权；不得复用旧audit输入。repair后仍须补齐粤川权威来源、完成管理员批准和四地区候选快照，任务2才可恢复Accepted。任务2重新Accepted、至少一个地区形成持久可重放候选快照前，任务4和任务3不得进入最终实施。09-03发布动作仍为未来人工动作：
 
 1. 重构前版本基线：**已完成**。annotated tag `v1.0.0`已推送至origin，并精确指向`main`提交`1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`；不得移动或重建。
 2. 用户未来人工发布流程（PRD §17.2）：

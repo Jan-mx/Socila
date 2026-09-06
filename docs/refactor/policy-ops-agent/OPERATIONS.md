@@ -111,6 +111,8 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 
 ## 阶段E 受控物化runbook（09-05 NRP，仅本机policyops）
 
+> **当前停止点（2026-09-06）**：不得直接执行第5、10步。持久库只有13条Drizzle迁移记录，0014尚未应用；现有`audit-policyops-stage-e-fix.json`基于旧提交`59a6467`，其hash和指纹不得复用。必须先完成并验收`docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md`，再针对“一次0014 migration + 一次repair”取得用户明确授权。
+
 1. 只读基线核对（规则/参数/规则集/案例计数与仓库权威资产清单）。
 2. 完整备份：`docker exec socila-postgres pg_dump -U postgres -Fc policyops > backup/db/policyops-stage-e-pre-<ts>.dump`并生成SHA-256清单（backup/为Git忽略）。
 3. 全新PG17+pgvector容器真实恢复：`cat <dump> | docker exec -i <容器> pg_restore -U postgres -d postgres --clean --if-exists`。
@@ -120,5 +122,6 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 7. apply：`npx tsx scripts/materialize-policy-regions.ts apply --i-am-authorized --manifest-hash <audit输出> --target-fingerprint <audit输出>`——单事务四地区draft写入+固定计数与旧行哈希事务内核验；失败自动全部回滚。
 8. 复核：固定计数、published行哈希、`scripts/planning-regression.ts`（与物化前输出一致）、`GET /api/admin/policy-coverage`地区就绪状态。
 9. 同manifest重复apply为幂等no-op；连接串/口令不得出现在日志、manifest、审计表或Git（NRP-NFR-009）。
-10. 包快照修复（审查缺陷4）：audit输出`packSnapshotDrift`后，获授权执行`npx tsx scripts/materialize-policy-regions.ts repair --i-am-authorized --manifest-hash <hash> --target-fingerprint <fp>`——单事务修正draft包paramSnapshot与成员contentHash并写修复审计批次；快照一致时no-op；不新增实体、不改published、计数不变。
-11. 对账必须以`scripts/restore-reconcile.ts`的目录驱动结果为准（public/drizzle/agent/rag全部BASE TABLE+sequence，当前37表+18 sequence），不得以部分表清单宣称"完整恢复"。
+10. 包快照修复（审查缺陷4）：仅在WI-20260906-01 Accepted且取得本次明确授权后，先显式应用0014，再基于当前HEAD重新audit；执行`npx tsx scripts/materialize-policy-regions.ts repair --i-am-authorized --manifest-hash <同次audit的hash> --target-fingerprint <同次audit的fp>`。repair在事务内锁定并校验目标draft状态，保留原物化审计，新增确定性`repaired`批次和成员；不改published或业务实体计数。成功后预期批次4→8、成员74→78。
+11. repair后重新audit必须得到`packSnapshotDrift=[]`；使用新的audit输入复跑repair必须no-op。任一步出现状态、版本、旧哈希或指纹不一致即停止，不得覆盖并发编辑。
+12. 对账必须以`scripts/restore-reconcile.ts`的目录驱动结果为准（public/drizzle/agent/rag全部BASE TABLE+sequence，当前37表+18 sequence），不得以部分表清单宣称"完整恢复"。repair前后分别保留备份，并对repair后备份执行新的37表+18 sequence真实恢复对账。

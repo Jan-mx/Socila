@@ -223,24 +223,24 @@ Node单元434/434、数据库集成71/71（含物化器独立库3例）、TypeSc
 
 1. 为全部P1/P2反例先增加失败测试并完成修复，关闭普通写接口的状态旁路。
 2. 使用与node-postgres一致的目标解析，严格限制本机5432/policyops并拒绝查询参数覆盖。
-3. 修复标量参数后台契约和四个draft政策包表格快照，计数保持49/70/5/4/528/851/117/0及74成员。
+3. 修复标量参数后台契约和四个draft政策包表格快照，业务实体计数保持49/70/5/4/528/851/117/0；repair前成员为74，未来追加完整repair审计后预期成员为78。
 4. 全部规则、参数、示例、版本和发布操作使用地区+实体ID+版本精确定位。
 5. 对public/drizzle/agent/rag全部37张表及必要sequence执行真实恢复对账，并扩展published完整业务字段哈希。
 6. 在没有`.env.local`的干净检出中重跑Node、数据库集成、Auth E2E、TypeScript、ESLint、Build和Secret门禁。
 7. 纠正§10与PROGRESS中的旧验收表述，取得独立复审通过后方可恢复Accepted。
 
-## 11. 阶段E复审缺陷修复（2026-09-06，任务2保持Reopened）
+## 12. 阶段E复审缺陷修复（2026-09-06，任务2保持Reopened）
 
 复审确认11项缺陷。本节记录缺陷、Red证据、修复与新鲜证据；**修复后持久库的repair流程未执行**（等待用户对本次修复的明确授权），任务2保持Reopened。
 
-### 11.1 前次报告的不准确表述纠正
+### 12.1 前次报告的不准确表述纠正
 
 - §10.4"管理端地区化"：前次声称"精确身份完成"，实际`run-example`仍先调用`getRule(ruleId)`取"最新版本"（同名CN/上海实体可串区），`versions/[versionId]` POST、参数详情/更新/校验未携带version或未用getRuleExact。已全部改为`getRuleExact`/`resolveParamRecordExact`（jurisdiction_code+entity_id+version），缺失身份400、不存在404。
 - §10.3"逐表对账"：前次只对账14张表且表述为"全部表计数与行哈希一致"。已重写为系统目录确定性枚举public/drizzle/agent/rag全部BASE TABLE（本次37张）+全部sequence（18个），同时比较表集合、行计数、整行规范化哈希与sequence值。
 - §10.3"published行哈希"：前次哈希仅覆盖部分列（notes/supersedes/evidence等遗漏）。已改为`to_jsonb`整行规范化哈希（服务器端序列化+UTC会话），并新增字段矩阵测试。
-- §10.4"包快照"：前次4个draft政策包快照丢失6个table/timeline参数的rows/key_fields/value_fields/type/有效期——audit已确认4包全部漂移；修复流程已实现并停在audit（见§11.4）。
+- §10.4"包快照"：前次4个draft政策包快照丢失6个table/timeline参数的rows/key_fields/value_fields/type/有效期——audit已确认4包全部漂移；首版修复流程已实现并停在audit，执行准备复审见§13。
 
-### 11.2 缺陷与Red/Green证据
+### 12.2 缺陷与Red/Green证据
 
 | 缺陷 | Red证据 | 修复 | Green证据 |
 | --- | --- | --- | --- |
@@ -256,14 +256,41 @@ Node单元434/434、数据库集成71/71（含物化器独立库3例）、TypeSc
 | 10 发布测试不隔离 | fix集成：CN staging在仅沪测试时晋级成功（bypass） | listTests按jurisdiction_codes（地区+CN继承链）；CN规则只认CN测试 | 隔离测试：沪测试不充数→失败；补CN测试→通过 |
 | 11 缺少约束与并发幂等 | 0014缺失（ENOENT）+重复批次插入成功 | 0014：批次(jurisdiction,manifest_hash)唯一、成员唯一+entity_type CHECK、status/readiness CHECK；apply捕获唯一冲突转no-op | 0014迁移幂等测试+约束测试通过 |
 
-### 11.3 持久库状态与边界
+### 12.3 持久库状态与边界
 
 - 只读核对：计数仍为49/70/5/4/528/851/117/0、members=74、published上海规则24。
 - 新鲜备份：`backup/db/policyops-stage-e-post-20260906-125318.dump`（SHA-256 e7e6083d…4e9c2，Git忽略）。
 - 全量对账：37表+18 sequence计数与行哈希一致（修复后对账，未含任何repair写入）。
-- **repair未执行**：audit显示4个draft包快照漂移（CN/粤/川/沪 v1），等待用户明确授权后执行`scripts/materialize-policy-regions.ts repair --i-am-authorized --manifest-hash … --target-fingerprint …`；repair为单事务draft修正+幂等，不新增/修改published实体、不改变任何计数。
+- **repair未执行**：audit显示4个draft包快照漂移（CN/粤/川/沪 v1）。§13复审确认首版repair仍需加固，当前不得授权执行；不新增/修改published实体和业务计数的目标不变。
 - 演练容器已停止；socila持久卷未触碰。
 
-### 11.4 状态
+### 12.4 状态
 
 任务2补充阶段保持**Reopened**：repair待授权、管理员批准未完成、粤/川blocked缺口未消除。全部P1/P2关闭并独立复审通过后才可恢复Accepted。
+
+## 13. repair执行准备复审（2026-09-06）
+
+### 13.1 只读事实
+
+- 仓库HEAD为`b2bd64f`且已与`origin/refactor/policy-ops-agent-platform`同步。
+- 持久库Drizzle账本为13条、最新0013；`policy_import_batches_jurisdiction_manifest_idx`、`policy_import_batch_members_unique_idx`及0014三项CHECK约束均不存在，说明0014尚未应用。
+- 持久库批次4、成员74，业务计数49/70/5/4/528/851/117/0，上海published规则24条；本轮只读检查未修改数据库。
+- `audit-policyops-stage-e-fix.json`记录`sourceCommit=59a6467`，早于当前HEAD；其manifest hash和target fingerprint只作为历史证据，不得用于未来repair。
+
+### 13.2 执行阻断
+
+| 级别 | 发现 | 影响 |
+| --- | --- | --- |
+| P1 | repair目标指纹只绑定固定计数与published哈希，未绑定目标draft包快照、状态、版本和成员hash | audit后的draft编辑不会改变指纹，可能被repair覆盖 |
+| P1 | 待修复目标在事务外读取，更新时只按行ID定位，缺少事务内锁定和旧状态CAS | 并发编辑或并发repair无法证明单结果与零覆盖 |
+| P1 | repair没有数据库集成测试；现有测试只覆盖快照载荷构造 | 无法证明真实落库、四包原子性、失败回滚、并发和二次no-op |
+| P2 | 修复批次使用`status=applied`、粤川blocking reasons为空，并改写原物化批次成员 | “原始导入→后续修复”的审计链不完整，地区阻断语义丢失 |
+| P2 | CLI固定输出“4个”而不是实际修复数量 | 部分目标缺失时可能产生不准确操作记录 |
+
+### 13.3 结论与下一步
+
+当前不批准直接执行0014或repair。先执行`docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md`：为上述反例取得专用Red，完成事务内目标锁定/重校验、确定性`repaired`审计、历史成员不可变、并发单结果及真实数据库集成覆盖，并在全量门禁后独立复审。
+
+该Work Item Accepted后，仍需用户针对持久库的一次0014 migration和一次repair另行明确授权。获授权时必须先创建新备份并完成37表+18 sequence恢复对账，再基于当前HEAD fresh audit；旧audit输入不得复用。repair成功后再次audit应为零漂移，使用新audit输入复跑应no-op，并对repair后备份再次完成37表+18 sequence恢复对账。
+
+本节不改变任务2整体状态：仍为**Reopened**，案例治理与地区感知规划继续Blocked。

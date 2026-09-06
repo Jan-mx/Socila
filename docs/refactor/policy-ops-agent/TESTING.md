@@ -194,3 +194,16 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - published哈希矩阵（fix集成）：修改name/module/priority/effective窗口/notes/dsl_version/supersedes及删除行均改变哈希，还原恢复。
 - 并发与约束（0014）：批次(jurisdiction,manifest_hash)唯一、成员唯一+entity_type CHECK、status/readiness枚举CHECK；并发apply单事务成功/另一no-op。
 - 对账工具（`scripts/restore-reconcile.ts`）：目录驱动枚举public/drizzle/agent/rag全部BASE TABLE与sequence，整行to_jsonb规范化哈希，表集合/计数/哈希/sequence任一不符退出1。
+
+## draft政策包repair加固（WI-20260906-01，待执行）
+
+本节是待实施测试规格，不是既有PASS证据。专用测试必须先取得Red，再实现Green：
+
+- 守卫：缺授权、错manifest hash、错目标指纹全部拒绝，政策包、批次和成员零变化。
+- 状态绑定：audit后修改任一目标draft的快照、状态、版本或成员hash，repair必须拒绝且不得覆盖新值。
+- 原子修复：四个旧格式draft包在一个事务内修复，快照逐字段等于Manifest；第2～4项注入失败时全部回滚。
+- 审计：原物化批次和74个成员不变；成功后新增4个`repaired`批次和4个成员，粤川blocking reasons完整。
+- 并发幂等：同一fresh audit并发repair只产生一组结果；成功后重新audit并repair返回no-op，审计行不再增加。
+- 零漂移：业务计数保持49/70/5/4/528/851/117/0，上海published规则24条及published整行哈希不变。
+
+实现测试优先扩展`src/lib/policy-materialization/materializer.integration.test.ts`。全量门禁不能替代这些专用反例；持久库audit、migration或repair不得作为测试步骤。
