@@ -10,7 +10,7 @@
 
 09-02用户与管理员双角色鉴权Feature已Accepted；09-03 P0合并质量门禁与v2.0.0发布准备**Accepted（开发分支发布准备）**：六类门禁全部本地新鲜复现（全部退出0、零skip），workflow经actionlint 1.7.7静态校验零发现，`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）；重构前`main`已由`v1.0.0`标记，PR、main ruleset、merge与`v2.0.0` Release为未来人工动作（见`PROGRESS.md`精确下一步与PRD §17）。
 
-09-05 Stage（`docs/prd/09-05-stage-national-baseline-regional-overlays.md`）按ADR-0010完成**任务2首期CN、上海、广东分地区交付（Accepted，2026-09-07）**：广东确定性delta物化（5参数+1失业金额规则+1规则集版本+1政策包版本，未变化实体零新增，复跑no-op）并apply验证（50/75/6/5/528/851/117/0）；三地区经管理员批准晋级published（规划回归528/528）；候选快照已创建并重放（CN/沪/粤，contentHash一致，provenance含显式overlay）；四川按WI-20260907-01保持blocked、无快照、不开放流量。下一步：任务3地区感知规划与任务4上海案例治理从冻结提交并行开发、串行集成。
+09-05 Stage（`docs/prd/09-05-stage-national-baseline-regional-overlays.md`）按ADR-0010完成**任务2首期CN、上海、广东分地区交付（Accepted，2026-09-07）**。任务3/4分支交付后复审确认地区日期快照、真实入口、案例归档和质量证据存在阻断缺陷，现均为**Reopened**。按ADR-0011依次执行：WI-20260907-02修复任务3→WI-20260907-03重建上海/广东确定性政策案例→WI-20260907-04经明确授权替换持久库。当前持久库已有0015/0016、上海/广东active及452/36/528，禁止重复运行旧任务4apply。
 
 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）**Accepted（2026-09-05两轮复审纠正后重新验收）**：首轮复审三项缺漏已纠正——命名契约区分"允许的精确旧协议片段"与"独立品牌标识"、`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`并新增哨兵回归（ADR-0009）、多地区Seed补齐jurisdiction作用域并有落库级测试；第二轮复审又修复扫描器注释自命中与`.gitleaksignore`说明文字历史误报，并将Next生产构建worker限制为2以适配本机及4GB Demo资源档。最终新鲜复验：`npm test` 359/359、Gitleaks 8.29.1完整历史43提交零发现、`npm run build`以2 workers退出0。通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层，规则格式唯一规范值`SOCILA-DSL-1.0`；活动代码与配置完成Socila硬切换；服务JWT身份为`socila-next-core`；粤川示例仅保留测试夹具，生产Seed与持久库均为0。证据见`reports/feature-09-05-socila-naming/acceptance-report.md`。
 
@@ -74,3 +74,4 @@
 - 生产个人资料不得发送到政策模型服务。
 - 原始政策文件和DocumentTree是审计事实源。
 - 已发布规则、政策和快照不可原地修改。
+- 合成政策案例不得描述为真实用户案例或权威政策来源。

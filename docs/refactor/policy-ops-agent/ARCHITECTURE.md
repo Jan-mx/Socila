@@ -78,7 +78,9 @@ flowchart TB
 - **编辑字段白名单与测试隔离（09-05阶段E复审）**：管理端PATCH/PUT/POST经`src/lib/admin/entity-edit-policy.ts`白名单——受控字段（status/version/jurisdiction/businessKey/ID/policyPackId/时间戳等）与未知字段一律400，状态转换只能走publishing用例；blocked地区实体晋级被422拒绝。发布回归门禁按继承链地区加载测试（国家规则用CN测试，地方规则用目标地区+CN测试）。published完整性哈希为`to_jsonb`整行规范化哈希（UTC会话）。
 - **受控物化（09-05阶段E）**：仓库权威资产进入持久库必须经`scripts/materialize-policy-regions.ts`（默认audit；apply需授权参数+manifest哈希+目标指纹三重校验；DATABASE_URL必须进程显式设置且仅限本机policyops，禁止dotenv回退）。首次四地区物化与repair已完成；后续物化必须按现有地区/类型/业务键/有效期/版本/内容计算确定性delta，只写新增或变化实体，未变化实体不得产生新版本。事务内目标计数由当前指纹+delta计算，任一校验失败全部回滚；published行永不原地修改。
 - **draft包repair边界（WI-20260906-01/02，已验收并执行）**：目标指纹绑定全部draft包行状态和内容；repair事务内`FOR UPDATE`重校验并追加不可变`repaired`审计，原批次/成员不改写。持久库已完成0014与一次四包repair（验收报告§14～§15）；未来出现新漂移仍必须fresh audit并另行授权。
-- **分地区交付与能力级缺口（ADR-0010）**：首期候选快照为CN、上海、广东；四川保持blocked、无快照且请求不得跨地区回退。广东2030年前医保退休地市年限缺参只触发R-220的`needs_agent`/`W-MI-LOCAL-YEARS-MISSING`，其他模块继续执行；2030年起使用省级男30年、女25年。任务3与任务4只共享任务2冻结快照，互不读取对方业务状态。
+- **分地区交付与能力级缺口（ADR-0010）**：首期候选快照为CN、上海、广东；四川保持blocked、无快照且请求不得跨地区回退。广东2030年前医保退休地市年限缺参只触发R-220的`needs_agent`/`W-MI-LOCAL-YEARS-MISSING`，其他模块继续执行；2030年起使用省级男30年、女25年。
+- **日期快照调度（ADR-0011，待实现）**：任务3按地区和`as_of_date`选择唯一active快照区间；同地区active区间不得重叠。发布与执行必须绑定完整门禁和成员规范化hash；历史plan按保存的snapshot ID/hash/date重放。领取地市对外使用六位行政代码，服务端规范化名称后才进入政策规则。
+- **地区化合成案例（ADR-0011，待实现）**：任务4只在任务3日期快照重新Accepted后生成上海/广东政策案例。场景模板、显式断言、覆盖义务、快照hash和证据构成事实链；不使用LLM或真实用户转录。旧案例只进入离线可恢复归档，运行库最终计数由覆盖manifest的`N/36/N+42`决定。
 - **管理端地区身份（NRP-FR-021）**：规则/参数/规则集列表支持jurisdiction_code筛选（规则另支持module与q检索编号名称）；详情/校验/示例执行/版本/晋级/回滚以jurisdiction_code+entity_id+version精确定位（缺失400、不存在404、不跨地区猜测）；发布审计记录地区与实体版本；`GET /api/admin/policy-coverage`输出各地区就绪状态与覆盖缺口。
 
 ## 文档、OCR与RAG
@@ -160,7 +162,7 @@ GitHub Actions六job工作流（`.github/workflows/ci.yml`），触发`pull_requ
 - 保留Next.js Core，不引入NestJS。
 - Docker内网隔离+HS256短期服务JWT双向鉴权，JTI重放消费与业务写同事务（ADR-0005，09-03 Feature已实现验收）。
 - NextAuth 15分钟授权声明 + PostgreSQL刷新会话双层会话（ADR-0007）；固定双角色权限矩阵，不建立通用RBAC。
-- 任务2首期交付CN/上海/广东、四川Deferred；任务2后任务3/4并行开发并串行集成（ADR-0010）。
+- 任务2首期交付CN/上海/广东、四川Deferred并保持Accepted；任务3/4复审后改为任务3修复→地区案例重建→持久替换的严格串行路径（ADR-0011）。
 - 决策记录见[decisions](./decisions/)目录（ADR-0007起）。
 - Python内部控制面使用FastAPI。
 - LangGraph用于可恢复、需要人工中断的政策运营流程。

@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-06
+> Updated: 2026-09-07
 
 ## 用途
 
@@ -23,7 +23,9 @@
 | `stage-09-03-pre-merge-release/` | P0合并质量门禁与v2.0.0发布准备阶段验收（六job门禁、镜像加固、Secret/Trivy/Gitleaks、发布治理） |
 | `stage-09-03-runtime-config-remediation/` | 09-03本地运行配置与凭据整改阶段验收（环境加载统一、模板收口、一次性引导、新鲜备份+真实恢复对账、口令轮换与演练资源清理） |
 | `feature-09-05-socila-naming/` | 09-05 Socila命名统一与地区DSL分层Feature验收（协议/地区DSL分层、命名硬切换、服务JWT身份socila-next-core、粤川示例夹具化、0010迁移与持久库精确清理对账） |
-| `stage-09-05-national-baseline-overlays/` | 09-05 国家baseline及粤川权威overlay Stage；阶段E于2026-09-06独立复审后Reopened，修复状态与证据见验收报告§11 |
+| `stage-09-05-national-baseline-overlays/` | 09-05 国家baseline及粤川权威overlay Stage；任务2首期CN/上海/广东最终Accepted，四川Deferred，历史Reopened与修复证据见验收报告§11～§17 |
+| `feature-09-05-jurisdiction-planning/` | 任务3独立复审；记录真实入口、领取地市、日期快照、门禁、重放和停用缺口 |
+| `stage-09-05-case-governance/` | 任务4独立复审；记录伪SHA归档、manifest、质量落库和持久452/36/528事实 |
 | `feature-09-03-service-jwt/` | Core与Agent双向服务JWT鉴权Feature验收与复审（4项缺漏已修复闭环并重新验收：文档入口关闭、启动期fail-fast、重放异常503映射、宿主配置补齐） |
 | `documentation/` | 文档体系和补充决策验收 |
 | `traceability.md` | 需求、实现、测试和报告追踪 |

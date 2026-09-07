@@ -56,18 +56,21 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 
 | Work Item | 规格 | 实现位置 | 测试路径 | 验收证据 | 状态 |
 | --- | --- | --- | --- | --- | --- |
+| WI-20260907-02 | `docs/work-items/WI-20260907-02-task3-temporal-entry-hardening.md` | 计划：会话预创建、claim_city_code、日期snapshot区间、完整门禁、hash、重放、停用、直接页面；0017 | 计划：JRP-AC-001～012专用Red/Green、DB并发、Chromium E2E；不得提前填写PASS | `reports/feature-09-05-jurisdiction-planning/review-report-2026-09-07.md` | Ready；当前首要任务 |
+| WI-20260907-03 | `docs/work-items/WI-20260907-03-regional-policy-case-rebuild.md` | 计划：真SHA归档、精确manifest、沪粤确定性场景、质量分解、0018 | 计划：RCL-AC-001～015、真实恢复、并发、专用E2E；不得提前填写PASS | `reports/stage-09-05-case-governance/review-report-2026-09-07.md` | Blocked；等待WI-02 Accepted |
+| WI-20260907-04 | `docs/work-items/WI-20260907-04-persistent-case-library-replacement.md` | 计划：账本repair、0017/0018、日期snapshot、旧452/36/500→新N/36/N替换 | 计划：fresh audit、目标指纹、幂等、恢复对账；持久写入前请求授权 | ADR-0011；执行后补任务3/4验收证据 | Blocked；等待WI-02/WI-03及授权 |
 | WI-20260907-01 | `docs/work-items/WI-20260907-01-sichuan-policy-followup.md` | 计划：四川三项正式来源到位后的规则、参数、物化、审核和候选快照 | 计划：权威引用、黄金、隔离、物化、快照重放；不得提前填写PASS | ADR-0010；等待解锁后新增独立验收证据 | Blocked；不阻塞任务2首期 |
-| WI-20260906-02 | `docs/work-items/WI-20260906-02-stage-e-persistent-repair.md` | 实际：持久库`socila-postgres/policyops`（0014迁移+`scripts/materialize-policy-regions.ts` repair一次）；证据`audit-policyops-wi-02.json`、`repair-policyops-wi-02.json`、备份`backup/db/policyops-wi-02-{pre,post}-*.dump`（Git忽略） | 无新增代码/测试；复用WI-01既有守卫与集成覆盖；只读验证`restore-reconcile.ts`/`planning-regression.ts` | 任务2验收报告§15 | Accepted；任务2整体保持Reopened |
+| WI-20260906-02 | `docs/work-items/WI-20260906-02-stage-e-persistent-repair.md` | 实际：持久库`socila-postgres/policyops`（0014迁移+`scripts/materialize-policy-regions.ts` repair一次）；证据`audit-policyops-wi-02.json`、`repair-policyops-wi-02.json`、备份`backup/db/policyops-wi-02-{pre,post}-*.dump`（Git忽略） | 无新增代码/测试；复用WI-01既有守卫与集成覆盖；只读验证`restore-reconcile.ts`/`planning-regression.ts` | 任务2验收报告§15/§17 | Accepted；任务2首期最终Accepted |
 | WI-20260906-01 | `docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md` | 实际：`src/lib/policy-materialization/target.ts`（PackTargetBinding+loadPackTargets+指纹绑定draft包）、`src/lib/policy-materialization/materialize.ts`（repair重写：事务内FOR UPDATE锁定重校验/REPAIR_TARGET_CHANGED/computeRepairBatchHash确定性repaired批次+新成员/原成员不可变/isJurisdictionBlocked纳入repaired）、`scripts/materialize-policy-regions.ts`（按实际数量输出）、`src/lib/db/index.ts`（池error监听） | 实际：`src/lib/policy-materialization/materializer.integration.test.ts`（+6场景：守卫/目标绑定/正常修复/回滚/并发/幂等零漂移）、`materializer.unit.test.ts`（+2：指纹绑定/CLI源码契约）、`target-guard.test.ts`、`src/lib/engine/__tests__/{guangdong,sichuan}-overlay-golden.test.ts`（既有any→unknown类型修复） | 任务2验收报告§14（Red/Green+全量门禁）；持久库执行见§15/WI-02 | Accepted |
 | WI-20260901-01 | `docs/work-items/WI-20260901-01-docs-reorganization.md` | `docs/README.md`、`docs/prd/`、`docs/standards/`、`docs/refactor/policy-ops-agent/`、`AGENTS.md`、`.gitignore` | 文档任务无新增业务测试文件；执行链接、状态、ignore、Secret和项目回归命令 | `docs/refactor/policy-ops-agent/PROGRESS.md` | Accepted |
 
-## 09-07 分地区交付与并行开发计划
+## 09-07 分地区交付与下游修复计划
 
 | 任务 | 需求范围 | 计划实现 | 计划测试 | 状态 |
 | --- | --- | --- | --- | --- |
-| 任务2 CN/沪/GD首期 | NRP-FR-001～022、NRP-NFR-001～012、NRP-AC-001～016（ADR-0010范围） | 广东确定性delta、失业金额规则、三地区审核与候选快照；目标50/75/6/5 | audit delta、同键窗口、能力级needs_agent、三地区快照重放、四川无快照 | Active；未填写PASS |
-| 任务3 地区感知规划 | JRP-FR-001～020、JRP-NFR-001～009、JRP-AC-001～017 | planning/conversation/地区发布；migration 0015 | 上海/GD活动快照、广东局部needs_agent、四川unsupported、独立E2E | Approved；任务2后与任务4并行 |
-| 任务4 上海案例治理 | CLG-FR-001～017、CLG-NFR-001～008、CLG-AC-001～015 | 案例来源链/评分/归档；migration 0016 | 452/36/528、上海快照绑定、恢复与删除门禁、任务3隔离 | Approved；任务2后与任务3并行 |
+| 任务2 CN/沪/GD首期 | NRP-FR-001～022、NRP-NFR-001～012、NRP-AC-001～016（ADR-0010范围） | 广东delta、失业金额规则、三地区审核与候选快照 | 已有任务2验收报告§17 | Accepted；保持不变 |
+| 任务3 地区感知规划修复 | JRP-FR-001～029、JRP-NFR-001～010、JRP-AC-001～012 | 计划：0015/0016集成+0017日期snapshot、双入口、完整门禁和重放 | 计划：WI-02测试矩阵 | Reopened；先执行 |
+| 任务4 地区案例重建 | RCL-FR-001～022、RCL-NFR-001～008、RCL-AC-001～015 | 计划：可信归档、0018、沪粤确定性`N/36/N+42` | 计划：WI-03测试矩阵 | Reopened/Blocked；等待任务3 |
 
 ## 09-07 任务2首期：广东增量物化与地区就绪（2026-09-07）
 

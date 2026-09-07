@@ -51,6 +51,9 @@ Draft → Ready → In Progress → Blocked / Accepted → Archived
 
 | Work Item | 状态 | 用途 |
 | --- | --- | --- |
+| `WI-20260907-02-task3-temporal-entry-hardening.md` | Ready | 修复任务3新会话、领取地市、日期快照、完整门禁、历史重放和停用入口 |
+| `WI-20260907-03-regional-policy-case-rebuild.md` | Blocked | 等任务3重新Accepted后重建上海/广东确定性政策案例和可靠旧库归档 |
+| `WI-20260907-04-persistent-case-library-replacement.md` | Blocked | 等前两项Accepted并取得fresh明确授权后替换持久库旧案例 |
 | `WI-20260907-01-sichuan-policy-followup.md` | Blocked | 四川三项正式权威来源到位后独立开发、物化、审核和候选快照验收 |
 | `WI-20260906-02-stage-e-persistent-repair.md` | Accepted | 已完成本机0014迁移、四包draft快照repair及前后完整恢复对账 |
 | `WI-20260906-01-stage-e-pack-repair-hardening.md` | Accepted | 已加固政策包快照repair的事务、指纹、审计与集成测试；持久库执行见WI-20260906-02 |

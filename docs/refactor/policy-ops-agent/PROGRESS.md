@@ -17,7 +17,7 @@
 - 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）：**Accepted**（验收证据：`reports/feature-09-05-socila-naming/acceptance-report.md`）。SDL-FR-001～014、SDL-NFR-001～007全部有实现与测试映射，SDL-AC-001～010新鲜证据通过：通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层（24规则/29参数/`SOCILA-DSL-1.0`/Manifest `jurisdiction_code=310000`）、Seed经Manifest发现（零硬编码地区）、活动代码与配置SSP/SSRP→Socila硬切换（命名扫描零命中，无旧变量/Cookie/localStorage/服务身份兼容）、Node与Python服务JWT身份原子切换`socila-next-core`（固定向量重签+CI冒烟同步）、粤川示例转测试夹具（生产Seed不写入）、0010迁移完成dsl_version规范化与六条示例精确清理（删除前新鲜pg_dump+SHA-256清单+PG17+pgvector真实恢复逐表对账25表一致；删除后diff仅params 33→29、packs 2→0及0009补齐空表；备份/旧卷/历史快照未动）；Gitleaks完整历史19条历史命中经人工核实为测试合成值并以`.gitleaks.toml`精确allowlist闭环（ADR-0008）。
 - 09-05 Feature **复审纠正完成并重新Accepted（2026-09-05）**：三项复审缺漏全部纠正——①命名契约扫描器收敛到`src/lib/naming/socila-naming-contract.ts`并以"允许片段剥离"区分精确旧协议值与独立品牌标识（npm test恢复359/359全绿）；②`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`+`condition="AND"`，新增哨兵回归`scripts/verify-gitleaks-allowlist.mjs`接入CI（ADR-0009替代ADR-0008；哨兵证明允许路径上其他规则照常检测、trace无整文件跳过）；③多地区Seed补齐jurisdiction作用域（seed-rules/seed-params/seed-misc/excel-import，tests行写入jurisdictionCode，协议workflow只装载一次，0011回填存量NULL），新增multi-region-seed落库级集成测试。全部门禁新鲜复验通过后恢复Accepted。
 - 09-05 Feature复审历史：曾因命名契约、Gitleaks allowlist和多地区Seed缺漏Reopened；相关缺漏及第二轮扫描器/Gitleaks/Build复审均已修复并取得新鲜门禁，当前最终状态为**Accepted**，详见任务验收报告§8～§10。
-- 09-05全国政策能力执行顺序按ADR-0010调整为：先完成任务2的CN/上海/广东首期交付（四川Deferred/Blocked）→任务2 Accepted后并行开发任务3地区感知规划与任务4上海案例治理→按任务3、任务4顺序串行集成。两条并行任务只共享任务2冻结快照，不互相作为产品前置。
+- 09-05全国政策能力当前顺序按ADR-0011调整为：任务2首期Accepted保持不变→WI-20260907-02修复任务3→WI-20260907-03重建上海/广东确定性政策案例→WI-20260907-04经明确授权替换持久库。任务3/4原并行方案被复审推翻。
 
 ## 已完成能力
 
@@ -39,9 +39,10 @@
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
-| 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化apply并验证；三地区已批准published；候选快照已创建并重放（CN/沪/粤各1+1，contentHash一致）；四川无快照；规划回归528/528 | 任务3地区感知规划与任务4上海案例治理从冻结提交并行开发 |
-| 任务3：地区感知用户规划 | Approved（任务2已Accepted） | 与任务4并行开发；首期上海/广东，四川unsupported；广东医保退休缺参仅能力级needs_agent |
-| 任务4：上海案例治理 | Approved（任务2已Accepted） | 与任务3并行；只治理上海851/117为452/36/528并绑定上海候选快照 |
+| 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化、三地区批准和候选快照重放完成；四川无快照 | 保持Accepted，不因任务3/4复审回退 |
+| 任务3：地区感知用户规划 | **Reopened**：0015和沪粤active已落库，但新会话、领取地市、日期快照、完整门禁、历史重放、停用和直接页面未闭环 | 执行WI-20260907-02；代码验收前不改持久库 |
+| 任务4：地区化政策案例库 | **Reopened**：持久库已为452/36/528，但旧归档SHA/manifest失效、质量分为空，原Accepted结论撤销 | 等任务3重新Accepted后执行WI-20260907-03；旧452/36目标废止 |
+| 持久库案例替换 | **Blocked**：当前0015/0016、沪粤active、452/36/528保持 | 前两项Accepted并取得fresh明确授权后执行WI-20260907-04 |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
 | 四川医保退休年限正式文件（缺口4） | Deferred；仅2025-03征求意见稿，无正式印发 | `WI-20260907-01`：正式印发后采集，不阻塞任务2首期 |
 | 川人社办发〔2023〕18号（缺口5） | Deferred；白名单域未检索到 | `WI-20260907-01`：等待用户提供原件或官方入口恢复 |
@@ -248,9 +249,9 @@
 | 安全边界 | 仅本机policyops；无发布/快照/批准/删除/远程库/Secret/流量；演练容器已清理；证据JSON零凭据 |
 | 状态 | WI-20260906-02 **Accepted**；任务2整体保持**Reopened**（粤川权威缺口、管理员批准、候选快照未完成） |
 
-## 当前任务计划（任务2分地区首期交付，ADR-0010）
+## 历史任务计划（任务2分地区首期交付；下游顺序已由ADR-0011替代）
 
-| 项目 | 当前结论 |
+| 项目 | 当时结论 |
 | --- | --- |
 | 首期范围 | CN、上海310000、广东440000；三地区均需管理员批准和可重放候选快照 |
 | 四川 | Deferred/Blocked；保留3个draft参数和3条原因，不批准、不建快照、不开放流量，不阻塞首期Accepted |
@@ -312,9 +313,24 @@
 | 门禁 | npm test 485/485、test:db 87/87、tsc退出0、eslint 0 error/7既有warning、build零warning、scan-secrets 8候选零命中 |
 | 边界 | 未创建候选快照（等待授权）、未开放流量、未删除数据、四川无变更 |
 
+## 当前任务复审与重建决策（任务3/4，2026-09-07）
+
+| 项目 | 只读结论 |
+| --- | --- |
+| 分支 | 任务3`24b0119`/`33af7ad`、任务4`e26a543`均已推送且工作区干净，但不得原样集成 |
+| 任务3代码 | 新会话选择地区会404；领取地市未进入公开/AI Schema；2026快照无法覆盖2030；门禁/hash/历史重放/停用/直接页面不完整 |
+| 任务4归档 | case-library记录SHA与真实文件全部不符，selection报告缺失、restore报告pending，81条展示归档hash为`pending` |
+| 任务4质量 | 持久库452 cases和36 showcase的quality_score全部为空；无可比字段可误判重放PASS |
+| 持久事实 | Drizzle 16条；沪粤release active、四川0；cases/showcase/tests/snapshots=452/36/528/6；治理前后完整dump的独立SHA有效 |
+| 决策 | 任务3/4均Reopened；先修任务3，再以确定性模板重建沪粤案例，最后另行授权持久替换 |
+| 新目标 | cases=N、showcase=36（沪18/粤18）、tests=N+42；删除当前旧452/36及关联500旧回归tests |
+| 本轮边界 | 只修改文档；未修改代码、未连接数据库、未删除案例、未执行migration或激活 |
+
+本轮文档基线验证为`npm test` 51文件/485通过。实现和执行证据不得提前填写PASS；提示词只在对话中提供。
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
-任务2首期CN/上海/广东已完成广东增量物化、管理员批准、候选快照重放和独立复审，并已Accepted。下一步从当前冻结提交启动任务3和任务4并行开发，互不等待；共享migration journal与当前文档在最终集成阶段按任务3后任务4串行处理。四川后续只按`WI-20260907-01-sichuan-policy-followup.md`推进，不影响首期与下游排期。09-03发布动作仍为未来人工动作：
+任务2首期保持Accepted。下一步严格串行：WI-20260907-02修复任务3→WI-20260907-03重建地区化案例库→WI-20260907-04受控替换持久库。前两项只在隔离库开发验收；第三项必须先完成fresh audit、备份和恢复演练，再请求明确授权。不得重复执行旧任务4apply。四川后续只按`WI-20260907-01-sichuan-policy-followup.md`推进，不影响本次沪粤案例重建。09-03发布动作仍为未来人工动作：
 
 1. 重构前版本基线：**已完成**。annotated tag `v1.0.0`已推送至origin，并精确指向`main`提交`1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`；不得移动或重建。
 2. 用户未来人工发布流程（PRD §17.2）：

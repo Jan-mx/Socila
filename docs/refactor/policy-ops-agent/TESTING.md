@@ -210,10 +210,30 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 
 全量门禁不能替代这些专用反例；持久库audit、migration或repair不得作为测试步骤。集成测试teardown先`closeDatabase()`、再显式终止残留会话、最后删库，测试客户端挂error监听（错误仅记录，查询失败仍经promise拒绝暴露），保证run零unhandled errors。
 
-## 分地区交付与下游并行（ADR-0010，任务2首期已验收）
+## 分地区交付与下游修复（ADR-0010/0011）
 
 - 历史Red曾复现持久库fresh audit错误规划74/116/9/8；当前Green已证明只新增5参数、1规则、1规则集版本和1政策包版本，目标50/75/6/5，CN/沪/川零新增（证据见验收报告§17.1～§17.4）。
 - 同键多窗口验证旧GD窗口保持v1、新窗口为v2；三个新参数为v1；相同delta重复与并发apply只产生一组结果。
 - 广东能力级缺口：2030年前医保退休年限缺参产生`needs_agent`和`W-MI-LOCAL-YEARS-MISSING`且其他模块结果保留；2030年起男30年、女25年生效。
 - 四川地区级门禁：无候选快照、无活动发布，规划请求返回unsupported且不得使用上海或广东实体。
-- 任务3目标测试不得读取任务4的36条案例；任务4目标测试不得读取任务3的地区发布记录。两条分支从任务2冻结提交独立开发，完成后按migration 0015→0016串行集成并重跑完整门禁。
+- 原任务3/4并行方案已被复审推翻。任务3先修真实入口和日期快照；任务4随后使用其已验收snapshot区间生成案例。
+
+### 任务3 Reopened专用反例
+
+- 新会话必须先持久创建再确认地区；选择器不得对不存在会话返回404。
+- `claim_city_code`缺失、非广东、未知或仅自由文本时不得估算失业金额；有效代码由服务端规范化后执行。
+- 2026和2030广东请求必须命中不同snapshot区间；缺失、重叠、gateResults缺项或成员hash漂移均fail-closed。
+- 激活必须真实运行引用、Schema、依赖、冲突、黄金和双重重放门禁；伪造pass不能通过。
+- 历史plan按保存snapshot逐字节重放；停用广东不影响上海；四川始终unsupported。
+- 聊天和直接规划页面使用同一地区确认契约并有专用Chromium E2E。
+
+### 地区案例全量重建专用反例
+
+- 归档SHA必须来自真实文件字节；篡改、缺少selection/restore报告或pending状态均拒绝apply。
+- manifest绑定精确行ID/内容hash、snapshot/hash、评分和测试来源；任一漂移使授权失效。
+- 无可比较显式断言的快照重放不得得分；active/selected案例质量总分和分解均非空。
+- 相同模板重复生成相同N、36和manifestHash；cases仅沪粤，每个case一条回归test，42条DSL示例完整。
+- showcase严格沪18/粤18，每地区男女9/9、三个年龄段各6、三种就业状态各6。
+- 两个并发替换只有一组成功；管理查询必须为`active AND filters`。
+- 完整旧851/117/500归档必须在全新PG17+pgvector真实恢复并对账。
+- 最终组合migration顺序为0015→0016→0017→0018，并从零执行两次验证幂等。

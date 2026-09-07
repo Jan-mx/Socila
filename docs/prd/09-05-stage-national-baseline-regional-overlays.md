@@ -1,7 +1,7 @@
 # 国家baseline及广东权威overlay首期交付 Stage PRD
 
 > Author: Jan
-> Status: Active
+> Status: Accepted
 > Updated: 2026-09-07
 
 ## 文档元数据
@@ -10,10 +10,10 @@
 | --- | --- |
 | PRD文件 | `09-05-stage-national-baseline-regional-overlays.md` |
 | 类型 | Stage |
-| 状态 | Active |
+| 状态 | Accepted（任务2首期CN/上海/广东；四川Deferred） |
 | 前置依赖 | `09-05-feature-socila-naming-regional-dsl.md` Accepted；地区Manifest和`SOCILA-DSL-1.0`稳定 |
 | 可并行阶段 | 地区来源调查可并行；baseline抽取、overlay建模、审核和快照必须按依赖串行 |
-| 后续消费者 | `09-05-feature-jurisdiction-aware-planning.md`与`09-05-feature-case-library-governance.md`，任务2后并行开发 |
+| 后续消费者 | 任务3地区规划修复；任务3重新Accepted后再执行任务4地区化案例重建（ADR-0011） |
 | 退出门禁 | CN、上海、广东形成权威引用、可执行规则、隔离黄金测试、管理员批准和候选快照；四川按ADR-0010延期且保持blocked |
 | 对应总体需求 | PRD-FR-001～006、PRD-FR-010～024、PRD-FR-030～043、PRD-NFR-001～007 |
 
