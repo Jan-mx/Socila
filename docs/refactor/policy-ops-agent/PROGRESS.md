@@ -39,7 +39,7 @@
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
-| 任务2：CN/上海/广东首期政策交付 | In Progress：GD增量物化代码已交付（delta=5参数+1规则+1规则集版本+1政策包版本，复跑no-op，50/75/6/5），持久库apply待授权 | 授权后apply并验证幂等/哈希/规划回归/恢复零漂移；然后三地区管理员批准与候选快照 |
+| 任务2：CN/上海/广东首期政策交付 | In Progress：GD增量物化已apply并验证（50/75/6/5、幂等no-op、规划回归逐字节一致、恢复零漂移） | 三地区管理员批准（等待逐地区决定）→ 授权后创建并重放三地区候选快照；四川无快照；然后任务2首期Accepted |
 | 任务3：地区感知用户规划 | Planned（等待任务2 Accepted） | 与任务4并行；首期上海/广东，四川unsupported；广东医保退休缺参仅能力级needs_agent |
 | 任务4：上海案例治理 | Planned（等待任务2 Accepted） | 与任务3并行；只治理上海851/117为452/36/528并绑定上海候选快照 |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
@@ -286,6 +286,18 @@
 | fresh audit（当前HEAD，零写入） | `audit-gd-delta-f72a3cd.json`：manifestHash `4895e023…`、targetFingerprint `ff6163b1…`、worktreeClean=true、idempotentNoOp=false；**planCounts恰好{rules:1, params:5, ruleSets:1, packs:1}（广东delta）**；CN/310000/510000区域计数全零；packSnapshotDrift恰1条（GD-BASE v1, rowId 5）；expectedPostCounts=50/75/6/5/528/851/117/0；GD readiness=awaiting_approval且blockingReasons=[]；四川blocked且3条原因不变；未出现74/116/9/8 |
 | 规划回归基线（只读） | `planning-regression-pre-gd-apply.txt`：528/524过/4失败、passSetHash `e4fb8c3d…`（与WI-02基线一致） |
 | 状态 | 只读准备全部通过，**等待用户对本次apply的明确授权**（未获授权不写policyops） |
+
+## 当前任务受控写入（任务2 GD增量物化apply，2026-09-07，用户明确授权）
+
+| 步骤 | 结果 |
+| --- | --- |
+| 授权 | 用户回复"允许以上"（授权范围：一次GD增量apply及其验证；未覆盖批准/快照/其他写入） |
+| fresh audit（HEAD `ed39e93`，旧audit不复用） | manifestHash `6cf0190b…`（docs提交变更sourceCommit所致）、targetFingerprint `ff6163b1…`（DB状态未变）、只显示GD delta 1/5/1/1、drift仅GD-BASE v1 |
+| apply（一次） | 退出0；4批次（id 9-12，GD 8成员、CN/沪/川0成员）；计数**50/75/6/5/528/851/117/0**（事务内核验通过，published行哈希不变）；落库核对：GD旧5参数v1保留+新5条（3个v1+2个v2窗口）、R-GD-UI-AMOUNT v1、RS-GD-PLAN-V1 v1（16规则）+v2（17规则）、GD-BASE v1+v2 |
+| 幂等 | 旧指纹复跑被`FINGERPRINT_MISMATCH`拒绝（apply后计数变化，守卫生效）；以post-apply fresh audit指纹复跑→`noop:true`；复跑audit planCounts全零、`idempotentNoOp:true`、drift=[] |
+| 规划回归 | `planning-regression-post-gd-apply.txt`与apply前**逐字节一致**（SHA-256 `84535389…`相同，528/524/4、passSetHash `e4fb8c3d…`） |
+| apply后备份与恢复 | `backup/db/policyops-gd-delta-post-20260907063211.dump`（711,209B；SHA-256 `189572ac…`）；临时容器`pg_restore`退出0/0错误；`restore-reconcile.ts` 37表+18 sequence全一致；容器已删除 |
+| 边界 | 未执行管理员批准、未创建候选快照、未改四川实体、未开放流量、未删除数据 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
