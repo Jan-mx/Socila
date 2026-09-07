@@ -1,14 +1,14 @@
 # 09-05 Stage 国家baseline及广东四川权威overlay 验收报告
 
 > Author: Jan
-> Status: Reopened（按ADR-0010执行CN/上海/广东首期交付；四川Deferred/Blocked；§16范围完成前不得恢复Accepted）
+> Status: **Accepted（任务2首期：CN/上海/广东分地区交付完成，2026-09-07；四川Deferred/Blocked按WI-20260907-01独立验收）**
 > Updated: 2026-09-07
 
 ## 1. 范围与结论
 
 本阶段执行权威PRD `docs/prd/09-05-stage-national-baseline-regional-overlays.md`（Draft）的任务2：按国家baseline、上海重分类、广东overlay、四川overlay四个里程碑建立权威政策事实、显式overlay操作数据模型、黄金测试与候选快照能力。
 
-当前结论以§11独立复审为准：阶段E物化计数与draft/blocked状态真实存在，但其目标保护、发布门禁、参数与政策包完整性、地区身份、恢复和完整性证据存在P1/P2缺陷，原阶段E验收结论已撤回。
+当前结论以§11独立复审与§17批准/快照为准：阶段E P1/P2缺陷已修复（§12～§15），任务2首期（CN/上海/广东）按ADR-0010完成增量物化、管理员批准与可重放候选快照（§17）；四川按WI-20260907-01保持blocked、无快照。
 
 | 里程碑 | 提交 | 核心交付 | 状态 |
 | --- | --- | --- | --- |
@@ -456,6 +456,39 @@ WI-20260906-02标记**Accepted**。任务2整体保持**Reopened**：剩余缺�
 | Gitleaks 8.29.1完整历史 | PASS；61 commits no leaks |
 | allowlist哨兵回归 | PASS；3场景全过 |
 
+
+### 17.9 管理员批准与三地区候选快照（2026-09-07，用户指示"三个地区全部为批准并继续"）
+
+用户（管理员）审阅审核包后决定CN、上海、广东三地区**全部批准**，并授权批准执行与后续快照创建/重放（"全部批准并继续 不用再停止了"）。Agent不自动批准：批准决定由管理员作出，Agent经`promoteEntity`正规发布用例执行（schema/examples/回归门禁+发布审计），未直接SQL改状态。
+
+**批准前门禁修复（TDD Red→Green，提交`d24adbc`）**——批准执行暴露四个真实阻塞：
+
+| 阻塞 | 修复 | 证据 |
+| --- | --- | --- |
+| GD被历史blocked批次卡住 | `isJurisdictionBlocked`改**最新批次**语义（历史批次是审计事实不代表当前就绪；四川最新批次blocked仍拒绝） | materializer.integration新增就绪语义测试（Red：旧实现判定GD blocked） |
+| 晋级门禁测试归属（审查缺陷10补全） | 规则晋级只认本地区归属测试；CN/GD规则无tests表测试时用**DSL examples**作回归载体（`runExamplesGate`：单规则引擎+地区参数包published参数基线，不落tests表、528固定计数不变）；restrict/exempt元数据规则豁免examples与回归门禁 | nrp-stage-e-fix集成测试更新（CN不拿SH测试充数+examples兜底+无examples拒绝） |
+| 4条过期测试期望+规则文件schema | 持久库tests表期望对齐权威DSL：R-200时间线19→18.5、R-220输入参数名迁移+gender+legacy双名兼容、R-300月差2→3（引擎date_diff语义）、R-510浮点参数改二进制精确组合（0.25+0.5）；R-GD-UI-AMOUNT文件parameter_refs/examples按schema修正并同步库中draft行（git与库一致） | 规划回归**528/528全过**（passSetHash `e4fb8c3d…`→`d25068b8…`，记录为测试期望修正后的新基线） |
+| 快照合并duplicate-add | collectEntities跳过与链上国家baseline同名的历史地方add（重分类继承语义；旧上海基线16条CN同名add+2参数不再阻止快照，行保留可回退；replace/restrict不受影响） | snapshot-service集成新增场景（Red：插入历史同名add→duplicate-add冲突） |
+
+**批准结果**：CN/310000/440000全部规则、参数、规则集晋级published（规则50、参数72、规则集5）；业务计数50/75/6/5/528/851/117/0不变；四川3参数保持draft、无任何变更；发布审计携带地区与版本。
+
+**候选快照（写入授权后创建+重放，asOf 2026-09-07）**：
+
+| 地区 | resolvedPath | 规则 | 参数 | 规则集 | 重放contentHash一致 |
+| --- | --- | --- | --- | --- | --- |
+| CN | /CN/ | 16 | 6 | 1 | 是（`853be438…`） |
+| 310000 | /CN/310000/ | 24（16国家继承+8地方） | 36 | 2 | 是（`33f34e39…`） |
+| 440000 | /CN/440000/ | 17（16国家+1 restrict） | 10 | 2 | 是（`47dda47a…`） |
+
+- 每地区创建1个+重放1个（NRP-AC-010同hash验证），policy_snapshots=6；成员：CN 23/组、沪 62/组、粤 29/组（规则+参数+规则集）。
+- provenance验证：GD R-220=[CN baseline, 440000 restrict→R-220-MEDICAL-LIFETIME-GAP]（显式overlay语义）。
+- **四川510000快照=0**（显式无快照，WI-20260907-01）。
+- 快照后新备份`policyops-gd-final-20260907081827.dump`（SHA-256 `cc8ff6dd…`），临时PG17+pgvector零错误恢复，37表+18 sequence逐表一致，容器已清理。
+- fresh audit（批准+快照后）：planCounts全零、packSnapshotDrift=[]（git与库一致，零delta）。
+
+**门禁（本地新鲜执行）**：npm test 485/485、test:db 87/87、tsc退出0、eslint 0 error/7既有warning、build零warning、scan-secrets零命中、规划回归528/528。
+
+**独立复审新DoD**（对照ADR-0010与§16范围）：①增量物化只写GD delta（5参数+1规则+1规则集版本+1政策包版本）、未变化零新增、复跑no-op ✓；②三地区权威规则、管理员批准、可重放候选快照 ✓；③四川保持blocked、无快照、不开放流量 ✓；④广东2030前仅R-220能力级needs_agent、2030起男30/女25 ✓；⑤失业金额规则（领取地市最低工资×90%，缺参needs_agent）✓；⑥目标计数50/75/6/5/528/851/117/0、快照后policy_snapshots=6 ✓；⑦全部门禁零skip ✓。任务2首期**Accepted**。
 ### 17.7 边界与状态
 
 - 本批次未执行持久库apply、未执行管理员批准、未创建候选快照、未修改四川实体、未开放流量；演练容器（nrp-drill-pg/nrp-e-restore）为既有设施，新增动态演练库（nrp_e_mat_*、nrp_e2e_drill、nrp_agent_drill）均已按测试teardown清理或保留待清理。
