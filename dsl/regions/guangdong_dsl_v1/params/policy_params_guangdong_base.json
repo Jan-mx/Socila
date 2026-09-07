@@ -1,149 +1,491 @@
 {
-  "policy_pack_id": "GD-BASE",
-  "description": "广东省权威overlay参数包 — 医保退休年限（2030统一）与2024年度缴费基数上下限",
-  "as_of": "2026-09-05",
-  "params": [
+ "policy_pack_id": "GD-BASE",
+ "description": "广东省权威overlay参数包 — 医保退休年限（2030统一）与2024年度缴费基数上下限",
+ "as_of": "2026-09-05",
+ "params": [
+  {
+   "param_id": "P-MI-LIFETIME-MALE-YEARS",
+   "type": "number",
+   "value": 30,
+   "unit": "years",
+   "effective_from": "2030-01-01",
+   "effective_to": null,
+   "source": "doc:DOC-GD-MEDICAL-TRANSFER-2022#第六条",
+   "note": "广东省职工医保累计缴费年限：2030年1月1日起全省统一为男职工30年；2022-2029年为各市逐年过渡期（以各市2021年政策为基准），省级无统一数值，此期间由R-220守卫行进入人工确认",
+   "operation": "add",
+   "target_business_key": null,
+   "evidence": [
     {
-      "param_id": "P-MI-LIFETIME-MALE-YEARS",
-      "type": "number",
-      "value": 30,
-      "unit": "years",
-      "effective_from": "2030-01-01",
-      "effective_to": null,
-      "source": "doc:DOC-GD-MEDICAL-TRANSFER-2022#第六条",
-      "note": "广东省职工医保累计缴费年限：2030年1月1日起全省统一为男职工30年；2022-2029年为各市逐年过渡期（以各市2021年政策为基准），省级无统一数值，此期间由R-220守卫行进入人工确认",
-      "operation": "add",
-      "target_business_key": null,
-      "evidence": [
-        {
-          "document_id": "DOC-GD-MEDICAL-TRANSFER-2022",
-          "jurisdiction_code": "440000",
-          "title": "广东省医疗保障局 广东省财政厅 国家税务总局广东省税务局关于印发《广东省基本医疗保险关系省内转移接续暂行办法》的通知（粤医保规〔2022〕6号）",
-          "authority": "广东省医疗保障局等三部门",
-          "official_url": "https://hsa.gd.gov.cn/zwgk/zfxxgkml/bmwj/gfxwj/content/post_3953355.html",
-          "fetched_at": "2026-09-05T15:48:13.814Z",
-          "content_sha256": "18b4c198fbc46bec9034584c579137725a2021ae7797fe2d5b51f3014e1076a2",
-          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-MEDICAL-TRANSFER-2022/original.html",
-          "parse_version": "extracted-text-v1",
-          "locator": { "type": "article", "reference": "第六条" },
-          "excerpt": "逐步统一全省职工医保缴费年限政策。累计缴费年限到2030年1月1日统一为男职工30年，女职工25年。未达前款规定的市，从2022年开始，在本市2021年缴费年限政策的基础上，逐年调整本市职工医保累计缴费年限。"
-        }
-      ]
-    },
-    {
-      "param_id": "P-MI-LIFETIME-FEMALE-YEARS",
-      "type": "number",
-      "value": 25,
-      "unit": "years",
-      "effective_from": "2030-01-01",
-      "effective_to": null,
-      "source": "doc:DOC-GD-MEDICAL-TRANSFER-2022#第六条",
-      "note": "广东省职工医保累计缴费年限：2030年1月1日起全省统一为女职工25年",
-      "operation": "add",
-      "target_business_key": null,
-      "evidence": [
-        {
-          "document_id": "DOC-GD-MEDICAL-TRANSFER-2022",
-          "jurisdiction_code": "440000",
-          "title": "广东省医疗保障局 广东省财政厅 国家税务总局广东省税务局关于印发《广东省基本医疗保险关系省内转移接续暂行办法》的通知（粤医保规〔2022〕6号）",
-          "authority": "广东省医疗保障局等三部门",
-          "official_url": "https://hsa.gd.gov.cn/zwgk/zfxxgkml/bmwj/gfxwj/content/post_3953355.html",
-          "fetched_at": "2026-09-05T15:48:13.814Z",
-          "content_sha256": "18b4c198fbc46bec9034584c579137725a2021ae7797fe2d5b51f3014e1076a2",
-          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-MEDICAL-TRANSFER-2022/original.html",
-          "parse_version": "extracted-text-v1",
-          "locator": { "type": "article", "reference": "第六条" },
-          "excerpt": "逐步统一全省职工医保缴费年限政策。累计缴费年限到2030年1月1日统一为男职工30年，女职工25年。未达前款规定的市，从2022年开始，在本市2021年缴费年限政策的基础上，逐年调整本市职工医保累计缴费年限。"
-        }
-      ]
-    },
-    {
-      "param_id": "P-GD-CONTRIB-BASE-UPPER",
-      "type": "number",
-      "value": 27501,
-      "unit": "yuan/month",
-      "effective_from": "2024-07-01",
-      "effective_to": "2025-06-30",
-      "source": "doc:DOC-GD-CONTRIBUTION-BASE-2024#正文",
-      "note": "全省企业职工基本养老保险缴费基数上限（2024年7月1日至2025年6月30日执行；按2023年全省全口径平均工资9167元的300%核定）",
-      "operation": "add",
-      "target_business_key": null,
-      "evidence": [
-        {
-          "document_id": "DOC-GD-CONTRIBUTION-BASE-2024",
-          "jurisdiction_code": "440000",
-          "title": "广东省人力资源和社会保障厅等四部门关于公布2023年全省全口径城镇单位就业人员月平均工资和2024年职工基本养老保险缴费基数上下限有关问题的通知（粤人社发〔2024〕33号）",
-          "authority": "广东省人力资源和社会保障厅等四部门",
-          "official_url": "https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4615619.html",
-          "fetched_at": "2026-09-05T15:52:37.918Z",
-          "content_sha256": "7f30cde426019882c52024b9dd128df08053d16c06dc9ba4ddc0fdc2b26d1fe3",
-          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-CONTRIBUTION-BASE-2024/original.html",
-          "parse_version": "extracted-text-v1",
-          "locator": { "type": "body", "reference": "正文第一段" },
-          "excerpt": "据统计，2023年全省全口径城镇单位就业人员月平均工资为9167元。按照相关规定，全省企业职工基本养老保险缴费基数上限为27501元，广州市、省直缴费基数下限为5500元，珠海市、佛山市、东莞市、中山市缴费基数下限为4767元，其他地区缴费基数下限为4492元。"
-        }
-      ]
-    },
-    {
-      "param_id": "P-GD-AVG-WAGE-2023",
-      "type": "number",
-      "value": 9167,
-      "unit": "yuan/month",
-      "effective_from": "2024-07-01",
-      "effective_to": "2025-06-30",
-      "source": "doc:DOC-GD-CONTRIBUTION-BASE-2024#正文",
-      "note": "2023年全省全口径城镇单位就业人员月平均工资（缴费基数核定依据）",
-      "operation": "add",
-      "target_business_key": null,
-      "evidence": [
-        {
-          "document_id": "DOC-GD-CONTRIBUTION-BASE-2024",
-          "jurisdiction_code": "440000",
-          "title": "广东省人力资源和社会保障厅等四部门关于公布2023年全省全口径城镇单位就业人员月平均工资和2024年职工基本养老保险缴费基数上下限有关问题的通知（粤人社发〔2024〕33号）",
-          "authority": "广东省人力资源和社会保障厅等四部门",
-          "official_url": "https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4615619.html",
-          "fetched_at": "2026-09-05T15:52:37.918Z",
-          "content_sha256": "7f30cde426019882c52024b9dd128df08053d16c06dc9ba4ddc0fdc2b26d1fe3",
-          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-CONTRIBUTION-BASE-2024/original.html",
-          "parse_version": "extracted-text-v1",
-          "locator": { "type": "body", "reference": "正文第一段" },
-          "excerpt": "据统计，2023年全省全口径城镇单位就业人员月平均工资为9167元。"
-        }
-      ]
+     "document_id": "DOC-GD-MEDICAL-TRANSFER-2022",
+     "jurisdiction_code": "440000",
+     "title": "广东省医疗保障局 广东省财政厅 国家税务总局广东省税务局关于印发《广东省基本医疗保险关系省内转移接续暂行办法》的通知（粤医保规〔2022〕6号）",
+     "authority": "广东省医疗保障局等三部门",
+     "official_url": "https://hsa.gd.gov.cn/zwgk/zfxxgkml/bmwj/gfxwj/content/post_3953355.html",
+     "fetched_at": "2026-09-05T15:48:13.814Z",
+     "content_sha256": "18b4c198fbc46bec9034584c579137725a2021ae7797fe2d5b51f3014e1076a2",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-MEDICAL-TRANSFER-2022/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "article",
+      "reference": "第六条"
+     },
+     "excerpt": "逐步统一全省职工医保缴费年限政策。累计缴费年限到2030年1月1日统一为男职工30年，女职工25年。未达前款规定的市，从2022年开始，在本市2021年缴费年限政策的基础上，逐年调整本市职工医保累计缴费年限。"
     }
-  ],
-  "tables": [
+   ]
+  },
+  {
+   "param_id": "P-MI-LIFETIME-FEMALE-YEARS",
+   "type": "number",
+   "value": 25,
+   "unit": "years",
+   "effective_from": "2030-01-01",
+   "effective_to": null,
+   "source": "doc:DOC-GD-MEDICAL-TRANSFER-2022#第六条",
+   "note": "广东省职工医保累计缴费年限：2030年1月1日起全省统一为女职工25年",
+   "operation": "add",
+   "target_business_key": null,
+   "evidence": [
     {
-      "param_id": "T-GD-CONTRIB-BASE-LOWER-BY-CITY",
-      "type": "table",
-      "effective_from": "2024-07-01",
-      "effective_to": "2025-06-30",
-      "key_fields": ["city_group"],
-      "value_fields": ["base_lower"],
-      "rows": [
-        { "city_group": "guangzhou_province_direct", "base_lower": 5500 },
-        { "city_group": "zhuhai_foshan_dongguan_zhongshan", "base_lower": 4767 },
-        { "city_group": "other_cities", "base_lower": 4492 }
-      ],
-      "note": "全省企业职工基本养老保险缴费基数下限按市分档（2024年7月1日至2025年6月30日执行）。2025年7月起的下限调整文件（粤人社发〔2025〕32号）尚未从省人社厅官网原文采集，列入待办",
-      "source": "doc:DOC-GD-CONTRIBUTION-BASE-2024#正文",
-      "operation": "add",
-      "target_business_key": null,
-      "evidence": [
-        {
-          "document_id": "DOC-GD-CONTRIBUTION-BASE-2024",
-          "jurisdiction_code": "440000",
-          "title": "广东省人力资源和社会保障厅等四部门关于公布2023年全省全口径城镇单位就业人员月平均工资和2024年职工基本养老保险缴费基数上下限有关问题的通知（粤人社发〔2024〕33号）",
-          "authority": "广东省人力资源和社会保障厅等四部门",
-          "official_url": "https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4615619.html",
-          "fetched_at": "2026-09-05T15:52:37.918Z",
-          "content_sha256": "7f30cde426019882c52024b9dd128df08053d16c06dc9ba4ddc0fdc2b26d1fe3",
-          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-CONTRIBUTION-BASE-2024/original.html",
-          "parse_version": "extracted-text-v1",
-          "locator": { "type": "body", "reference": "正文第一段" },
-          "excerpt": "全省企业职工基本养老保险缴费基数上限为27501元，广州市、省直缴费基数下限为5500元，珠海市、佛山市、东莞市、中山市缴费基数下限为4767元，其他地区缴费基数下限为4492元。"
-        }
-      ]
+     "document_id": "DOC-GD-MEDICAL-TRANSFER-2022",
+     "jurisdiction_code": "440000",
+     "title": "广东省医疗保障局 广东省财政厅 国家税务总局广东省税务局关于印发《广东省基本医疗保险关系省内转移接续暂行办法》的通知（粤医保规〔2022〕6号）",
+     "authority": "广东省医疗保障局等三部门",
+     "official_url": "https://hsa.gd.gov.cn/zwgk/zfxxgkml/bmwj/gfxwj/content/post_3953355.html",
+     "fetched_at": "2026-09-05T15:48:13.814Z",
+     "content_sha256": "18b4c198fbc46bec9034584c579137725a2021ae7797fe2d5b51f3014e1076a2",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-MEDICAL-TRANSFER-2022/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "article",
+      "reference": "第六条"
+     },
+     "excerpt": "逐步统一全省职工医保缴费年限政策。累计缴费年限到2030年1月1日统一为男职工30年，女职工25年。未达前款规定的市，从2022年开始，在本市2021年缴费年限政策的基础上，逐年调整本市职工医保累计缴费年限。"
     }
-  ]
+   ]
+  },
+  {
+   "param_id": "P-GD-CONTRIB-BASE-UPPER",
+   "type": "number",
+   "value": 27501,
+   "unit": "yuan/month",
+   "effective_from": "2024-07-01",
+   "effective_to": "2025-06-30",
+   "source": "doc:DOC-GD-CONTRIBUTION-BASE-2024#正文",
+   "note": "全省企业职工基本养老保险缴费基数上限（2024年7月1日至2025年6月30日执行；按2023年全省全口径平均工资9167元的300%核定）",
+   "operation": "add",
+   "target_business_key": null,
+   "evidence": [
+    {
+     "document_id": "DOC-GD-CONTRIBUTION-BASE-2024",
+     "jurisdiction_code": "440000",
+     "title": "广东省人力资源和社会保障厅等四部门关于公布2023年全省全口径城镇单位就业人员月平均工资和2024年职工基本养老保险缴费基数上下限有关问题的通知（粤人社发〔2024〕33号）",
+     "authority": "广东省人力资源和社会保障厅等四部门",
+     "official_url": "https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4615619.html",
+     "fetched_at": "2026-09-05T15:52:37.918Z",
+     "content_sha256": "7f30cde426019882c52024b9dd128df08053d16c06dc9ba4ddc0fdc2b26d1fe3",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-CONTRIBUTION-BASE-2024/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "body",
+      "reference": "正文第一段"
+     },
+     "excerpt": "据统计，2023年全省全口径城镇单位就业人员月平均工资为9167元。按照相关规定，全省企业职工基本养老保险缴费基数上限为27501元，广州市、省直缴费基数下限为5500元，珠海市、佛山市、东莞市、中山市缴费基数下限为4767元，其他地区缴费基数下限为4492元。"
+    }
+   ]
+  },
+  {
+   "param_id": "P-GD-AVG-WAGE-2023",
+   "type": "number",
+   "value": 9167,
+   "unit": "yuan/month",
+   "effective_from": "2024-07-01",
+   "effective_to": "2025-06-30",
+   "source": "doc:DOC-GD-CONTRIBUTION-BASE-2024#正文",
+   "note": "2023年全省全口径城镇单位就业人员月平均工资（缴费基数核定依据）",
+   "operation": "add",
+   "target_business_key": null,
+   "evidence": [
+    {
+     "document_id": "DOC-GD-CONTRIBUTION-BASE-2024",
+     "jurisdiction_code": "440000",
+     "title": "广东省人力资源和社会保障厅等四部门关于公布2023年全省全口径城镇单位就业人员月平均工资和2024年职工基本养老保险缴费基数上下限有关问题的通知（粤人社发〔2024〕33号）",
+     "authority": "广东省人力资源和社会保障厅等四部门",
+     "official_url": "https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4615619.html",
+     "fetched_at": "2026-09-05T15:52:37.918Z",
+     "content_sha256": "7f30cde426019882c52024b9dd128df08053d16c06dc9ba4ddc0fdc2b26d1fe3",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-CONTRIBUTION-BASE-2024/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "body",
+      "reference": "正文第一段"
+     },
+     "excerpt": "据统计，2023年全省全口径城镇单位就业人员月平均工资为9167元。"
+    }
+   ]
+  },
+  {
+   "param_id": "P-GD-CONTRIB-BASE-UPPER",
+   "type": "number",
+   "value": 27549,
+   "unit": "yuan/month",
+   "effective_from": "2025-07-01",
+   "effective_to": null,
+   "source": "doc:DOC-GD-CONTRIBUTION-BASE-2025#正文",
+   "note": "全省企业职工基本养老保险缴费基数上限（自2025年7月1日起，原文未声明终止日，以下一年度调整文件发布为准）",
+   "operation": "add",
+   "target_business_key": null,
+   "evidence": [
+    {
+     "document_id": "DOC-GD-CONTRIBUTION-BASE-2025",
+     "jurisdiction_code": "440000",
+     "title": "关于公布2025年职工基本养老保险缴费基数上下限和基本养老金计发基数有关问题的通知（粤人社发〔2025〕32号）",
+     "authority": "广东省人力资源和社会保障厅",
+     "official_url": "https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4789648.html",
+     "fetched_at": "2026-09-06T13:55:36.775Z",
+     "content_sha256": "ca70f1155ba94cf09e6217fd85694a6adc8f03546ae8eb2038e6aa9c068b5aa5",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-CONTRIBUTION-BASE-2025/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "body",
+      "reference": "正文第一条"
+     },
+     "excerpt": "自2025年7月1日起，全省企业职工基本养老保险缴费基数上限调整为27549元，广州市、省直缴费基数下限调整为5510元，其他地区缴费基数下限调整为4775元。"
+    }
+   ]
+  },
+  {
+   "param_id": "P-GD-PENSION-CALC-BASE-2025",
+   "type": "number",
+   "value": 9493,
+   "unit": "yuan/month",
+   "effective_from": "2025-01-01",
+   "effective_to": "2025-12-31",
+   "source": "doc:DOC-GD-CONTRIBUTION-BASE-2025#正文",
+   "note": "2025年度我省企业职工基本养老保险和机关事业单位养老保险基本养老金计发基数（深圳市计发基数另行公布）",
+   "operation": "add",
+   "target_business_key": null,
+   "evidence": [
+    {
+     "document_id": "DOC-GD-CONTRIBUTION-BASE-2025",
+     "jurisdiction_code": "440000",
+     "title": "关于公布2025年职工基本养老保险缴费基数上下限和基本养老金计发基数有关问题的通知（粤人社发〔2025〕32号）",
+     "authority": "广东省人力资源和社会保障厅",
+     "official_url": "https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4789648.html",
+     "fetched_at": "2026-09-06T13:55:36.775Z",
+     "content_sha256": "ca70f1155ba94cf09e6217fd85694a6adc8f03546ae8eb2038e6aa9c068b5aa5",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-CONTRIBUTION-BASE-2025/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "body",
+      "reference": "正文第一条"
+     },
+     "excerpt": "2025年1月1日至12月31日我省企业职工基本养老保险和机关事业单位养老保险基本养老金计发基数为9493元/月，深圳市计发基数另行公布。"
+    }
+   ]
+  },
+  {
+   "param_id": "P-GD-UNEMPLOYMENT-BENEFIT-RATE",
+   "type": "number",
+   "value": 0.9,
+   "unit": "ratio",
+   "effective_from": "2025-01-12",
+   "effective_to": null,
+   "source": "doc:DOC-GD-UNEMPLOYMENT-REGULATION#第十九条",
+   "note": "失业保险金＝失业保险金领取地地级以上市最低工资标准的90%（现行条例第十九条）。起始日按现行版本（2025-01-12第二次修正）通过日保守取值；2013修订版已含该条款，如需精确回溯需补充施行日证据",
+   "operation": "add",
+   "target_business_key": null,
+   "evidence": [
+    {
+     "document_id": "DOC-GD-UNEMPLOYMENT-REGULATION",
+     "jurisdiction_code": "440000",
+     "title": "广东省失业保险条例（2002年通过、2013年修订、2022年第一次修正、2025年1月12日第二次修正）",
+     "authority": "广东省人民代表大会常务委员会",
+     "official_url": "https://hrss.gd.gov.cn/gkmlpt/content/4/4669/post_4669825.html",
+     "fetched_at": "2026-09-06T14:07:25.406Z",
+     "content_sha256": "15f3551f796ae24058b996c75d5220a79115dc9a82915cbff537b008d28e4456",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-UNEMPLOYMENT-REGULATION/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "body",
+      "reference": "第十九条"
+     },
+     "excerpt": "第十九条 失业保险金由社会保险经办机构按照失业保险金领取地地级以上市最低工资标准的百分之九十按月计发，省人民政府根据国家规定可以适当调整失业保险金标准。"
+    }
+   ]
+  }
+ ],
+ "tables": [
+  {
+   "param_id": "T-GD-CONTRIB-BASE-LOWER-BY-CITY",
+   "type": "table",
+   "effective_from": "2024-07-01",
+   "effective_to": "2025-06-30",
+   "key_fields": [
+    "city_group"
+   ],
+   "value_fields": [
+    "base_lower"
+   ],
+   "rows": [
+    {
+     "city_group": "guangzhou_province_direct",
+     "base_lower": 5500
+    },
+    {
+     "city_group": "zhuhai_foshan_dongguan_zhongshan",
+     "base_lower": 4767
+    },
+    {
+     "city_group": "other_cities",
+     "base_lower": 4492
+    }
+   ],
+   "note": "全省企业职工基本养老保险缴费基数下限按市分档（2024年7月1日至2025年6月30日执行）。2025年7月起的下限调整文件（粤人社发〔2025〕32号）尚未从省人社厅官网原文采集，列入待办",
+   "source": "doc:DOC-GD-CONTRIBUTION-BASE-2024#正文",
+   "operation": "add",
+   "target_business_key": null,
+   "evidence": [
+    {
+     "document_id": "DOC-GD-CONTRIBUTION-BASE-2024",
+     "jurisdiction_code": "440000",
+     "title": "广东省人力资源和社会保障厅等四部门关于公布2023年全省全口径城镇单位就业人员月平均工资和2024年职工基本养老保险缴费基数上下限有关问题的通知（粤人社发〔2024〕33号）",
+     "authority": "广东省人力资源和社会保障厅等四部门",
+     "official_url": "https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4615619.html",
+     "fetched_at": "2026-09-05T15:52:37.918Z",
+     "content_sha256": "7f30cde426019882c52024b9dd128df08053d16c06dc9ba4ddc0fdc2b26d1fe3",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-CONTRIBUTION-BASE-2024/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "body",
+      "reference": "正文第一段"
+     },
+     "excerpt": "全省企业职工基本养老保险缴费基数上限为27501元，广州市、省直缴费基数下限为5500元，珠海市、佛山市、东莞市、中山市缴费基数下限为4767元，其他地区缴费基数下限为4492元。"
+    }
+   ]
+  },
+  {
+   "param_id": "T-GD-CONTRIB-BASE-LOWER-BY-CITY",
+   "type": "table",
+   "effective_from": "2025-07-01",
+   "effective_to": null,
+   "key_fields": [
+    "city_group"
+   ],
+   "value_fields": [
+    "base_lower"
+   ],
+   "rows": [
+    {
+     "city_group": "guangzhou_province_direct",
+     "base_lower": 5510
+    },
+    {
+     "city_group": "other_cities",
+     "base_lower": 4775
+    }
+   ],
+   "note": "全省企业职工基本养老保险缴费基数下限分档（自2025年7月1日起）：广州市及省直5510元/月、其他地区4775元/月（2025年度起珠海/佛山/东莞/中山不再单独设档，并入其他地区）",
+   "source": "doc:DOC-GD-CONTRIBUTION-BASE-2025#正文",
+   "operation": "add",
+   "target_business_key": null,
+   "evidence": [
+    {
+     "document_id": "DOC-GD-CONTRIBUTION-BASE-2025",
+     "jurisdiction_code": "440000",
+     "title": "关于公布2025年职工基本养老保险缴费基数上下限和基本养老金计发基数有关问题的通知（粤人社发〔2025〕32号）",
+     "authority": "广东省人力资源和社会保障厅",
+     "official_url": "https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4789648.html",
+     "fetched_at": "2026-09-06T13:55:36.775Z",
+     "content_sha256": "ca70f1155ba94cf09e6217fd85694a6adc8f03546ae8eb2038e6aa9c068b5aa5",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-CONTRIBUTION-BASE-2025/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "body",
+      "reference": "正文第一条"
+     },
+     "excerpt": "自2025年7月1日起，全省企业职工基本养老保险缴费基数上限调整为27549元，广州市、省直缴费基数下限调整为5510元，其他地区缴费基数下限调整为4775元。"
+    }
+   ]
+  },
+  {
+   "param_id": "T-GD-MIN-WAGE-BY-CITY",
+   "type": "table",
+   "effective_from": "2026-09-01",
+   "effective_to": null,
+   "key_fields": [
+    "city"
+   ],
+   "value_fields": [
+    "tier",
+    "monthly",
+    "hourly"
+   ],
+   "rows": [
+    {
+     "city": "广州",
+     "tier": "一",
+     "monthly": 2680,
+     "hourly": 25.4
+    },
+    {
+     "city": "深圳",
+     "tier": "一",
+     "monthly": 2700,
+     "hourly": 25.4
+    },
+    {
+     "city": "珠海",
+     "tier": "二",
+     "monthly": 2300,
+     "hourly": 21.9
+    },
+    {
+     "city": "佛山",
+     "tier": "二",
+     "monthly": 2300,
+     "hourly": 21.9
+    },
+    {
+     "city": "东莞",
+     "tier": "二",
+     "monthly": 2300,
+     "hourly": 21.9
+    },
+    {
+     "city": "中山",
+     "tier": "二",
+     "monthly": 2300,
+     "hourly": 21.9
+    },
+    {
+     "city": "汕头",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "韶关",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "河源",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "梅州",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "惠州",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "汕尾",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "江门",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "阳江",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "湛江",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "茂名",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "肇庆",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "清远",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "潮州",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "揭阳",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    },
+    {
+     "city": "云浮",
+     "tier": "三",
+     "monthly": 2040,
+     "hourly": 20.2
+    }
+   ],
+   "note": "广东省最低工资标准分档（粤府函〔2026〕188号，自2026年9月1日起）：一类广州2680/深圳2700元/月（25.4元/小时）；二类2300元/月（珠海、佛山、东莞、中山，21.9元/小时）；三类2040元/月（其余15市，20.2元/小时）。数值与省人社厅发布页（DOC-GD-MINIMUM-WAGE-ADJUST）文本互证",
+   "source": "doc:DOC-GD-MINIMUM-WAGE-2026#正文附件",
+   "operation": "add",
+   "target_business_key": null,
+   "evidence": [
+    {
+     "document_id": "DOC-GD-MINIMUM-WAGE-2026",
+     "jurisdiction_code": "440000",
+     "title": "广东省人民政府关于调整我省最低工资标准的通知（粤府函〔2026〕188号）",
+     "authority": "广东省人民政府",
+     "official_url": "https://www.gd.gov.cn/zwgk/wjk/qbwj/yfh/content/post_4942177.html",
+     "fetched_at": "2026-09-07T02:13:46.755Z",
+     "content_sha256": "de716e1c054d4fb232a9579985d0a83a40d240a3f35b859a933cf14cb2bc7513",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-MINIMUM-WAGE-2026/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "body",
+      "reference": "正文第一条及附件《广东省最低工资标准表》"
+     },
+     "excerpt": "从2026年9月1日起，对我省全日制就业劳动者月最低工资标准和非全日制小时最低工资标准进行调整，具体标准附后。"
+    },
+    {
+     "document_id": "DOC-GD-MINIMUM-WAGE-ADJUST",
+     "jurisdiction_code": "440000",
+     "title": "广东省9月1日起调整提高最低工资标准（省人社厅发布页，数值明细）",
+     "authority": "广东省人力资源和社会保障厅",
+     "official_url": "https://hrss.gd.gov.cn/gkmlpt/content/4/4942/post_4942224.html",
+     "fetched_at": "2026-09-07T02:10:51.850Z",
+     "content_sha256": "1dad0d0c9995a6b861f616357e85c86072d12d1e8e7f3e4e41b4654cf24b72cb",
+     "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-MINIMUM-WAGE-ADJUST/original.html",
+     "parse_version": "extracted-text-v1",
+     "locator": {
+      "type": "body",
+      "reference": "正文第二段"
+     },
+     "excerpt": "此次调整后全省分为三类标准，其中广州、深圳执行一类标准，广州市调整为2680元/月，深圳市调整为2700元/月，对应的非全日制小时最低工资标准均为25.4元/小时；二类标准调整为2300元/月，执行地区为珠海、佛山、东莞、中山，对应的非全日制小时最低工资标准为21.9元/小时；三类标准调整为2040元/月，执行地区为汕头、韶关、河源、梅州、惠州、汕尾、江门、阳江、湛江、茂名、肇庆、清远、潮州、揭阳、云浮，对应的非全日制小时最低工资标准为20.2元/小时。"
+    }
+   ]
+  }
+ ]
 }

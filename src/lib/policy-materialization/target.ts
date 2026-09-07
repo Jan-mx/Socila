@@ -135,7 +135,7 @@ export interface SqlLike {
 /** 固定计数核对表（NRP-AC-015 / PRD §9）。 */
 export const EXPECTED_TOTAL_COUNTS = {
   rules: 49,
-  params: 70,
+  params: 75,
   rule_sets: 5,
   policy_pack_versions: 4,
   tests: 528,

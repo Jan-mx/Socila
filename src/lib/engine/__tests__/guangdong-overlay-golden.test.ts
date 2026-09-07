@@ -209,14 +209,17 @@ describe("广东overlay黄金（NRP-AC-003/005，零数据库依赖）", () => {
       inWindow.entities.find((e) => e.businessKey === "P-GD-CONTRIB-BASE-UPPER"),
     ).toBeTruthy();
 
+    // 2025-07-01起新窗口生效（粤人社发〔2025〕32号已编码）。
     const afterWindow = mergePolicyContext(
       [...cnEntities, ...gdEntities],
       chain,
       "2025-07-01",
     );
-    expect(
-      afterWindow.entities.find((e) => e.businessKey === "P-GD-CONTRIB-BASE-UPPER"),
-    ).toBeUndefined();
+    const upper2025 = afterWindow.entities.find(
+      (e) => e.businessKey === "P-GD-CONTRIB-BASE-UPPER",
+    );
+    expect(upper2025).toBeTruthy();
+    expect((upper2025!.payload as { value?: unknown }).value).toBe(27549);
     // 2030统一的医保年限参数不受影响。
     expect(
       afterWindow.entities.find(
@@ -252,6 +255,165 @@ describe("广东overlay黄金（NRP-AC-003/005，零数据库依赖）", () => {
     // GD医保年限30年（2030口径）→ 要求360月，缺口260月。
     expect(calc.mi.lifetime_required_months).toBe(360);
     expect(calc.mi.lifetime_gap_months).toBe(260);
+  });
+
+  it("2025窗口：缴费基数上限27549、下限分档5510/4775（粤人社发〔2025〕32号）", () => {
+    const chain = ["CN", "440000"];
+    const toEntity = (p: Record<string, unknown>): MergeInputEntity => ({
+      businessKey: p.param_id as string,
+      jurisdictionCode: "440000",
+      packId: "GD-BASE",
+      version: 1,
+      payload: p,
+      operation: "add",
+      targetBusinessKey: null,
+      effectiveFrom: p.effective_from as string,
+      effectiveTo: (p.effective_to as string | undefined) ?? null,
+    });
+    const gdEntities = [...gdPack.params, ...gdPack.tables].map(toEntity);
+    const cnEntities = [
+      ...(cnPack.params as Array<Record<string, unknown>>).map((p) => ({
+        businessKey: p.param_id as string,
+        jurisdictionCode: "CN",
+        packId: "CN-BASELINE",
+        version: 1,
+        payload: p,
+        operation: "baseline" as const,
+        targetBusinessKey: null,
+        effectiveFrom: (p.effective_from as string) ?? "2025-01-01",
+        effectiveTo: (p.effective_to as string | undefined) ?? null,
+      })),
+    ];
+    const merged = mergePolicyContext([...cnEntities, ...gdEntities], chain, "2025-07-01");
+    expect(merged.conflicts).toEqual([]);
+    const upper = merged.entities.find(
+      (e) => e.businessKey === "P-GD-CONTRIB-BASE-UPPER",
+    );
+    expect(upper).toBeTruthy();
+    expect((upper!.payload as { value?: unknown }).value).toBe(27549);
+    const lower = merged.entities.find(
+      (e) => e.businessKey === "T-GD-CONTRIB-BASE-LOWER-BY-CITY",
+    );
+    expect(lower).toBeTruthy();
+    const rows = (lower!.payload as { rows?: unknown[] }).rows as Array<
+      Record<string, unknown>
+    >;
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { city_group: "guangzhou_province_direct", base_lower: 5510 },
+        { city_group: "other_cities", base_lower: 4775 },
+      ]),
+    );
+  });
+
+  it("有效期边界：2025-06-30旧窗口27501，2025-07-01起新窗口27549", () => {
+    const chain = ["CN", "440000"];
+    const toEntity = (p: Record<string, unknown>): MergeInputEntity => ({
+      businessKey: p.param_id as string,
+      jurisdictionCode: "440000",
+      packId: "GD-BASE",
+      version: 1,
+      payload: p,
+      operation: "add",
+      targetBusinessKey: null,
+      effectiveFrom: p.effective_from as string,
+      effectiveTo: (p.effective_to as string | undefined) ?? null,
+    });
+    const gdEntities = [...gdPack.params, ...gdPack.tables].map(toEntity);
+    const mergedOld = mergePolicyContext([...gdEntities], chain, "2025-06-30");
+    const oldUpper = mergedOld.entities.find(
+      (e) => e.businessKey === "P-GD-CONTRIB-BASE-UPPER",
+    );
+    expect((oldUpper!.payload as { value?: unknown }).value).toBe(27501);
+    const mergedNew = mergePolicyContext([...gdEntities], chain, "2025-07-01");
+    const newUpper = mergedNew.entities.find(
+      (e) => e.businessKey === "P-GD-CONTRIB-BASE-UPPER",
+    );
+    expect((newUpper!.payload as { value?: unknown }).value).toBe(27549);
+  });
+
+  it("计发基数：P-GD-PENSION-CALC-BASE-2025=9493（2025年度，深圳另行公布）", () => {
+    const chain = ["CN", "440000"];
+    const toEntity = (p: Record<string, unknown>): MergeInputEntity => ({
+      businessKey: p.param_id as string,
+      jurisdictionCode: "440000",
+      packId: "GD-BASE",
+      version: 1,
+      payload: p,
+      operation: "add",
+      targetBusinessKey: null,
+      effectiveFrom: p.effective_from as string,
+      effectiveTo: (p.effective_to as string | undefined) ?? null,
+    });
+    const gdEntities = [...gdPack.params, ...gdPack.tables].map(toEntity);
+    const inYear = mergePolicyContext([...gdEntities], chain, "2025-06-15");
+    const calcBase = inYear.entities.find(
+      (e) => e.businessKey === "P-GD-PENSION-CALC-BASE-2025",
+    );
+    expect(calcBase).toBeTruthy();
+    expect((calcBase!.payload as { value?: unknown }).value).toBe(9493);
+    const afterYear = mergePolicyContext([...gdEntities], chain, "2026-01-01");
+    expect(
+      afterYear.entities.find((e) => e.businessKey === "P-GD-PENSION-CALC-BASE-2025"),
+    ).toBeUndefined();
+  });
+
+  it("最低工资分档（粤府函〔2026〕188号）：2026-09-01起广州2680/深圳2700/珠海2300/汕头2040", () => {
+    const chain = ["CN", "440000"];
+    const toEntity = (p: Record<string, unknown>): MergeInputEntity => ({
+      businessKey: p.param_id as string,
+      jurisdictionCode: "440000",
+      packId: "GD-BASE",
+      version: 1,
+      payload: p,
+      operation: "add",
+      targetBusinessKey: null,
+      effectiveFrom: p.effective_from as string,
+      effectiveTo: (p.effective_to as string | undefined) ?? null,
+    });
+    const gdEntities = [...gdPack.params, ...gdPack.tables].map(toEntity);
+    const inEffect = mergePolicyContext([...gdEntities], chain, "2026-09-01");
+    const minWage = inEffect.entities.find(
+      (e) => e.businessKey === "T-GD-MIN-WAGE-BY-CITY",
+    );
+    expect(minWage).toBeTruthy();
+    const rows = (minWage!.payload as { rows?: unknown[] }).rows as Array<
+      Record<string, unknown>
+    >;
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { city: "广州", tier: "一", monthly: 2680, hourly: 25.4 },
+        { city: "深圳", tier: "一", monthly: 2700, hourly: 25.4 },
+        { city: "珠海", tier: "二", monthly: 2300, hourly: 21.9 },
+        { city: "汕头", tier: "三", monthly: 2040, hourly: 20.2 },
+      ]),
+    );
+    const before = mergePolicyContext([...gdEntities], chain, "2026-08-31");
+    expect(
+      before.entities.find((e) => e.businessKey === "T-GD-MIN-WAGE-BY-CITY"),
+    ).toBeUndefined();
+  });
+
+  it("失业保险金标准率：P-GD-UNEMPLOYMENT-BENEFIT-RATE=0.9（条例第十九条）", () => {
+    const chain = ["CN", "440000"];
+    const toEntity = (p: Record<string, unknown>): MergeInputEntity => ({
+      businessKey: p.param_id as string,
+      jurisdictionCode: "440000",
+      packId: "GD-BASE",
+      version: 1,
+      payload: p,
+      operation: "add",
+      targetBusinessKey: null,
+      effectiveFrom: p.effective_from as string,
+      effectiveTo: (p.effective_to as string | undefined) ?? null,
+    });
+    const gdEntities = [...gdPack.params, ...gdPack.tables].map(toEntity);
+    const merged = mergePolicyContext([...gdEntities], chain, "2025-01-12");
+    const rate = merged.entities.find(
+      (e) => e.businessKey === "P-GD-UNEMPLOYMENT-BENEFIT-RATE",
+    );
+    expect(rate).toBeTruthy();
+    expect((rate!.payload as { value?: unknown }).value).toBe(0.9);
   });
 
   it("地区隔离：上海不出现GD restrict，GD不出现上海补贴规则（NRP-AC-003/004）", () => {

@@ -199,7 +199,7 @@ describe("repair目标绑定与指纹（WI-20260906-01）", () => {
 });
 
 describe("manifest（NRP-FR-019，确定性）", () => {
-  it("四地区计数与仓库权威资产一致（CN16/6、沪8/27、粤1/5、川0/3）", () => {
+  it("四地区计数与仓库权威资产一致（CN16/6、沪8/27、粤1/10、川0/3）", () => {
     const manifest = buildManifest(fakeGitReader());
     const byJur = new Map(manifest.regions.map((r) => [r.jurisdictionCode, r]));
     expect(byJur.get("CN")!.rules).toHaveLength(16);
@@ -207,10 +207,10 @@ describe("manifest（NRP-FR-019，确定性）", () => {
     expect(byJur.get("310000")!.rules).toHaveLength(8);
     expect(byJur.get("310000")!.params).toHaveLength(27);
     expect(byJur.get("440000")!.rules).toHaveLength(1);
-    expect(byJur.get("440000")!.params).toHaveLength(5);
+    expect(byJur.get("440000")!.params).toHaveLength(10);
     expect(byJur.get("510000")!.rules).toHaveLength(0);
     expect(byJur.get("510000")!.params).toHaveLength(3);
-    expect(manifest.counts).toEqual({ rules: 25, params: 41, ruleSets: 4, packs: 4 });
+    expect(manifest.counts).toEqual({ rules: 25, params: 46, ruleSets: 4, packs: 4 });
   });
 
   it("同一提交内容构建的manifest哈希恒定", () => {
@@ -257,11 +257,19 @@ describe("计划器（NRP-FR-018/NRP-AC-013）", () => {
     };
   }
 
-  it("空基线：CN/粤/川首次实体v1", () => {
+  it("空基线：CN/粤/川首次实体v1；同键多窗口条目按出现顺序v1、v2递增", () => {
     const plan = buildPlan(manifest, emptyState(), []);
     const byJur = new Map(plan.regions.map((r) => [r.jurisdictionCode, r]));
     for (const e of byJur.get("CN")!.entities) expect(e.version).toBe(1);
-    for (const e of byJur.get("440000")!.entities) expect(e.version).toBe(1);
+    // GD同param_id多窗口（2024与2025窗口）：同一业务键在manifest内顺序版本化。
+    const seenGd = new Map<string, number>();
+    for (const e of byJur.get("440000")!.entities) {
+      const n = (seenGd.get(e.businessKey) ?? 0) + 1;
+      seenGd.set(e.businessKey, n);
+      expect(e.version).toBe(n);
+    }
+    expect(seenGd.get("P-GD-CONTRIB-BASE-UPPER")).toBe(2);
+    expect(seenGd.get("T-GD-CONTRIB-BASE-LOWER-BY-CITY")).toBe(2);
     for (const e of byJur.get("510000")!.entities) expect(e.version).toBe(1);
     // 四川批次规则成员为0（PRD §7不变量）。
     expect(byJur.get("510000")!.counts.rules).toBe(0);

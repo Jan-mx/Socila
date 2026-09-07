@@ -1,0 +1,15 @@
+cache-control: no-cache, private
+connection: keep-alive
+content-encoding: gzip
+content-security-policy: manifest-src 'self';
+content-type: text/html; charset=UTF-8
+date: Mon, 07 Sep 2026 02:10:51 GMT
+referrer-policy: origin
+server: nginx
+set-cookie: Path=/; HttpOnly; Secure
+transfer-encoding: chunked
+vary: Accept-Encoding
+x-download-options: noopen
+x-frame-options: SAMEORIGIN
+x-permitted-cross-domain-policies: none
+x-xss-protection: 1;mode=block

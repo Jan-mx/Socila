@@ -42,15 +42,20 @@ export interface MaterializationPlan {
 
 export class PlanConflictError extends Error {}
 
+/** 版本解析：既有键→最大版本+1；同manifest内重复业务键（多生效窗口条目）→
+ * 按出现顺序递增（v1、v2…），避免同键同版本冲突（WI任务2：同param_id多窗口）。 */
 function resolveVersion(
   state: ExistingState,
+  planned: Map<string, number>,
   jurisdictionCode: string,
   entityType: "rule" | "param" | "rule_set",
   businessKey: string,
 ): number {
-  const existing = state.maxVersions.get(`${jurisdictionCode}|${businessKey}`);
-  // 上海已有业务键→最大版本+1（v1 published→v2）；新业务键→v1（NRP-AC-013）。
-  return existing === undefined ? 1 : existing + 1;
+  const key = `${jurisdictionCode}|${businessKey}`;
+  const base = state.maxVersions.get(key) ?? 0;
+  const next = Math.max(base, planned.get(key) ?? 0) + 1;
+  planned.set(key, next);
+  return next;
 }
 
 function buildEntity(
@@ -85,8 +90,9 @@ function planRule(
   region: ManifestRegion,
   rule: ManifestRegion["rules"][number],
   state: ExistingState,
+  planned: Map<string, number>,
 ): PlannedEntity {
-  const version = resolveVersion(state, region.jurisdictionCode, "rule", rule.businessKey);
+  const version = resolveVersion(state, planned, region.jurisdictionCode, "rule", rule.businessKey);
   const payload = rule.payload as {
     operation?: unknown;
     target_business_key?: unknown;
@@ -113,8 +119,9 @@ function planParam(
   region: ManifestRegion,
   param: ManifestRegion["params"][number],
   state: ExistingState,
+  planned: Map<string, number>,
 ): PlannedEntity {
-  const version = resolveVersion(state, region.jurisdictionCode, "param", param.businessKey);
+  const version = resolveVersion(state, planned, region.jurisdictionCode, "param", param.businessKey);
   const payload = param.payload as {
     operation?: unknown;
     target_business_key?: unknown;
@@ -140,10 +147,11 @@ function planRuleSet(
   region: ManifestRegion,
   ruleSetPayload: Record<string, unknown> | null,
   state: ExistingState,
+  planned: Map<string, number>,
 ): PlannedEntity | null {
   if (!ruleSetPayload) return null;
   const ruleSetId = ruleSetPayload.rule_set_id as string;
-  const version = resolveVersion(state, region.jurisdictionCode, "rule_set", ruleSetId);
+  const version = resolveVersion(state, planned, region.jurisdictionCode, "rule_set", ruleSetId);
   const operation =
     typeof ruleSetPayload.operation === "string" ? ruleSetPayload.operation : "add";
   const targetBusinessKey =
@@ -230,15 +238,17 @@ export function buildPlan(
 ): MaterializationPlan {
   const regions: PlannedRegion[] = manifest.regions.map((region) => {
     const entities: PlannedEntity[] = [];
+    // 本manifest内已分配版本（同键多窗口条目顺序递增）。
+    const plannedVersions = new Map<string, number>();
 
     for (const rule of region.rules) {
-      entities.push(planRule(region, rule, state));
+      entities.push(planRule(region, rule, state, plannedVersions));
     }
     for (const param of region.params) {
-      entities.push(planParam(region, param, state));
+      entities.push(planParam(region, param, state, plannedVersions));
     }
     if (region.ruleSetFile !== null && region.ruleSetPayload) {
-      const entity = planRuleSet(region, region.ruleSetPayload, state);
+      const entity = planRuleSet(region, region.ruleSetPayload, state, plannedVersions);
       if (entity) entities.push(entity);
     }
     entities.push(planPack(region, state));

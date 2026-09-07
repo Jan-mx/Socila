@@ -530,7 +530,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     // 固定计数（NRP-AC-015）。
     expect(result.counts).toEqual({
       rules: 49,
-      params: 70,
+      params: 75,
       rule_sets: 5,
       policy_pack_versions: 4,
       tests: 528,
@@ -959,7 +959,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     expect(after.counts).toEqual(before.counts);
     expect(after.counts).toEqual({
       rules: 49,
-      params: 70,
+      params: 75,
       rule_sets: 5,
       policy_pack_versions: 4,
       tests: 528,
