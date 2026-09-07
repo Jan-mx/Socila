@@ -39,7 +39,7 @@
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
-| 任务2：CN/上海/广东首期政策交付 | In Progress：GD增量物化已apply并验证（50/75/6/5、幂等no-op、规划回归逐字节一致、恢复零漂移） | 三地区管理员批准（等待逐地区决定）→ 授权后创建并重放三地区候选快照；四川无快照；然后任务2首期Accepted |
+| 任务2：CN/上海/广东首期政策交付 | In Progress：GD增量物化已apply并验证（50/75/6/5）；三地区已批准published（规划回归528/528）；候选快照计划零冲突待授权 | 授权后创建并重放三地区候选快照；四川无快照；独立复审后任务2首期Accepted |
 | 任务3：地区感知用户规划 | Planned（等待任务2 Accepted） | 与任务4并行；首期上海/广东，四川unsupported；广东医保退休缺参仅能力级needs_agent |
 | 任务4：上海案例治理 | Planned（等待任务2 Accepted） | 与任务3并行；只治理上海851/117为452/36/528并绑定上海候选快照 |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
@@ -298,6 +298,19 @@
 | 规划回归 | `planning-regression-post-gd-apply.txt`与apply前**逐字节一致**（SHA-256 `84535389…`相同，528/524/4、passSetHash `e4fb8c3d…`） |
 | apply后备份与恢复 | `backup/db/policyops-gd-delta-post-20260907063211.dump`（711,209B；SHA-256 `189572ac…`）；临时容器`pg_restore`退出0/0错误；`restore-reconcile.ts` 37表+18 sequence全一致；容器已删除 |
 | 边界 | 未执行管理员批准、未创建候选快照、未改四川实体、未开放流量、未删除数据 |
+
+## 当前任务管理员批准（任务2三地区，2026-09-07，用户指示"三个地区全部为批准并继续"）
+
+| 步骤 | 结果 |
+| --- | --- |
+| 批准执行 | 用户（管理员）决定三地区全部批准并指示执行；经`promoteEntity`正规发布用例（schema/examples/回归门禁+发布审计），**CN/310000/440000全部规则、参数、规则集晋级published**（规则50、参数72、规则集5；业务计数50/75/6/5/528/851/117/0不变；四川3参数保持draft、无任何变更） |
+| 阻塞①修复 | `isJurisdictionBlocked`改**最新批次**语义（历史blocked批次是审计事实不代表当前就绪）——GD旧blocked批次不再阻塞批准；四川最新批次blocked仍拒绝。TDD Red/Green（materializer.integration新增就绪语义测试） |
+| 阻塞②修复 | 晋级门禁测试归属（审查缺陷10补全）：规则晋级只认本地区归属测试；CN/GD规则无tests表测试时用**DSL examples**作回归载体（`runExamplesGate`，参数基线=地区参数包published参数；不落tests表、固定计数528不变）；restrict/exempt元数据规则豁免examples与回归门禁。TDD更新缺陷10测试（CN规则不拿SH测试充数+examples兜底+无examples拒绝） |
+| 阻塞③修复 | 持久库4条过期测试期望对齐权威DSL（R-200时间线19→18.5、R-220输入参数名迁移P-SH-MEDICAL-LIFETIME-REQUIRED-YEARS→P-MI-LIFETIME-MALE-YEARS+gender+legacy双名兼容、R-300月差2→3（引擎date_diff语义）、R-510浮点参数改二进制精确组合0.25+0.5）→ **规划回归528/528全过**（passSetHash `e4fb8c3d…`→`d25068b8…`，记录为测试期望修正后的新基线）；GD规则文件parameter_refs/examples格式按schema修正并同步库中draft行（git与库一致，零delta） |
+| 阻塞④修复 | 快照合并：历史地方add与链上国家baseline同名时跳过（重分类继承语义；旧上海基线16条CN同名add+2参数不再产生duplicate-add；行保留可回退）。TDD Red/Green（snapshot-service集成新增场景） |
+| 快照计划（只读） | 三地区候选快照resolvePolicyContext：**CN 0冲突/16规则/7参数、上海 0冲突/24规则/38参数、广东 0冲突/17规则/12参数**（asOf 2026-09-07） |
+| 门禁 | npm test 485/485、test:db 87/87、tsc退出0、eslint 0 error/7既有warning、build零warning、scan-secrets 8候选零命中 |
+| 边界 | 未创建候选快照（等待授权）、未开放流量、未删除数据、四川无变更 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
