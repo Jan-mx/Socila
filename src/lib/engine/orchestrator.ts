@@ -243,3 +243,162 @@ function autoComputeMonthsToRetire(ctx: any, asOfDate: string): void {
     }
   }
 }
+
+// ─── 快照驱动执行（任务3 JRP-FR-008）────────────────────────────────────────
+// 规则引擎从不可变 PolicySnapshot 成员（DB 行形状 payload）还原有序规则与参数，
+// 不再按公开请求中的 rule_set_id/policy_pack_id 查询数据库（JRP-FR-004/008）。
+
+export interface SnapshotRuleRow {
+  ruleId: string;
+  dslVersion: string;
+  name: string;
+  module: string;
+  status: string;
+  priority: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  supersedes: unknown;
+  inputs: unknown;
+  parameterRefs: unknown;
+  decisionTable: unknown;
+  outputs: unknown;
+  examples: unknown;
+  evidence: unknown;
+  notes?: string | null;
+}
+
+export interface SnapshotParamRow {
+  paramId: string;
+  type: string;
+  value?: unknown;
+  rows?: unknown;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  policyPackId?: string;
+  version?: number;
+}
+
+export interface SnapshotRuleSetRow {
+  ruleSetId: string;
+  rules: string[];
+  version: number;
+}
+
+export interface OrchestrateSnapshotInput {
+  user: Record<string, unknown>;
+  asOfDate: string;
+  /** 执行顺序来源：快照规则集成员 payload 的 rules 数组。 */
+  ruleSet: SnapshotRuleSetRow | null;
+  /** 快照规则成员 payload（DB 行形状）。 */
+  rules: SnapshotRuleRow[];
+  /** 快照参数成员 payload（DB 行形状，含有效窗口已按快照日期固定）。 */
+  params: SnapshotParamRow[];
+}
+
+/** 快照成员规则行 → RuleDefinition（字段与 orchestrate 的 DB 行映射一致）。 */
+export function snapshotRulesToDefinitions(
+  ruleRows: SnapshotRuleRow[],
+): RuleDefinition[] {
+  return ruleRows.map((dbRule) => ({
+    dsl_version: dbRule.dslVersion,
+    rule_id: dbRule.ruleId,
+    name: dbRule.name,
+    module: dbRule.module,
+    status: (dbRule.status === "published" ||
+    dbRule.status === "draft" ||
+    dbRule.status === "retired"
+      ? dbRule.status
+      : "draft") as RuleDefinition["status"],
+    priority: dbRule.priority,
+    effective_from: dbRule.effectiveFrom,
+    effective_to: dbRule.effectiveTo,
+    supersedes: (dbRule.supersedes as string[]) ?? [],
+    notes: dbRule.notes ?? undefined,
+    inputs: (dbRule.inputs as any[]) ?? [],
+    parameter_refs: (dbRule.parameterRefs as any[]) ?? [],
+    decision_table: dbRule.decisionTable as any,
+    outputs: (dbRule.outputs as any[]) ?? [],
+    examples: (dbRule.examples as any[]) ?? [],
+    evidence: (dbRule.evidence as any[]) ?? [],
+  }));
+}
+
+/** 快照成员参数行 → 扁平参数命名空间（表/时间线取 rows，其余取 value）。 */
+export function snapshotParamsToFlat(
+  paramRows: SnapshotParamRow[],
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const p of paramRows) {
+    if (p.type === "table" || p.type === "timeline") {
+      result[p.paramId] = p.rows ?? [];
+    } else {
+      result[p.paramId] = p.value;
+    }
+  }
+  return result;
+}
+
+/**
+ * 从活动快照成员执行规则引擎（JRP-FR-008）：快照已按 as_of_date 固定成员，
+ * 本函数不做任何数据库查询与窗口过滤——成员即权威执行集合。
+ */
+export function orchestrateSnapshot(
+  input: OrchestrateSnapshotInput,
+): OrchestratorResult {
+  const asOfDate = input.asOfDate;
+  const ruleDefs = snapshotRulesToDefinitions(input.rules);
+  const flatParams = snapshotParamsToFlat(input.params);
+
+  const ruleMap = new Map<string, RuleDefinition>();
+  for (const rule of ruleDefs) {
+    ruleMap.set(rule.rule_id, rule);
+  }
+
+  // 执行顺序来自快照规则集成员 payload；规则集缺失时按业务键稳定排序。
+  const orderedRuleIds =
+    input.ruleSet?.rules.length
+      ? input.ruleSet.rules
+      : ruleDefs.map((r) => r.rule_id).sort();
+
+  const ctx: any = {
+    user: structuredClone(input.user),
+    params: flatParams,
+    calc: { _today: asOfDate },
+    plan: {},
+  };
+
+  const allTrace: TraceEntry[] = [];
+  const executedDefs: RuleDefinition[] = [];
+  let rulesExecuted = 0;
+
+  for (const ruleId of orderedRuleIds) {
+    const rule = ruleMap.get(ruleId);
+    if (!rule) continue;
+    executedDefs.push(rule);
+    const result = executeRule(rule, ctx);
+    allTrace.push(...result.trace);
+    rulesExecuted++;
+    if (ruleId === "R-120-COMPUTE-RETIRE-DATE") {
+      autoComputeMonthsToRetire(ctx, asOfDate);
+    }
+  }
+
+  const packIds = [
+    ...new Set(input.params.map((p) => p.policyPackId).filter(Boolean)),
+  ];
+
+  return {
+    plan: ctx.plan ?? {},
+    calc: ctx.calc ?? {},
+    user: ctx.user ?? {},
+    trace: allTrace,
+    meta: {
+      rule_set_id: input.ruleSet?.ruleSetId ?? "snapshot",
+      policy_pack_id: packIds.length > 0 ? packIds.join("+") : "snapshot",
+      as_of_date: asOfDate,
+      rules_executed: rulesExecuted,
+    },
+    effectiveRules: executedDefs,
+    flatParams,
+  };
+}

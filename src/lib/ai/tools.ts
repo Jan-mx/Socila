@@ -7,7 +7,7 @@
 
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import { computePlan } from "@/server/modules/planning/application/compute-plan.use-case";
+import { createJurisdictionComputePlan } from "@/server/modules/planning/application";
 
 // ─── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -19,9 +19,44 @@ interface AgentQuestion {
   options?: { value: string; label: string }[];
 }
 
+/** 稳定地区代码（JRP-FR-002：CN 或 6 位行政区划代码）。 */
+export const JURISDICTION_CODE_PATTERN = /^(CN|\d{6})$/;
+
+/** 会话已确认地区校验（JRP-NFR-008）：返回 null 表示放行，否则返回稳定错误。 */
+export function assertToolJurisdiction(
+  requestCode: string | undefined | null,
+  confirmedCode: string | undefined | null,
+): string | null {
+  if (!requestCode) {
+    return "JURISDICTION_REQUIRED: 计算前必须携带已确认地区代码";
+  }
+  if (!confirmedCode) {
+    return "JURISDICTION_REQUIRED: 会话尚未确认规划地区，请先请用户选择地区";
+  }
+  if (requestCode !== confirmedCode) {
+    return "JURISDICTION_CONTEXT_MISMATCH: 请求地区与会话已确认地区不一致，请先确认或切换地区";
+  }
+  return null;
+}
+
+/** updateProfile 候选提取：只有显式 jurisdiction_code 键可产生候选（JRP-FR-016）。 */
+export function extractCandidateFromUpdateProfile(
+  input: Record<string, unknown>,
+): string | null {
+  const code = input.jurisdiction_code;
+  return typeof code === "string" && JURISDICTION_CODE_PATTERN.test(code)
+    ? code
+    : null;
+}
+
 // ─── Zod Schemas ──────────────────────────────────────────────────────────────
 
-const computePlanSchema = z.object({
+/** computePlan 工具输入 Schema（导出供契约测试：JRP-FR-001/011）。 */
+export const computePlanSchema = z.object({
+  jurisdiction_code: z
+    .string()
+    .regex(JURISDICTION_CODE_PATTERN, "地区代码必须是 CN 或 6 位行政区划代码")
+    .describe("已确认的规划地区代码（如 310000=上海、440000=广东），必须与会话已确认地区一致"),
   basic: z.object({
     birth_year: z
       .number()
@@ -55,7 +90,7 @@ const computePlanSchema = z.object({
       .describe(
         "女性退休口径：worker50=普通工人（50岁退休），cadre55=管理岗/干部（55岁退休），unknown=不确定",
       ),
-    target_city: z.string().optional().describe("目标城市，默认上海"),
+    target_city: z.string().optional().describe("目标城市自由文本（仅作原始表达保留，不参与政策选择）"),
     retire_preference: z
       .enum(["earliest", "standard", "latest"])
       .optional()
@@ -175,9 +210,35 @@ async function computePlanExecute(
   params: ComputePlanInput,
   options?: { experimental_context?: unknown },
 ) {
-  const ctx = options?.experimental_context as { ownerUserId?: unknown } | undefined;
+  const ctx = options?.experimental_context as
+    | { ownerUserId?: unknown; confirmedJurisdictionCode?: unknown }
+    | undefined;
   const ownerUserId = typeof ctx?.ownerUserId === "string" ? ctx.ownerUserId : undefined;
+  const confirmedJurisdictionCode =
+    typeof ctx?.confirmedJurisdictionCode === "string"
+      ? ctx.confirmedJurisdictionCode
+      : undefined;
+
   try {
+    // JRP-NFR-008：工具调用代码必须与聊天会话已确认地区一致；
+    // 无确认地区或不一致时不调用规划（JRP-FR-011/018）。
+    const mismatch = assertToolJurisdiction(
+      params.jurisdiction_code,
+      confirmedJurisdictionCode,
+    );
+    if (mismatch) {
+      return {
+        success: false as const,
+        error: mismatch,
+        needs_agent: false,
+        questions: [] as AgentQuestion[],
+        warnings: [] as string[],
+        plan: {} as Record<string, unknown>,
+        calc: {} as Record<string, unknown>,
+        meta: null,
+      };
+    }
+
     const userInput = {
       basic: params.basic,
       social: params.social,
@@ -188,7 +249,13 @@ async function computePlanExecute(
     };
 
     // 09-02：方案只落库到认证用户名下；无归属用户时拒绝持久化。
-    const result = await computePlan({ user: userInput, ownerUserId: ownerUserId! });
+    // 任务3：唯一入口是地区活动快照执行（JRP-FR-008）。
+    const runPlan = createJurisdictionComputePlan();
+    const result = await runPlan({
+      user: userInput,
+      jurisdictionCode: params.jurisdiction_code,
+      ownerUserId: ownerUserId!,
+    });
 
     return {
       success: true as const,
@@ -234,6 +301,15 @@ export const validateFieldTool = tool<
 // ─── Tool 3: updateProfile ──────────────────────────────────────────────────
 
 const updateProfileSchema = z.object({
+  // JRP-FR-016：模型最多只能提交地区候选代码；confirmed 画像只能由服务端
+  // 在用户明确确认后写入（updateProfile 绝不产生 confirmed）。
+  jurisdiction_code: z
+    .string()
+    .regex(JURISDICTION_CODE_PATTERN, "地区代码必须是 CN 或 6 位行政区划代码")
+    .optional()
+    .describe(
+      "从用户对话识别出的地区候选代码（如 310000/440000）。注意：候选必须由用户明确确认后才可规划，模型不得自行确认。",
+    ),
   basic: z
     .object({
       birth_year: z.number().int().optional(),
@@ -262,13 +338,34 @@ type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
 export const updateProfileTool = tool<
   UpdateProfileInput,
-  { updated: true; profile: UpdateProfileInput }
+  {
+    updated: true;
+    profile: UpdateProfileInput;
+    jurisdiction_pending_confirmation?: true;
+  }
 >({
   description:
-    "当从用户对话中提取到新的个人信息时调用此工具，将结构化的用户画像数据发送给客户端。每轮对话最多调用一次，并把该轮识别到的新增字段合并后一次提交。",
+    "当从用户对话中提取到新的个人信息时调用此工具，将结构化的用户画像数据发送给客户端。每轮对话最多调用一次，并把该轮识别到的新增字段合并后一次提交。地区候选请提交 jurisdiction_code，但候选不构成确认——必须由用户明确选择或确认后才可用于规划。",
   inputSchema: zodSchema(updateProfileSchema),
-  execute: async (params) => ({ updated: true, profile: params }),
+  execute: executeUpdateProfile,
 });
+
+/** updateProfile 执行逻辑（导出供契约测试：JRP-FR-016/AC-014）。 */
+export function executeUpdateProfile(params: UpdateProfileInput): {
+  updated: true;
+  profile: Omit<UpdateProfileInput, "jurisdiction_code">;
+  jurisdiction_pending_confirmation?: true;
+} {
+  const rest = { ...params };
+  delete rest.jurisdiction_code;
+  const pending = extractCandidateFromUpdateProfile(params as Record<string, unknown>);
+  return {
+    updated: true,
+    profile: rest,
+    // JRP-AC-014：候选不写入画像、不升级为 confirmed，仅提示待用户确认。
+    ...(pending ? { jurisdiction_pending_confirmation: true as const } : {}),
+  };
+}
 
 // ─── 工具集导出 ──────────────────────────────────────────────────────────────
 

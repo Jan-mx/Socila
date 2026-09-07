@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+/** 稳定地区代码（JRP-FR-002：CN 或 6 位行政区划代码）。 */
+const JURISDICTION_CODE_PATTERN = /^(CN|\d{6})$/;
+
 const BasicSchema = z.object({
   birth_year_text: z.string().nullable().optional(),
   birth_year: z.number().int().nullable().optional(),
@@ -55,11 +58,15 @@ export const UserProfileSchema = z.object({
     .optional(),
 });
 
-export const PlanComputeRequestSchema = z.object({
-  user: UserProfileSchema,
-  as_of_date: z.string().optional(),
-  rule_set_id: z.string().optional(),
-  policy_pack_id: z.string().optional(),
-});
+export const PlanComputeRequestSchema = z
+  .object({
+    user: UserProfileSchema,
+    // JRP-FR-001：必填地区代码；缺失 → 路由映射 400 JURISDICTION_REQUIRED。
+    jurisdiction_code: z.string().regex(JURISDICTION_CODE_PATTERN),
+    as_of_date: z.string().optional(),
+  })
+  // JRP-FR-003：公开请求不得包含 rule_set_id/policy_pack_id/snapshot_id 及任何
+  // 未知字段（strict：未知字段拒绝，不得被剥离后继续计算）。
+  .strict();
 
 export type PlanComputeRequestInput = z.infer<typeof PlanComputeRequestSchema>;

@@ -22,6 +22,8 @@ import { ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { ToolResultCard } from "./ToolResultCard";
 import { createConversationTrackingFetch } from "./conversation-runtime";
+import { JurisdictionSelector } from "./JurisdictionSelector";
+import { readJurisdictionFromProfile } from "./jurisdiction-selector-logic";
 import type { EmitQuestionAction } from "@/types/engine";
 
 interface AgentQuestionOption {
@@ -362,6 +364,10 @@ export function ChatPanel({
               conversationId,
               questions,
               userProfile: sessionProfile,
+              // 任务3 JRP-FR-018：聊天请求携带已确认地区代码，服务端校验与会话画像一致。
+              jurisdictionCode: readJurisdictionFromProfile(
+                sessionProfile,
+              )?.code,
               planId,
             },
           };
@@ -504,7 +510,25 @@ export function ChatPanel({
         </div>
 
         <div className="border-t border-border bg-card px-6 py-5 sm:px-7 sm:py-6">
-          <ChatComposer />
+          <JurisdictionSelector
+            conversationId={conversationId}
+            profile={sessionProfile}
+            onConfirmed={(jurisdiction) => {
+              setSessionProfile((prev) => ({
+                ...prev,
+                jurisdiction: {
+                  code: jurisdiction.code,
+                  name: jurisdiction.name,
+                  confirmed: true,
+                  confirmedAt: new Date().toISOString(),
+                  source: "selector",
+                },
+              }));
+            }}
+          />
+          <div className="mt-3">
+            <ChatComposer />
+          </div>
           <p className="mt-3.5 text-center text-sm text-muted-foreground">
             Enter 发送 · Shift+Enter 换行
           </p>
