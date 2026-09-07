@@ -136,3 +136,15 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 6. 分别生成CN、上海、广东管理员审核包；本次三地区批准已完成，未来版本仍必须由管理员决定，不得由Agent推断或直接SQL代替。
 7. 管理员批准完成后，只读列出三地区候选快照成员、版本、provenance和黄金结果；本次三地区候选快照已创建并重放，未来新快照仍需另行取得写入授权。
 8. 创建后重复重放并验证隔离；四川无快照且不开放流量。案例删除和地区激活不包含在本runbook授权内。
+
+## 地区规划发布记录激活runbook（任务3 JRP-FR-005/006/007，尚未在持久库执行）
+
+任务3只交付代码、migration 0015与测试；本机持久policyops库未执行0015，未激活任何地区，未创建/替换/删除任何PolicySnapshot。未来地区激活（管理员人工动作或用户明确授权后的受控执行）必须满足：
+
+1. 持久库先显式应用0015迁移（`DATABASE_URL=<policyops> node scripts/run-migrations.mjs`），随后每次激活前完成新鲜`pg_dump -Fc`+SHA-256+全新PG17+pgvector真实恢复对账（37表+18 sequence）。
+2. 激活只允许经`POST /api/admin/jurisdictions/:code/release`（publishing应用用例+`requireFreshAdmin`），禁止直接SQL修改`jurisdiction_planning_releases`状态（JRP-FR-006）。
+3. 激活门禁：目标快照必须存在、快照地区与发布地区一致、该地区无未解决冲突、快照成员非空（JRP-FR-007）；首期只允许选择任务2已批准且可重放的候选快照。
+4. 切换活动快照只更新发布记录；旧快照不修改不删除，历史plan保持原snapshotId重放（JRP-NFR-006/AC-008）。
+5. 四川510000延期期间不得创建发布记录或活动快照（JRP-FR-013）；其规划请求保持422 JURISDICTION_UNSUPPORTED。
+6. 每地区最多一条发布记录与一个活动快照（schema唯一索引+CHECK约束兜底）。
+7. 任何持久库写入（0015执行、激活、切换）都需要用户单独明确授权；未获授权不写policyops。

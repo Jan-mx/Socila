@@ -217,3 +217,15 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 广东能力级缺口：2030年前医保退休年限缺参产生`needs_agent`和`W-MI-LOCAL-YEARS-MISSING`且其他模块结果保留；2030年起男30年、女25年生效。
 - 四川地区级门禁：无候选快照、无活动发布，规划请求返回unsupported且不得使用上海或广东实体。
 - 任务3目标测试不得读取任务4的36条案例；任务4目标测试不得读取任务3的地区发布记录。两条分支从任务2冻结提交独立开发，完成后按migration 0015→0016串行集成并重跑完整门禁。
+
+## 地区感知规划（任务3 JRP，09-05-feature-jurisdiction-aware-planning）
+
+- 规划核心用例（`src/server/modules/planning/application/__tests__/jurisdiction-compute.use-case.test.ts`，10例）：必填地区400、未知地区422、四川unsupported且零快照读取、快照缺失409、未解决冲突409、请求/画像/快照三处一致性fail-closed、成功路径plan留痕、不默认上海不回退（JRP-AC-001～004/007/015/017、NFR-003/008）。
+- 快照驱动引擎（`src/lib/engine/__tests__/orchestrator-snapshot.test.ts`，5例）：成员payload→RuleDefinition/flatParams还原；广东2030年前缺参needs_agent+W-MI-LOCAL-YEARS-MISSING且养老/缴费基数/失业资格/期限/金额保留；2030-01-01起男30/女25；失业金额只由任务2快照规则计算（广州2412/深圳2430，任务3不重写公式）（JRP-FR-008/020、AC-005）。
+- 会话画像（`src/server/modules/conversation/application/__tests__/jurisdiction-profile.use-case.test.ts`，9例）：确认写入服务端规范化对象、客户端字段覆盖、未知/禁用拒绝、候选不升级confirmed、切换保留消息清derived_state、同地区幂等、恢复与重新确认（JRP-FR-015～019、AC-013/014/016）。
+- 地区发布记录（`src/server/modules/publishing/application/__tests__/jurisdiction-release.use-case.test.ts`，8例）：新鲜admin、快照地区匹配、冲突门禁、切换不改旧快照、四川无快照拒绝激活、禁止绕过（JRP-FR-005～007、AC-010）。
+- strict请求Schema（`src/lib/validators/__tests__/plan-input-jurisdiction.test.ts`，8例）：jurisdiction_code必填、rule_set_id/policy_pack_id/snapshot_id/未知字段拒绝、稳定代码格式（JRP-FR-001/003、AC-001/006）。
+- AI工具契约（`src/lib/ai/__tests__/tools-jurisdiction.test.ts`，9例）：computePlan工具必填jurisdiction_code、updateProfile候选不产生confirmed、调用代码与会话确认一致性（JRP-FR-011/016、AC-009/014）。
+- UI选择器逻辑（`src/components/chat/jurisdiction-selector-logic.test.ts`，3例）：上海/广东可选、四川unsupported、确认请求只带稳定代码（JRP-FR-010/015、AC-017）。
+- migration行为（`src/server/modules/policy/__tests__/jrp-0015-migration.integration.test.ts`，test:db，3例）：表/列/唯一索引、约束矩阵（非法status、active缺快照/激活人/时间）、plans.snapshot_id外键、幂等重跑（JRP-FR-005/009）。
+- 端到端（`src/server/modules/planning/application/__tests__/jurisdiction-compute.integration.test.ts`，test:db，5例）：真实链 快照创建→激活→规划→plan留痕；四川unsupported无发布记录零plan；画像不一致409零写入；广东2030前缺参契约；活动快照切换后历史plan仍用原snapshotId（JRP-AC-004/005/008/015/017、NFR-006）。

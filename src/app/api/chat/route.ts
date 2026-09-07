@@ -9,6 +9,10 @@ import { conversationReads } from "@/server/modules/conversation/application";
 import { conversationWrites } from "@/server/modules/conversation/application";
 import { getOwnedConversation } from "@/server/modules/conversation/application/conversation.use-case";
 import {
+  extractConfirmedJurisdiction,
+  readProfile,
+} from "@/server/modules/conversation/application/jurisdiction-profile.use-case";
+import {
   applyRateLimitHeaders,
   checkRateLimit,
   getClientIp,
@@ -26,6 +30,43 @@ const MAX_REQUEST_BYTES = 1_048_576; // 1 MB — reject oversized bodies before 
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * 任务3 JRP-FR-015/NFR-008：客户端画像中的 jurisdiction（含候选）不可信——
+ * 权威确认地区只存在于服务端会话画像（经专用确认接口写入）。注入模型上下文
+ * 与持久化前一律剥离，防止客户端/模型伪造或覆盖服务端确认结果。
+ */
+function sanitizeClientProfile(
+  profile: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!profile) return undefined;
+  const copy = { ...profile };
+  delete copy.jurisdiction;
+  delete copy.jurisdiction_code;
+  delete copy.derived_state;
+  return copy;
+}
+
+/**
+ * 持久化画像 = 客户端非地区字段 ∪ 服务端权威地区字段（服务端字段优先）。
+ * 保证确认地区在会话恢复/计算期间不因客户端画像整体覆盖而丢失。
+ */
+function mergeServerProfile(
+  serverProfile: unknown,
+  clientProfile: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {
+    ...(clientProfile ?? {}),
+  };
+  const server = isObjectRecord(serverProfile) ? serverProfile : {};
+  if (isObjectRecord(server.jurisdiction)) {
+    merged.jurisdiction = server.jurisdiction;
+  }
+  if (isObjectRecord(server.derived_state)) {
+    merged.derived_state = server.derived_state;
+  }
+  return merged;
 }
 
 function estimateMessageChars(messages: unknown[]): number {
@@ -181,6 +222,8 @@ export async function POST(req: NextRequest) {
     : isObjectRecord(metadataCustom?.userProfile)
       ? (metadataCustom.userProfile as Record<string, unknown>)
       : undefined;
+  // JRP-FR-015：客户端画像中的地区字段不可信，剥离后注入模型与持久化。
+  const sanitizedProfile = sanitizeClientProfile(userProfile);
   const questions = Array.isArray(typedBody.questions)
     ? typedBody.questions
     : Array.isArray(metadataCustom?.questions)
@@ -189,7 +232,7 @@ export async function POST(req: NextRequest) {
 
   const context: ChatContext = {
     questions: questions as ChatContext["questions"],
-    userProfile: userProfile as ChatContext["userProfile"],
+    userProfile: sanitizedProfile as ChatContext["userProfile"],
     ownerUserId: actor.userId,
   };
 
@@ -229,13 +272,41 @@ export async function POST(req: NextRequest) {
       return respondJson({ error: "无法创建会话" }, { status: 500 });
     }
 
+    // 任务3 JRP-FR-018/NFR-008：聊天发起计算时，请求地区必须与会话画像中的
+    // 已确认地区一致；不一致时拒绝计算（409），不得覆盖画像或回退上海。
+    const confirmed = extractConfirmedJurisdiction(readProfile(conversation));
+    const requestedCode =
+      typeof typedBody.jurisdictionCode === "string"
+        ? typedBody.jurisdictionCode
+        : typeof typedBody.metadata === "object" &&
+            typedBody.metadata !== null &&
+            typeof (typedBody.metadata as Record<string, unknown>).custom ===
+              "object" &&
+            (typedBody.metadata as Record<string, unknown>).custom !== null
+          ? ((typedBody.metadata as Record<string, unknown>).custom as Record<
+              string,
+              unknown
+            >).jurisdictionCode
+          : undefined;
+    if (typeof requestedCode === "string" && requestedCode.length > 0) {
+      if (!confirmed || confirmed.code !== requestedCode) {
+        return respondJson(
+          { error: "JURISDICTION_CONTEXT_MISMATCH" },
+          { status: 409 },
+        );
+      }
+    }
+    // 已确认地区注入 AI 工具上下文：computePlan 工具校验调用代码一致性；
+    // 会话无确认地区时不注入，工具返回 JURISDICTION_REQUIRED（首次计算前必须确认）。
+    context.confirmedJurisdictionCode = confirmed?.code;
+
     const uiMessages = rawMessages as UIMessage[];
 
     // 先保存本轮输入快照，避免流式中断时会话完全丢失。
     try {
       await conversationWrites.updateConversation(conversation.id, {
         messages: uiMessages as unknown[],
-        userProfile,
+        userProfile: mergeServerProfile(conversation.userProfile, sanitizedProfile),
       });
     } catch (persistErr) {
       logger.warn("chat.persist_snapshot_failed", {
@@ -279,7 +350,7 @@ export async function POST(req: NextRequest) {
         try {
           await conversationWrites.updateConversation(conversation.id, {
             messages: persistedMessages as unknown[],
-            userProfile,
+            userProfile: mergeServerProfile(conversation.userProfile, sanitizedProfile),
           });
         } catch (persistErr) {
           logger.warn("chat.persist_finish_failed", {

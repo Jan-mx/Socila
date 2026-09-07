@@ -55,6 +55,9 @@ export function ChatPageClient() {
   const [initialMessages, setInitialMessages] = useState<
     UIMessage[] | undefined
   >(undefined);
+  const [restoredProfile, setRestoredProfile] = useState<
+    Record<string, unknown> | null | undefined
+  >(undefined);
   const [chatPanelKey, setChatPanelKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [restoreError, setRestoreError] = useState<string | null>(null);
@@ -98,11 +101,13 @@ export function ChatPageClient() {
         const data = (await res.json()) as {
           conversation: {
             messages: UIMessage[];
+            userProfile: Record<string, unknown> | null;
           };
         };
         const msgs = data.conversation.messages as UIMessage[];
         setRestoreError(null);
         setInitialMessages(msgs.length > 0 ? msgs : undefined);
+        setRestoredProfile(data.conversation.userProfile ?? {});
         setActiveConversationId(conversationId);
         setPanelConversationId(conversationId);
         setChatPanelKey((prev) => prev + 1);
@@ -159,6 +164,7 @@ export function ChatPageClient() {
     setActiveConversationId(null);
     setPanelConversationId(null);
     setInitialMessages(undefined);
+    setRestoredProfile(undefined);
     setChatPanelKey((prev) => prev + 1);
     replaceConversationIdInUrl(null);
   }, []);
@@ -309,6 +315,7 @@ export function ChatPageClient() {
                 key={chatPanelKey}
                 conversationId={panelConversationId ?? undefined}
                 initialMessages={initialMessages}
+                userProfile={restoredProfile ?? undefined}
                 onConversationCreated={handleConversationCreated}
               />
             </div>

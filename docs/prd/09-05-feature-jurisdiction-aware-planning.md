@@ -1,7 +1,7 @@
 # 用户规划按地区快照触发 PRD
 
 > Author: Jan
-> Status: Approved
+> Status: Accepted
 > Updated: 2026-09-07
 
 ## 文档元数据
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-jurisdiction-aware-planning.md` |
 | 类型 | Feature |
-| 状态 | Approved |
+| 状态 | Accepted |
 | 前置依赖 | Socila命名与地区DSL Feature Accepted；任务2首期Accepted并具有CN、上海、广东候选快照 |
 | 可并行阶段 | 与案例库治理Feature并行开发；两者只共享任务2冻结快照，数据库migration与共享文档串行集成 |
 | 后续消费者 | 新地区上线、地区化对话、历史规划复算和地区支持运营 |
@@ -324,6 +324,28 @@ type PlanMeta = {
 - Node、数据库集成、Auth E2E、TypeScript、ESLint、Build和Secret门禁通过。
 - README、架构、测试、运维、traceability、PROGRESS和报告同步。
 - 每个Accepted任务使用`英文行为: 中文简短总结`提交并推送，不创建PR或合并main。
+
+## 17. 执行状态（2026-09-07 任务3验收）
+
+- 实现：`drizzle/0015_jurisdiction_planning_releases.sql`（地区发布记录表+plans留痕列）、
+  `src/server/modules/planning/application/jurisdiction-compute.use-case.ts`（唯一规划入口：
+  地区树校验→发布记录→活动快照→快照成员还原→确定性执行→plan留痕）、
+  `src/lib/engine/orchestrator.ts`（orchestrateSnapshot快照驱动执行）、
+  `src/server/modules/publishing/application/jurisdiction-release.use-case.ts`（激活/切换/停用，
+  仅新鲜管理员，门禁=快照存在+地区匹配+无冲突+成员非空）、
+  `src/server/modules/conversation/application/jurisdiction-profile.use-case.ts`（画像确认/候选/切换/恢复）、
+  `src/app/api/plan/compute/route.ts`（strict+稳定错误400/422/409/503）、
+  `src/app/api/conversations/[conversationId]/jurisdiction/route.ts`（用户确认入口）、
+  `src/app/api/admin/jurisdictions/[code]/release/route.ts`（激活入口）、
+  `src/app/api/chat/route.ts`（画像一致性校验+客户端jurisdiction剥离合并）、
+  `src/lib/ai/{tools.ts,agent.ts,prompts.ts}`（工具地区契约/候选不升级）、
+  `src/components/chat/JurisdictionSelector.tsx`（地区选择UI，四川显示暂未支持）。
+- 验收：JRP-FR-001～020、JRP-NFR-001～009、JRP-AC-001～017 全部取得新鲜证据；
+  TDD Red 6文件19失败 → Green 单元58文件/538通过、数据库集成21文件/95通过、Auth E2E 10/10、
+  Python 94单元+20集成、tsc/eslint/build零error、Secret/Gitleaks/哨兵零发现。
+  证据：`docs/refactor/policy-ops-agent/reports/feature-09-05-jurisdiction-planning/acceptance-report.md`。
+- 边界：持久库0015与地区激活未执行（需用户单独授权）；四川无发布记录无快照保持unsupported；
+  未读取任务4案例治理状态与36条展示案例；任务4集成使用migration 0016。
 
 ## 16. 下一阶段输入
 

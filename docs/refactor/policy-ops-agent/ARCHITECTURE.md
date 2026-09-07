@@ -79,6 +79,7 @@ flowchart TB
 - **受控物化（09-05阶段E）**：仓库权威资产进入持久库必须经`scripts/materialize-policy-regions.ts`（默认audit；apply需授权参数+manifest哈希+目标指纹三重校验；DATABASE_URL必须进程显式设置且仅限本机policyops，禁止dotenv回退）。首次四地区物化与repair已完成；后续物化必须按现有地区/类型/业务键/有效期/版本/内容计算确定性delta，只写新增或变化实体，未变化实体不得产生新版本。事务内目标计数由当前指纹+delta计算，任一校验失败全部回滚；published行永不原地修改。
 - **draft包repair边界（WI-20260906-01/02，已验收并执行）**：目标指纹绑定全部draft包行状态和内容；repair事务内`FOR UPDATE`重校验并追加不可变`repaired`审计，原批次/成员不改写。持久库已完成0014与一次四包repair（验收报告§14～§15）；未来出现新漂移仍必须fresh audit并另行授权。
 - **分地区交付与能力级缺口（ADR-0010）**：首期候选快照为CN、上海、广东；四川保持blocked、无快照且请求不得跨地区回退。广东2030年前医保退休地市年限缺参只触发R-220的`needs_agent`/`W-MI-LOCAL-YEARS-MISSING`，其他模块继续执行；2030年起使用省级男30年、女25年。任务3与任务4只共享任务2冻结快照，互不读取对方业务状态。
+- **地区感知规划（任务3 JRP，migration 0015）**：规划唯一入口是"已确认地区 + 该地区活动PolicySnapshot"——公开请求必填`jurisdiction_code`（strict Schema拒绝rule_set_id/policy_pack_id/snapshot_id与未知字段）；地区树校验后查询`jurisdiction_planning_releases`发布记录（每地区最多一条，active必须携带快照/激活人/时间，唯一索引兜底），读取不可变快照成员（DB行形状payload）经`orchestrateSnapshot`确定性执行（JRP-FR-008），plan落库记录`jurisdiction_code/resolved_jurisdiction_path/snapshot_id/as_of_date`（JRP-FR-009）。激活/切换/停用只允许publishing应用用例+新鲜管理员（`requireFreshAdmin`），禁止直接SQL改状态（JRP-FR-006）；激活门禁=快照存在+地区匹配+无未解决冲突+成员非空（JRP-FR-007），新快照激活不修改或删除旧快照（NFR-006）。会话级`UserProfile.jurisdiction`保存稳定代码/服务端名称/层级/confirmed/confirmedAt/source；只有用户明确确认（选择器或对话确认，`POST /api/conversations/:id/jurisdiction`）才写入，模型/AI候选（updateProfile的`jurisdiction_code`）绝不升级为confirmed（JRP-FR-016/AC-014）；切换地区保留历史消息并清除`derived_state`（JRP-FR-019/AC-016）。聊天计算时请求地区必须与会话画像一致（409 JURISDICTION_CONTEXT_MISMATCH，NFR-008）；客户端画像中的jurisdiction字段在chat路由剥离，持久化时与服务端权威地区合并。稳定错误映射400/422/409/503（JRP §8.4），四川510000为地区级422 JURISDICTION_UNSUPPORTED且不读任何快照。
 - **管理端地区身份（NRP-FR-021）**：规则/参数/规则集列表支持jurisdiction_code筛选（规则另支持module与q检索编号名称）；详情/校验/示例执行/版本/晋级/回滚以jurisdiction_code+entity_id+version精确定位（缺失400、不存在404、不跨地区猜测）；发布审计记录地区与实体版本；`GET /api/admin/policy-coverage`输出各地区就绪状态与覆盖缺口。
 
 ## 文档、OCR与RAG
@@ -122,6 +123,7 @@ flowchart LR
 | --- | --- | --- |
 | 用户、会话、规划 | PostgreSQL Core | Next Core |
 | 规则、参数、测试、地区、快照 | PostgreSQL Core | Next Core |
+| 地区规划发布记录（`jurisdiction_planning_releases`） | PostgreSQL Core | Next Core（状态变更仅经publishing用例） |
 | Agent Run、提案、审核、事件 | PostgreSQL Agent | Agent Runtime |
 | Graph Checkpoint | PostgreSQL Checkpoint | LangGraph |
 | 原始政策和页面资源 | MinIO | Ingestion |

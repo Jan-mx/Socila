@@ -182,6 +182,11 @@ export const plans = pgTable("plans", {
   policyPackVersion: text("policy_pack_version"),
   conclusionLevel: text("conclusion_level"),
   asOfDate: date("as_of_date"),
+  // 地区感知规划留痕（任务3 JRP-FR-009）：每次规划保存地区、继承链、活动快照与日期；
+  // 历史 plan 无值保持 NULL，创建后不随活动快照切换变化。
+  jurisdictionCode: text("jurisdiction_code"),
+  resolvedJurisdictionPath: text("resolved_jurisdiction_path"),
+  snapshotId: uuid("snapshot_id").references(() => policySnapshots.id),
   // 归属会话：保存时记录创建者的匿名 session，读取时据此校验归属（旧数据为 null = 不限制）。
   sessionId: text("session_id"),
   // 归属用户（CORE-FR-009）：认证用户出现后写入，优先于 sessionId 参与归属校验。
@@ -248,6 +253,37 @@ export const policySnapshotMembers = pgTable("policy_snapshot_members", {
   payload: jsonb("payload").notNull(),
   provenance: jsonb("provenance").notNull(),
 });
+
+// ─── 地区规划发布记录（任务3 JRP-FR-005/006/007，migration 0015）────────────
+// 每个地区最多一条当前发布记录和一个活动快照；active 必须具有非空快照、
+// 激活人、激活时间及门禁结果。激活/切换/停用只允许经 publishing 应用用例，
+// 禁止直接 SQL 修改状态。四川延期期间不创建本表记录。
+
+export const jurisdictionPlanningReleases = pgTable(
+  "jurisdiction_planning_releases",
+  {
+    id: serial("id").primaryKey(),
+    jurisdictionCode: text("jurisdiction_code").notNull(),
+    activeSnapshotId: uuid("active_snapshot_id").references(
+      () => policySnapshots.id,
+    ),
+    status: text("status").notNull().default("inactive"),
+    gateResults: jsonb("gate_results").notNull().default({}),
+    activatedAt: timestamp("activated_at"),
+    activatedBy: text("activated_by"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // 每地区最多一条当前发布记录（激活/切换经 upsert 更新）。
+    uniqueIndex("jurisdiction_planning_releases_jurisdiction_unique").on(
+      table.jurisdictionCode,
+    ),
+    // 同一活动快照不得同时是多个地区的活动快照；NULL（inactive）不参与唯一。
+    uniqueIndex("jurisdiction_planning_releases_active_snapshot_unique").on(
+      table.activeSnapshotId,
+    ),
+  ],
+);
 
 // ─── Agent 物化台账（阶段06，DRF-FR-013）────────────────────────────────────
 

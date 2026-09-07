@@ -40,7 +40,7 @@
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化apply并验证；三地区已批准published；候选快照已创建并重放（CN/沪/粤各1+1，contentHash一致）；四川无快照；规划回归528/528 | 任务3地区感知规划与任务4上海案例治理从冻结提交并行开发 |
-| 任务3：地区感知用户规划 | Approved（任务2已Accepted） | 与任务4并行开发；首期上海/广东，四川unsupported；广东医保退休缺参仅能力级needs_agent |
+| 任务3：地区感知用户规划 | **Accepted（2026-09-07）**：地区感知规划代码与测试已交付并验收（migration 0015、发布记录、快照驱动规划、画像确认/切换、四川unsupported）；持久库0015与地区激活未执行 | 与任务4并行开发；地区激活与持久库0015需用户单独授权 |
 | 任务4：上海案例治理 | Approved（任务2已Accepted） | 与任务3并行；只治理上海851/117为452/36/528并绑定上海候选快照 |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
 | 四川医保退休年限正式文件（缺口4） | Deferred；仅2025-03征求意见稿，无正式印发 | `WI-20260907-01`：正式印发后采集，不阻塞任务2首期 |
@@ -275,6 +275,21 @@
 | Secret扫描 / Gitleaks 8.29.1完整历史 / 哨兵 / pip-audit | PASS；688候选文件零命中；61 commits no leaks；3场景全过；无已知漏洞 |
 | 增量语义（单元+集成） | 三个全新GD参数v1、两个新窗口v2（旧窗口v1保留）、R-GD-UI-AMOUNT v1、RS-GD-PLAN-V1 v2、GD-BASE v2；相同delta复跑no-op（批次/成员不再增加）；广东2030年前仅R-220 needs_agent+W-MI-LOCAL-YEARS-MISSING且其他模块继续；2030-01-01起男30/女25 |
 | 边界 | 未执行持久库apply、未批准、未建快照、未改四川实体、未开放流量；演练动态库已清理或待清理 |
+
+## 当前任务验证（任务3：地区感知用户规划，2026-09-07本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 已记录；6个新测试文件首跑19失败/3通过（模块缺失与目标行为缺失，Red充分） |
+| Node单元（`npm test`） | PASS；58文件/538通过、skip 0（+53：planning用例10、画像9、发布8、validator 8、引擎快照5、AI工具9、选择器逻辑3、.gitkeep修复后四川rules目录回归） |
+| TypeScript / ESLint / Build | PASS；tsc退出0；eslint 0 error/6 warning（全部HEAD既有文件，任务3零新增warning）；build零warning（standalone产物） |
+| 数据库集成（`npm run test:db`，全新PG17 `jrp_drill`含0015迁移×2幂等+seed） | PASS；21文件/95通过、skip 0（+8：0015迁移3、端到端5：留痕/四川unsupported/一致性409/广东2030前/快照切换历史plan） |
+| Python门禁（ruff/mypy/pytest非集成/pip-audit） | PASS；0问题、33文件0错误、94通过（skip 0）、无已知漏洞（项目自身“not found on PyPI”为预期提示） |
+| Python集成（`pytest -m integration`，jrp_drill库+agent.migrate --with-roles×2幂等） | PASS；20通过（skip 0） |
+| Auth E2E（全新`jrp_e2e`库+Jan引导+seed+standalone+mock） | PASS；10通过（55.5s） |
+| Secret / Gitleaks 8.29.1完整历史 / 哨兵 | PASS；691候选文件零命中；69 commits no leaks（docker镜像、主仓库全分支）；allowlist哨兵3场景全过 |
+| 增量交付 | migration 0015（发布记录表+plans留痕列，幂等）；仅代码与测试，持久库未执行 |
+| 边界 | 未执行持久库0015、未激活地区、未创建/替换/删除持久快照、未改四川实体（.gitkeep仅恢复空目录结构）、未读任务4案例状态与36条展示案例；演练容器`jrp-drill-pg`（5439）与卷`jrp-drill-pg-data`保留，`nrp-drill-pg`已停止保留 |
 
 ## 当前任务只读准备（任务2 GD增量物化，2026-09-07本地新鲜执行，提交`f72a3cd`后）
 
