@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-06
+> Updated: 2026-09-07
 
 ## 当前结论
 
@@ -17,7 +17,7 @@
 - 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）：**Accepted**（验收证据：`reports/feature-09-05-socila-naming/acceptance-report.md`）。SDL-FR-001～014、SDL-NFR-001～007全部有实现与测试映射，SDL-AC-001～010新鲜证据通过：通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层（24规则/29参数/`SOCILA-DSL-1.0`/Manifest `jurisdiction_code=310000`）、Seed经Manifest发现（零硬编码地区）、活动代码与配置SSP/SSRP→Socila硬切换（命名扫描零命中，无旧变量/Cookie/localStorage/服务身份兼容）、Node与Python服务JWT身份原子切换`socila-next-core`（固定向量重签+CI冒烟同步）、粤川示例转测试夹具（生产Seed不写入）、0010迁移完成dsl_version规范化与六条示例精确清理（删除前新鲜pg_dump+SHA-256清单+PG17+pgvector真实恢复逐表对账25表一致；删除后diff仅params 33→29、packs 2→0及0009补齐空表；备份/旧卷/历史快照未动）；Gitleaks完整历史19条历史命中经人工核实为测试合成值并以`.gitleaks.toml`精确allowlist闭环（ADR-0008）。
 - 09-05 Feature **复审纠正完成并重新Accepted（2026-09-05）**：三项复审缺漏全部纠正——①命名契约扫描器收敛到`src/lib/naming/socila-naming-contract.ts`并以"允许片段剥离"区分精确旧协议值与独立品牌标识（npm test恢复359/359全绿）；②`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`+`condition="AND"`，新增哨兵回归`scripts/verify-gitleaks-allowlist.mjs`接入CI（ADR-0009替代ADR-0008；哨兵证明允许路径上其他规则照常检测、trace无整文件跳过）；③多地区Seed补齐jurisdiction作用域（seed-rules/seed-params/seed-misc/excel-import，tests行写入jurisdictionCode，协议workflow只装载一次，0011回填存量NULL），新增multi-region-seed落库级集成测试。全部门禁新鲜复验通过后恢复Accepted。
 - 09-05 Feature复审历史：曾因命名契约、Gitleaks allowlist和多地区Seed缺漏Reopened；相关缺漏及第二轮扫描器/Gitleaks/Build复审均已修复并取得新鲜门禁，当前最终状态为**Accepted**，详见任务验收报告§8～§10。
-- 09-05全国政策与案例治理执行顺序：`Socila命名统一与地区DSL分层`（**已实施并验收**）→`国家baseline及广东、四川权威overlay`（**Reopened**；独立复审确认11项缺陷，提交`b2bd64f`已完成首轮修复，但repair执行准备复审又发现draft状态绑定、事务并发、不可变修复审计和专用集成测试缺口，详见任务报告§11～§13）→`案例库精简、质量治理与原始数据归档`（Draft，Blocked by任务2重新Accepted并提供可重放候选快照）→`用户规划按地区快照触发`（Draft，Blocked by案例治理）。不得把已物化draft、历史演练快照或局部准备工作记为已交付能力。
+- 09-05全国政策能力执行顺序按ADR-0010调整为：先完成任务2的CN/上海/广东首期交付（四川Deferred/Blocked）→任务2 Accepted后并行开发任务3地区感知规划与任务4上海案例治理→按任务3、任务4顺序串行集成。两条并行任务只共享任务2冻结快照，不互相作为产品前置。
 
 ## 已完成能力
 
@@ -39,12 +39,12 @@
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
-| 国家baseline及粤川权威政策 | Reopened（2026-09-06/07）：持久库已完成0014+四包repair（批次4→8、成员74→78，零漂移）；缺口调查与编码：广东2025缴费基数（粤人社发〔2025〕32号）、失业保险条例现行版、最低工资（粤府函〔2026〕188号）与失业待遇率0.9已编码进仓库DSL（GD参数5→10，`EXPECTED_TOTAL_COUNTS.params=75`）；四川三项（医保退休年限/18号文/2026基数）未取得，维持blocked并登记观察项；缺口3市级口径维持2030前blocked | 缺口5待用户上传原件；缺口4/6观察项发布后采集；取得全部缺口后→管理员批准→四地区候选快照，任务2方可恢复Accepted；持久库重新物化需另行授权 |
-| 案例库治理 | Blocked（依赖权威政策） | 归档并精简至452/36/528，建立来源链、质量和候选快照校验 |
-| 地区感知用户规划 | Blocked（依赖案例治理） | 只为政策与案例门禁通过的活动快照逐地区开放，缺失地区不默认上海 |
-| 四川2026年度缴费基数（缺口6） | 截至2026-09-06未发布（2025年度于2025-09-22发布） | 观察任务：自2026-09-20起每周复查`rst.sc.gov.cn/rst/gsgg/zfxxgkpage.shtml`，发布后按DOC-SC-CONTRIBUTION-BASE-2025模板采集编码 |
-| 四川医保退休年限正式文件（缺口4） | 仅2025-03征求意见稿，无正式印发 | 每周复查`ylbzj.sc.gov.cn`规范性文件栏+省政府文件库（`scripts/search-sc-library.mjs`），正式印发即采集 |
-| 川人社办发〔2023〕18号（缺口5） | 白名单域未检索到 | **等待用户提供原件**人工上传（`evidence/SC/`），到位后编码 |
+| 任务2：CN/上海/广东首期政策交付 | In Progress：GD权威参数已编码；当前fresh audit仍错误重放四地区整包并规划74/116/9/8，持久库保持49/70/5/4、snapshots=0 | 修复GD确定性delta→目标50/75/6/5；完成三地区管理员批准与候选快照后Accepted |
+| 任务3：地区感知用户规划 | Planned（等待任务2 Accepted） | 与任务4并行；首期上海/广东，四川unsupported；广东医保退休缺参仅能力级needs_agent |
+| 任务4：上海案例治理 | Planned（等待任务2 Accepted） | 与任务3并行；只治理上海851/117为452/36/528并绑定上海候选快照 |
+| 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
+| 四川医保退休年限正式文件（缺口4） | Deferred；仅2025-03征求意见稿，无正式印发 | `WI-20260907-01`：正式印发后采集，不阻塞任务2首期 |
+| 川人社办发〔2023〕18号（缺口5） | Deferred；白名单域未检索到 | `WI-20260907-01`：等待用户提供原件或官方入口恢复 |
 
 ## 当前任务验证（09-03 P0合并门禁/发布准备阶段，本地新鲜执行）
 
@@ -235,18 +235,6 @@
 | 持久库（只读核对） | 计数49/70/5/4/528/851/117/0、members=74、batches=4、上海published规则24、Drizzle账本13条——全程未连接写入、未执行0014、未执行repair |
 | 状态 | 任务2整体保持**Reopened**：repair待授权、管理员批准未完成、粤/川blocked缺口未消除 |
 
-## 当前任务计划（WI-20260906-02 阶段E持久库政策包快照repair）
-
-| 项目 | 结论 |
-| --- | --- |
-| 状态 | Ready；只有真实执行完成并取得验收证据后才能标记Accepted |
-| 阶段A | 只读基线、新备份、全新PG17+pgvector恢复、37表+18 sequence对账、当前HEAD fresh audit；完成后必须停下报告 |
-| 阶段B | 仅在同一任务取得用户明确授权后执行一次本机0014和一次四包repair；旧audit、旧hash和旧指纹禁止复用 |
-| 预期结果 | 迁移14、业务计数49/70/5/4/528/851/117/0、batches=8、members=78、snapshots=0、上海published规则24；粤川保持blocked |
-| 禁止范围 | apply/Seed、发布、管理员批准、PolicySnapshot、删除、远程库、Secret轮换和流量切换 |
-| 交接 | 完整runbook、授权语句、回退和其他Agent提示词见`docs/work-items/WI-20260906-02-stage-e-persistent-repair.md` |
-| 交接文档验证 | PASS；Markdown相对链接和状态一致，`git diff --check`通过，`npm test` 51文件/469通过，`scan-secrets --all` 662个候选文件零命中 |
-
 ## 当前任务验证（WI-20260906-02 阶段E持久库政策包快照repair，2026-09-06本地真实执行）
 
 | 验证 | 结果 |
@@ -260,9 +248,22 @@
 | 安全边界 | 仅本机policyops；无发布/快照/批准/删除/远程库/Secret/流量；演练容器已清理；证据JSON零凭据 |
 | 状态 | WI-20260906-02 **Accepted**；任务2整体保持**Reopened**（粤川权威缺口、管理员批准、候选快照未完成） |
 
+## 当前任务计划（任务2分地区首期交付，ADR-0010）
+
+| 项目 | 当前结论 |
+| --- | --- |
+| 首期范围 | CN、上海310000、广东440000；三地区均需管理员批准和可重放候选快照 |
+| 四川 | Deferred/Blocked；保留3个draft参数和3条原因，不批准、不建快照、不开放流量，不阻塞首期Accepted |
+| 广东能力边界 | 整体可用；2030年前仅医保退休地市年限缺参时`needs_agent`+`W-MI-LOCAL-YEARS-MISSING`，其他模块继续；2030年起男30/女25 |
+| 当前技术阻断 | fresh audit错误规划74/116/9/8；必须改为只写5参数、1规则、1规则集版本、1政策包版本的GD delta |
+| 目标基线 | 候选快照前50/75/6/5/528/851/117/0；CN/沪/川零新增 |
+| 后续顺序 | 任务2Accepted后，任务3与任务4从同一冻结提交并行开发；最终先集成任务3 migration 0015，再集成任务4 migration 0016 |
+
+本次仅完成范围与依赖文档调整：`npm test` 51文件/474通过，`scan-secrets --all` 686个候选文件零命中，Markdown相对链接、PRD/Work Item状态、提示词未写入仓库及`git diff --check`均通过；未修改代码、未执行数据库写入、管理员批准、快照创建、案例删除或地区激活。
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
-任务2的repair代码加固（WI-01，验收报告§14）与持久库执行（WI-02，验收报告§15）均已完成：0014已应用（账本14条）、4个draft包快照已按fresh audit修复（批次4→8、成员74→78）、repair幂等且零漂移。剩余退出条件：补齐粤川权威来源、完成管理员批准和四地区候选快照，任务2才可恢复Accepted。任务2重新Accepted、至少一个地区形成持久可重放候选快照前，任务4和任务3不得进入最终实施。09-03发布动作仍为未来人工动作：
+任务2先修复广东增量物化与失业金额规则，并完成CN、上海、广东的受控物化、管理员批准、候选快照和独立复审；每类持久写入分别先报告再请求明确授权。首期任务2 Accepted后，任务3和任务4从同一冻结提交并行开发，互不等待；共享migration journal与当前文档在最终集成阶段按任务3后任务4串行处理。四川后续只按`WI-20260907-01-sichuan-policy-followup.md`推进，不影响首期与下游排期。09-03发布动作仍为未来人工动作：
 
 1. 重构前版本基线：**已完成**。annotated tag `v1.0.0`已推送至origin，并精确指向`main`提交`1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`；不得移动或重建。
 2. 用户未来人工发布流程（PRD §17.2）：

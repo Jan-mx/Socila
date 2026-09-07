@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-06
+> Updated: 2026-09-07
 
 ## 状态说明
 
@@ -23,9 +23,9 @@
 | --- | --- | --- |
 | 文档分类与低上下文读取改造 | Done | 当前事实、报告和归档分离，README路由可用 |
 | Socila命名统一与地区DSL分层 | Done | `SOCILA-DSL-1.0`与地区Manifest稳定，粤川示例退出生产Seed，上海黄金结果无漂移 |
-| 国家baseline及粤川权威overlay | Reopened | 修复阶段E目标保护、发布旁路、参数/政策包完整性、地区身份、完整恢复和干净CI缺陷；独立复审通过后重新Accepted |
-| 案例库精简、质量治理与原始数据归档 | Blocked | 依赖权威政策Stage重新Accepted并提供持久可重放候选快照；完成452/36/528、来源链和真实恢复归档 |
-| 用户规划按地区快照触发 | Blocked | 依赖案例治理Accepted；地区代码必填，逐地区消费活动快照且绝不默认上海 |
+| 任务2：CN/上海/广东权威政策首期交付 | In Progress | 修复GD增量物化，完成三地区管理员批准与可重放候选快照；四川Deferred不阻塞 |
+| 任务3：用户规划按地区快照触发 | Planned | 任务2Accepted后与任务4并行；首期上海/广东，四川unsupported，绝不默认上海 |
+| 任务4：上海案例库精简与质量治理 | Planned | 任务2Accepted后与任务3并行；完成452/36/528、上海快照绑定和可恢复归档 |
 | 远程Personal Demo服务器部署 | Planned | 目标服务器全栈healthy、域名/HTTPS和离机备份验证 |
 | 首批公开政策采集与RAG建库 | Planned | 白名单来源原件、DocumentTree、Chunk和索引形成闭环 |
 | 完整真实Agent闭环观察 | Planned | 真实政策从采集到管理员审核和Core draft可追踪完成 |
@@ -38,6 +38,7 @@
 | Chat SSE数据库故障语义 | Candidate | 流式接口故障具有稳定、可恢复且可测试的协议 |
 | 文档追踪自动化 | Candidate | PRD/Work Item、测试路径、报告和README状态可自动校验 |
 | RAG黄金集持续扩充 | Candidate | 四地区覆盖养老、医保、失业、补贴和废止政策 |
+| 四川权威政策延期补齐 | Blocked | 医保退休正式文件、川人社办发〔2023〕18号及2026年度缴费基数全部到位 |
 
 ## Later
 

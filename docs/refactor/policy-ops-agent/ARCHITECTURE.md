@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-05
+> Updated: 2026-09-07
 
 ## 上下文
 
@@ -76,8 +76,9 @@ flowchart TB
 - 发布快照保存解析后的地区继承链、版本集合、hash和provenance（provenance含operation与targetBusinessKey，NRP-AC-005）。
 - JSON DSL继续保存在JSONB，并由AJV和JSON Schema校验（`dsl/protocol/socila_dsl_v1/schema/`）。
 - **编辑字段白名单与测试隔离（09-05阶段E复审）**：管理端PATCH/PUT/POST经`src/lib/admin/entity-edit-policy.ts`白名单——受控字段（status/version/jurisdiction/businessKey/ID/policyPackId/时间戳等）与未知字段一律400，状态转换只能走publishing用例；blocked地区实体晋级被422拒绝。发布回归门禁按继承链地区加载测试（国家规则用CN测试，地方规则用目标地区+CN测试）。published完整性哈希为`to_jsonb`整行规范化哈希（UTC会话）。
-- **受控物化（09-05阶段E）**：仓库权威资产进入持久库必须经`scripts/materialize-policy-regions.ts`（默认audit；apply需授权参数+manifest哈希+目标指纹三重校验；DATABASE_URL必须进程显式设置且仅限本机policyops，禁止dotenv回退）；四地区在单事务写入draft实体与批次审计（`policy_import_batches/members`），任一校验失败全部回滚；同manifest幂等no-op；CN/粤/川首次v1、上海既有键v2、新键v1；published行永不原地修改。恢复对账以`scripts/restore-reconcile.ts`目录驱动枚举4 schema全部BASE TABLE与sequence为准。参数携带结构化evidence（params.evidence）。地区就绪状态：CN/沪awaiting_approval、粤/川blocked（blocked实体由发布流水线强制拒绝晋级）。
-- **draft包repair边界（WI-20260906-01，已实现并验收）**：audit输出`packSnapshotDrift`；目标指纹（`computeTargetFingerprint`）已绑定全部draft包行ID、地区、pack ID、版本、状态、`param_snapshot`规范化哈希及对应批次成员行ID/内容哈希——audit后任何draft变化都使指纹失配被拒。repair在单事务内对全部绑定目标`FOR UPDATE`锁定并重校验（状态/版本/旧哈希不符以`REPAIR_TARGET_CHANGED`零写入退出），原物化批次/成员不可改写；每目标追加确定性`repaired`批次（哈希由基础manifest哈希+地区+pack ID+版本+旧/新内容哈希生成，`computeRepairBatchHash`）和一条新成员，沿用地区readiness与blocking reasons（`isJurisdictionBlocked`纳入`repaired`状态），并发由0014唯一约束裁决、冲突后复核快照已完全一致则no-op。专用Red/Green证据见验收报告§14；持久库repair仍待用户另行授权，未执行。
+- **受控物化（09-05阶段E）**：仓库权威资产进入持久库必须经`scripts/materialize-policy-regions.ts`（默认audit；apply需授权参数+manifest哈希+目标指纹三重校验；DATABASE_URL必须进程显式设置且仅限本机policyops，禁止dotenv回退）。首次四地区物化与repair已完成；后续物化必须按现有地区/类型/业务键/有效期/版本/内容计算确定性delta，只写新增或变化实体，未变化实体不得产生新版本。事务内目标计数由当前指纹+delta计算，任一校验失败全部回滚；published行永不原地修改。
+- **draft包repair边界（WI-20260906-01/02，已验收并执行）**：目标指纹绑定全部draft包行状态和内容；repair事务内`FOR UPDATE`重校验并追加不可变`repaired`审计，原批次/成员不改写。持久库已完成0014与一次四包repair（验收报告§14～§15）；未来出现新漂移仍必须fresh audit并另行授权。
+- **分地区交付与能力级缺口（ADR-0010）**：首期候选快照为CN、上海、广东；四川保持blocked、无快照且请求不得跨地区回退。广东2030年前医保退休地市年限缺参只触发R-220的`needs_agent`/`W-MI-LOCAL-YEARS-MISSING`，其他模块继续执行；2030年起使用省级男30年、女25年。任务3与任务4只共享任务2冻结快照，互不读取对方业务状态。
 - **管理端地区身份（NRP-FR-021）**：规则/参数/规则集列表支持jurisdiction_code筛选（规则另支持module与q检索编号名称）；详情/校验/示例执行/版本/晋级/回滚以jurisdiction_code+entity_id+version精确定位（缺失400、不存在404、不跨地区猜测）；发布审计记录地区与实体版本；`GET /api/admin/policy-coverage`输出各地区就绪状态与覆盖缺口。
 
 ## 文档、OCR与RAG
@@ -159,6 +160,7 @@ GitHub Actions六job工作流（`.github/workflows/ci.yml`），触发`pull_requ
 - 保留Next.js Core，不引入NestJS。
 - Docker内网隔离+HS256短期服务JWT双向鉴权，JTI重放消费与业务写同事务（ADR-0005，09-03 Feature已实现验收）。
 - NextAuth 15分钟授权声明 + PostgreSQL刷新会话双层会话（ADR-0007）；固定双角色权限矩阵，不建立通用RBAC。
+- 任务2首期交付CN/上海/广东、四川Deferred；任务2后任务3/4并行开发并串行集成（ADR-0010）。
 - 决策记录见[decisions](./decisions/)目录（ADR-0007起）。
 - Python内部控制面使用FastAPI。
 - LangGraph用于可恢复、需要人工中断的政策运营流程。

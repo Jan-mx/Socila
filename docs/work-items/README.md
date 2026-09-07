@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-06
+> Updated: 2026-09-07
 
 ## 用途
 
@@ -51,6 +51,7 @@ Draft → Ready → In Progress → Blocked / Accepted → Archived
 
 | Work Item | 状态 | 用途 |
 | --- | --- | --- |
-| `WI-20260906-02-stage-e-persistent-repair.md` | Ready | 在独立授权门禁下执行本机0014迁移、四包draft快照repair及前后完整恢复对账 |
-| `WI-20260906-01-stage-e-pack-repair-hardening.md` | Accepted | 已加固政策包快照repair的事务、指纹、审计与集成测试；未执行持久库repair |
+| `WI-20260907-01-sichuan-policy-followup.md` | Blocked | 四川三项正式权威来源到位后独立开发、物化、审核和候选快照验收 |
+| `WI-20260906-02-stage-e-persistent-repair.md` | Accepted | 已完成本机0014迁移、四包draft快照repair及前后完整恢复对账 |
+| `WI-20260906-01-stage-e-pack-repair-hardening.md` | Accepted | 已加固政策包快照repair的事务、指纹、审计与集成测试；持久库执行见WI-20260906-02 |
 | `WI-20260901-01-docs-reorganization.md` | Accepted | Docs目录重组与当前文档治理 |

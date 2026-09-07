@@ -1,8 +1,8 @@
-# 国家baseline及广东四川权威overlay Stage PRD
+# 国家baseline及广东权威overlay首期交付 Stage PRD
 
 > Author: Jan
-> Status: Draft
-> Updated: 2026-09-06
+> Status: Active
+> Updated: 2026-09-07
 
 ## 文档元数据
 
@@ -10,20 +10,20 @@
 | --- | --- |
 | PRD文件 | `09-05-stage-national-baseline-regional-overlays.md` |
 | 类型 | Stage |
-| 状态 | Draft |
+| 状态 | Active |
 | 前置依赖 | `09-05-feature-socila-naming-regional-dsl.md` Accepted；地区Manifest和`SOCILA-DSL-1.0`稳定 |
 | 可并行阶段 | 地区来源调查可并行；baseline抽取、overlay建模、审核和快照必须按依赖串行 |
-| 后续消费者 | `09-05-feature-jurisdiction-aware-planning.md` |
-| 退出门禁 | CN、上海、广东、四川核心政策形成权威引用、可执行规则、隔离黄金测试和候选快照 |
+| 后续消费者 | `09-05-feature-jurisdiction-aware-planning.md`与`09-05-feature-case-library-governance.md`，任务2后并行开发 |
+| 退出门禁 | CN、上海、广东形成权威引用、可执行规则、隔离黄金测试、管理员批准和候选快照；四川按ADR-0010延期且保持blocked |
 | 对应总体需求 | PRD-FR-001～006、PRD-FR-010～024、PRD-FR-030～043、PRD-NFR-001～007 |
 
 ## 1. 背景与现状
 
-项目已经具备地区树、overlay纯函数、冲突和不可变快照，但国家`CN`尚无完整独立baseline，上海24条规则以地方add形式承载完整能力。广东、四川只有非权威示例参数和测试文本，不能用于用户规划。持久化服务还会把所有非`CN`实体推断为`add`，没有完整保存`replace`、`restrict`和`exempt`语义。
+项目已经具备地区树、显式overlay、冲突和不可变快照。CN、上海及广东权威资产已进入仓库，广东新增5个权威参数尚未增量物化；四川只有3个已核实缴费基数draft参数，三项正式来源仍缺失并按ADR-0010延期。当前持久库没有候选PolicySnapshot，任务2首期仍需完成CN、上海、广东的审核与快照。
 
 RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索引为空，现有LangGraph节点仍是固定Fake骨架。Stage必须从官方来源建立可审计事实，再生成规则、参数和测试草案；不得从现有示例数值反推正式政策。
 
-### 1.1 阶段E执行前基线（2026-09-06只读核对）
+### 1.1 历史阶段E执行前基线（2026-09-06只读核对）
 
 里程碑A～D已经在仓库和隔离演练库完成，但权威资产尚未物化到本机持久Compose数据库`socila-postgres/policyops`。该库只应用了0011和0012增量迁移，未重新Seed，当前仍为上海旧运行基线：24条`published`规则、29个`published`参数和1个`published`规则集，`policy_snapshots=0`。
 
@@ -36,15 +36,22 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 
 四川现有权威成果只有3个2025年度缴费基数参数，没有可执行地方规则；不得为了后台可见性创建占位规则或根据征求意见稿、转载推断政策含义。
 
+### 1.2 当前基线（2026-09-07）
+
+- 持久库已应用0014并完成四包repair：49/70/5/4/528/851/117/0、batches=8、members=78。
+- 仓库广东参数已由5增至10并具有官方证据；持久库仍为5个GD参数，尚未写入新delta。
+- 当前fresh audit错误地重放四地区整包并规划74/116/9/8，修复增量算法前禁止apply。
+- CN/上海为awaiting_approval；广东须在delta正确物化后转awaiting_approval；四川保持blocked且不参与首期候选快照。
+
 ## 2. 目标
 
 - 从权威国家文件抽取共性规则，形成`CN` baseline。
 - 将现有上海规则区分为国家继承和上海特有overlay，保持上海黄金结果。
-- 建立广东`440000`与四川`510000`的权威核心政策overlay。
+- 建立广东`440000`权威核心政策overlay并作为首期交付地区；四川`510000`保留已核实资产并延期补齐。
 - 显式持久化`add/replace/restrict/exempt`，不再按地区代码推断。
 - 为每个政策事实保存原件、DocumentTree、稳定引用、有效期和provenance。
-- 建立国家、上海、广东、四川的规则、参数、黄金测试和候选PolicySnapshot。
-- 按国家、上海、广东、四川分别验收，不要求三地同时开放用户流量。
+- 建立国家、上海、广东的规则、参数、黄金测试和候选PolicySnapshot。
+- 按国家、上海、广东分别验收；四川显式blocked且不阻塞首期任务2Accepted，不要求已交付地区同时开放用户流量。
 
 ## 3. 非目标
 
@@ -56,6 +63,8 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 - 不在来源含义冲突时由模型自动作出法律解释。
 - 阶段E不重新Seed、不改写案例库或测试库，不自动发布规则、生成活动快照或开放用户流量。
 - 阶段E的本机持久库授权不包含远程生产数据库、数据删除、Secret轮换或其他生产切换。
+- 首期不补齐四川医保退休年限、川人社办发〔2023〕18号或2026年度缴费基数，不为四川生成候选快照或开放流量。
+- 不把广东整体限制到2030年后；2030年前只对缺少地市权威参数的医保退休年限进入能力级人工确认。
 
 ## 4. 用户故事
 
@@ -80,15 +89,15 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 - **NRP-FR-011 冲突处理**：同级重叠、来源矛盾、未知目标键或依赖缺失生成PolicyConflict并阻止快照。
 - **NRP-FR-012 草案生成**：Agent生成带引用的DraftBundle；Core必须二次执行Schema、引用、地区、状态和幂等校验。
 - **NRP-FR-013 人工审核**：政策管理员可批准、编辑后批准或驳回；无法确定政策含义时必须人工裁决。
-- **NRP-FR-014 地区快照**：CN、上海、广东、四川分别生成包含继承链、成员版本、provenance和内容哈希的不可变候选快照。
+- **NRP-FR-014 地区快照**：首期为CN、上海、广东分别生成包含继承链、成员版本、provenance和内容哈希的不可变候选快照；四川延期期间不得生成候选快照。
 - **NRP-FR-015 黄金测试**：每个地区建立核心场景黄金用例，覆盖正常、边界、缺失信息和地区隔离。
-- **NRP-FR-016 阶段交付**：按国家baseline、上海重分类、广东overlay、四川overlay四个里程碑独立形成验收证据。
+- **NRP-FR-016 分地区交付**：首期按国家baseline、上海重分类、广东overlay三个地区里程碑形成验收证据；四川资产与blocked语义保留并转`WI-20260907-01-sichuan-policy-followup.md`独立验收。
 - **NRP-FR-017 受控物化**：提供独立的地区政策物化命令；默认仅执行`audit`，不得调用`npm run seed`。任何数据库操作必须显式读取进程级`DATABASE_URL`，禁止回退读取`.env.local`；`apply`必须同时校验授权参数、目标指纹和预期manifest哈希。
 - **NRP-FR-018 强制草案与版本**：仓库资产进入持久库时一律强制为`draft`，不得信任文件中的`published`声明。CN、广东和四川首次业务键使用v1；上海已有业务键创建v2，新业务键可使用v1；任何既有`published`行不得原地更新。
 - **NRP-FR-019 批次审计与幂等**：按地区记录物化批次及成员，保存manifest哈希、来源提交、非敏感目标指纹、实体计数、业务键、版本、内容哈希、就绪状态、阻断原因、操作者和时间；同一地区相同manifest重复执行必须返回no-op。
 - **NRP-FR-020 参数证据与政策包**：`params`必须保存完整结构化`evidence`；CN、上海、广东和四川分别创建一个`draft policy_pack_version`，参数快照必须包含原值、有效期、operation、目标业务键和引用。
 - **NRP-FR-021 地区化管理身份**：规则、参数、规则集、详情、版本和发布流水线必须展示并使用地区身份；同名实体通过`jurisdiction_code + entity_id + version`唯一定位，不得按`rule_id`或`param_id`猜测地区。
-- **NRP-FR-022 覆盖阻断**：CN和上海物化批次标记为`awaiting_approval`；广东和四川标记为`blocked`并保存本PRD列明的政策缺口。blocked地区的实体不得晋级production、生成活动快照或作为用户流量依据。
+- **NRP-FR-022 覆盖状态**：CN、上海和完成本阶段delta后的广东标记为`awaiting_approval`；四川保持`blocked`并保存三项延期原因。广东2030年前缺少地市医保退休年限时由R-220输出`needs_agent`与`W-MI-LOCAL-YEARS-MISSING`，不阻断其他政策模块。blocked四川不得晋级、生成候选快照或作为用户流量依据。
 
 ### 5.1 非功能需求
 
@@ -101,7 +110,7 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 - **NRP-NFR-007 安全输入**：政策文本按不可信输入处理，不能修改系统指令、权限或工具范围。
 - **NRP-NFR-008 资源约束**：沿用Personal Demo的单Worker、prefetch 1及文件大小/页数限制。
 - **NRP-NFR-009 目标保护**：阶段E只允许显式授权的本机`localhost:5432/policyops`目标；连接串、口令和完整URL不得写入日志、manifest、审计表或Git。
-- **NRP-NFR-010 原子幂等**：四地区物化必须在单个数据库事务中完成；任一地区计数、哈希、引用或版本不符时全部回滚，不得留下部分实体或已成功批次。
+- **NRP-NFR-010 原子幂等**：历史首次四地区物化及每次后续确定性delta分别在单个数据库事务中完成；任一计数、哈希、引用或版本不符时全部回滚，不得留下部分实体或批次。
 - **NRP-NFR-011 可恢复**：apply前必须完成完整`pg_dump -Fc`、SHA-256清单及全新PG17+pgvector容器真实恢复，并逐表核对计数和规范化行哈希。
 - **NRP-NFR-012 零运行漂移**：阶段E完成后旧上海24条规则、29个参数及规则集继续保持`published`且内容哈希不变；新增draft不得改变现有规划、测试、案例、快照或用户流量。
 
@@ -128,7 +137,7 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 
 每个地区分别计算`ready_for_planning`，仅表示可供后续规划Feature接入，不直接改变用户流量。条件包括引用、Schema、参数依赖、地区隔离、有效期、冲突、黄金结果、快照重放和管理员批准全部通过。
 
-### 6.3 阶段E受控物化顺序
+### 6.3 历史首次阶段E受控物化顺序
 
 ```text
 只读基线与旧行规范化哈希
@@ -154,7 +163,21 @@ RAG Schema、解析、OCR、全文与向量检索实现已存在，但生产索�
 - 并发repair由数据库唯一约束裁决；唯一冲突后仅在目标已完全一致时返回no-op。
 - repair只改变draft包快照和新增修复审计行，不改变published资产、业务实体计数、规划行为或地区开放状态。
 
-执行准备与实现由`docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md`约束，该Work Item已于2026-09-06完成实现、专用Red/Green测试与全量门禁并标记Accepted（证据见验收报告§14）。持久库仍不得执行0014或repair：两者必须等待用户针对该次操作的另行明确授权。旧audit只能作为历史证据，每次repair必须使用当前HEAD产生的fresh audit输入（repair目标指纹已绑定draft包行状态与内容）。
+repair加固由`WI-20260906-01-stage-e-pack-repair-hardening.md`完成，持久库0014与四包repair由`WI-20260906-02-stage-e-persistent-repair.md`在明确授权下执行并验收（证据见验收报告§14～§15）。旧audit只作为历史证据；未来出现新漂移时仍必须使用当前HEAD的fresh audit和新的明确授权。
+
+### 6.5 广东增量物化与能力级缺口
+
+阶段E原物化与repair已经完成，当前持久库基线为49/70/5/4。后续广东更新必须采用既有状态感知的delta，不得再次物化整个四地区Manifest：
+
+- 以地区、实体类型、业务键、有效期窗口、既有版本和规范化内容识别已物化实体；内容与窗口均相同的CN、上海、四川及广东实体跳过。
+- `P-GD-CONTRIB-BASE-UPPER`与`T-GD-CONTRIB-BASE-LOWER-BY-CITY`旧窗口保持v1，新窗口使用v2。
+- `P-GD-PENSION-CALC-BASE-2025`、`T-GD-MIN-WAGE-BY-CITY`、`P-GD-UNEMPLOYMENT-BENEFIT-RATE`使用v1。
+- 新增广东失业保险金金额规则，以已确认领取地市对应最低工资×0.9计算；领取地市或最低工资无法解析时输出`needs_agent`，不得猜测金额。广东规则集创建下一版本并纳入该规则，GD政策包创建v2。
+- 本次delta完成后的业务计数为rules=50、params=75、rule_sets=6、policy_pack_versions=5、tests=528、cases=851、showcase_cases=117；候选快照创建前policy_snapshots=0。
+- 本次delta只新增1个广东applied批次和8个成员（5参数+1规则+1规则集版本+1政策包版本）；实际audit必须逐项列出相同集合。
+- apply事务内目标计数由当前指纹和确定性delta计算，不再把首次物化固定计数作为通用后续目标。同delta重复或并发执行只允许一组结果。
+
+广东2030年前缺少统筹地市医保退休累计缴费年限时，国家规则`R-220-MEDICAL-LIFETIME-GAP`已有缺参守卫：仅医保退休年限结论保持空并输出`needs_agent=true`与`W-MI-LOCAL-YEARS-MISSING`，养老、缴费基数、最低工资、失业资格/期限/金额等可计算模块继续执行。2030-01-01起省级男30年、女25年参数自动进入有效集合。
 
 ## 7. 数据模型与不变量
 
@@ -251,7 +274,7 @@ interface PublishEntityRequest {
 - 任一地区验收失败只回退该地区草案和候选快照，不删除原件或其他地区数据。
 - 阶段E新增migration只能增加审计结构、参数证据及发布地区身份；历史发布记录允许地区和版本为空，新发布记录必须完整。
 - 阶段E不得使用现有Seed作为持久库导入路径，因为Seed还会写入案例和测试并直接产生published参数。
-- 持久库物化后的固定计数必须为：`rules=49`、`params=70`、`rule_sets=5`、`policy_pack_versions=4`、`tests=528`、`cases=851`、`showcase_cases=117`、`policy_snapshots=0`。
+- 首次阶段E物化与repair后的历史基线保持：`rules=49`、`params=70`、`rule_sets=5`、`policy_pack_versions=4`、`tests=528`、`cases=851`、`showcase_cases=117`、`policy_snapshots=0`。广东delta物化完成后的新基线为`rules=50`、`params=75`、`rule_sets=6`、`policy_pack_versions=5`，其余业务计数不变；不得改写历史报告中的首次基线。
 
 ## 10. 安全、隐私与可观测
 
@@ -279,15 +302,16 @@ interface PublishEntityRequest {
 | 四地区任一写入或验证失败 | 整个物化事务回滚 | 保留备份和失败证据后重试 |
 | repair目标在audit后发生变化 | 拒绝repair且零写入 | 重新audit并人工核对新的目标状态 |
 | 并发repair命中唯一约束 | 事务复核最终快照 | 已完全一致则no-op，否则报错并人工检查 |
-| 广东或四川存在覆盖缺口 | draft可见但保持blocked | 取得权威原件并新增版本后重新验收 |
+| 广东医保退休市级年限缺失 | 仅对应能力输出needs_agent，其他模块继续 | 后续取得市级原件并新增参数版本 |
+| 四川存在延期缺口 | 保持blocked、无候选快照且不阻塞首期 | 按WI-20260907-01取得三项正式来源后独立验收 |
 
 ## 12. 交付物
 
 - CN国家baseline DSL、参数、引用和黄金测试。
 - 上海规则重分类及零漂移对账。
-- 广东和四川核心政策overlay、引用和黄金测试。
+- 广东核心政策overlay、引用、黄金测试和能力级缺参守卫；四川保留既有安全隔离证据并延期。
 - 显式overlay操作数据模型、migration和Repository实现。
-- 四个地区的候选快照及独立门禁结果。
+- CN、上海、广东三个首期地区的候选快照及独立门禁结果；四川明确无候选快照。
 - 原件、DocumentTree、RAG索引、审核和冲突证据。
 - 当前架构、测试、运维、traceability、PROGRESS和阶段验收报告。
 - 阶段E受控物化命令、确定性manifest、批次及成员审计、参数证据和四个draft政策包版本。
@@ -312,7 +336,9 @@ interface PublishEntityRequest {
 | 版本与幂等 | 旧上海副本、四地区重复物化 | published不变；版本精确；相同manifest no-op |
 | 事务与恢复 | 中途失败、完整dump、全新PG17恢复 | 无部分写入；恢复计数和行哈希一致 |
 | 管理身份 | 同名CN/上海实体、粤川筛选 | 详情和发布不串区；四川覆盖状态准确 |
-| 持久库回归 | 物化前后业务表与上海规划 | 固定计数满足；528/851/117及旧上海行为不变 |
+| 增量物化 | WI-02后基线应用广东新Manifest | 只新增5参数、1规则、1规则集版本和1政策包版本；CN/沪/川零新增 |
+| 能力级缺口 | 广东2030年前医保退休参数缺失 | needs_agent+稳定warning；其他模块结果继续生成 |
+| 持久库回归 | 物化前后业务表与上海规划 | 新基线50/75/6/5满足；528/851/117及旧上海行为不变 |
 | repair守卫与原子性 | 错授权/hash/指纹、audit后变化、中途失败 | 零写入或整事务回滚，不覆盖新draft状态 |
 | repair审计与幂等 | 四包修复、并发、成功后fresh audit复跑 | `repaired`批次/成员完整；并发单结果；复跑no-op |
 
@@ -321,39 +347,39 @@ interface PublishEntityRequest {
 - **NRP-AC-001** Given国家官方政策，When生成CN baseline，Then每个事实具有稳定引用和有效期。
 - **NRP-AC-002** Given上海现有规则，When重分类为baseline和overlay，Then黄金结果逐案一致。
 - **NRP-AC-003** Given广东查询，When解析政策上下文，Then只包含CN和广东有效实体。
-- **NRP-AC-004** Given四川查询，When解析政策上下文，Then不包含上海或广东地方实体。
+- **NRP-AC-004** Given延期四川查询，When解析政策上下文或请求候选快照，Then不包含上海或广东地方实体且不得生成四川候选快照。
 - **NRP-AC-005** Given地方替换、限制或豁免，When创建快照，Then操作和目标键保存在provenance中。
 - **NRP-AC-006** Given同级重叠或未知目标键，When解析，Then创建Conflict并阻止快照。
 - **NRP-AC-007** Given引用缺失或OCR关键字段未确认，When提交草案，Then不得进入可批准状态。
-- **NRP-AC-008** Given任一地区全部门禁通过，When管理员批准，Then生成可重放的候选快照但不自动开放用户流量。
+- **NRP-AC-008** GivenCN、上海或广东全部门禁通过，When管理员批准，Then分别生成可重放候选快照但不自动开放用户流量；四川不参与首期批准。
 - **NRP-AC-009** Given某地区验收失败，When检查其他地区，Then已通过地区的候选快照不受影响。
 - **NRP-AC-010** Given相同地区、日期和快照，When重复执行，Then规则、参数和结果哈希一致。
 - **NRP-AC-011** Given未显式设置数据库目标、目标指纹错误或缺少授权参数/manifest哈希，When请求apply，Then命令拒绝且持久库零写入。
 - **NRP-AC-012** Given物化前完整备份，When在全新PG17+pgvector中恢复，Then逐表计数和规范化行哈希与源库一致，否则不得继续。
-- **NRP-AC-013** Given旧上海运行基线，When物化四地区资产，ThenCN/粤/川首次实体为v1、上海已有业务键为v2、新业务键为v1，且旧published行内容不变。
-- **NRP-AC-014** Given相同地区和manifest哈希已验证，When再次apply，Then返回幂等no-op；任一地区失败时四地区新增实体和批次全部回滚。
+- **NRP-AC-013** GivenWI-02后持久库基线，When物化广东delta，Then只新增5参数、1规则、1规则集版本和1政策包版本；旧窗口版本不变，CN/上海/四川零新增且旧published行内容不变。
+- **NRP-AC-014** Given相同广东delta已验证，When再次apply或并发apply，Then只产生一组结果并返回幂等no-op；任一写入失败时新增实体和批次全部回滚。
 - **NRP-AC-014 repair补充** Givenfresh audit绑定四个draft政策包，When执行repair或发生并发，Then只修复完全匹配的目标、保留原审计记录、仅新增一组`repaired`审计；任一失败全部回滚，成功后fresh audit复跑为no-op。
-- **NRP-AC-015** Given阶段E成功，When核对持久库，Then计数严格为49/70/5/4/528/851/117/0，广东和四川保持blocked且四川规则成员为0。
+- **NRP-AC-015** Given广东delta成功且候选快照尚未创建，When核对持久库，Then业务计数严格为50/75/6/5/528/851/117/0，广东为awaiting_approval、四川保持blocked且四川零新增实体。
 - **NRP-AC-016** GivenCN与上海存在同名业务键，When管理员查看详情或请求发布，Then必须用地区、实体ID和版本精确定位；缺失身份被拒绝且不得跨地区操作。
 
 ## 15. Definition of Done
 
 - NRP-FR-001～022、NRP-NFR-001～012具有实现和测试映射。
-- NRP-AC-001～016按国家、上海、广东、四川分别取得新鲜证据。
+- NRP-AC-001～016按首期CN、上海、广东取得新鲜证据；四川取得blocked、无候选快照和跨地区零污染证据。
 - 权威引用覆盖100%，错地区和错有效期混入为0。
 - 上海黄金结果无未解释漂移。
 - 无未解决Conflict的地区才可形成候选快照。
 - Agent只创建draft，管理员审核和发布门禁保持有效。
-- 阶段E备份真实恢复、确定性manifest、单事务物化、固定计数和幂等复跑全部通过。
+- 阶段E备份真实恢复、确定性delta、单事务增量物化、动态目标计数和幂等复跑全部通过。
 - draft政策包repair具有专用数据库集成Red/Green证据，证明目标绑定、事务锁、并发裁决、审计不可变和幂等。
-- 旧上海published资产及规划行为无漂移，tests/cases/showcase_cases和policy_snapshots计数不变。
-- 广东、四川政策缺口和管理员批准未完成时，任务2整体不得标记Accepted；阶段E的`verified`不得被描述为地区已开放。
+- 旧上海published资产及规划行为无漂移，tests/cases/showcase_cases计数不变；首期只新增CN、上海、广东3个候选PolicySnapshot，四川为0。
+- CN、上海、广东未完成管理员批准和候选快照时任务2不得标记Accepted；四川三项延期缺口不阻塞首期，但必须保持blocked、无候选快照且不得描述为已支持。
 - README、架构、测试、运维、traceability、PROGRESS和报告同步。
 - 每个已接受里程碑使用独立`英文行为: 中文简短总结`提交并推送，不创建PR或合并main。
 
 ## 16. 下一阶段输入
 
-- 至少一个通过全部门禁、管理员批准且可重放的地区候选快照。
+- CN、上海、广东三个首期地区均具有通过门禁、管理员批准且可重放的候选快照。
 - 稳定的地区继承、显式overlay、冲突和快照读取接口。
-- 国家、上海、广东、四川各自的支持状态和门禁结果。
+- 国家、上海、广东的首期支持状态，以及四川Deferred/Blocked门禁结果。
 - 地区感知规划Feature可消费的规则、参数及快照契约。

@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-05
+> Updated: 2026-09-07
 
 ## 测试先行
 
@@ -195,7 +195,7 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 并发与约束（0014）：批次(jurisdiction,manifest_hash)唯一、成员唯一+entity_type CHECK、status/readiness枚举CHECK；并发apply单事务成功/另一no-op。
 - 对账工具（`scripts/restore-reconcile.ts`）：目录驱动枚举public/drizzle/agent/rag全部BASE TABLE与sequence，整行to_jsonb规范化哈希，表集合/计数/哈希/sequence任一不符退出1。
 
-## draft政策包repair加固（WI-20260906-01，已实现并验收；持久库repair仍未执行）
+## draft政策包repair加固（WI-20260906-01/02，已实现并执行）
 
 专用测试已按Red→Green完成（2026-09-06，Red/Green证据见验收报告§14），全部位于`src/lib/policy-materialization/`：
 
@@ -209,3 +209,11 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
   - 幂等与零漂移：成功后fresh audit复跑repair为no-op且批次、成员不再增加；业务计数49/70/5/4/528/851/117/0、published整行哈希不变。
 
 全量门禁不能替代这些专用反例；持久库audit、migration或repair不得作为测试步骤。集成测试teardown先`closeDatabase()`、再显式终止残留会话、最后删库，测试客户端挂error监听（错误仅记录，查询失败仍经promise拒绝暴露），保证run零unhandled errors。
+
+## 分地区交付与下游并行（ADR-0010，待实现）
+
+- 广东增量物化Red必须复现当前持久库fresh audit错误规划74/116/9/8；Green要求只新增5参数、1规则、1规则集版本和1政策包版本，目标50/75/6/5，CN/沪/川零新增。
+- 同键多窗口验证旧GD窗口保持v1、新窗口为v2；三个新参数为v1；相同delta重复与并发apply只产生一组结果。
+- 广东能力级缺口：2030年前医保退休年限缺参产生`needs_agent`和`W-MI-LOCAL-YEARS-MISSING`且其他模块结果保留；2030年起男30年、女25年生效。
+- 四川地区级门禁：无候选快照、无活动发布，规划请求返回unsupported且不得使用上海或广东实体。
+- 任务3目标测试不得读取任务4的36条案例；任务4目标测试不得读取任务3的地区发布记录。两条分支独立通过后，按migration 0015→0016串行集成并重跑完整门禁。
