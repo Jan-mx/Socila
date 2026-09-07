@@ -454,6 +454,22 @@ export async function applyMaterialization(
   }
 
   const plan: MaterializationPlan = buildPlan(opts.manifest, state, existingBatches);
+  // 增量语义（ADR-0010任务2）：计划为零delta（全部内容已落库）时不再创建
+  // 空批次——复跑与"内容零变化的新manifest"都表现为no-op，不污染审计链。
+  if (
+    plan.counts.rules === 0 &&
+    plan.counts.params === 0 &&
+    plan.counts.ruleSets === 0 &&
+    plan.counts.packs === 0
+  ) {
+    return {
+      noop: true,
+      batches: [],
+      counts: state.counts,
+      publishedRowsHashBefore: state.publishedRowsHash,
+      publishedRowsHashAfter: state.publishedRowsHash,
+    };
+  }
   const hashBefore = state.publishedRowsHash;
 
   // 审查缺陷11：并发apply——(jurisdiction, manifest_hash)唯一约束保证只有一个

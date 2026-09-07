@@ -69,6 +69,12 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | 任务3 地区感知规划 | JRP-FR-001～020、JRP-NFR-001～009、JRP-AC-001～017 | planning/conversation/地区发布；migration 0015 | 上海/GD活动快照、广东局部needs_agent、四川unsupported、独立E2E | Approved；任务2后与任务4并行 |
 | 任务4 上海案例治理 | CLG-FR-001～017、CLG-NFR-001～008、CLG-AC-001～015 | 案例来源链/评分/归档；migration 0016 | 452/36/528、上海快照绑定、恢复与删除门禁、任务3隔离 | Approved；任务2后与任务3并行 |
 
+## 09-07 任务2首期：广东增量物化与地区就绪（2026-09-07）
+
+| 需求范围 | 实现位置 | 测试路径 | 验收证据 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR-0010任务2首期（广东确定性delta：5参数+1规则+1规则集版本+1政策包版本；失业金额规则；地区就绪） | `src/lib/policy-materialization/shapes.ts`（新增：载荷规范化形状与内容哈希）、`target.ts`（existingEntityHashes/指纹绑定实体内容/EXPECTED 50-75-6-5）、`plan.ts`（增量跳过：规则/参数/规则集/政策包）、`materialize.ts`（零delta no-op守卫）、`manifest.ts`（regionReadiness 440000→awaiting_approval）、`dsl/regions/guangdong_dsl_v1/rules/R-GD-UI-AMOUNT.json`（新增：领取地市最低工资×90%，缺参needs_agent）、`dsl/regions/guangdong_dsl_v1/{rules_manifest.json,rule_sets/rule_set_guangdong_plan_v1.json,tests/rule_examples_as_tests.json}`（规则集下一版本含新规则） | `src/lib/policy-materialization/materializer.unit.test.ts`（增量计划2场景：持久库式delta 1/5/1/1与全量no-op）、`materializer.integration.test.ts`（seedPersistentMirror持久库镜像+audit delta+apply 50/75/6/5+复跑no-op+WI-repair全套回归）、`target-guard.test.ts`、`src/lib/engine/__tests__/guangdong-overlay-golden.test.ts`（2030前R-220守卫/2030男30女25/边界/失业金额编排）、`src/lib/dsl/dsl-layout.test.ts`（GD规则清单2条） | 任务2验收报告§17（Red：旧实现重放26/46/4/4与GD blocked；Green：delta 1/5/1/1、零新增、复跑no-op、能力边界golden、全量门禁） | 代码/测试已交付；持久库apply、管理员批准、候选快照分别待授权 |
+
 ## 更新规则
 
 - 任务完成后填入实现文件、实际测试路径、验证证据和提交链接。

@@ -55,21 +55,16 @@ export interface GitReader {
   isWorktreeDirty(dir: string): boolean;
 }
 
-/** 地区覆盖状态与阻断原因（NRP-FR-022，PRD §1.1核对表）。 */
+/** 地区覆盖状态与阻断原因（NRP-FR-022，PRD §1.1核对表）。
+ * ADR-0010任务2分地区首期：广东缴费基数/失业条例/市级医保退休口径三项缺口
+ * 均已闭环（2025基数与条例原文已采集、2030年前市级口径由R-220能力级守卫
+ * needs_agent+W-MI-LOCAL-YEARS-MISSING处理），广东整体进入首期交付
+ * （awaiting_approval，等待管理员批准）；四川三项缺口保持blocked。 */
 export function regionReadiness(jurisdictionCode: string): {
   readiness: Readiness;
   blockingReasons: string[];
 } {
   switch (jurisdictionCode) {
-    case "440000":
-      return {
-        readiness: "blocked",
-        blockingReasons: [
-          "2025-07后缴费基数上下限未取得权威原文（粤人社发〔2025〕32号未见于省厅官网）",
-          "《广东省失业保险条例》原文未在白名单域名获取，失业待遇缺口",
-          "2030年前市级医保退休口径缺失（省级统一自2030-01-01起生效）",
-        ],
-      };
     case "510000":
       return {
         readiness: "blocked",

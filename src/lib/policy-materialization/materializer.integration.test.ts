@@ -1,12 +1,15 @@
 /**
- * NRP-AC-011/013/014/015（阶段E物化落库面）：
- * 在演练容器中创建独立数据库（nrp_e_mat），安装合成"旧上海运行基线"
- * （24条published规则、29个published参数、1个published规则集、528/851/117
- * 案例测试计数），然后验证：
+ * NRP-AC-011/013/014/015（阶段E物化落库面，含ADR-0010任务2增量语义）：
+ * 在演练容器中创建独立数据库（nrp_e_mat），安装"持久库镜像"——
+ * 模拟当前持久库49/70/5/4：旧上海运行基线（24条published规则、29个published
+ * 参数、1个published规则集）+ git派生行（CN/沪/川全部内容 + 广东旧内容：
+ * 1规则/5参数/旧规则集v1/旧快照包v1）+ 528/851/117案例测试计数，然后验证：
  * - AC-011：缺授权/错manifest哈希/错指纹 → 拒绝且零写入；
- * - AC-013：CN/粤/川v1、上海既有键v2、新键v1、旧行内容不变、全部draft；
- * - AC-014：同manifest重复apply → no-op；计数不符 → 单事务回滚；
- * - AC-015：固定计数49/70/5/4且528/851/117/0不变；GD/SC blocked、SC规则0。
+ * - AC-013增量（ADR-0010任务2）：fresh audit只规划广东delta
+ *   （1规则+5参数+1规则集版本+1政策包版本），CN/沪/川零新增；
+ * - AC-015：apply后固定计数50/75/6/5且528/851/117/0不变；GD awaiting_approval、
+ *   SC blocked、SC规则0；
+ * - AC-014：同manifest重复apply → no-op；计数不符 → 单事务回滚。
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -109,6 +112,379 @@ async function matQuery(
   } finally {
     await c.end();
   }
+}
+
+// ─── ADR-0010任务2：持久库镜像（增量物化夹具） ────────────────────────────────
+// 镜像行与materialize.insertEntity的列映射保持一致（字段/缺省逐一对应），
+// 保证"内容未变化→零新增"的判定与真实持久库一致。
+
+/** 广东delta之外的新内容判定：与真实持久库（GD旧5参数）比较。 */
+function isGdNewParam(p: { param_id?: string; effective_from?: string }): boolean {
+  const id = p.param_id;
+  if (id === "P-GD-PENSION-CALC-BASE-2025") return true;
+  if (id === "P-GD-UNEMPLOYMENT-BENEFIT-RATE") return true;
+  if (id === "T-GD-MIN-WAGE-BY-CITY") return true;
+  if (
+    (id === "P-GD-CONTRIB-BASE-UPPER" ||
+      id === "T-GD-CONTRIB-BASE-LOWER-BY-CITY") &&
+    p.effective_from === "2025-07-01"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** 计划实体 → 原始SQL插入（镜像insertEntity列映射，供夹具使用）。返回行ID。 */
+async function insertEntitySql(
+  c: Client,
+  e: {
+    entityType: string;
+    jurisdictionCode: string;
+    businessKey: string;
+    version: number;
+    operation: string;
+    targetBusinessKey: string | null;
+    payload: Record<string, unknown>;
+  },
+  regionPackId: string,
+): Promise<number> {
+  const p = e.payload;
+  if (e.entityType === "rule") {
+    const r = await c.query(
+      `insert into rules (rule_id, jurisdiction_code, business_key, name, module,
+         dsl_version, priority, status, effective_from, effective_to, supersedes,
+         inputs, parameter_refs, decision_table, outputs, examples, evidence,
+         notes, version, operation, target_business_key)
+       values ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,
+               $17,$18,$19,$20) returning id`,
+      [
+        e.businessKey,
+        e.jurisdictionCode,
+        e.businessKey,
+        (p.name as string) ?? e.businessKey,
+        (p.module as string) ?? "",
+        (p.dsl_version as string) ?? "SOCILA-DSL-1.0",
+        (p.priority as number) ?? 0,
+        (p.effective_from as string) ?? "2024-01-01",
+        (p.effective_to as string | null) ?? null,
+        JSON.stringify((p.supersedes as unknown[]) ?? []),
+        JSON.stringify((p.inputs as unknown[]) ?? []),
+        JSON.stringify((p.parameter_refs as unknown[]) ?? []),
+        JSON.stringify(p.decision_table ?? {}),
+        JSON.stringify((p.outputs as unknown[]) ?? []),
+        JSON.stringify((p.examples as unknown[]) ?? []),
+        JSON.stringify((p.evidence as unknown[]) ?? []),
+        (p.notes as string) ?? null,
+        e.version,
+        e.operation,
+        e.targetBusinessKey,
+      ],
+    );
+    return r.rows[0].id as number;
+  }
+  if (e.entityType === "param") {
+    const r = await c.query(
+      `insert into params (policy_pack_id, jurisdiction_code, business_key, param_id,
+         type, value, unit, effective_from, effective_to, source, key_fields,
+         value_fields, rows, note, version, status, operation, target_business_key,
+         evidence)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'draft',$16,$17,$18)
+       returning id`,
+      [
+        regionPackId,
+        e.jurisdictionCode,
+        e.businessKey,
+        e.businessKey,
+        (p.type as string) ?? "number",
+        p.value === undefined ? null : JSON.stringify(p.value),
+        (p.unit as string | null) ?? null,
+        (p.effective_from as string) ?? "2024-01-01",
+        (p.effective_to as string | null) ?? null,
+        (p.source as string | null) ?? null,
+        p.key_fields === undefined ? null : JSON.stringify(p.key_fields),
+        p.value_fields === undefined ? null : JSON.stringify(p.value_fields),
+        p.rows === undefined ? null : JSON.stringify(p.rows),
+        (p.note as string | null) ?? null,
+        e.version,
+        e.operation,
+        e.targetBusinessKey,
+        p.evidence === undefined ? null : JSON.stringify(p.evidence),
+      ],
+    );
+    return r.rows[0].id as number;
+  }
+  if (e.entityType === "rule_set") {
+    const r = await c.query(
+      `insert into rule_sets (rule_set_id, jurisdiction_code, description, status,
+         effective_from, rules, conflict_resolution, version, operation,
+         target_business_key)
+       values ($1,$2,$3,'draft',$4,$5,$6,$7,$8,$9) returning id`,
+      [
+        e.businessKey,
+        e.jurisdictionCode,
+        (p.description as string | null) ?? null,
+        (p.effective_from as string) ?? "2024-01-01",
+        JSON.stringify((p.rules as string[]) ?? []),
+        p.conflict_resolution === undefined
+          ? null
+          : JSON.stringify(p.conflict_resolution),
+        e.version,
+        e.operation,
+        e.targetBusinessKey,
+      ],
+    );
+    return r.rows[0].id as number;
+  }
+  // policy_pack_version：payload即paramSnapshot。
+  const r = await c.query(
+    `insert into policy_pack_versions (policy_pack_id, jurisdiction_code, pack_kind,
+       version, param_snapshot, status, effective_from)
+     values ($1,$2,$3,$4,$5,'draft','2024-01-01') returning id`,
+    [
+      e.businessKey,
+      e.jurisdictionCode,
+      e.jurisdictionCode === "CN" ? "baseline" : "overlay",
+      e.version,
+      JSON.stringify(e.payload),
+    ],
+  );
+  return r.rows[0].id as number;
+}
+
+/** 安装持久库镜像：legacy沪基线 + git派生行（CN/沪/川全部 + 广东旧内容）。
+ * 返回镜像计数（49/70/5/4）。 */
+async function seedPersistentMirror(c: Client): Promise<void> {
+  // 1) 旧上海运行基线（published）。
+  for (const key of LEGACY_RULE_KEYS) {
+    await c.query(
+      `insert into rules (rule_id, jurisdiction_code, business_key, name, module,
+         dsl_version, priority, status, effective_from, decision_table, version, operation)
+       values ($1,'310000',$1,$1,'test','SOCILA-DSL-1.0',0,'published','2024-01-01',
+               '{"hit_policy":"first","rows":[]}'::jsonb,1,'add')`,
+      [key],
+    );
+  }
+  let i = 0;
+  for (const id of LEGACY_PARAM_IDS) {
+    i += 1;
+    const isTable = id.startsWith("T-");
+    await c.query(
+      `insert into params (policy_pack_id, jurisdiction_code, business_key, param_id,
+         type, value, rows, status, effective_from, version, operation)
+       values ('SHANGHAI_BASE','310000',$1,$1,$2,$3,$4,'published','2024-01-01',1,'add')`,
+      [
+        id,
+        isTable ? "table" : "number",
+        isTable ? null : i,
+        isTable
+          ? JSON.stringify([{ insured_years_min: 1, insured_years_max: 5, months: 12 }])
+          : null,
+      ],
+    );
+  }
+  await c.query(
+    `insert into rule_sets (rule_set_id, jurisdiction_code, status, effective_from, rules, version, operation)
+     values ('RS-SHANGHAI-PLAN-V1','310000','published','2024-01-01',$1::jsonb,1,'add')`,
+    [JSON.stringify(LEGACY_RULE_KEYS)],
+  );
+
+  // 2) git派生行：CN/沪/川全部内容（沪按已有v1基线→v2），广东只留旧内容。
+  const { buildManifest, entityContentHash } = await import(
+    "@/lib/policy-materialization/manifest"
+  );
+  const {
+    buildPlan,
+    buildPackSnapshotPayload,
+  } = await import("@/lib/policy-materialization/plan");
+  const manifest = buildManifest({
+    showHead: (pth) =>
+      pth === "COMMIT"
+        ? "mat-test-commit"
+        : readFileSync(path.join(process.cwd(), pth), "utf8"),
+    listCommittedFiles: () => [],
+    isWorktreeDirty: () => false,
+  });
+  const fullPlan = buildPlan(manifest, {
+    counts: {
+      rules: 24,
+      params: 29,
+      rule_sets: 1,
+      policy_pack_versions: 0,
+      tests: 528,
+      cases: 851,
+      showcase_cases: 117,
+      policy_snapshots: 0,
+    },
+    publishedRowsHash: "seed",
+    maxVersions: new Map(),
+    packVersions: new Map(),
+    packTargets: [],
+    existingEntityHashes: new Map(),
+  }, []);
+
+  const gdRegion = manifest.regions.find(
+    (r) => r.jurisdictionCode === "440000",
+  )!;
+  const oldGdRegion = {
+    ...gdRegion,
+    rules: gdRegion.rules.filter(
+      (r) => r.businessKey === "R-GD-MI-RETIRE-RESTRICT",
+    ),
+    params: gdRegion.params.filter((p) => !isGdNewParam(p.payload)),
+  };
+
+  // 每地区批量审计成员（镜像持久库74成员：CN24+沪37+粤8+川5）。
+  const membersByJur = new Map<string, Array<Record<string, unknown>>>();
+  for (const region of fullPlan.regions) {
+    const isGd = region.jurisdictionCode === "440000";
+    const members: Array<Record<string, unknown>> = [];
+    const packId =
+      region.jurisdictionCode === "440000"
+        ? "GD-BASE"
+        : region.jurisdictionCode === "310000"
+          ? "SHANGHAI_BASE"
+          : region.jurisdictionCode === "CN"
+            ? "CN-BASELINE"
+            : "SC-BASE";
+    for (const e of region.entities) {
+      let entity = e;
+      if (isGd) {
+        if (e.entityType === "rule" && e.businessKey === "R-GD-UI-AMOUNT") continue;
+        if (e.entityType === "param" && isGdNewParam(e.payload as { param_id?: string; effective_from?: string })) continue;
+        if (e.entityType === "rule_set") {
+          entity = {
+            ...e,
+            version: 1,
+            payload: {
+              ...(e.payload as Record<string, unknown>),
+              rules: ((e.payload as { rules?: string[] }).rules ?? []).filter(
+                (r) => r !== "R-GD-UI-AMOUNT",
+              ),
+            } as Record<string, unknown>,
+          };
+        } else if (e.entityType === "policy_pack_version") {
+          entity = {
+            ...e,
+            version: 1,
+            payload: buildPackSnapshotPayload(
+              oldGdRegion,
+            ) as unknown as Record<string, unknown>,
+          };
+        }
+      }
+      const rowId = await insertEntitySql(
+        c,
+        {
+          ...entity,
+          payload: entity.payload as Record<string, unknown>,
+          version:
+            region.jurisdictionCode === "310000" &&
+            entity.entityType !== "policy_pack_version"
+              ? entity.version + 1
+              : entity.version,
+        },
+        packId,
+      );
+      members.push({
+        entity_type: entity.entityType,
+        entity_row_id: rowId,
+        business_key: entity.businessKey,
+        version:
+          region.jurisdictionCode === "310000" &&
+          entity.entityType !== "policy_pack_version"
+            ? entity.version + 1
+            : entity.version,
+        content_hash: entityContentHash(
+          entity.entityType as "rule" | "param" | "rule_set" | "policy_pack_version",
+          entity.jurisdictionCode,
+          entity.businessKey,
+          region.jurisdictionCode === "310000" &&
+            entity.entityType !== "policy_pack_version"
+            ? entity.version + 1
+            : entity.version,
+          entity.payload as Record<string, unknown>,
+        ),
+      });
+    }
+    membersByJur.set(region.jurisdictionCode, members);
+  }
+
+  // 3) 批次审计镜像（每地区1条applied批次 + 成员，manifest哈希为seed占位）。
+  for (const [jur, members] of membersByJur) {
+    const readiness = jur === "510000" ? "blocked" : "awaiting_approval";
+    const blockingReasons =
+      jur === "510000"
+        ? [
+            "医保退休年限省级统一文件未正式印发（仅2025-03征求意见稿，不作为事实源）",
+            "失业保险金标准原文（川人社办发〔2023〕18号）未在白名单域名获取",
+            "2026年度缴费基数未公布，2025年度参数窗口已失效",
+          ]
+        : [];
+    const batch = await c.query(
+      `insert into policy_import_batches
+         (jurisdiction_code, manifest_hash, source_commit, target_fingerprint,
+          status, readiness, blocking_reasons, entity_counts, actor)
+       values ($1,'seed-mirror-hash','seed', 'seed-fp', 'applied', $2, $3::jsonb,
+               $4::jsonb, 'seed')
+       returning id`,
+      [
+        jur,
+        readiness,
+        JSON.stringify(blockingReasons),
+        JSON.stringify({ seeded: true }),
+      ],
+    );
+    for (const m of members) {
+      await c.query(
+        `insert into policy_import_batch_members
+           (batch_id, entity_type, entity_row_id, business_key, version, content_hash)
+         values ($1,$2,$3,$4,$5,$6)`,
+        [
+          batch.rows[0].id,
+          m.entity_type,
+          m.entity_row_id,
+          m.business_key,
+          m.version,
+          m.content_hash,
+        ],
+      );
+    }
+  }
+
+  // 3) 案例与测试计数基线（528/851/117）。
+  await c.query(
+    `insert into tests (name, input, expected)
+     select 'legacy-test-'||g, '{}'::jsonb, '{}'::jsonb from generate_series(1,528) g`,
+  );
+  await c.query(
+    `insert into cases (case_uid) select 'legacy-case-'||g from generate_series(1,851) g`,
+  );
+  await c.query(
+    `insert into showcase_cases (title, user_message, ai_response)
+     select 'legacy-show-'||g, 'u', 'a' from generate_series(1,117) g`,
+  );
+
+  const counts = await c.query(
+    `select
+       (select count(*)::int from rules) as rules,
+       (select count(*)::int from params) as params,
+       (select count(*)::int from rule_sets) as rule_sets,
+       (select count(*)::int from policy_pack_versions) as packs,
+       (select count(*)::int from tests) as tests,
+       (select count(*)::int from cases) as cases,
+       (select count(*)::int from showcase_cases) as showcase,
+       (select count(*)::int from policy_snapshots) as snapshots`,
+  );
+  expect(counts.rows[0]).toEqual({
+    rules: 49,
+    params: 70,
+    rule_sets: 5,
+    packs: 4,
+    tests: 528,
+    cases: 851,
+    showcase: 117,
+    snapshots: 0,
+  });
 }
 
 // ─── WI-20260906-01 repair集成测试基础设施 ────────────────────────────────────
@@ -244,6 +620,8 @@ async function packRowByJur(jur: string): Promise<PackRowInfo> {
 let originalMemberHashes: Array<{ id: number; hash: string }> = [];
 
 /** 回到"4包旧格式漂移"夹具：快照/状态/版本复位，原成员哈希复原。
+ * 先复位全部包行为v1，再按地区只保留最小行ID（增量产生的GD v2与目标绑定
+ * 测试的版本篡改行一并收敛），保证每地区恰1个draft包行。
  * payload缺省为CORRUPT_SNAPSHOT；回滚/并发场景传入各自载荷以区分确定性repair身份。 */
 async function resetRepairFixture(
   payload: unknown = CORRUPT_SNAPSHOT,
@@ -255,6 +633,15 @@ async function resetRepairFixture(
        set param_snapshot = $1::jsonb, status = 'draft', version = 1
        where jurisdiction_code in ('CN','310000','440000','510000')`,
       [JSON.stringify(payload)],
+    );
+    await c.query(
+      `delete from policy_pack_versions p
+       where jurisdiction_code in ('CN','310000','440000','510000')
+         and p.id not in (
+           select min(p2.id) from policy_pack_versions p2
+           where p2.jurisdiction_code in ('CN','310000','440000','510000')
+           group by p2.jurisdiction_code
+         )`,
     );
     if (originalMemberHashes.length > 0) {
       for (const m of originalMemberHashes) {
@@ -293,53 +680,10 @@ async function setupDatabase(): Promise<void> {
     stdio: "pipe",
   });
 
-  // 安装合成旧上海运行基线。
+  // 安装"持久库镜像"（49/70/5/4：旧沪基线 + git派生行 + 广东旧内容）。
   const c = await matClient();
   try {
-    for (const key of LEGACY_RULE_KEYS) {
-      await c.query(
-        `insert into rules (rule_id, jurisdiction_code, business_key, name, module,
-           dsl_version, priority, status, effective_from, decision_table, version, operation)
-         values ($1,'310000',$1,$1,'test','SOCILA-DSL-1.0',0,'published','2024-01-01',
-                 '{"hit_policy":"first","rows":[]}'::jsonb,1,'add')`,
-        [key],
-      );
-    }
-    let i = 0;
-    for (const id of LEGACY_PARAM_IDS) {
-      i += 1;
-      const isTable = id.startsWith("T-");
-      await c.query(
-        `insert into params (policy_pack_id, jurisdiction_code, business_key, param_id,
-           type, value, rows, status, effective_from, version, operation)
-         values ('SHANGHAI_BASE','310000',$1,$1,$2,$3,$4,'published','2024-01-01',1,'add')`,
-        [
-          id,
-          isTable ? "table" : "number",
-          isTable ? null : i,
-          isTable
-            ? JSON.stringify([{ insured_years_min: 1, insured_years_max: 5, months: 12 }])
-            : null,
-        ],
-      );
-    }
-    await c.query(
-      `insert into rule_sets (rule_set_id, jurisdiction_code, status, effective_from, rules, version, operation)
-       values ('RS-SHANGHAI-PLAN-V1','310000','published','2024-01-01',$1::jsonb,1,'add')`,
-      [JSON.stringify(LEGACY_RULE_KEYS)],
-    );
-    // 案例与测试计数基线（528/851/117）。
-    await c.query(
-      `insert into tests (name, input, expected)
-       select 'legacy-test-'||g, '{}'::jsonb, '{}'::jsonb from generate_series(1,528) g`,
-    );
-    await c.query(
-      `insert into cases (case_uid) select 'legacy-case-'||g from generate_series(1,851) g`,
-    );
-    await c.query(
-      `insert into showcase_cases (title, user_message, ai_response)
-       select 'legacy-show-'||g, 'u', 'a' from generate_series(1,117) g`,
-    );
+    await seedPersistentMirror(c);
 
     const counts = await c.query(
       `select
@@ -491,7 +835,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     expect(countsAfter.rows[0]).toEqual(countsBefore.rows[0]);
   });
 
-  it("AC-013/015：apply → CN/粤/川v1、上海既有键v2、新键v1、固定计数、blocked语义", async () => {
+  it("AC-013/015（增量，ADR-0010任务2）：audit只规划广东delta；apply后50/75/6/5；CN/沪/川零新增；复跑no-op", async () => {
     const { buildManifest, manifestHash } = await import(
       "@/lib/policy-materialization/manifest"
     );
@@ -507,11 +851,51 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
       isWorktreeDirty: () => false,
     });
     const hash = manifestHash(manifest);
+
+    // ── fresh audit：只显示GD delta（复现修复：不再重放四地区整包74/116/9/8）。
     const audit = await auditMaterialization(manifest, true, {
       allowedDatabases: [MAT_DB],
       allowedPorts: ['5439'],
     });
+    expect(audit.plan.counts).toEqual({
+      rules: 1,
+      params: 5,
+      ruleSets: 1,
+      packs: 1,
+    });
+    const planByJur = new Map(
+      audit.plan.regions.map((r) => [r.jurisdictionCode, r]),
+    );
+    for (const jur of ["CN", "310000", "510000"]) {
+      expect(planByJur.get(jur)!.counts).toEqual({
+        rules: 0,
+        params: 0,
+        ruleSets: 0,
+        packs: 0,
+      });
+    }
+    expect(planByJur.get("440000")!.counts).toEqual({
+      rules: 1,
+      params: 5,
+      ruleSets: 1,
+      packs: 1,
+    });
+    // 包快照漂移只含GD（CN/沪/川快照与git一致）。
+    expect(audit.packSnapshotDrift).toHaveLength(1);
+    expect(audit.packSnapshotDrift[0]!.jurisdictionCode).toBe("440000");
+    // 目标计数 = 当前状态 + delta（49/70/5/4 → 50/75/6/5）。
+    expect(audit.expectedPostCounts).toEqual({
+      rules: 50,
+      params: 75,
+      rule_sets: 6,
+      policy_pack_versions: 5,
+      tests: 528,
+      cases: 851,
+      showcase_cases: 117,
+      policy_snapshots: 0,
+    });
 
+    // ── apply：单事务写入GD delta，其余地区零实体批次。
     const result = await applyMaterialization(
       {
         authorized: true,
@@ -527,12 +911,12 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     expect(result.publishedRowsHashBefore).toBe(oldRowsHashBefore);
     expect(result.publishedRowsHashAfter).toBe(oldRowsHashBefore);
 
-    // 固定计数（NRP-AC-015）。
+    // 固定计数（NRP-AC-015）：候选快照前目标50/75/6/5。
     expect(result.counts).toEqual({
-      rules: 49,
+      rules: 50,
       params: 75,
-      rule_sets: 5,
-      policy_pack_versions: 4,
+      rule_sets: 6,
+      policy_pack_versions: 5,
       tests: 528,
       cases: 851,
       showcase_cases: 117,
@@ -541,10 +925,13 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
 
     const c = await matClient();
     try {
-      // 批次就绪语义（NRP-FR-022）。
+      // 批次就绪语义（NRP-FR-022）：GD由blocked转为awaiting_approval；
+      // 四川三项阻断原因不变。
       const batches = await c.query(
         `select jurisdiction_code, readiness, blocking_reasons, entity_counts
-         from policy_import_batches order by id`,
+         from policy_import_batches
+         where manifest_hash = $1 order by id`,
+        [hash],
       );
       expect(batches.rows).toHaveLength(4);
       const byJur = new Map(
@@ -552,96 +939,149 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
       );
       expect(byJur.get("CN")!.readiness).toBe("awaiting_approval");
       expect(byJur.get("310000")!.readiness).toBe("awaiting_approval");
-      expect(byJur.get("440000")!.readiness).toBe("blocked");
+      expect(byJur.get("440000")!.readiness).toBe("awaiting_approval");
       expect(byJur.get("510000")!.readiness).toBe("blocked");
+      expect(byJur.get("440000")!.blocking_reasons as string[]).toHaveLength(0);
       expect(
         (byJur.get("510000")!.entity_counts as { rules: number }).rules,
       ).toBe(0);
       expect(
         byJur.get("510000")!.blocking_reasons as string[],
       ).toHaveLength(3);
+      // 只有GD批次携带实体（8成员：1规则+5参数+1规则集+1包）。
+      expect(byJur.get("440000")!.entity_counts).toEqual({
+        rules: 1,
+        params: 5,
+        ruleSets: 1,
+        packs: 1,
+      });
+      for (const jur of ["CN", "310000", "510000"]) {
+        expect(byJur.get(jur)!.entity_counts).toEqual({
+          rules: 0,
+          params: 0,
+          ruleSets: 0,
+          packs: 0,
+        });
+      }
 
-      // 版本语义（NRP-AC-013）：CN/粤/川v1；上海既有键v2、新键v1。
-      const versions = await c.query(
-        `select jurisdiction_code, business_key, version, status from (
-           select jurisdiction_code, rule_id as business_key, version, status from rules
-           union all select jurisdiction_code, param_id, version, status from params
-           union all select jurisdiction_code, rule_set_id, version, status from rule_sets
-         ) v
-         where (jurisdiction_code, business_key) in
-           (('CN','R-110-LOOKUP-LEGAL-RETIRE-AGE'), ('CN','R-200-MIN-PENSION-YEARS'),
-            ('440000','R-GD-MI-RETIRE-RESTRICT'), ('510000','RS-SC-PLAN-V1'),
-            ('310000','R-500-4050-ELIGIBILITY'), ('310000','R-310-MI-WAITING-PERIOD'),
-            ('310000','P-MI-LIFETIME-MALE-YEARS'), ('310000','P-SH-MIN-WAGE'),
-            ('310000','RS-SHANGHAI-PLAN-V1'))
-         order by jurisdiction_code, business_key, version`,
+      // 未变化的CN、上海、四川零新增；广东只增加delta（1规则+5参数+1规则集）。
+      const afterCounts = (await matQuery(
+        `select jurisdiction_code,
+           (select count(*)::int from rules r where r.jurisdiction_code=p.jurisdiction_code) as rules,
+           (select count(*)::int from params p2 where p2.jurisdiction_code=p.jurisdiction_code) as params,
+           (select count(*)::int from rule_sets rs where rs.jurisdiction_code=p.jurisdiction_code) as rule_sets
+         from (values ('CN'),('310000'),('440000'),('510000')) p(jurisdiction_code)
+         order by jurisdiction_code`,
+      )).rows;
+      expect(afterCounts).toEqual([
+        { jurisdiction_code: "310000", rules: 32, params: 56, rule_sets: 2 },
+        { jurisdiction_code: "440000", rules: 2, params: 10, rule_sets: 2 },
+        { jurisdiction_code: "510000", rules: 0, params: 3, rule_sets: 1 },
+        { jurisdiction_code: "CN", rules: 16, params: 6, rule_sets: 1 },
+      ]);
+
+      // 广东增量版本语义：旧窗口保持v1、新窗口v2；三个全新参数v1；
+      // 新规则v1；规则集下一版本v2；政策包v2。
+      const gdVersions = await c.query(
+        `select business_key, version, status from (
+           select rule_id as business_key, version, status from rules
+           union all select param_id, version, status from params
+           union all select rule_set_id, version, status from rule_sets
+         ) v where (business_key, version) in
+           (('R-GD-MI-RETIRE-RESTRICT',1), ('R-GD-UI-AMOUNT',1),
+            ('P-GD-CONTRIB-BASE-UPPER',1), ('P-GD-CONTRIB-BASE-UPPER',2),
+            ('T-GD-CONTRIB-BASE-LOWER-BY-CITY',1),
+            ('T-GD-CONTRIB-BASE-LOWER-BY-CITY',2),
+            ('P-GD-PENSION-CALC-BASE-2025',1),
+            ('P-GD-UNEMPLOYMENT-BENEFIT-RATE',1),
+            ('T-GD-MIN-WAGE-BY-CITY',1),
+            ('RS-GD-PLAN-V1',1), ('RS-GD-PLAN-V1',2))
+         order by business_key, version`,
       );
-      const vMap = new Map(
-        versions.rows.map(
-          (r) =>
-            [`${r.jurisdiction_code}|${r.business_key}|${r.version}`, r.status] as const,
+      const gdVMap = new Map(
+        gdVersions.rows.map(
+          (r) => [`${r.business_key}|${r.version}`, r.status] as const,
         ),
       );
-      // CN/粤/川首次v1（draft）。
-      expect(vMap.get("CN|R-110-LOOKUP-LEGAL-RETIRE-AGE|1")).toBe("draft");
-      expect(vMap.get("CN|R-200-MIN-PENSION-YEARS|1")).toBe("draft");
-      expect(vMap.get("440000|R-GD-MI-RETIRE-RESTRICT|1")).toBe("draft");
-      expect(vMap.get("510000|RS-SC-PLAN-V1|1")).toBe("draft");
-      // 上海既有键v2、新键v1（全部draft）。
-      expect(vMap.get("310000|R-500-4050-ELIGIBILITY|2")).toBe("draft");
-      expect(vMap.get("310000|R-310-MI-WAITING-PERIOD|2")).toBe("draft");
-      expect(vMap.get("310000|P-MI-LIFETIME-MALE-YEARS|1")).toBe("draft");
-      expect(vMap.get("310000|P-SH-MIN-WAGE|2")).toBe("draft");
-      expect(vMap.get("310000|RS-SHANGHAI-PLAN-V1|2")).toBe("draft");
-
-      // 旧published行原样存在（内容不变，仅新增draft行）。
-      const oldRule = await c.query(
-        `select status, version, count(*)::int as n from rules
-         where jurisdiction_code='310000' and rule_id='R-500-4050-ELIGIBILITY'
-         group by 1,2 order by 2`,
+      expect(gdVMap.get("R-GD-MI-RETIRE-RESTRICT|1")).toBe("draft");
+      expect(gdVMap.get("R-GD-UI-AMOUNT|1")).toBe("draft");
+      expect(gdVMap.get("P-GD-CONTRIB-BASE-UPPER|1")).toBe("draft");
+      expect(gdVMap.get("P-GD-CONTRIB-BASE-UPPER|2")).toBe("draft");
+      expect(gdVMap.get("T-GD-CONTRIB-BASE-LOWER-BY-CITY|1")).toBe("draft");
+      expect(gdVMap.get("T-GD-CONTRIB-BASE-LOWER-BY-CITY|2")).toBe("draft");
+      expect(gdVMap.get("P-GD-PENSION-CALC-BASE-2025|1")).toBe("draft");
+      expect(gdVMap.get("P-GD-UNEMPLOYMENT-BENEFIT-RATE|1")).toBe("draft");
+      expect(gdVMap.get("T-GD-MIN-WAGE-BY-CITY|1")).toBe("draft");
+      expect(gdVMap.get("RS-GD-PLAN-V1|1")).toBe("draft");
+      expect(gdVMap.get("RS-GD-PLAN-V1|2")).toBe("draft");
+      const gdPacks = await c.query(
+        `select version, status from policy_pack_versions
+         where jurisdiction_code='440000' order by version`,
       );
-      expect(oldRule.rows).toEqual([
-        { status: "published", version: 1, n: 1 },
-        { status: "draft", version: 2, n: 1 },
+      expect(gdPacks.rows).toHaveLength(2);
+      expect(gdPacks.rows[0]).toEqual({ version: 1, status: "draft" });
+      expect(gdPacks.rows[1]).toEqual({ version: 2, status: "draft" });
+      // GD规则集v2包含新规则、v1不含（旧内容不可变）。
+      const gdRs = await c.query(
+        `select version, rules from rule_sets
+         where jurisdiction_code='440000' order by version`,
+      );
+      expect((gdRs.rows[0]!.rules as string[])).not.toContain("R-GD-UI-AMOUNT");
+      expect((gdRs.rows[1]!.rules as string[])).toContain("R-GD-UI-AMOUNT");
+
+      // 批次成员审计（仅本次apply批次）：GD 8成员；CN/沪/川批次0成员。
+      const memberCounts = await c.query(
+        `select b.jurisdiction_code, count(m.id)::int as n
+         from policy_import_batches b left join policy_import_batch_members m
+           on m.batch_id = b.id
+         where b.manifest_hash = $1
+         group by b.jurisdiction_code order by b.jurisdiction_code`,
+        [hash],
+      );
+      expect(memberCounts.rows).toEqual([
+        { jurisdiction_code: "310000", n: 0 },
+        { jurisdiction_code: "440000", n: 8 },
+        { jurisdiction_code: "510000", n: 0 },
+        { jurisdiction_code: "CN", n: 0 },
       ]);
-      const oldParam = await c.query(
-        `select status, version, value from params
-         where jurisdiction_code='310000' and param_id='P-SH-MIN-WAGE'
-         order by version`,
-      );
-      expect(oldParam.rows).toHaveLength(2);
-      expect(oldParam.rows[0].status).toBe("published");
-      expect(oldParam.rows[0].version).toBe(1);
-      expect(oldParam.rows[1].status).toBe("draft");
 
-      // 新draft不改变published计数。
+      // 新draft不改变published计数（旧行保护，NFR-012）。
       const published = await c.query(
         `select
            (select count(*)::int from rules where status='published') as rules,
            (select count(*)::int from params where status='published') as params`,
       );
       expect(published.rows[0]).toEqual({ rules: 24, params: 29 });
-
-      // 参数evidence已保存（NRP-FR-020）。
-      const evidence = await c.query(
-        `select evidence from params
-         where jurisdiction_code='CN' and param_id='T-UNEMPLOYMENT-DURATION-BY-YEARS'`,
-      );
-      const ev = evidence.rows[0].evidence as Array<Record<string, unknown>>;
-      expect(ev.length).toBeGreaterThan(0);
-      expect(ev[0].content_sha256).toBeTruthy();
-
-      // 批次成员审计与内容哈希（NRP-FR-019）。
-      const members = await c.query(
-        `select count(*)::int as n from policy_import_batch_members m
-         join policy_import_batches b on b.id=m.batch_id
-         where b.jurisdiction_code='CN'`,
-      );
-      // CN：16规则+6参数+1规则集+1包=24成员。
-      expect(members.rows[0].n).toBe(24);
     } finally {
       await c.end();
     }
+
+    // ── 复跑no-op（AC-014）：相同delta只产生一组结果。
+    const noop = await applyMaterialization(
+      {
+        authorized: true,
+        expectedManifestHash: hash,
+        expectedTargetFingerprint: (
+          await auditMaterialization(manifest, true, {
+            allowedDatabases: [MAT_DB],
+            allowedPorts: ["5439"],
+          })
+        ).targetFingerprint,
+        manifest,
+        worktreeClean: true,
+        actor: "stage-e-test",
+      },
+      { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] },
+    );
+    expect(noop.noop).toBe(true);
+    const afterNoop = await matQuery(
+      `select
+         (select count(*)::int from rules) as rules,
+         (select count(*)::int from params) as params,
+         (select count(*)::int from policy_import_batches) as batches,
+         (select count(*)::int from policy_import_batch_members) as members`,
+    );
+    expect(afterNoop.rows[0]).toEqual({ rules: 50, params: 75, batches: 8, members: 82 });
   });
 
   it("AC-014：同manifest重复apply → no-op；计数不符 → 单事务回滚", async () => {
@@ -848,12 +1288,12 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     const deps = await repairDeps();
     await resetRepairFixture();
     const before = await dbSnapshot();
-    // 原物化批次的pack成员哈希（repair前基线）。
+    // 原物化批次的pack成员哈希（repair前基线：仅seed镜像批次，不含本次apply）。
     const beforePackMembers = await matQuery(
       `select m.business_key, m.content_hash as hash
        from policy_import_batch_members m
        join policy_import_batches b on b.id = m.batch_id
-       where b.status = 'applied' and m.entity_type = 'policy_pack_version'`,
+       where b.manifest_hash = 'seed-mirror-hash' and m.entity_type = 'policy_pack_version'`,
     );
     expect(beforePackMembers.rows).toHaveLength(4);
     const audit = await freshRepairAudit(deps);
@@ -901,7 +1341,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
       expect(b.target_fingerprint).toBe(audit.targetFingerprint);
       expect(b.entity_counts).toEqual({ packs_repaired: 1 });
     }
-    expect(batchByJur.get("440000")!.blocking_reasons).toHaveLength(3);
+    expect(batchByJur.get("440000")!.blocking_reasons).toHaveLength(0);
     expect(batchByJur.get("510000")!.blocking_reasons).toHaveLength(3);
 
     // 修复hash确定性：由基础manifest哈希+地区+pack+版本+旧/新内容哈希生成。
@@ -950,17 +1390,18 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
       `select m.business_key, m.content_hash as hash
        from policy_import_batch_members m
        join policy_import_batches b on b.id = m.batch_id
-       where b.status = 'applied' and m.entity_type = 'policy_pack_version'`,
+       where b.manifest_hash = 'seed-mirror-hash' and m.entity_type = 'policy_pack_version'`,
     );
     expect(afterPackMembers.rows).toHaveLength(4);
     expect(afterPackMembers.rows).toEqual(beforePackMembers.rows);
 
-    // 零漂移：业务计数与published整行哈希不变。
+    // 零漂移：业务计数与published整行哈希不变（repair只修快照不增业务行；
+    // 夹具复位后GD v2行已收敛，故packs=4是修复时点的事实状态）。
     expect(after.counts).toEqual(before.counts);
     expect(after.counts).toEqual({
-      rules: 49,
+      rules: 50,
       params: 75,
-      rule_sets: 5,
+      rule_sets: 6,
       policy_pack_versions: 4,
       tests: 528,
       cases: 851,

@@ -1,6 +1,6 @@
 {
   "rule_set_id": "RS-GD-PLAN-V1",
-  "description": "广东省规划规则集：继承国家baseline全部16条规则（广东v1无新增可执行地方规则；医保退休附加条件以restrict overlay表达）",
+  "description": "广东省规划规则集v2：继承国家baseline全部16条规则；新增广东失业保险金金额规则（领取地市最低工资×90%，条例第十九条）；医保退休附加条件以restrict overlay表达",
   "status": "published",
   "effective_from": "2022-07-01",
   "operation": "add",
@@ -20,6 +20,7 @@
     "R-400-UNEMPLOYMENT-ELIGIBILITY",
     "R-410-UNEMPLOYMENT-DURATION",
     "R-420-UI-MEDICAL-COVERAGE",
+    "R-GD-UI-AMOUNT",
     "R-700-PLAN-TEMPLATE",
     "R-900-FINAL-GATE"
   ],

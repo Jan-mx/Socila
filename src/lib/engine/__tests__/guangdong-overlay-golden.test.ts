@@ -426,6 +426,226 @@ describe("广东overlay黄金（NRP-AC-003/005，零数据库依赖）", () => {
     expect(
       shRules.find((r) => r.rule_id === "R-GD-MI-RETIRE-RESTRICT"),
     ).toBeUndefined();
+    expect(shRules.find((r) => r.rule_id === "R-GD-UI-AMOUNT")).toBeUndefined();
+  });
+
+  // ── ADR-0010任务2：广东首期能力边界 ────────────────────────────────────────
+
+  /** 按asOf解析CN+GD继承链的有效参数（mergePolicyContext窗口语义，
+   * 与生产getEffectiveParams一致：2030年前省级医保年限参数不生效）。 */
+  function effectiveGdParams(asOf: string): Record<string, unknown> {
+    const chain = ["CN", "440000"];
+    const toEntity = (
+      p: Record<string, unknown>,
+      jurisdictionCode: string,
+      packId: string,
+    ): MergeInputEntity => ({
+      businessKey: p.param_id as string,
+      jurisdictionCode,
+      packId,
+      version: 1,
+      payload: p,
+      operation: jurisdictionCode === "CN" ? "baseline" : "add",
+      targetBusinessKey: null,
+      effectiveFrom: p.effective_from as string,
+      effectiveTo: (p.effective_to as string | undefined) ?? null,
+    });
+    const cnEntities = [...cnPack.params, ...cnPack.tables].map((p) =>
+      toEntity(p, "CN", "CN-BASELINE"),
+    );
+    const gdEntities = [...gdPack.params, ...gdPack.tables].map((p) =>
+      toEntity(p, "440000", "GD-BASE"),
+    );
+    const merged = mergePolicyContext(
+      [...cnEntities, ...gdEntities],
+      chain,
+      asOf,
+    );
+    if (merged.conflicts.length > 0) {
+      throw new Error(
+        `[effectiveGdParams] 参数合并冲突：${JSON.stringify(merged.conflicts)}`,
+      );
+    }
+    const flat: Record<string, unknown> = {};
+    for (const e of merged.entities) {
+      const payload = e.payload as Record<string, unknown>;
+      flat[e.businessKey] =
+        payload.type === "table" || payload.type === "timeline"
+          ? (payload.rows ?? [])
+          : payload.value;
+    }
+    return flat;
+  }
+
+  /** 广东编排（CN baseline + GD规则，含R-GD-UI-AMOUNT；restrict为元数据无执行行）。
+   * 参数按asOf窗口解析——2030年前P-MI-LIFETIME-*不在有效集合。 */
+  function gdOrchestrate(
+    user: Record<string, unknown>,
+    asOf: string,
+  ): { calc: Record<string, unknown> } {
+    const ordered = [...cnRules, ...gdRules];
+    const result = orchestrateInMemory(
+      ordered,
+      effectiveGdParams(asOf),
+      structuredClone(user),
+      asOf,
+    );
+    return { calc: result.calc as Record<string, unknown> };
+  }
+
+  it("2030年前（2026-09-01）医保退休地市年限缺参：仅R-220产生needs_agent与W-MI-LOCAL-YEARS-MISSING，医保结论为空，养老/缴费基数/失业资格、期限与金额继续计算", () => {
+    const { calc } = gdOrchestrate(
+      {
+        basic: { gender: "male", birth_year: 1970, birth_date: "1970-06-15" },
+        status: { employment_status: "unemployed" },
+        social: {
+          pension_contrib_months: 120,
+          medical_contrib_months: 100,
+          unemployment_insurance_years: 3,
+        },
+        mi: { enroll_date: "2023-01-01", prev_end_date: "2022-12-01" },
+        profile: { claim_city: "广州" },
+      },
+      "2026-09-01",
+    );
+    const mi = (calc.mi ?? {}) as Record<string, unknown>;
+    const unemployment = (calc.unemployment ?? {}) as Record<string, unknown>;
+    const warnings = (calc.warnings ?? []) as Array<{ warning_id: string }>;
+
+    // 医保退休结论为空：省级男30/女25参数2030-01-01才生效，市级过渡期缺参。
+    expect(mi.lifetime_required_months).toBeUndefined();
+    expect(mi.lifetime_gap_months).toBeUndefined();
+    // 仅R-220输出能力级守卫：needs_agent + W-MI-LOCAL-YEARS-MISSING。
+    expect(calc.needs_agent).toBe(true);
+    expect(
+      warnings.some((w) => w.warning_id === "W-MI-LOCAL-YEARS-MISSING"),
+    ).toBe(true);
+    // 无其他MI模块warning（R-300/restrict不得产生MI类告警）。
+    for (const w of warnings) {
+      expect(w.warning_id.startsWith("W-MI")).toBe(
+        w.warning_id === "W-MI-LOCAL-YEARS-MISSING",
+      );
+    }
+    // 养老继续计算：退休年龄（1970男→61岁4个月）与最低缴费年限（2031退休→16年）。
+    const retirement = (calc.retirement ?? {}) as Record<string, unknown>;
+    expect(retirement.legal_retire_age_years).toBe(61);
+    expect(retirement.legal_retire_age_months).toBe(4);
+    const pension = (calc.pension ?? {}) as Record<string, unknown>;
+    expect(pension.min_years_required).toBe(16);
+    // 缴费基数（2025窗口27549）继续解析（窗口语义由effectiveGdParams保证）。
+    expect(
+      effectiveGdParams("2026-09-01")["P-GD-CONTRIB-BASE-UPPER"],
+    ).toBe(27549);
+    // 失业资格、期限与金额继续计算（广州最低工资2680×90%=2412）。
+    expect(unemployment.eligible).toBe(true);
+    expect(unemployment.duration_months).toBe(12);
+    expect(unemployment.monthly_amount_est).toBe(2412);
+  });
+
+  it("2030-01-01起省级统一男30年、女25年：医保退休直接计算，不再进入人工确认", () => {
+    const male = gdOrchestrate(
+      {
+        basic: { gender: "male", birth_year: 1970, birth_date: "1970-06-15" },
+        status: { employment_status: "employed" },
+        social: { pension_contrib_months: 120, medical_contrib_months: 100 },
+        mi: { enroll_date: "2023-01-01", prev_end_date: "2022-12-01" },
+      },
+      "2030-01-01",
+    );
+    expect((male.calc.mi as Record<string, unknown>).lifetime_required_months).toBe(
+      360,
+    );
+    expect((male.calc.mi as Record<string, unknown>).lifetime_gap_months).toBe(260);
+    expect(male.calc.needs_agent).not.toBe(true);
+
+    const female = gdOrchestrate(
+      {
+        basic: {
+          gender: "female",
+          female_retire_type: "worker50",
+          birth_year: 1970,
+          birth_date: "1970-06-15",
+        },
+        status: { employment_status: "employed" },
+        social: { pension_contrib_months: 120, medical_contrib_months: 100 },
+        mi: { enroll_date: "2023-01-01", prev_end_date: "2022-12-01" },
+      },
+      "2030-01-01",
+    );
+    expect(
+      (female.calc.mi as Record<string, unknown>).lifetime_required_months,
+    ).toBe(300);
+    expect((female.calc.mi as Record<string, unknown>).lifetime_gap_months).toBe(
+      200,
+    );
+    expect(female.calc.needs_agent).not.toBe(true);
+  });
+
+  it("边界：2029-12-31省级参数尚未生效→R-220守卫；2030-01-01生效→直接计算", () => {
+    const user = {
+      basic: { gender: "male", birth_year: 1970, birth_date: "1970-06-15" },
+      status: { employment_status: "employed" },
+      social: { pension_contrib_months: 120, medical_contrib_months: 100 },
+      mi: { enroll_date: "2023-01-01", prev_end_date: "2022-12-01" },
+    };
+    const before = gdOrchestrate(structuredClone(user), "2029-12-31");
+    expect(before.calc.needs_agent).toBe(true);
+    expect(
+      (before.calc.warnings as Array<{ warning_id: string }>).some(
+        (w) => w.warning_id === "W-MI-LOCAL-YEARS-MISSING",
+      ),
+    ).toBe(true);
+    const at = gdOrchestrate(structuredClone(user), "2030-01-01");
+    expect(
+      (at.calc.mi as Record<string, unknown>).lifetime_required_months,
+    ).toBe(360);
+    expect(at.calc.needs_agent).not.toBe(true);
+  });
+
+  it("失业金额规则：领取地市或最低工资缺失时needs_agent且不估算金额（不猜测）", () => {
+    const missingCity = gdOrchestrate(
+      {
+        basic: { gender: "male", birth_year: 1970, birth_date: "1970-06-15" },
+        status: { employment_status: "unemployed" },
+        social: {
+          pension_contrib_months: 120,
+          medical_contrib_months: 100,
+          unemployment_insurance_years: 3,
+        },
+        mi: { enroll_date: "2023-01-01", prev_end_date: "2022-12-01" },
+      },
+      "2026-09-01",
+    );
+    expect(missingCity.calc.needs_agent).toBe(true);
+    expect(
+      (missingCity.calc.unemployment as Record<string, unknown>)
+        .monthly_amount_est,
+    ).toBeUndefined();
+
+    const unknownCity = gdOrchestrate(
+      {
+        basic: { gender: "male", birth_year: 1970, birth_date: "1970-06-15" },
+        status: { employment_status: "unemployed" },
+        social: {
+          pension_contrib_months: 120,
+          medical_contrib_months: 100,
+          unemployment_insurance_years: 3,
+        },
+        mi: { enroll_date: "2023-01-01", prev_end_date: "2022-12-01" },
+        profile: { claim_city: "未收录市" },
+      },
+      "2026-09-01",
+    );
+    expect(unknownCity.calc.needs_agent).toBe(true);
+    expect(
+      (unknownCity.calc.warnings as Array<{ warning_id: string }>).some(
+        (w) => w.warning_id === "W-UI-MIN-WAGE-MISSING",
+      ),
+    ).toBe(true);
+    expect(
+      (unknownCity.calc.unemployment as Record<string, unknown>)
+        .monthly_amount_est,
+    ).toBeUndefined();
   });
 });
 

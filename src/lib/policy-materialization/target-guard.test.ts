@@ -130,6 +130,7 @@ describe("目标守卫：连接目标覆盖与协议（审查缺陷1）", () => 
       maxVersions: new Map(),
       packVersions: new Map(),
       packTargets: [],
+      existingEntityHashes: new Map(),
     };
     const local = resolveTarget({
       DATABASE_URL: "postgresql://u:p@localhost:5432/policyops",

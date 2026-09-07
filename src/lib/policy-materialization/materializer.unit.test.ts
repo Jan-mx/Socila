@@ -14,6 +14,8 @@ import {
   loadExistingState,
   resolveTarget,
   TargetGuardError,
+  canonicalJson,
+  sha256,
   type ExistingState,
   type SqlLike,
 } from "./target";
@@ -22,8 +24,11 @@ import {
   manifestHash,
   regionReadiness,
   type GitReader,
+  type ManifestRegion,
+  type PolicyMaterializationManifest,
 } from "./manifest";
-import { buildPlan, PlanConflictError } from "./plan";
+import { buildPlan, buildPackSnapshotPayload, PlanConflictError } from "./plan";
+import { payloadShapeHash } from "./shapes";
 
 const REPO = process.cwd();
 
@@ -199,18 +204,18 @@ describe("repair目标绑定与指纹（WI-20260906-01）", () => {
 });
 
 describe("manifest（NRP-FR-019，确定性）", () => {
-  it("四地区计数与仓库权威资产一致（CN16/6、沪8/27、粤1/10、川0/3）", () => {
+  it("四地区计数与仓库权威资产一致（CN16/6、沪8/27、粤2/10、川0/3）", () => {
     const manifest = buildManifest(fakeGitReader());
     const byJur = new Map(manifest.regions.map((r) => [r.jurisdictionCode, r]));
     expect(byJur.get("CN")!.rules).toHaveLength(16);
     expect(byJur.get("CN")!.params).toHaveLength(6);
     expect(byJur.get("310000")!.rules).toHaveLength(8);
     expect(byJur.get("310000")!.params).toHaveLength(27);
-    expect(byJur.get("440000")!.rules).toHaveLength(1);
+    expect(byJur.get("440000")!.rules).toHaveLength(2);
     expect(byJur.get("440000")!.params).toHaveLength(10);
     expect(byJur.get("510000")!.rules).toHaveLength(0);
     expect(byJur.get("510000")!.params).toHaveLength(3);
-    expect(manifest.counts).toEqual({ rules: 25, params: 46, ruleSets: 4, packs: 4 });
+    expect(manifest.counts).toEqual({ rules: 26, params: 46, ruleSets: 4, packs: 4 });
   });
 
   it("同一提交内容构建的manifest哈希恒定", () => {
@@ -220,18 +225,23 @@ describe("manifest（NRP-FR-019，确定性）", () => {
     expect(a).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("就绪语义：CN/沪awaiting_approval，粤/川blocked且原因非空", () => {
+  it("就绪语义：CN/沪/粤awaiting_approval，四川blocked且原因非空（ADR-0010）", () => {
     expect(regionReadiness("CN")).toEqual({
       readiness: "awaiting_approval",
       blockingReasons: [],
     });
     expect(regionReadiness("310000").readiness).toBe("awaiting_approval");
-    const gd = regionReadiness("440000");
-    expect(gd.readiness).toBe("blocked");
-    expect(gd.blockingReasons.length).toBeGreaterThanOrEqual(3);
+    // 广东三项缺口已闭环（2025基数/失业条例原文已采集；2030前市级口径由
+    // R-220能力级守卫处理）→ 整体进入首期交付，等待管理员批准。
+    expect(regionReadiness("440000")).toEqual({
+      readiness: "awaiting_approval",
+      blockingReasons: [],
+    });
     const sc = regionReadiness("510000");
     expect(sc.readiness).toBe("blocked");
     expect(sc.blockingReasons.some((r) => r.includes("征求意见"))).toBe(true);
+    // 四川三项blocking reasons保持不变（WI-20260907-01）。
+    expect(sc.blockingReasons).toHaveLength(3);
   });
 });
 
@@ -254,6 +264,7 @@ describe("计划器（NRP-FR-018/NRP-AC-013）", () => {
       maxVersions: new Map(),
       packVersions: new Map(),
       packTargets: [],
+      existingEntityHashes: new Map(),
     };
   }
 
@@ -340,6 +351,178 @@ describe("计划器（NRP-FR-018/NRP-AC-013）", () => {
       }
     }).toThrow(PlanConflictError);
   });
+
+  // ── 增量物化（ADR-0010任务2）：内容未变化零新增，只写GD delta ──────────────
+
+  /** 持久库式既有状态（模拟当前持久库49/70/5/4：CN/沪/川与GD旧内容已物化）。
+   * 与真实持久库的差异：SH既有键版本按2（沪已有v1运行基线+git v2），其余v1。 */
+  function persistentLikeState(
+    m: PolicyMaterializationManifest,
+  ): ExistingState {
+    const state = emptyState();
+    const gd = m.regions.find((r) => r.jurisdictionCode === "440000")!;
+    const keptGd: ManifestRegion = {
+      ...gd,
+      // 持久库广东已物化：仅旧规则与5个旧参数（2024窗口×2 + 医保年限×2 + 2023社平）。
+      rules: gd.rules.filter((r) => r.businessKey === "R-GD-MI-RETIRE-RESTRICT"),
+      params: gd.params.filter((p) => {
+        const id = (p.payload.param_id as string) ?? p.businessKey;
+        if (id === "P-GD-PENSION-CALC-BASE-2025") return false;
+        if (id === "P-GD-UNEMPLOYMENT-BENEFIT-RATE") return false;
+        if (id === "T-GD-MIN-WAGE-BY-CITY") return false;
+        return p.payload.effective_from !== "2025-07-01";
+      }),
+      ruleSetPayload: {
+        ...gd.ruleSetPayload!,
+        rules: (gd.ruleSetPayload!.rules as string[]).filter(
+          (r) => r !== "R-GD-UI-AMOUNT",
+        ),
+      } as Record<string, unknown>,
+    };
+    const keep = new Map<string, ManifestRegion>(
+      m.regions.map((r) => [r.jurisdictionCode, r]),
+    );
+    keep.set("440000", keptGd);
+
+    for (const [jur, region] of keep) {
+      const base = jur === "310000" ? 2 : 1;
+      for (const rule of region.rules) {
+        const key = `${jur}|rule|${rule.businessKey}`;
+        let set = state.existingEntityHashes.get(key);
+        if (!set) {
+          set = new Set();
+          state.existingEntityHashes.set(key, set);
+        }
+        set.add(payloadShapeHash("rule", rule.payload));
+        state.maxVersions.set(`${jur}|${rule.businessKey}`, base);
+      }
+      for (const param of region.params) {
+        const key = `${jur}|param|${param.businessKey}`;
+        let set = state.existingEntityHashes.get(key);
+        if (!set) {
+          set = new Set();
+          state.existingEntityHashes.set(key, set);
+        }
+        set.add(payloadShapeHash("param", param.payload));
+        state.maxVersions.set(`${jur}|${param.businessKey}`, base);
+      }
+      if (region.ruleSetPayload) {
+        const ruleSetId = region.ruleSetPayload.rule_set_id as string;
+        const key = `${jur}|rule_set|${ruleSetId}`;
+        let set = state.existingEntityHashes.get(key);
+        if (!set) {
+          set = new Set();
+          state.existingEntityHashes.set(key, set);
+        }
+        set.add(payloadShapeHash("rule_set", region.ruleSetPayload));
+        state.maxVersions.set(`${jur}|${ruleSetId}`, base);
+      }
+      state.packVersions.set(`${jur}|${region.packId}`, 1);
+      state.packTargets.push({
+        rowId: 0,
+        jurisdictionCode: jur,
+        packId: region.packId,
+        version: 1,
+        status: "draft",
+        snapshotHash: sha256(canonicalJson(buildPackSnapshotPayload(region))),
+        memberRowId: null,
+        memberHash: null,
+      });
+    }
+    return state;
+  }
+
+  it("增量计划：持久库式状态 → 仅广东delta（1规则+5参数+1规则集+1政策包），CN/沪/川零新增", () => {
+    const m = buildManifest(fakeGitReader());
+    const plan = buildPlan(m, persistentLikeState(m), []);
+
+    // 未变化的CN、上海、四川零新增。
+    expect(plan.counts).toEqual({ rules: 1, params: 5, ruleSets: 1, packs: 1 });
+    for (const r of plan.regions) {
+      if (r.jurisdictionCode === "440000") continue;
+      expect(r.counts).toEqual({ rules: 0, params: 0, ruleSets: 0, packs: 0 });
+      expect(r.entities).toHaveLength(0);
+    }
+
+    const gd = plan.regions.find((r) => r.jurisdictionCode === "440000")!;
+    const byKind = (kind: string) =>
+      gd.entities.filter((e) => e.entityType === kind);
+    expect(gd.counts).toEqual({ rules: 1, params: 5, ruleSets: 1, packs: 1 });
+
+    // 三个全新GD参数使用v1。
+    const newParams = new Map(
+      byKind("param").map((e) => [e.businessKey, e]),
+    );
+    expect(newParams.get("P-GD-PENSION-CALC-BASE-2025")?.version).toBe(1);
+    expect(newParams.get("P-GD-UNEMPLOYMENT-BENEFIT-RATE")?.version).toBe(1);
+    expect(newParams.get("T-GD-MIN-WAGE-BY-CITY")?.version).toBe(1);
+    // 两个新窗口（2025-07-01起）使用v2，旧窗口保持v1（不在计划内）。
+    expect(newParams.get("P-GD-CONTRIB-BASE-UPPER")?.version).toBe(2);
+    expect(
+      newParams.get("T-GD-CONTRIB-BASE-LOWER-BY-CITY")?.version,
+    ).toBe(2);
+    // 新建失业金额规则v1；广东规则集下一版本v2；GD政策包v2。
+    expect(
+      byKind("rule").find((e) => e.businessKey === "R-GD-UI-AMOUNT")?.version,
+    ).toBe(1);
+    expect(
+      byKind("rule_set").find((e) => e.businessKey === "RS-GD-PLAN-V1")
+        ?.version,
+    ).toBe(2);
+    expect(
+      byKind("policy_pack_version").find((e) => e.businessKey === "GD-BASE")
+        ?.version,
+    ).toBe(2);
+  });
+
+  it("增量计划：全部内容已物化 → 完全no-op计划（复跑零新增）", () => {
+    const m = buildManifest(fakeGitReader());
+    // 全部当前git内容视为已落库。
+    const state = persistentLikeState(m);
+    const full = buildPlan(m, emptyState(), []);
+    const packIdByJur = new Map(
+      m.regions.map((r) => [r.jurisdictionCode, r.packId] as const),
+    );
+    for (const region of full.regions) {
+      for (const e of region.entities) {
+        if (e.entityType === "policy_pack_version") continue;
+        const key = `${region.jurisdictionCode}|${e.entityType}|${e.businessKey}`;
+        const payload = e.payload as Record<string, unknown>;
+        let set = state.existingEntityHashes.get(key);
+        if (!set) {
+          set = new Set();
+          state.existingEntityHashes.set(key, set);
+        }
+        set.add(
+          payloadShapeHash(e.entityType as "rule" | "param" | "rule_set", payload),
+        );
+      }
+      const jur = region.jurisdictionCode as string;
+      state.packVersions.set(
+        `${jur}|${packIdByJur.get(jur as never)!}`,
+        (state.packVersions.get(`${jur}|${packIdByJur.get(jur as never)!}`) ??
+          0) + 1,
+      );
+    }
+    // 补全GD包新快照。
+    const gd = m.regions.find((r) => r.jurisdictionCode === "440000")!;
+    state.packTargets.push({
+      rowId: 999,
+      jurisdictionCode: gd.jurisdictionCode,
+      packId: gd.packId,
+      version: 2,
+      status: "draft",
+      snapshotHash: sha256(canonicalJson(buildPackSnapshotPayload(gd))),
+      memberRowId: null,
+      memberHash: null,
+    });
+
+    const plan = buildPlan(m, state, []);
+    expect(plan.counts).toEqual({ rules: 0, params: 0, ruleSets: 0, packs: 0 });
+    for (const r of plan.regions) {
+      expect(r.entities).toHaveLength(0);
+    }
+  });
 });
 
 function makeEmptyState(): ExistingState {
@@ -358,6 +541,7 @@ function makeEmptyState(): ExistingState {
     maxVersions: new Map(),
     packVersions: new Map(),
     packTargets: [],
+    existingEntityHashes: new Map(),
   };
 }
 

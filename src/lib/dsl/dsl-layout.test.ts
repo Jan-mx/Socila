@@ -244,7 +244,12 @@ describe("广东overlay目录 dsl/regions/guangdong_dsl_v1（NRP-FR-006/FR-008�
     ) as { jurisdiction_code: string; region_slug: string; rules: Array<{ rule_id: string }> };
     expect(manifest.jurisdiction_code).toBe("440000");
     expect(manifest.region_slug).toBe("guangdong");
-    expect(manifest.rules).toHaveLength(1);
+    // 任务2首期（ADR-0010）：广东新增失业保险金金额规则（R-GD-UI-AMOUNT）。
+    expect(manifest.rules).toHaveLength(2);
+    expect(manifest.rules.map((r) => r.rule_id)).toEqual([
+      "R-GD-MI-RETIRE-RESTRICT",
+      "R-GD-UI-AMOUNT",
+    ]);
     expect(existsSync(path.join(GD_DIR, "params/policy_params_guangdong_base.json"))).toBe(true);
     expect(existsSync(path.join(GD_DIR, "rule_sets/rule_set_guangdong_plan_v1.json"))).toBe(true);
   });

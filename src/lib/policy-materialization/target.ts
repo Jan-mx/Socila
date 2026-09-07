@@ -6,6 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import { parse as parsePgConnectionString } from "pg-connection-string";
+import { payloadShapeHash } from "./shapes";
 
 export interface MaterializationTarget {
   host: string;
@@ -132,12 +133,14 @@ export interface SqlLike {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
 
-/** 固定计数核对表（NRP-AC-015 / PRD §9）。 */
+/** 固定计数核对表（NRP-AC-015 / PRD §9）。
+ * 任务2分地区首期（ADR-0010）：候选快照前目标 50/75/6/5——即当前持久库
+ * 49/70/5/4 之上只允许广东delta：5参数+1规则+1规则集版本+1政策包版本。 */
 export const EXPECTED_TOTAL_COUNTS = {
-  rules: 49,
+  rules: 50,
   params: 75,
-  rule_sets: 5,
-  policy_pack_versions: 4,
+  rule_sets: 6,
+  policy_pack_versions: 5,
   tests: 528,
   cases: 851,
   showcase_cases: 117,
@@ -154,6 +157,9 @@ export interface ExistingState {
   packVersions: Map<string, number>;
   /** draft政策包目标绑定（WI-20260906-01）：repair指纹必须绑定待修复行。 */
   packTargets: PackTargetBinding[];
+  /** 已落库实体载荷形状哈希（任务2增量物化）：(jurisdiction|entity_type|
+   * business_key) → 已存在内容哈希集合；内容相同则零新增。 */
+  existingEntityHashes: Map<string, Set<string>>;
 }
 
 /** repair目标绑定（WI-20260906-01实现要求1）：draft政策包行ID、地区、pack ID、
@@ -250,6 +256,7 @@ export async function loadExistingState(sql: SqlLike): Promise<ExistingState> {
   }
 
   const packTargets = await loadPackTargets(sql);
+  const existingEntityHashes = await loadExistingEntityHashes(sql);
 
   return {
     counts,
@@ -257,7 +264,75 @@ export async function loadExistingState(sql: SqlLike): Promise<ExistingState> {
     maxVersions,
     packVersions,
     packTargets,
+    existingEntityHashes,
   };
+}
+
+/** 已落库实体载荷形状哈希（任务2增量物化）：全部规则/参数/规则集行按
+ * (jurisdiction|entity_type|business_key)归组，内容集合供计划器判定零新增。
+ * 形状与Git侧规范化契约见shapes.ts（日期/缺省/强制draft语义一致）。 */
+export async function loadExistingEntityHashes(
+  sql: SqlLike,
+): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  const add = (jur: unknown, kind: string, key: unknown, hash: string) => {
+    const k = `${jur ?? ""}|${kind}|${key ?? ""}`;
+    let set = out.get(k);
+    if (!set) {
+      set = new Set();
+      out.set(k, set);
+    }
+    set.add(hash);
+  };
+
+  const ruleRows = await sql.query(
+    `select jurisdiction_code, rule_id,
+            name, module, dsl_version, priority, effective_from,
+            effective_to, supersedes, inputs, parameter_refs, decision_table,
+            outputs, examples, evidence, notes, operation, target_business_key
+     from rules order by id`,
+  );
+  for (const row of ruleRows.rows as Array<Record<string, unknown>>) {
+    add(
+      row.jurisdiction_code,
+      "rule",
+      row.rule_id,
+      payloadShapeHash("rule", row as Record<string, unknown>),
+    );
+  }
+
+  const paramRows = await sql.query(
+    `select jurisdiction_code, param_id,
+            param_id, type, value, unit, effective_from, effective_to,
+            source, key_fields, value_fields, rows, note, evidence,
+            operation, target_business_key
+     from params order by id`,
+  );
+  for (const row of paramRows.rows as Array<Record<string, unknown>>) {
+    add(
+      row.jurisdiction_code,
+      "param",
+      row.param_id,
+      payloadShapeHash("param", row as Record<string, unknown>),
+    );
+  }
+
+  const ruleSetRows = await sql.query(
+    `select jurisdiction_code, rule_set_id,
+            rule_set_id, description, effective_from, rules,
+            conflict_resolution, operation, target_business_key
+     from rule_sets order by id`,
+  );
+  for (const row of ruleSetRows.rows as Array<Record<string, unknown>>) {
+    add(
+      row.jurisdiction_code,
+      "rule_set",
+      row.rule_set_id,
+      payloadShapeHash("rule_set", row as Record<string, unknown>),
+    );
+  }
+
+  return out;
 }
 
 /** draft政策包目标绑定读取（WI-20260906-01）：全部包行按rowId排序，成员取
@@ -298,18 +373,27 @@ export async function loadPackTargets(sql: SqlLike): Promise<PackTargetBinding[]
 }
 
 /** 目标指纹：主机:端口/库名 + 固定计数 + published行哈希 + draft包目标绑定
- * （WI-20260906-01：repair指纹必须绑定待修复行，audit后任何draft变化都改变指纹；
+ * （WI-20260906-01：repair指纹必须绑定待修复行，audit后任何draft变化都改变指纹）
+ * + 已落库实体载荷形状哈希（任务2增量物化：audit绑定全部draft/published内容，
+ * 计划零新增的判定基线也随指纹一起被固化，任何内容变化都必须重新audit；
  * 不含连接串/口令/完整URL，NRP-NFR-009）。 */
 export function computeTargetFingerprint(
   target: MaterializationTarget,
   state: ExistingState,
 ): string {
+  const entityHashes: Record<string, string[]> = {};
+  for (const [key, set] of [...state.existingEntityHashes.entries()].sort(
+    ([a], [b]) => (a < b ? -1 : a > b ? 1 : 0),
+  )) {
+    entityHashes[key] = [...set].sort();
+  }
   return sha256(
     canonicalJson({
       target: `${target.host}:${target.port}/${target.database}`,
       counts: state.counts,
       publishedRowsHash: state.publishedRowsHash,
       packTargets: state.packTargets,
+      existingEntityHashes: entityHashes,
     }),
   );
 }

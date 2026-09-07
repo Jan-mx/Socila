@@ -7,6 +7,13 @@
   "rule_set_file": "rule_sets/rule_set_guangdong_plan_v1.json",
   "tests_file": "tests/rule_examples_as_tests.json",
   "rules": [
-    { "rule_id": "R-GD-MI-RETIRE-RESTRICT", "file": "R-GD-MI-RETIRE-RESTRICT.json" }
+    {
+      "rule_id": "R-GD-MI-RETIRE-RESTRICT",
+      "file": "R-GD-MI-RETIRE-RESTRICT.json"
+    },
+    {
+      "rule_id": "R-GD-UI-AMOUNT",
+      "file": "R-GD-UI-AMOUNT.json"
+    }
   ]
 }

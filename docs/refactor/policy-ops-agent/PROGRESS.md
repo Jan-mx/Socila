@@ -39,7 +39,7 @@
 | 远程Demo环境 | 未部署 | 按OPERATIONS执行服务器验收 |
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
-| 任务2：CN/上海/广东首期政策交付 | In Progress：GD权威参数已编码；当前fresh audit仍错误重放四地区整包并规划74/116/9/8，持久库保持49/70/5/4、snapshots=0 | 修复GD确定性delta→目标50/75/6/5；完成三地区管理员批准与候选快照后Accepted |
+| 任务2：CN/上海/广东首期政策交付 | In Progress：GD增量物化代码已交付（delta=5参数+1规则+1规则集版本+1政策包版本，复跑no-op，50/75/6/5），持久库apply待授权 | 授权后apply并验证幂等/哈希/规划回归/恢复零漂移；然后三地区管理员批准与候选快照 |
 | 任务3：地区感知用户规划 | Planned（等待任务2 Accepted） | 与任务4并行；首期上海/广东，四川unsupported；广东医保退休缺参仅能力级needs_agent |
 | 任务4：上海案例治理 | Planned（等待任务2 Accepted） | 与任务3并行；只治理上海851/117为452/36/528并绑定上海候选快照 |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
@@ -260,6 +260,21 @@
 | 后续顺序 | 任务2Accepted后，任务3与任务4从同一冻结提交并行开发；最终先集成任务3 migration 0015，再集成任务4 migration 0016 |
 
 本次仅完成范围与依赖文档调整：`npm test` 51文件/474通过，`scan-secrets --all` 686个候选文件零命中，Markdown相对链接、PRD/Work Item状态、提示词未写入仓库及`git diff --check`均通过；未修改代码、未执行数据库写入、管理员批准、快照创建、案例删除或地区激活。
+
+## 当前任务验证（任务2首期：广东增量物化与地区就绪，2026-09-07本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 已记录；持久库式状态仍重放全部四地区（plan 26/46/4/4，与持久库audit错误规划74/116/9/8同构）+GD readiness仍blocked+R-GD-UI-AMOUNT金额行不执行+集成audit全量重放 |
+| Node单元（`npm test`） | PASS；51文件/485通过、skip 0（+16：增量计划2、广东编排4、失业金额示例5等） |
+| TypeScript / ESLint / Build | PASS；tsc退出0；eslint 0 error/7 warning（均为HEAD既有，未新增）；build零warning（2 workers、8/8静态页） |
+| 数据库集成（`npm run test:db`，全新PG17 `nrp_drill`迁移+seed） | PASS；19文件/85通过、skip 0（持久库镜像fixture：audit只规划GD delta 1/5/1/1、apply后50/75/6/5、CN/沪/川零新增、复跑no-op、WI-repair全套回归） |
+| Python门禁（ruff/mypy/pytest非集成） | PASS；0问题、33文件0错误、94通过（skip 0） |
+| Python集成（`pytest -m integration`，`nrp_agent_drill`库） | PASS；20通过（skip 0） |
+| Auth E2E（全新`nrp_e2e_drill`库+Jan引导+seed+standalone+mock） | PASS；10通过 |
+| Secret扫描 / Gitleaks 8.29.1完整历史 / 哨兵 / pip-audit | PASS；688候选文件零命中；61 commits no leaks；3场景全过；无已知漏洞 |
+| 增量语义（单元+集成） | 三个全新GD参数v1、两个新窗口v2（旧窗口v1保留）、R-GD-UI-AMOUNT v1、RS-GD-PLAN-V1 v2、GD-BASE v2；相同delta复跑no-op（批次/成员不再增加）；广东2030年前仅R-220 needs_agent+W-MI-LOCAL-YEARS-MISSING且其他模块继续；2030-01-01起男30/女25 |
+| 边界 | 未执行持久库apply、未批准、未建快照、未改四川实体、未开放流量；演练动态库已清理或待清理 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 

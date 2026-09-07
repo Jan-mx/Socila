@@ -5,10 +5,16 @@
       "example_name": "广东2030口径：男性已缴120月按30年 -> 缺240月",
       "input": {
         "user": {
-          "basic": { "gender": "male" },
-          "social": { "medical_contrib_months": 120 }
+          "basic": {
+            "gender": "male"
+          },
+          "social": {
+            "medical_contrib_months": 120
+          }
         },
-        "params": { "P-MI-LIFETIME-MALE-YEARS": 30 }
+        "params": {
+          "P-MI-LIFETIME-MALE-YEARS": 30
+        }
       },
       "params_override": null,
       "expected": {
@@ -25,10 +31,16 @@
       "example_name": "广东2030口径：女性已缴120月按25年 -> 缺180月",
       "input": {
         "user": {
-          "basic": { "gender": "female" },
-          "social": { "medical_contrib_months": 120 }
+          "basic": {
+            "gender": "female"
+          },
+          "social": {
+            "medical_contrib_months": 120
+          }
         },
-        "params": { "P-MI-LIFETIME-FEMALE-YEARS": 25 }
+        "params": {
+          "P-MI-LIFETIME-FEMALE-YEARS": 25
+        }
       },
       "params_override": null,
       "expected": {
@@ -69,31 +81,199 @@
       "rule_id": "R-410-UNEMPLOYMENT-DURATION",
       "example_name": "广东继承国家法定档：失业险6年 -> 最长18个月",
       "input": {
-        "calc": { "unemployment": { "eligible": true } },
-        "user": { "social": { "unemployment_insurance_years": 6 } },
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        },
+        "user": {
+          "social": {
+            "unemployment_insurance_years": 6
+          }
+        },
         "params": {
           "P-UNEMPLOYMENT-MAX-MONTHS": 24,
           "T-UNEMPLOYMENT-DURATION-BY-YEARS": [
-            { "insured_years_min": 1, "insured_years_max": 5, "months": 12 },
-            { "insured_years_min": 5, "insured_years_max": 10, "months": 18 },
-            { "insured_years_min": 10, "insured_years_max": 99, "months": 24 }
+            {
+              "insured_years_min": 1,
+              "insured_years_max": 5,
+              "months": 12
+            },
+            {
+              "insured_years_min": 5,
+              "insured_years_max": 10,
+              "months": 18
+            },
+            {
+              "insured_years_min": 10,
+              "insured_years_max": 99,
+              "months": 24
+            }
           ]
         }
       },
       "params_override": null,
       "expected": {
-        "calc": { "unemployment": { "duration_months": 18 } }
+        "calc": {
+          "unemployment": {
+            "duration_months": 18
+          }
+        }
       }
     },
     {
       "rule_id": "R-200-MIN-PENSION-YEARS",
       "example_name": "广东继承国家时间线：退休年份2033 -> 17年",
       "input": {
-        "calc": { "retirement": { "legal_retire_year": 2033 } }
+        "calc": {
+          "retirement": {
+            "legal_retire_year": 2033
+          }
+        }
       },
       "params_override": null,
       "expected": {
-        "calc": { "pension": { "min_years_required": 17 } }
+        "calc": {
+          "pension": {
+            "min_years_required": 17
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-GD-UI-AMOUNT",
+      "example_name": "广州领取：最低工资2680×90%＝2412元/月",
+      "input": {
+        "user": {
+          "profile": {
+            "claim_city": "广州"
+          },
+          "status": {
+            "employment_status": "unemployed"
+          },
+          "social": {
+            "unemployment_insurance_years": 3
+          }
+        },
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "unemployment": {
+            "monthly_amount_est": 2412
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-GD-UI-AMOUNT",
+      "example_name": "深圳领取：最低工资2700×90%＝2430元/月",
+      "input": {
+        "user": {
+          "profile": {
+            "claim_city": "深圳"
+          },
+          "status": {
+            "employment_status": "unemployed"
+          }
+        },
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "unemployment": {
+            "monthly_amount_est": 2430
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-GD-UI-AMOUNT",
+      "example_name": "领取地市缺失：needs_agent且金额为空（不猜测）",
+      "input": {
+        "user": {
+          "status": {
+            "employment_status": "unemployed"
+          }
+        },
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "needs_agent": true
+        }
+      }
+    },
+    {
+      "rule_id": "R-GD-UI-AMOUNT",
+      "example_name": "领取地市不在最低工资表：needs_agent且金额为空",
+      "input": {
+        "user": {
+          "profile": {
+            "claim_city": "未收录市"
+          },
+          "status": {
+            "employment_status": "unemployed"
+          }
+        },
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "needs_agent": true,
+          "warnings": [
+            {
+              "warning_id": "W-UI-MIN-WAGE-MISSING"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "rule_id": "R-GD-UI-AMOUNT",
+      "example_name": "失业资格不满足：金额为0",
+      "input": {
+        "user": {
+          "profile": {
+            "claim_city": "广州"
+          },
+          "status": {
+            "employment_status": "employed"
+          }
+        },
+        "calc": {
+          "unemployment": {
+            "eligible": false
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "unemployment": {
+            "monthly_amount_est": 0
+          }
+        }
       }
     }
   ]

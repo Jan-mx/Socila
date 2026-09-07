@@ -10,7 +10,7 @@
 
 09-02用户与管理员双角色鉴权Feature已Accepted；09-03 P0合并质量门禁与v2.0.0发布准备**Accepted（开发分支发布准备）**：六类门禁全部本地新鲜复现（全部退出0、零skip），workflow经actionlint 1.7.7静态校验零发现，`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）；重构前`main`已由`v1.0.0`标记，PR、main ruleset、merge与`v2.0.0` Release为未来人工动作（见`PROGRESS.md`精确下一步与PRD §17）。
 
-09-05 Stage（`docs/prd/09-05-stage-national-baseline-regional-overlays.md`）按ADR-0010改为**CN、上海、广东首期分地区交付（Active）**：阶段E缺陷、repair和广东权威事实编码均已完成；当前阻断是广东增量物化仍错误重放四地区整包，以及三地区管理员批准/候选快照未完成。广东2030年前只在医保退休地市年限缺参时进入`needs_agent`，其他模块继续；四川三项来源延期并保持blocked、无快照。任务2首期Accepted后，地区规划与上海案例治理并行开发、串行集成。
+09-05 Stage（`docs/prd/09-05-stage-national-baseline-regional-overlays.md`）按ADR-0010改为**CN、上海、广东首期分地区交付（Active）**：广东增量物化代码已交付（确定性delta＝5参数+1失业金额规则+1规则集版本+1政策包版本，未变化实体零新增，复跑no-op，候选快照前目标50/75/6/5/528/851/117/0）；广东失业保险金金额规则（领取地市最低工资×90%，缺参needs_agent不估算）与2030年前R-220能力级守卫已实现。剩余为持久库apply（待授权）、三地区管理员批准与候选快照；四川三项来源延期并保持blocked、无快照。任务2首期Accepted后，地区规划与上海案例治理并行开发、串行集成。
 
 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）**Accepted（2026-09-05两轮复审纠正后重新验收）**：首轮复审三项缺漏已纠正——命名契约区分"允许的精确旧协议片段"与"独立品牌标识"、`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`并新增哨兵回归（ADR-0009）、多地区Seed补齐jurisdiction作用域并有落库级测试；第二轮复审又修复扫描器注释自命中与`.gitleaksignore`说明文字历史误报，并将Next生产构建worker限制为2以适配本机及4GB Demo资源档。最终新鲜复验：`npm test` 359/359、Gitleaks 8.29.1完整历史43提交零发现、`npm run build`以2 workers退出0。通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层，规则格式唯一规范值`SOCILA-DSL-1.0`；活动代码与配置完成Socila硬切换；服务JWT身份为`socila-next-core`；粤川示例仅保留测试夹具，生产Seed与持久库均为0。证据见`reports/feature-09-05-socila-naming/acceptance-report.md`。
 

@@ -396,3 +396,67 @@ WI-20260906-02标记**Accepted**。任务2整体保持**Reopened**：剩余缺�
 2026-09-07对当前HEAD执行只读fresh audit：持久库仍为49/70/5/4/528/851/117/0，audit错误规划74/116/9/8，且广东仍携带已过期的缴费基数/失业条例blocking reasons。因此当前禁止apply。
 
 任务2下一实现批次必须取得专用Red/Green并将计划收敛为广东delta：5参数、1规则、1规则集新版本、1政策包新版本；CN、上海、四川和未变化GD实体零新增。候选快照前目标业务计数为50/75/6/5/528/851/117/0。完成代码和隔离验收后，GD物化、管理员批准、三地区候选快照分别先报告并请求明确授权。
+
+## 17. 任务2首期：广东增量物化与地区就绪修复（2026-09-07，任务2保持Reopened）
+
+按ADR-0010 §16范围执行首期实现批次：广东确定性delta物化、失业保险金金额规则、地区就绪修正。本批次只交付代码/DSL/测试与门禁证据；持久库apply、管理员批准与候选快照仍等待各自明确授权（§16.3）。
+
+### 17.1 TDD Red（先于实现，2026-09-07首跑）
+
+| 场景 | Red输出（实现前首跑） |
+| --- | --- |
+| 增量计划 | `materializer.unit.test.ts` 3失败：持久库式状态仍重放全部四地区（plan counts 26/46/4/4，期望1/5/1/1——与持久库audit错误规划74/116/9/8同构）；全部内容已物化仍重放26/46/4/4而非no-op |
+| 地区就绪 | 同一Red批次：`regionReadiness("440000")`仍为blocked且3条原因（期望awaiting_approval/[]） |
+| 失业金额规则 | golden首跑8失败：`executeSingleRuleInMemory`对R-GD-UI-AMOUNT金额行不执行（hit_policy first在lookup行提前终止）→ 改hit_policy all+互斥行；有效参数窗口语义（orchestrateInMemory扁平参数不含窗口过滤）→ 测试改用mergePolicyContext窗口解析（effectiveGdParams） |
+| 集成 | 重写后的`materializer.integration.test.ts`增量场景在旧实现下audit plan重放全量（26/46/4/4）而非GD delta |
+
+### 17.2 实现内容（增量物化与首期能力）
+
+- `src/lib/policy-materialization/shapes.ts`（新增）：规则/参数/规则集载荷规范化形状与`payloadShapeHash`——Git载荷与落库行往返同一形状（日期YYYY-MM-DD、缺省与insertEntity一致、排除status/version/基础设施列）。
+- `target.ts`：`ExistingState.existingEntityHashes`（(jurisdiction|type|businessKey)→内容哈希集合）与`loadExistingEntityHashes`（全量规则/参数/规则集行形状哈希）；`computeTargetFingerprint`纳入实体哈希集合（audit绑定全部draft/published内容，任何内容变化必须重新audit）；`EXPECTED_TOTAL_COUNTS`更新为50/75/6/5/528/851/117/0。
+- `plan.ts`：`existsIdenticalContent`（内容形状哈希已存在→零新增）；`planRule/planParam/planRuleSet`返回null跳过；`planPack`按既有包行快照一致→跳过，否则最大版本+1。
+- `materialize.ts`：apply零delta守卫（计划全零→no-op，不创建空批次污染审计链）；既有4批次幂等、单事务核验、并发23505裁决不变。
+- `manifest.ts`：`regionReadiness("440000")`→awaiting_approval/[]（缴费基数与失业条例缺口已闭环；2030前市级医保口径由R-220能力级守卫处理）；四川510000三项blocking reasons不变。
+- GD DSL（事实编码）：`dsl/regions/guangdong_dsl_v1/rules/R-GD-UI-AMOUNT.json`（新增，广东失业保险金月标准＝领取地市最低工资×90%；领取地市缺失→Q-UI-CLAIM-CITY、市不在最低工资表→W-UI-MIN-WAGE-MISSING，均needs_agent不估算金额；资格false→0/未知→null；hit_policy all+互斥行）；`rules_manifest.json`与`rule_sets/rule_set_guangdong_plan_v1.json`（规则列表17条，规则集下一版本）；`tests/rule_examples_as_tests.json`（+5示例）。
+
+### 17.3 增量语义Green证据（单元）
+
+- 持久库式状态（CN/沪/川+GD旧内容已物化）→ `buildPlan`只规划广东delta：`{rules:1, params:5, ruleSets:1, packs:1}`；CN/310000/510000区域计数全零、entities为空。
+- 版本语义：三个全新GD参数（P-GD-PENSION-CALC-BASE-2025、P-GD-UNEMPLOYMENT-BENEFIT-RATE、T-GD-MIN-WAGE-BY-CITY）v1；两个新窗口（P-GD-CONTRIB-BASE-UPPER、T-GD-CONTRIB-BASE-LOWER-BY-CITY的2025-07-01起窗口）v2（旧窗口v1不在计划内）；R-GD-UI-AMOUNT v1；RS-GD-PLAN-V1下一版本v2；GD-BASE政策包v2。
+- 全部内容已物化→计划全零（复跑no-op的plan级证据）。
+
+### 17.4 集成验证（nrp_e_mat独立库，持久库镜像49/70/5/4）
+
+- fixture重写：`seedPersistentMirror`——旧沪基线（24 published规则/29 published参数/RS v1）+ git派生行（CN/沪/川全部+广东旧内容：1规则/5参数/旧规则集v1/旧快照包v1）+ 4条seed批次/74成员 + 528/851/117计数。
+- fresh audit只规划广东delta；`packSnapshotDrift`恰好1条（GD）；`expectedPostCounts`=50/75/6/5/528/851/117/0（当前状态+delta）。
+- apply单事务成功：结果计数50/75/6/5；4批次（GD 8成员，CN/沪/川0成员）；GD readiness=awaiting_approval、blocking_reasons=[]；四川blocked且3条原因不变；CN/310000/510000分地区行数零新增；GD旧行v1保留（RS v1不含新规则、GD-BASE v1存在、2024窗口v1存在）；published计数24/29不变；复跑同manifest no-op且批次/成员不再增加（8/82）。
+- AC-014篡改回滚、WI-repair全套（守卫/目标绑定/正常修复/回滚/并发/幂等）在新fixture上重新通过（修复计数断言50/75/6/5；夹具复位按地区收敛pack行）。
+
+### 17.5 广东能力边界Golden（零数据库）
+
+- 2030年前（2026-09-01，窗口解析）：P-MI-LIFETIME参数不在有效集合→仅R-220输出needs_agent=true与W-MI-LOCAL-YEARS-MISSING；医保退休结论为空；养老（61岁4个月/16年）、缴费基数（27549）、失业资格（eligible）、期限（12个月）与金额（广州2680×90%=2412）继续计算；无其他MI类warning。
+- 2030-01-01起省级统一：男30年→360/260、女25年→300/200，needs_agent不再由R-220触发；2029-12-31边界仍走守卫。
+- 失业金额：领取地市缺失→needs_agent+Q-UI-CLAIM-CITY且金额不估算；市不在最低工资表→needs_agent+W-UI-MIN-WAGE-MISSING；资格false→0。
+- 示例测试：GD tests文件+5（广州2412/深圳2430/缺失/未收录市/资格false）全部通过。
+
+### 17.6 门禁汇总（2026-09-07本地新鲜执行）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm test` | PASS；51文件/485通过、skip 0（+16：增量计划2、readiness、R-GD-UI-AMOUNT示例5、广东编排4、DSL布局1等） |
+| `npm run test:db`（全新PG17 `nrp_drill`迁移+seed） | PASS；19文件/85通过、skip 0 |
+| `npx tsc --noEmit` | PASS；退出0 |
+| `npx eslint src scripts` | PASS；退出0（0 error；7个warning均为HEAD既有，与WI-20260906-01记录一致，未新增） |
+| `npm run build` | PASS；退出0、零warning（2 workers、8/8静态页） |
+| Auth E2E（全新`nrp_e2e_drill`库+Jan引导+seed+standalone+mock） | PASS；10通过 |
+| Python单元（ruff/mypy/pytest非集成） | PASS；0问题、33文件0错误、94通过（skip 0） |
+| Python集成（`pytest -m integration`，`nrp_agent_drill`库+core/agent迁移+seed+roles） | PASS；20通过（skip 0） |
+| pip-audit | PASS；无已知漏洞（项目自身“not found on PyPI”为预期提示） |
+| scan-secrets --all | PASS；688候选文件零命中 |
+| Gitleaks 8.29.1完整历史 | PASS；61 commits no leaks |
+| allowlist哨兵回归 | PASS；3场景全过 |
+
+### 17.7 边界与状态
+
+- 本批次未执行持久库apply、未执行管理员批准、未创建候选快照、未修改四川实体、未开放流量；演练容器（nrp-drill-pg/nrp-e-restore）为既有设施，新增动态演练库（nrp_e_mat_*、nrp_e2e_drill、nrp_agent_drill）均已按测试teardown清理或保留待清理。
+- 任务2整体保持**Reopened**：持久库GD物化（apply）、三地区管理员批准、三地区候选快照分别等待用户明确授权。

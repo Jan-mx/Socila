@@ -4,9 +4,14 @@
  * - CN/粤/川首次业务键v1；上海已有业务键v2（按既有最大版本+1），新业务键v1；
  * - 既有published行永不原地更新（计划只产生INSERT）；
  * - 目标版本与既有行冲突（同地区同键同版本已存在）时拒绝。
+ * - 增量语义（ADR-0010任务2）：内容未变化的实体零新增——实体载荷形状哈希
+ *   已存在于既有行（含任何版本）时跳过；规则集相同、政策包快照相同同样跳过；
+ *   只有内容新增或变化才按最大版本+1产生计划。
  */
 import type { PolicyMaterializationManifest, ManifestRegion } from "./manifest";
 import { entityContentHash } from "./manifest";
+import { sha256, canonicalJson } from "./target";
+import { payloadShapeHash } from "./shapes";
 import type { ExistingState } from "./target";
 
 export interface PlannedEntity {
@@ -58,6 +63,22 @@ function resolveVersion(
   return next;
 }
 
+/** 增量判定（ADR-0010任务2）：内容形状哈希已存在于既有行（含draft/published、
+ * 任何版本）时返回true——零新增，不再解析版本。 */
+function existsIdenticalContent(
+  state: ExistingState,
+  jurisdictionCode: string,
+  entityType: "rule" | "param" | "rule_set",
+  businessKey: string,
+  payload: Record<string, unknown>,
+): boolean {
+  return (
+    state.existingEntityHashes
+      .get(`${jurisdictionCode}|${entityType}|${businessKey}`)
+      ?.has(payloadShapeHash(entityType, payload)) ?? false
+  );
+}
+
 function buildEntity(
   entityType: "rule" | "param" | "rule_set",
   jurisdictionCode: string,
@@ -91,7 +112,18 @@ function planRule(
   rule: ManifestRegion["rules"][number],
   state: ExistingState,
   planned: Map<string, number>,
-): PlannedEntity {
+): PlannedEntity | null {
+  if (
+    existsIdenticalContent(
+      state,
+      region.jurisdictionCode,
+      "rule",
+      rule.businessKey,
+      rule.payload,
+    )
+  ) {
+    return null;
+  }
   const version = resolveVersion(state, planned, region.jurisdictionCode, "rule", rule.businessKey);
   const payload = rule.payload as {
     operation?: unknown;
@@ -120,7 +152,18 @@ function planParam(
   param: ManifestRegion["params"][number],
   state: ExistingState,
   planned: Map<string, number>,
-): PlannedEntity {
+): PlannedEntity | null {
+  if (
+    existsIdenticalContent(
+      state,
+      region.jurisdictionCode,
+      "param",
+      param.businessKey,
+      param.payload,
+    )
+  ) {
+    return null;
+  }
   const version = resolveVersion(state, planned, region.jurisdictionCode, "param", param.businessKey);
   const payload = param.payload as {
     operation?: unknown;
@@ -151,6 +194,17 @@ function planRuleSet(
 ): PlannedEntity | null {
   if (!ruleSetPayload) return null;
   const ruleSetId = ruleSetPayload.rule_set_id as string;
+  if (
+    existsIdenticalContent(
+      state,
+      region.jurisdictionCode,
+      "rule_set",
+      ruleSetId,
+      ruleSetPayload,
+    )
+  ) {
+    return null;
+  }
   const version = resolveVersion(state, planned, region.jurisdictionCode, "rule_set", ruleSetId);
   const operation =
     typeof ruleSetPayload.operation === "string" ? ruleSetPayload.operation : "add";
@@ -204,11 +258,21 @@ export function buildPackSnapshotPayload(
 function planPack(
   region: ManifestRegion,
   state: ExistingState,
-): PlannedEntity {
+): PlannedEntity | null {
   const packKey = `${region.jurisdictionCode}|${region.packId}`;
+  const paramSnapshot = buildPackSnapshotPayload(region);
+  // 增量判定（ADR-0010任务2）：任一既有包行快照与当前完整快照一致→零新增
+  // （快照内容含参数内容哈希，版本无关，见buildPackSnapshotPayload说明）。
+  const snapshotHash = sha256(canonicalJson(paramSnapshot));
+  const existsIdenticalSnapshot = state.packTargets.some(
+    (t) =>
+      t.jurisdictionCode === region.jurisdictionCode &&
+      t.packId === region.packId &&
+      t.snapshotHash === snapshotHash,
+  );
+  if (existsIdenticalSnapshot) return null;
   const existing = state.packVersions.get(packKey);
   const version = existing === undefined ? 1 : existing + 1;
-  const paramSnapshot = buildPackSnapshotPayload(region);
   return {
     entityType: "policy_pack_version",
     jurisdictionCode: region.jurisdictionCode,
@@ -242,16 +306,19 @@ export function buildPlan(
     const plannedVersions = new Map<string, number>();
 
     for (const rule of region.rules) {
-      entities.push(planRule(region, rule, state, plannedVersions));
+      const entity = planRule(region, rule, state, plannedVersions);
+      if (entity) entities.push(entity);
     }
     for (const param of region.params) {
-      entities.push(planParam(region, param, state, plannedVersions));
+      const entity = planParam(region, param, state, plannedVersions);
+      if (entity) entities.push(entity);
     }
     if (region.ruleSetFile !== null && region.ruleSetPayload) {
       const entity = planRuleSet(region, region.ruleSetPayload, state, plannedVersions);
       if (entity) entities.push(entity);
     }
-    entities.push(planPack(region, state));
+    const pack = planPack(region, state);
+    if (pack) entities.push(pack);
 
     // 目标版本冲突防护：同地区同键同版本不允许重复物化。
     const seen = new Set<string>();
