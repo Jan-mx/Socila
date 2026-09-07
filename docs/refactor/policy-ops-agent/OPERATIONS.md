@@ -111,7 +111,7 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 
 ## 阶段E 受控物化runbook（09-05 NRP，仅本机policyops）
 
-> **当前状态（2026-09-07）**：WI-20260906-02已完成0014和四包repair（验收报告§15）。当前HEAD新增广东资产后，fresh audit会错误重放四地区整包并规划74/116/9/8；修复为确定性GD delta前禁止apply。每次apply/repair仍必须基于当前HEAD fresh audit并取得单独明确授权。
+> **历史状态（2026-09-07执行前）**：WI-20260906-02已完成0014和四包repair；当时新增广东资产会导致fresh audit错误重放四地区整包并规划74/116/9/8。该问题已由广东delta实现修复并完成受控apply、管理员批准和候选快照重放。当前结果见验收报告§17；未来任何政策变更仍必须基于当前HEAD fresh audit并取得单独明确授权。
 
 1. 只读基线核对（规则/参数/规则集/案例计数与仓库权威资产清单）。
 2. 完整备份：`docker exec socila-postgres pg_dump -U postgres -Fc policyops > backup/db/policyops-stage-e-pre-<ts>.dump`并生成SHA-256清单（backup/为Git忽略）。
@@ -126,13 +126,13 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 11. repair后重新audit必须得到`packSnapshotDrift=[]`；使用新的audit输入复跑repair必须no-op。任一步出现状态、版本、旧哈希或指纹不一致即停止，不得覆盖并发编辑。
 12. 对账必须以`scripts/restore-reconcile.ts`的目录驱动结果为准（public/drizzle/agent/rag全部BASE TABLE+sequence，当前37表+18 sequence），不得以部分表清单宣称"完整恢复"。repair前后分别保留备份，并对repair后备份执行新的37表+18 sequence真实恢复对账。
 
-## 广东delta与三地区候选快照runbook（ADR-0010，待实现）
+## 广东delta与三地区候选快照runbook（ADR-0010，已执行；未来变更沿用）
 
-1. 先在代码和隔离库证明audit只规划广东5参数、1规则、1规则集版本、1政策包版本；CN、上海、四川和既有GD实体零新增。
+1. 每次未来变更先在代码和隔离库证明audit只规划预期地区delta；本次已证明广东5参数、1规则、1规则集版本、1政策包版本，CN、上海、四川和既有GD实体零新增。
 2. 目标计数由当前指纹+delta计算，本轮候选快照前应为50/75/6/5/528/851/117/0；audit出现74/116/9/8或任何非GD新增即停止。
 3. 代码提交并通过门禁后，创建新备份、SHA-256并在全新PG17+pgvector恢复，完成全部表与sequence对账。
-4. 向用户报告fresh audit的目标、delta、版本、目标计数和回退点，另行取得本次GD增量apply授权；不得沿用WI-02授权。
+4. 向用户报告fresh audit的目标、delta、版本、目标计数和回退点，另行取得本次增量apply授权；不得沿用历史WI-02或本次已使用授权。
 5. apply后验证幂等、published整行哈希、planning-regression和恢复零漂移；广东转awaiting_approval，四川继续blocked。
-6. 分别生成CN、上海、广东管理员审核包；管理员决定不得由Agent推断或直接SQL代替。
-7. 管理员批准完成后，只读列出三地区候选快照成员、版本、provenance和黄金结果，另行取得创建三个候选快照的明确授权。
+6. 分别生成CN、上海、广东管理员审核包；本次三地区批准已完成，未来版本仍必须由管理员决定，不得由Agent推断或直接SQL代替。
+7. 管理员批准完成后，只读列出三地区候选快照成员、版本、provenance和黄金结果；本次三地区候选快照已创建并重放，未来新快照仍需另行取得写入授权。
 8. 创建后重复重放并验证隔离；四川无快照且不开放流量。案例删除和地区激活不包含在本runbook授权内。
