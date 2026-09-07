@@ -312,6 +312,22 @@
 | 门禁 | npm test 485/485、test:db 87/87、tsc退出0、eslint 0 error/7既有warning、build零warning、scan-secrets 8候选零命中 |
 | 边界 | 未创建候选快照（等待授权）、未开放流量、未删除数据、四川无变更 |
 
+## 当前任务验证（任务4 上海案例库治理，2026-09-07本地新鲜执行，分支codex/task4-case-governance）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 单元11文件加载失败（模块不存在）；集成0016列缺失/source_case_uid未回填 |
+| npm test | PASS；62文件/584通过、skip 0（+95治理专用用例） |
+| tsc/eslint/build | PASS；退出0；eslint 0 error/6既有warning；build零warning |
+| test:db（全新PG17+pgvector `clg_seedcheck`，5443隔离容器） | PASS；任务4文件22/22：0016 schema 15、来源链20、全流程14、管理API 3 |
+| 全流程隔离库（动态库） | 审计851/451/117/116→评分逐项原因→策展36配额全满足→manifest 452/399/81→prepared/错hash拒绝零变化→**故障注入before-delete完整回滚**（851/117/542、0索引、0治理字段）→apply 452/36/542→480条归档索引→36条全绑定310000候选快照→500回归来源链完整→重复apply no-op→无0015独立通过 |
+| scan-secrets --all | PASS；691候选文件零命中 |
+| 数据事实（只读） | 持久库851/451/117/116/528（500回归+28上海示例全310000）；全新seed自然态tests=542（42 DSL示例，任务2资产演进）；KEEP=452闭环（451回归∪116展示来源，重叠115） |
+| 边界 | 未执行持久库migration 0016、归档、删除或治理apply；未删除851/117持久数据；未创建/修改持久库PolicySnapshot；未激活流量；未改四川状态 |
+| 环境阻塞 | 宿主5439被并行会话jrp-drill-pg占用，任务2既有materializer集成（allowedPorts硬编码5439）复跑前阻塞；其余22文件114用例通过；Python门禁已全绿（单元94/94、集成20/20，venv稳定后） |
+
+**状态：任务4代码Accepted，持久库apply待授权**（精确删除对象/备份/恢复对账/manifestHash/目标指纹/回退方式将在授权申请中报告）。
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
 任务2首期CN/上海/广东已完成广东增量物化、管理员批准、候选快照重放和独立复审，并已Accepted。下一步从当前冻结提交启动任务3和任务4并行开发，互不等待；共享migration journal与当前文档在最终集成阶段按任务3后任务4串行处理。四川后续只按`WI-20260907-01-sichuan-policy-followup.md`推进，不影响首期与下游排期。09-03发布动作仍为未来人工动作：

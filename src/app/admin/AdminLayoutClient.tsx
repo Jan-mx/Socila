@@ -14,6 +14,7 @@ import {
   LogOut,
   Layers,
   Users,
+  Archive,
 } from "lucide-react";
 import { logoutAndClearSession } from "@/lib/client/logout";
 
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/admin", label: "概览", icon: LayoutDashboard },
   { href: "/admin/users", label: "用户管理", icon: Users },
   { href: "/admin/cases", label: "案例库", icon: FileText },
+  { href: "/admin/archive", label: "案例归档", icon: Archive },
   { href: "/admin/rules", label: "规则管理", icon: BookOpen },
   { href: "/admin/rule-sets", label: "规则集", icon: Layers },
   { href: "/admin/params", label: "参数管理", icon: Settings },

@@ -1,7 +1,7 @@
 # PolicyOps Agent重构文档
 
 > Author: Jan
-> Status: Active
+> Status: Active（任务4代码Accepted；任务3并行分支待串行集成）
 > Updated: 2026-09-07
 
 ## 当前状态
@@ -9,6 +9,8 @@
 七个重构阶段已经完成并通过阶段验收。当前应用采用Next.js Core、FastAPI、Celery、LangGraph、本地PostgreSQL、pgvector、Redis和MinIO。
 
 09-02用户与管理员双角色鉴权Feature已Accepted；09-03 P0合并质量门禁与v2.0.0发布准备**Accepted（开发分支发布准备）**：六类门禁全部本地新鲜复现（全部退出0、零skip），workflow经actionlint 1.7.7静态校验零发现，`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）；重构前`main`已由`v1.0.0`标记，PR、main ruleset、merge与`v2.0.0` Release为未来人工动作（见`PROGRESS.md`精确下一步与PRD §17）。
+
+09-05 Feature（`docs/prd/09-05-feature-case-library-governance.md`，上海案例库质量治理）任务4**代码Accepted（2026-09-07，分支`codex/task4-case-governance`）**：migration 0016（治理字段/来源链/归档表）、评分40/30/20/10+逐项原因、确定性18层轮询+配额替补策展36条、KEEP=452闭环、单事务apply（故障注入回滚）、归档/恢复对账、公开36条/管理452/归档元数据入口；全新隔离库验证apply后452/36/542（全新seed含任务2 DSL示例42条）且36条全部绑定310000候选快照；**持久库migration 0016、归档与删除apply待用户单独授权**（见`reports/stage-09-05-case-governance/acceptance-report.md`）。
 
 09-05 Stage（`docs/prd/09-05-stage-national-baseline-regional-overlays.md`）按ADR-0010完成**任务2首期CN、上海、广东分地区交付（Accepted，2026-09-07）**：广东确定性delta物化（5参数+1失业金额规则+1规则集版本+1政策包版本，未变化实体零新增，复跑no-op）并apply验证（50/75/6/5/528/851/117/0）；三地区经管理员批准晋级published（规划回归528/528）；候选快照已创建并重放（CN/沪/粤，contentHash一致，provenance含显式overlay）；四川按WI-20260907-01保持blocked、无快照、不开放流量。下一步：任务3地区感知规划与任务4上海案例治理从冻结提交并行开发、串行集成。
 

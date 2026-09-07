@@ -251,6 +251,8 @@ export async function importRegressionTests() {
       paramsOverride: importedTest.paramsOverride,
       expected: importedTest.expected,
       source: importedTest.source,
+      // CLG-FR-004：回归来源链持久化（500条回归从工作簿回填；28条规则示例允许为空）。
+      sourceCaseUid: normalizeSourceCaseUid(importedTest.sourceCaseUid),
     };
     const existing = await db
       .select({ id: tests.id })

@@ -36,8 +36,17 @@ export class DrizzlePlanningReadRepository implements PlanningReadRepository {
     topic: string;
     page: number;
     pageSize: number;
+    /** CLG-FR-016：管理案例默认只显示active记录（治理后452条），
+     *  显式传 null 可查看全部历史/隔离记录。 */
+    qualityStatus?: string | null;
   }) {
     const whereClauses = [];
+
+    // CLG-FR-016：默认只显示 quality_status='active' 的治理后活跃案例；
+    // 显式 qualityStatus=null 时不做过滤（审计/维护视图）。
+    if (query.qualityStatus !== null) {
+      whereClauses.push(eq(cases.qualityStatus, query.qualityStatus ?? "active"));
+    }
 
     if (query.q) {
       whereClauses.push(
@@ -81,10 +90,16 @@ export class DrizzlePlanningReadRepository implements PlanningReadRepository {
   }
 
   async listShowcaseCases() {
+    // CLG-FR-016：公开入口只返回36条 selected + published 展示案例。
     return db
       .select()
       .from(showcaseCases)
-      .where(eq(showcaseCases.isPublished, true))
+      .where(
+        and(
+          eq(showcaseCases.isPublished, true),
+          sql`${showcaseCases.qualityStatus} = 'selected'`,
+        ),
+      )
       .orderBy(asc(showcaseCases.sortOrder), desc(showcaseCases.createdAt));
   }
 

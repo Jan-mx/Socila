@@ -1,7 +1,7 @@
 # 案例库精简、质量治理与原始数据归档 PRD
 
 > Author: Jan
-> Status: Approved
+> Status: Active
 > Updated: 2026-09-07
 
 ## 文档元数据
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-case-library-governance.md` |
 | 类型 | Feature |
-| 状态 | Approved |
+| 状态 | Active（任务4代码已Accepted；持久库apply待授权） |
 | 前置依赖 | Socila命名与地区DSL Feature Accepted；任务2首期Accepted且上海候选快照可重放 |
 | 可并行阶段 | 任务2后与地区感知规划Feature并行开发；两者只共享冻结快照，migration与共享文档串行集成 |
 | 后续消费者 | 地区化案例扩展、回归质量运营；不再作为地区感知规划Feature的前置依赖 |
@@ -162,12 +162,16 @@ interface CaseArchiveEntry {
 治理命令：
 
 ```text
-node scripts/govern-case-library.mjs --audit
-node scripts/govern-case-library.mjs --prepare-archive
-node scripts/govern-case-library.mjs --verify-archive <manifestHash>
-node scripts/govern-case-library.mjs --apply <manifestHash>
-node scripts/govern-case-library.mjs --verify <manifestHash>
+npx tsx scripts/govern-case-library.ts audit
+npx tsx scripts/govern-case-library.ts prepare-archive
+npx tsx scripts/govern-case-library.ts verify-archive <manifestHash>
+npx tsx scripts/govern-case-library.ts apply <manifestHash> --i-am-authorized
+npx tsx scripts/govern-case-library.ts verify <manifestHash>
 ```
+
+> 实现路径说明：执行器与既有受控物化脚本（materialize-policy-regions.ts）同为
+> `scripts/*.ts` + `npx tsx` 模式；apply必须携带授权参数与restore_verified批次，
+> 恢复验证通过前禁止删除（CLG-NFR-001）。
 
 - `/api/showcase-cases`只返回`quality_status=selected AND is_published=true`。
 - `/cases`只展示同一36条记录。
@@ -183,7 +187,7 @@ node scripts/govern-case-library.mjs --verify <manifestHash>
 4. 写操作由manifest驱动脚本完成，先归档和恢复，后单事务apply。
 5. 回退优先事务回滚；提交后需要回退时从完整dump恢复，不通过Seed重建原始案例。
 6. 旧应用在回退期间可能看不到新治理字段，但不得重新导入851/117覆盖已治理数据库。
-7. 并行开发预留Task4 migration编号0016；Task3使用0015。Task4集成前必须基于已集成0015的分支重放migration并统一journal。
+7. 并行开发预留Task4 migration编号0016；Task3使用0015。Task4集成前必须基于已集成0015的分支重放migration并统一journal。**0016已在任务4分支创建**（`drizzle/0016_clg_case_governance.sql`+journal），本机持久库尚未执行；持久库集成时与0015串行应用。
 
 ## 10. 安全、隐私与可观测
 

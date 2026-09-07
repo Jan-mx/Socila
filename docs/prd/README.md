@@ -19,7 +19,7 @@ PRD不记录日常执行日志、测试退出码和提交历史。
 | `09-03-feature-core-agent-service-jwt.md` | Core与Agent双向服务JWT鉴权 | Accepted |
 | `09-05-feature-socila-naming-regional-dsl.md` | Socila活动命名统一、地区DSL分层与粤川示例测试化 | Active |
 | `09-05-stage-national-baseline-regional-overlays.md` | CN、上海、广东首期权威政策交付；四川Deferred | Active |
-| `09-05-feature-case-library-governance.md` | 上海案例库精简、质量治理与原始数据归档 | Approved |
+| `09-05-feature-case-library-governance.md` | 上海案例库精简、质量治理与原始数据归档 | Active（任务4代码Accepted；持久库apply待授权） |
 | `09-05-feature-jurisdiction-aware-planning.md` | 用户规划按地区活动快照触发 | Approved |
 
 ## 全国政策能力执行顺序

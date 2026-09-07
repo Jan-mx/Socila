@@ -60,6 +60,7 @@ describe("module boundaries (src/server/modules)", () => {
     expect(modules.sort()).toEqual([
       "agent-integration",
       "audit",
+      "case-governance",
       "conversation",
       "identity",
       "jurisdiction",

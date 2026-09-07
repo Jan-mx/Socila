@@ -288,6 +288,46 @@ export const showcaseCases = pgTable("showcase_cases", {
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  // 展示治理字段（CLG-FR-003，migration 0016）：地区/来源案例UID/候选快照ID/
+  // 质量信息/内容哈希/策展时间与策展人。
+  jurisdictionCode: text("jurisdiction_code").default("310000"),
+  sourceCaseUid: text("source_case_uid"),
+  snapshotId: uuid("snapshot_id").references(() => policySnapshots.id, {
+    onDelete: "restrict",
+  }),
+  qualityScore: integer("quality_score"),
+  qualityStatus: text("quality_status"),
+  contentHash: text("content_hash"),
+  curatedAt: timestamp("curated_at", { withTimezone: true }),
+  curatedBy: text("curated_by"),
+});
+
+// ─── 案例归档元数据（CLG-FR-011/013，migration 0016）─────────────────────────
+// 数据库只保存批次、删除实体UID/原ID、内容哈希和原因，不复制原始转录正文。
+
+export const caseArchiveBatches = pgTable("case_archive_batches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  status: text("status").notNull(),
+  sourceCounts: jsonb("source_counts").notNull(),
+  retainedCounts: jsonb("retained_counts").notNull(),
+  deletedCounts: jsonb("deleted_counts").notNull(),
+  tableHashes: jsonb("table_hashes").notNull().default({}),
+  manifestHash: text("manifest_hash").notNull(),
+  storagePath: text("storage_path").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdBy: text("created_by").notNull(),
+});
+
+export const caseArchiveEntries = pgTable("case_archive_entries", {
+  id: serial("id").primaryKey(),
+  archiveBatchId: uuid("archive_batch_id")
+    .notNull()
+    .references(() => caseArchiveBatches.id, { onDelete: "cascade" }),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id").notNull(),
+  caseUid: text("case_uid"),
+  contentHash: text("content_hash").notNull(),
+  archiveReason: text("archive_reason").notNull(),
 });
 
 // ─── Cases ──────────────────────────────────────────────────────────────────
@@ -306,6 +346,13 @@ export const cases = pgTable("cases", {
   sourceFile: text("source_file"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  // 案例治理字段（CLG-FR-002，migration 0016）：现有案例经权威来源确认统一310000。
+  jurisdictionCode: text("jurisdiction_code").default("310000"),
+  contentHash: text("content_hash"),
+  qualityScore: integer("quality_score"),
+  qualityStatus: text("quality_status"),
+  governanceReason: text("governance_reason"),
+  governedAt: timestamp("governed_at", { withTimezone: true }),
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -323,6 +370,8 @@ export const tests = pgTable("tests", {
   lastRunAt: timestamp("last_run_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  // 回归来源链（CLG-FR-004，migration 0016）：500条回归从工作簿回填，规则示例允许为空。
+  sourceCaseUid: text("source_case_uid"),
 });
 
 // ─── Users（09-02 用户与管理员双角色鉴权，AUTH-FR-001～013）──────────────────
