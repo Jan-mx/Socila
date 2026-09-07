@@ -276,6 +276,17 @@
 | 增量语义（单元+集成） | 三个全新GD参数v1、两个新窗口v2（旧窗口v1保留）、R-GD-UI-AMOUNT v1、RS-GD-PLAN-V1 v2、GD-BASE v2；相同delta复跑no-op（批次/成员不再增加）；广东2030年前仅R-220 needs_agent+W-MI-LOCAL-YEARS-MISSING且其他模块继续；2030-01-01起男30/女25 |
 | 边界 | 未执行持久库apply、未批准、未建快照、未改四川实体、未开放流量；演练动态库已清理或待清理 |
 
+## 当前任务只读准备（任务2 GD增量物化，2026-09-07本地新鲜执行，提交`f72a3cd`后）
+
+| 步骤 | 结果 |
+| --- | --- |
+| 工作区/HEAD | 干净；HEAD=`f72a3cd`与origin同步（代码批次已推送） |
+| 新备份 | `backup/db/policyops-gd-delta-pre-20260907060104.dump`（705,375B；SHA-256 `2acdb956e3d17de14d975817a1067b5efeabcfa81c9ef3d1a3353323ad550575`，Git忽略目录） |
+| 完整恢复对账 | 临时`gd-restore-pg`（pgvector/pgvector:pg17，端口5441）`pg_restore`退出0/0 ERROR/0 WARNING；`restore-reconcile.ts` 37表+18 sequence、表集合/行数/规范化行哈希全部一致；容器已删除 |
+| fresh audit（当前HEAD，零写入） | `audit-gd-delta-f72a3cd.json`：manifestHash `4895e023…`、targetFingerprint `ff6163b1…`、worktreeClean=true、idempotentNoOp=false；**planCounts恰好{rules:1, params:5, ruleSets:1, packs:1}（广东delta）**；CN/310000/510000区域计数全零；packSnapshotDrift恰1条（GD-BASE v1, rowId 5）；expectedPostCounts=50/75/6/5/528/851/117/0；GD readiness=awaiting_approval且blockingReasons=[]；四川blocked且3条原因不变；未出现74/116/9/8 |
+| 规划回归基线（只读） | `planning-regression-pre-gd-apply.txt`：528/524过/4失败、passSetHash `e4fb8c3d…`（与WI-02基线一致） |
+| 状态 | 只读准备全部通过，**等待用户对本次apply的明确授权**（未获授权不写policyops） |
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
 任务2先修复广东增量物化与失业金额规则，并完成CN、上海、广东的受控物化、管理员批准、候选快照和独立复审；每类持久写入分别先报告再请求明确授权。首期任务2 Accepted后，任务3和任务4从同一冻结提交并行开发，互不等待；共享migration journal与当前文档在最终集成阶段按任务3后任务4串行处理。四川后续只按`WI-20260907-01-sichuan-policy-followup.md`推进，不影响首期与下游排期。09-03发布动作仍为未来人工动作：
