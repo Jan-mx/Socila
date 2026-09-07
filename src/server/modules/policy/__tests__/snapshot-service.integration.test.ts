@@ -194,4 +194,44 @@ describe("policy snapshot service (drill DB)", () => {
     expect(impact.impactedOverlays[0].jurisdictionCode).toBe("310000");
     expect(impact.impactedSnapshots.some((s) => s.id === snapshotId)).toBe(true);
   });
+
+  it("任务2批准：历史地方add与链上国家baseline同名时跳过（重分类继承语义，候选快照零冲突）", async () => {
+    // 模拟旧上海运行基线的残留：与CN baseline同名的310000 add规则（如
+    // 09-05重分类前R-020是上海本地规则）。国家规则published后，历史add
+    // 行保留（可回退）但不得参与候选快照合并（否则duplicate-add阻止快照）。
+    const c = new (await import("pg")).Client({ connectionString: DRILL_URL });
+    await c.connect();
+    try {
+      const ruleId = "R-020-FEMALE-RETIRE-TYPE";
+      await c.query(
+        `delete from rules where jurisdiction_code='310000' and rule_id=$1 and version=99`,
+        [ruleId],
+      );
+      await c.query(
+        `insert into rules (rule_id, jurisdiction_code, business_key, name, module,
+           dsl_version, priority, status, effective_from, decision_table, version, operation)
+         values ($1,'310000',$1,'历史同名add','test','SOCILA-DSL-1.0',0,'published','2023-01-01',
+                 '{"hit_policy":"first","rows":[]}'::jsonb,99,'add')`,
+        [ruleId],
+      );
+
+      const { merged } = await service.resolvePolicyContext("310000", AS_OF);
+      // 当前实现：duplicate-add冲突（Red）；修复后：跳过历史add、零冲突。
+      expect(merged.conflicts).toEqual([]);
+      const ruleEntities = merged.entities.filter((e) =>
+        e.businessKey.startsWith("R-"),
+      );
+      // 国家R-020以baseline继承进入上海链（16国家+8地方，不含历史add副本）。
+      const r020 = ruleEntities.find((e) => e.businessKey === ruleId);
+      expect(r020?.provenance[0].jurisdictionCode).toBe("CN");
+      expect(
+        ruleEntities.filter((e) => e.businessKey === ruleId),
+      ).toHaveLength(1);
+    } finally {
+      await c.query(
+        `delete from rules where jurisdiction_code='310000' and rule_id='R-020-FEMALE-RETIRE-TYPE' and version=99`,
+      );
+      await c.end();
+    }
+  });
 });

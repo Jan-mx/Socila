@@ -168,12 +168,12 @@ describe("发布测试隔离（审查缺陷10）", () => {
     process.env.DATABASE_URL = DRILL_URL;
   });
 
-  it("CN staging规则在仅有上海测试时回归门禁失败；补充CN测试后通过", async () => {
+  it("CN staging规则在仅有上海测试时用自身DSL examples通过门禁（不拿上海测试充数）", async () => {
     const c = await client();
     try {
-      // 造一个CN draft规则（v2副本，不动published）；防御性清理残留。
+      // 造一个CN draft规则（v2副本，不动published）；防御性清理残留（含v3）。
       await c.query(
-        `delete from rules where jurisdiction_code='CN' and rule_id='R-010-PARSE-BIRTH-YEAR' and version=2`,
+        `delete from rules where jurisdiction_code='CN' and rule_id='R-010-PARSE-BIRTH-YEAR' and version in (2,3)`,
       );
       const src = await c.query(
         `select * from rules where jurisdiction_code='CN' and rule_id='R-010-PARSE-BIRTH-YEAR' and version=1`,
@@ -189,10 +189,6 @@ describe("发布测试隔离（审查缺陷10）", () => {
          from rules where id=$1`,
         [src.rows[0].id],
       );
-      const staging = await c.query(
-        `select id from rules where jurisdiction_code='CN' and rule_id='R-010-PARSE-BIRTH-YEAR' and version=2`,
-      );
-      const rowId = staging.rows[0].id as number;
 
       const { promoteEntity } = await import("@/lib/admin/publish-service");
       // draft→staging先走通（CN规则examples齐备）。
@@ -204,32 +200,15 @@ describe("发布测试隔离（审查缺陷10）", () => {
         actor: "fix-test",
       });
 
-      // 确保CN无tests、上海有tests → staging→production必须失败（不得拿上海测试充数）。
+      // 确保CN无tests、上海有tests：CN规则不得拿上海测试充数；用自身
+      // DSL examples作回归载体（任务2批准：tests=528为上海载体且固定计数
+      // 不可变，CN/GD规则用examples兜底，examples经golden测试验证）。
       await c.query(`delete from tests where jurisdiction_code='CN'`);
       const shTests = await c.query(
         `select count(*)::int as n from tests where jurisdiction_code='310000'`,
       );
       expect(shTests.rows[0].n).toBeGreaterThan(0);
 
-      await expect(
-        promoteEntity({
-          entityType: "rule",
-          jurisdictionCode: "CN",
-          entityId: "R-010-PARSE-BIRTH-YEAR",
-          version: 2,
-          actor: "fix-test",
-        }),
-      ).rejects.toThrow(/未找到回归测试|回归测试/);
-
-      // 补充CN测试后通过。
-      await c.query(
-        `insert into tests (name, jurisdiction_code, rule_id, input, params_override, expected, source)
-         values ('CN隔离冒烟', 'CN', 'R-010-PARSE-BIRTH-YEAR',
-           '{"user":{"basic":{"birth_year":null,"birth_year_text":"73"}}}',
-           null,
-           '{"user":{"basic":{"birth_year":1973}}}',
-           'example')`,
-      );
       const ok = await promoteEntity({
         entityType: "rule",
         jurisdictionCode: "CN",
@@ -241,6 +220,38 @@ describe("发布测试隔离（审查缺陷10）", () => {
       // 发布审计必须携带地区与版本（审查缺陷2关联）。
       expect(ok.publish.jurisdictionCode).toBe("CN");
       expect(ok.publish.entityVersion).toBe(2);
+
+      // 无tests且examples清空 → 门禁仍然拒绝（不降级）。用v3副本验证：
+      // 先正常晋级staging，再清空examples，staging→production必须拒绝。
+      await c.query(
+        `insert into rules (rule_id, jurisdiction_code, business_key, name, module,
+           dsl_version, priority, status, effective_from, decision_table, inputs,
+           outputs, parameter_refs, examples, evidence, version, operation)
+         select rule_id, jurisdiction_code, business_key, name, module,
+           dsl_version, priority, 'draft', effective_from, decision_table, inputs,
+           outputs, parameter_refs, examples, evidence, 3, operation
+         from rules where jurisdiction_code='CN' and rule_id='R-010-PARSE-BIRTH-YEAR' and version=1`,
+      );
+      await promoteEntity({
+        entityType: "rule",
+        jurisdictionCode: "CN",
+        entityId: "R-010-PARSE-BIRTH-YEAR",
+        version: 3,
+        actor: "fix-test",
+      });
+      await c.query(
+        `update rules set examples = '[]'::jsonb
+         where jurisdiction_code='CN' and rule_id='R-010-PARSE-BIRTH-YEAR' and version=3`,
+      );
+      await expect(
+        promoteEntity({
+          entityType: "rule",
+          jurisdictionCode: "CN",
+          entityId: "R-010-PARSE-BIRTH-YEAR",
+          version: 3,
+          actor: "fix-test",
+        }),
+      ).rejects.toThrow(/未找到回归测试/);
     } finally {
       await c.end();
     }

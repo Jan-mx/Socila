@@ -37,33 +37,73 @@
     }
   ],
   "parameter_refs": [
-    "T-GD-MIN-WAGE-BY-CITY",
-    "P-GD-UNEMPLOYMENT-BENEFIT-RATE"
+    {
+      "param_id": "T-GD-MIN-WAGE-BY-CITY",
+      "purpose": "失业保险金领取地市最低工资（分市表，2026-09-01起）"
+    },
+    {
+      "param_id": "P-GD-UNEMPLOYMENT-BENEFIT-RATE",
+      "purpose": "失业保险金计发比例90%（条例第十九条）"
+    }
   ],
   "outputs": [
-    { "key": "calc.unemployment.monthly_amount_est", "type": "number" },
-    { "key": "calc.needs_agent", "type": "boolean" },
-    { "key": "calc.warnings", "type": "array" },
-    { "key": "calc.agent_questions", "type": "array" }
+    {
+      "key": "calc.unemployment.monthly_amount_est",
+      "type": "number"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.warnings",
+      "type": "array"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
   ],
   "decision_table": {
     "hit_policy": "all",
     "rows": [
       {
         "row_id": "row_1_not_eligible",
-        "when": { "==": [ { "var": "calc.unemployment.eligible" }, false ] },
+        "when": {
+          "==": [
+            {
+              "var": "calc.unemployment.eligible"
+            },
+            false
+          ]
+        },
         "then": {
           "actions": [
-            { "type": "set", "path": "calc.unemployment.monthly_amount_est", "value": 0 }
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": 0
+            }
           ]
         }
       },
       {
         "row_id": "row_2_unknown",
-        "when": { "==": [ { "var": "calc.unemployment.eligible" }, null ] },
+        "when": {
+          "==": [
+            {
+              "var": "calc.unemployment.eligible"
+            },
+            null
+          ]
+        },
         "then": {
           "actions": [
-            { "type": "set", "path": "calc.unemployment.monthly_amount_est", "value": null }
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": null
+            }
           ]
         }
       },
@@ -71,13 +111,31 @@
         "row_id": "row_3_missing_city",
         "when": {
           "and": [
-            { "==": [ { "var": "calc.unemployment.eligible" }, true ] },
-            { "==": [ { "var": "user.profile.claim_city" }, null ] }
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.profile.claim_city"
+                },
+                null
+              ]
+            }
           ]
         },
         "then": {
           "actions": [
-            { "type": "set", "path": "calc.needs_agent", "value": true },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
             {
               "type": "emit_question",
               "value": {
@@ -93,8 +151,22 @@
         "row_id": "row_4_lookup_wage",
         "when": {
           "and": [
-            { "==": [ { "var": "calc.unemployment.eligible" }, true ] },
-            { "!=": [ { "var": "user.profile.claim_city" }, null ] }
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.profile.claim_city"
+                },
+                null
+              ]
+            }
           ]
         },
         "then": {
@@ -102,7 +174,11 @@
             {
               "type": "lookup",
               "table_param_id": "T-GD-MIN-WAGE-BY-CITY",
-              "key": { "city": { "var": "user.profile.claim_city" } },
+              "key": {
+                "city": {
+                  "var": "user.profile.claim_city"
+                }
+              },
               "into": "calc.unemployment._min_wage_row",
               "into_map": {
                 "monthly": "calc.unemployment._min_wage_monthly",
@@ -116,14 +192,39 @@
         "row_id": "row_5_wage_missing",
         "when": {
           "and": [
-            { "==": [ { "var": "calc.unemployment.eligible" }, true ] },
-            { "!=": [ { "var": "user.profile.claim_city" }, null ] },
-            { "==": [ { "var": "calc.unemployment._min_wage_monthly" }, null ] }
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.profile.claim_city"
+                },
+                null
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment._min_wage_monthly"
+                },
+                null
+              ]
+            }
           ]
         },
         "then": {
           "actions": [
-            { "type": "set", "path": "calc.needs_agent", "value": true },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
             {
               "type": "emit_warning",
               "value": {
@@ -138,9 +239,30 @@
         "row_id": "row_6_compute",
         "when": {
           "and": [
-            { "==": [ { "var": "calc.unemployment.eligible" }, true ] },
-            { "!=": [ { "var": "user.profile.claim_city" }, null ] },
-            { "!=": [ { "var": "calc.unemployment._min_wage_monthly" }, null ] }
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.profile.claim_city"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "calc.unemployment._min_wage_monthly"
+                },
+                null
+              ]
+            }
           ]
         },
         "then": {
@@ -150,8 +272,12 @@
               "path": "calc.unemployment.monthly_amount_est",
               "value": {
                 "*": [
-                  { "var": "calc.unemployment._min_wage_monthly" },
-                  { "var": "params.P-GD-UNEMPLOYMENT-BENEFIT-RATE" }
+                  {
+                    "var": "calc.unemployment._min_wage_monthly"
+                  },
+                  {
+                    "var": "params.P-GD-UNEMPLOYMENT-BENEFIT-RATE"
+                  }
                 ]
               }
             }
@@ -162,60 +288,105 @@
   },
   "examples": [
     {
-      "example_name": "广州领取：2680元/月最低工资×90%＝2412元/月",
       "input": {
         "user": {
-          "profile": { "claim_city": "广州" },
-          "status": { "employment_status": "unemployed" },
-          "social": { "unemployment_insurance_years": 3 }
+          "profile": {
+            "claim_city": "广州"
+          },
+          "status": {
+            "employment_status": "unemployed"
+          },
+          "social": {
+            "unemployment_insurance_years": 3
+          }
         },
-        "calc": { "unemployment": { "eligible": true } }
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        }
       },
       "expected": {
-        "calc": { "unemployment": { "monthly_amount_est": 2412 } }
-      }
+        "calc": {
+          "unemployment": {
+            "monthly_amount_est": 2412
+          }
+        }
+      },
+      "name": "广州领取：2680元/月最低工资×90%＝2412元/月"
     },
     {
-      "example_name": "领取地市缺失：不猜测金额，转入人工确认",
       "input": {
-        "user": { "status": { "employment_status": "unemployed" } },
-        "calc": { "unemployment": { "eligible": true } }
+        "user": {
+          "status": {
+            "employment_status": "unemployed"
+          }
+        },
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "needs_agent": true
+        }
+      },
+      "name": "领取地市缺失：不猜测金额，转入人工确认"
+    },
+    {
+      "input": {
+        "user": {
+          "profile": {
+            "claim_city": "未收录市"
+          },
+          "status": {
+            "employment_status": "unemployed"
+          }
+        },
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        }
       },
       "expected": {
         "calc": {
           "needs_agent": true,
-          "unemployment": { "monthly_amount_est": null }
+          "warnings": [
+            {
+              "warning_id": "W-UI-MIN-WAGE-MISSING"
+            }
+          ]
         }
-      }
+      },
+      "name": "领取地市不在最低工资表：needs_agent且金额为空"
     },
     {
-      "example_name": "领取地市不在最低工资表：needs_agent且金额为空",
       "input": {
         "user": {
-          "profile": { "claim_city": "未收录市" },
-          "status": { "employment_status": "unemployed" }
+          "profile": {
+            "claim_city": "广州"
+          },
+          "status": {
+            "employment_status": "employed"
+          }
         },
-        "calc": { "unemployment": { "eligible": true } }
+        "calc": {
+          "unemployment": {
+            "eligible": false
+          }
+        }
       },
       "expected": {
         "calc": {
-          "needs_agent": true,
-          "unemployment": { "monthly_amount_est": null }
+          "unemployment": {
+            "monthly_amount_est": 0
+          }
         }
-      }
-    },
-    {
-      "example_name": "失业资格不满足：金额为0",
-      "input": {
-        "user": {
-          "profile": { "claim_city": "广州" },
-          "status": { "employment_status": "employed" }
-        },
-        "calc": { "unemployment": { "eligible": false } }
       },
-      "expected": {
-        "calc": { "unemployment": { "monthly_amount_est": 0 } }
-      }
+      "name": "失业资格不满足：金额为0"
     }
   ],
   "evidence": [
@@ -229,7 +400,10 @@
       "content_sha256": "15f3551f796ae24058b996c75d5220a79115dc9a82915cbff537b008d28e4456",
       "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-UNEMPLOYMENT-REGULATION/original.html",
       "parse_version": "extracted-text-v1",
-      "locator": { "type": "body", "reference": "第十九条" },
+      "locator": {
+        "type": "body",
+        "reference": "第十九条"
+      },
       "excerpt": "第十九条 失业保险金由社会保险经办机构按照失业保险金领取地地级以上市最低工资标准的百分之九十按月计发，省人民政府根据国家规定可以适当调整失业保险金标准。"
     },
     {
@@ -242,7 +416,10 @@
       "content_sha256": "de716e1c054d4fb232a9579985d0a83a40d240a3f35b859a933cf14cb2bc7513",
       "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/GD/DOC-GD-MINIMUM-WAGE-2026/original.html",
       "parse_version": "extracted-text-v1",
-      "locator": { "type": "body", "reference": "正文第一条及附件《广东省最低工资标准表》" },
+      "locator": {
+        "type": "body",
+        "reference": "正文第一条及附件《广东省最低工资标准表》"
+      },
       "excerpt": "从2026年9月1日起，对我省全日制就业劳动者月最低工资标准和非全日制小时最低工资标准进行调整，具体标准附后。"
     }
   ],

@@ -152,7 +152,7 @@
   ],
   "examples": [
     {
-      "name": "断缴2个月",
+      "name": "断缴3个月",
       "input": {
         "user": {
           "mi": {
@@ -164,7 +164,7 @@
       "expected": {
         "calc": {
           "mi": {
-            "gap_months": 2
+            "gap_months": 3
           }
         }
       }

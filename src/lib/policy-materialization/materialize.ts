@@ -609,7 +609,10 @@ export async function loadRegionReadiness(): Promise<
 
 /** blocked地区判定（发布流水线阻断用，NRP-FR-022）。
  * WI-20260906-01：`repaired`批次同样表达地区readiness，阻断判定必须纳入，
- * 否则repair后（最新批次为repaired）粤川阻断语义可能丢失。 */
+ * 否则repair后（最新批次为repaired）粤川阻断语义可能丢失。
+ * 任务2批准（ADR-0010）：地区当前状态以**最新批次**为准——历史批次是审计
+ * 事实（如广东曾因缴费基数/失业条例缺口blocked），不代表当前就绪状态；
+ * 最新批次awaiting_approval的地区不得被历史blocked批次阻塞批准。 */
 export async function isJurisdictionBlocked(
   jurisdictionCode: string,
 ): Promise<boolean> {
@@ -621,8 +624,10 @@ export async function isJurisdictionBlocked(
         eq(policyImportBatches.jurisdictionCode, jurisdictionCode),
         inArray(policyImportBatches.status, ["applied", "verified", "repaired"]),
       ),
-    );
-  return rows.some((r) => r.readiness === "blocked");
+    )
+    .orderBy(policyImportBatches.id);
+  const latest = rows[rows.length - 1];
+  return latest?.readiness === "blocked";
 }
 
 /** WI-20260906-01：policy_pack_versions参数快照受控修复（draft行，单事务，幂等）。

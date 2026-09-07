@@ -1,11 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { params, ruleSets, rules } from "@/lib/db/schema";
+import { params, policyPackVersions, ruleSets, rules } from "@/lib/db/schema";
 import { rulesReads } from "@/server/modules/rules/application";
 import type { RuleRow } from "@/server/modules/rules/application/ports";
 import { publishWrites } from "@/server/modules/publishing/application";
 import { validateRuleAgainstSchema } from "@/lib/dsl/schema-validator";
-import { runDbTestSuite, dbRuleToDefinition } from "@/lib/engine/test-runner";
+import { runDbTestSuite, runTestSuite, dbRuleToDefinition } from "@/lib/engine/test-runner";
 import { isJurisdictionBlocked } from "@/lib/policy-materialization/materialize";
 
 export type PublishEntityType = "rule" | "param" | "rule_set";
@@ -55,6 +55,51 @@ function stageFromStatus(status: string): PublishStage | null {
 function statusFromStage(stage: PublishStage): string {
   if (stage === "production") return "published";
   return stage;
+}
+
+/** DSL examples回归载体（任务2批准）：单规则引擎执行该规则的权威示例，
+ * 参数基线=该地区参数包的published有效参数（与golden测试同构）；CN/GD规则
+ * 在tests表无归属测试时使用，不落tests表、不改变固定计数。 */
+async function runExamplesGate(
+  exactRule: RuleRow,
+  jurisdictionCode: string,
+): Promise<Awaited<ReturnType<typeof runTestSuite>>> {
+  const examples = (exactRule.examples as unknown[]) ?? [];
+  const packRows = await db
+    .select({ packId: policyPackVersions.policyPackId })
+    .from(policyPackVersions)
+    .where(eq(policyPackVersions.jurisdictionCode, jurisdictionCode))
+    .limit(1);
+  const packId = packRows[0]?.packId ?? null;
+  const regionalParams = packId
+    ? await rulesReads.getEffectiveParams(
+        packId,
+        new Date().toISOString().split("T")[0],
+      )
+    : [];
+  const baseParams: Record<string, unknown> = {};
+  for (const p of regionalParams) {
+    baseParams[p.paramId] =
+      p.type === "table" || p.type === "timeline" ? (p.rows ?? []) : p.value;
+  }
+  return runTestSuite(
+    examples.map((ex) => {
+      const entry = ex as {
+        name?: string;
+        input?: Record<string, unknown>;
+        expected?: Record<string, unknown>;
+      };
+      return {
+        rule_id: exactRule.ruleId,
+        name: entry.name ?? exactRule.ruleId,
+        input: entry.input ?? {},
+        params_override: null,
+        expected: entry.expected ?? {},
+      };
+    }),
+    [dbRuleToDefinition(exactRule)],
+    baseParams,
+  );
 }
 
 export interface ExactLocator {
@@ -180,6 +225,7 @@ async function updateEntityStatus(
 
 async function checkPromoteGates(
   entityType: PublishEntityType,
+  jurisdictionCode: string,
   fromStage: PublishStage,
   toStage: PublishStage,
   exactRule?: RuleRow | null,
@@ -207,7 +253,9 @@ async function checkPromoteGates(
     // 用 ajv + 完整 DSL JSON-Schema 做结构校验（替代此前仅检查 ruleId/name/rows 的浅检查）。
     const schemaResult = validateRuleAgainstSchema(rule);
     const schemaValid = schemaResult.valid;
-    const examplesValid = examples.length > 0;
+    // restrict/exempt overlay元数据规则无决策行为（NRP-FR-007），不要求examples。
+    const isOverlayMeta = rule.operation === "restrict" || rule.operation === "exempt";
+    const examplesValid = examples.length > 0 || isOverlayMeta;
 
     if (!schemaValid || !examplesValid) {
       return {
@@ -243,12 +291,43 @@ async function checkPromoteGates(
   }
 
   if (fromStage === "staging" && toStage === "production") {
+    // restrict/exempt overlay元数据规则无决策行为（NRP-FR-007），发布无需回归载体。
+    if (
+      exactRule &&
+      (exactRule.operation === "restrict" || exactRule.operation === "exempt")
+    ) {
+      return {
+        passed: true,
+        results: {
+          checks: [
+            { name: "schema", passed: true },
+            { name: "examples", passed: true },
+            { name: "regression", passed: true, detail: "overlay元数据规则无决策行为" },
+          ],
+        },
+      };
+    }
+    // 审查缺陷10（任务2批准）：规则晋级只认本地区（含CN继承链）的归属测试，
+    // 不得拿上海测试充数；参数/规则集晋级跑全量回归（发布不影响既有规划，
+    // 全量是安全载体）。
     const tests = await rulesReads.listTests(
-      entityType === "rule" ? { ruleId: exactRule?.ruleId } : undefined,
+      entityType === "rule"
+        ? {
+            ruleId: exactRule?.ruleId,
+            jurisdictionCodes: [jurisdictionCode],
+          }
+        : undefined,
     );
 
-    const total = tests.length;
-    if (total === 0) {
+    // CN/GD规则在tests表无归属测试（tests=528为上海载体，固定计数不可变）：
+    // 用该规则的DSL examples作为权威回归载体（examples经golden测试验证，
+    // 不落tests表、不改变固定计数）。无tests且无examples → 拒绝。
+    const examples =
+      entityType === "rule" && exactRule
+        ? ((exactRule.examples as unknown[]) ?? [])
+        : [];
+
+    if (tests.length === 0 && examples.length === 0) {
       return {
         passed: false,
         reason: "未找到回归测试",
@@ -269,29 +348,33 @@ async function checkPromoteGates(
     // 重新真实跑一遍回归测试，不信任可能已过期的 lastRunResult。
     let suite: Awaited<ReturnType<typeof runDbTestSuite>>;
     try {
-      suite = await runDbTestSuite(
-        tests.map((test) => ({
-          ruleId: test.ruleId,
-          name: test.name,
-          input: test.input as Record<string, unknown>,
-          paramsOverride: test.paramsOverride as Record<string, unknown> | null,
-          expected: test.expected as Record<string, unknown>,
-        })),
-        { overrideRules },
-      );
+      suite =
+        tests.length > 0
+          ? await runDbTestSuite(
+              tests.map((test) => ({
+                ruleId: test.ruleId,
+                name: test.name,
+                input: test.input as Record<string, unknown>,
+                paramsOverride: test.paramsOverride as Record<string, unknown> | null,
+                expected: test.expected as Record<string, unknown>,
+              })),
+              { overrideRules },
+            )
+          : await runExamplesGate(exactRule!, jurisdictionCode);
     } catch (err) {
       return {
         passed: false,
         reason: `回归测试运行失败：${err instanceof Error ? err.message : String(err)}`,
         results: {
           checks: [{ name: "regression", passed: false, detail: "运行出错" }],
-          total,
+          total: tests.length || examples.length,
           passed: 0,
           pass_rate: 0,
         },
       };
     }
 
+    const total = suite.total;
     const passed = suite.passed;
     const passRate = suite.pass_rate;
     const failedNames = suite.results
@@ -427,6 +510,7 @@ export async function promoteEntity(options: {
 
   const gateCheck = await checkPromoteGates(
     options.entityType,
+    entity.jurisdictionCode,
     fromStage,
     allowedToStage,
     exactRule,

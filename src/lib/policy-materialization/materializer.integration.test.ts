@@ -1513,4 +1513,21 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     const after = await dbSnapshot();
     expect(after).toEqual(before);
   });
+
+  it("就绪语义：blocked判定以最新批次为准（历史blocked批次不阻塞当前awaiting_approval，ADR-0010批准前提）", async () => {
+    const { isJurisdictionBlocked } = await import(
+      "@/lib/policy-materialization/materialize"
+    );
+    // 当前fixture：GD最新批次（本次apply id 10）为awaiting_approval，
+    // 但seed镜像的GD历史批次为blocked（3条旧原因）——模拟持久库GD曾blocked。
+    await matQuery(
+      `update policy_import_batches set readiness = 'blocked',
+              blocking_reasons = '["历史阻断原因1","历史阻断原因2","历史阻断原因3"]'::jsonb
+       where jurisdiction_code = '440000' and manifest_hash = 'seed-mirror-hash'`,
+    );
+    // 四川最新批次blocked → 必须仍判定blocked（WI-20260907-01不放松）。
+    expect(await isJurisdictionBlocked("440000")).toBe(false);
+    expect(await isJurisdictionBlocked("510000")).toBe(true);
+    expect(await isJurisdictionBlocked("CN")).toBe(false);
+  });
 });

@@ -104,6 +104,38 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
         ),
       );
 
+    // 任务2批准（重分类继承语义）：链上国家baseline已定义业务键后，地方层
+    // 同名的历史add（如旧上海运行基线在重分类前把国家规则复制为本地add）
+    // 不再参与候选快照合并——否则duplicate-add阻止快照。历史行保留（可回退），
+    // 仅跳过收集；地方replace/restrict/exempt不受影响（显式overlay语义）。
+    const nationalBaselineKeys = new Set<string>();
+    for (const r of ruleRows) {
+      if (r.jurisdictionCode === "CN" && r.operation === "baseline") {
+        nationalBaselineKeys.add(r.ruleId ?? "");
+      }
+    }
+    for (const p of paramRows) {
+      if (p.jurisdictionCode === "CN" && p.operation === "baseline") {
+        nationalBaselineKeys.add(p.paramId ?? "");
+      }
+    }
+    const isSupersededLegacyAdd = (
+      jurisdictionCode: string | null,
+      businessKey: string,
+      operation: string | null,
+    ): boolean =>
+      jurisdictionCode !== null &&
+      jurisdictionCode !== "CN" &&
+      operation === "add" &&
+      nationalBaselineKeys.has(businessKey);
+
+    const effectiveRuleRows = ruleRows.filter(
+      (r) => !isSupersededLegacyAdd(r.jurisdictionCode, r.ruleId ?? "", r.operation),
+    );
+    const effectiveParamRows = paramRows.filter(
+      (p) => !isSupersededLegacyAdd(p.jurisdictionCode, p.paramId ?? "", p.operation),
+    );
+
     const toInput = (
       jurisdictionCode: string,
       businessKey: string,
@@ -126,7 +158,7 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
     });
 
     const inputs: MergeInputEntity[] = [];
-    for (const r of ruleRows) {
+    for (const r of effectiveRuleRows) {
       inputs.push(
         toInput(
           r.jurisdictionCode as string,
@@ -139,7 +171,7 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
         ),
       );
     }
-    for (const p of paramRows) {
+    for (const p of effectiveParamRows) {
       inputs.push(
         toInput(
           p.jurisdictionCode as string,
