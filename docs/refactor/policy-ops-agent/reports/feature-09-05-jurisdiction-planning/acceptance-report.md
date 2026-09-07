@@ -155,6 +155,23 @@
 - 未执行 Secret 轮换、远程数据库操作或生产部署。
 - 演练资源：`jrp-drill-pg` 容器与 `jrp-drill-pg-data` 卷为任务3演练设施；`nrp-drill-pg`（历史演练）已停止但容器/卷保留；`socila-*` 持久资源未删除未重建。
 
+## 9. 持久库执行记录（2026-09-07，用户授权"自动全部批准执行并继续"）
+
+用户明确授权执行任务3报告§7所列待授权动作（持久库0015与上海/广东地区激活），Agent按OPERATIONS"地区规划发布记录激活runbook"执行：
+
+| 步骤 | 结果 |
+| --- | --- |
+| 只读基线 | 持久库三地区候选快照各2条（任务2交付）、`jurisdiction_planning_releases` 表不存在（0015未执行）、四川快照0、无open冲突、Jan管理员（auth_version=2）；migration journal 14条 |
+| 备份 | `backup/db/policyops-jrp-pre-20260907184211.dump`（803,446B；SHA-256 `4cf4b86a…`） |
+| 真实恢复对账 | 临时`jrp-restore-pg`（PG17+pgvector，端口5442；预建恢复专用`agent_app`角色）`pg_restore`退出0；`restore-reconcile.ts` 37表+18 sequence计数与规范化行哈希全部一致；容器已清理 |
+| 0015迁移 | 显式`DATABASE_URL`执行×2幂等；journal 14→15；表/列/索引/约束落库，业务数据零变化 |
+| 激活（publishing用例） | `activateJurisdictionRelease`+`requireFreshAdmin`真实校验（Jan）：310000→active（快照`c9ca7079…`）、440000→active（快照`77781869…`），gateResults replay=pass/conflicts=pass；四川0条；重复激活幂等（upsert更新无错误） |
+| 规划执行验证（persist=false零落库） | 上海：24规则执行（RS-SHANGHAI-PLAN-V1/SHANGHAI_BASE+CN-BASELINE）；广东：17规则执行（RS-GD-PLAN-V1/CN-BASELINE+GD-BASE）；meta含jurisdiction_code/resolved_path/snapshot_id/as_of_date |
+| 激活后备份 | `backup/db/policyops-jrp-post-20260907184612.dump`（SHA-256 `f14b6620…`）；全新恢复后37表+19 sequence对账一致（+1为release表sequence） |
+| 边界 | 未创建/替换/删除任何PolicySnapshot（复用任务2候选快照）、未修改四川实体、未执行Secret轮换/远程库/生产部署；演练容器已清理 |
+
+状态：任务3交付与持久库执行均完成；用户流量激活（地区发布记录active）已完成，前端地区选择器与规划API在持久库上可直接使用。
+
 ## 8. 集成注意事项（任务3→任务4串行集成）
 
 1. 任务3 已交付 migration 0015（journal idx 14）；任务4 使用 0016，两条分支不得各自覆盖 `drizzle/meta/_journal.json`，最终按 0015→0016 串行集成。

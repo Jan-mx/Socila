@@ -137,9 +137,9 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 7. 管理员批准完成后，只读列出三地区候选快照成员、版本、provenance和黄金结果；本次三地区候选快照已创建并重放，未来新快照仍需另行取得写入授权。
 8. 创建后重复重放并验证隔离；四川无快照且不开放流量。案例删除和地区激活不包含在本runbook授权内。
 
-## 地区规划发布记录激活runbook（任务3 JRP-FR-005/006/007，尚未在持久库执行）
+## 地区规划发布记录激活runbook（任务3 JRP-FR-005/006/007，2026-09-07已执行）
 
-任务3只交付代码、migration 0015与测试；本机持久policyops库未执行0015，未激活任何地区，未创建/替换/删除任何PolicySnapshot。未来地区激活（管理员人工动作或用户明确授权后的受控执行）必须满足：
+任务3代码与migration 0015已交付；2026-09-07用户授权后已在持久policyops库执行：0015迁移×2幂等（journal 15）、经publishing应用用例+新鲜管理员激活310000与440000（复用任务2已批准候选快照`c9ca7079…`/`77781869…`）、四川0条；执行前后各完成完整备份+全新PG17+pgvector真实恢复对账（37表+18/19 sequence一致）。未来地区变更（新地区激活、切换或停用，管理员人工动作或用户明确授权后的受控执行）必须满足：
 
 1. 持久库先显式应用0015迁移（`DATABASE_URL=<policyops> node scripts/run-migrations.mjs`），随后每次激活前完成新鲜`pg_dump -Fc`+SHA-256+全新PG17+pgvector真实恢复对账（37表+18 sequence）。
 2. 激活只允许经`POST /api/admin/jurisdictions/:code/release`（publishing应用用例+`requireFreshAdmin`），禁止直接SQL修改`jurisdiction_planning_releases`状态（JRP-FR-006）。
