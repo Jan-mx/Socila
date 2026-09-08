@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## 用途
 
@@ -103,3 +103,7 @@ Draft → Approved → Active → Superseded → Archived
 ```
 
 需求发生变化时更新PRD及关联Work Item、架构和追踪记录，不在旧报告中修改历史结果。
+
+## Agent提示词规则
+
+开发提示词只在对话中提供，不写入PRD。PRD只记录需求、边界、接口、验收标准和授权条件；长期规则放在README中，不复制可执行提示词。

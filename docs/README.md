@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-01
+> Updated: 2026-09-09
 
 ## 用途
 
@@ -66,3 +66,4 @@ README在修改期间使用`Updating`，任务验收完成后必须同步为`Act
 - README只提供目录说明和阅读路线。
 - reports和archive不作为Agent默认阅读材料。
 - 密钥、本地配置、备份和用户数据不得进入Git。
+- Agent提示词只在对话中交付，不写入PRD、Work Item、验收报告或普通开发文档；README只记录这条管理规则和权限边界，不嵌入可执行提示词。

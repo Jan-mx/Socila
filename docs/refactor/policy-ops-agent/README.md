@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## 当前状态
 
@@ -10,7 +10,7 @@
 
 09-02用户与管理员双角色鉴权Feature已Accepted；09-03 P0合并质量门禁与v2.0.0发布准备**Accepted（开发分支发布准备）**：六类门禁全部本地新鲜复现（全部退出0、零skip），workflow经actionlint 1.7.7静态校验零发现，`origin/main...ced6a5a`完整差异审阅完成（401文件，+32501/−1851）；重构前`main`已由`v1.0.0`标记，PR、main ruleset、merge与`v2.0.0` Release为未来人工动作（见`PROGRESS.md`精确下一步与PRD §17）。
 
-09-05 Stage（`docs/prd/09-05-stage-national-baseline-regional-overlays.md`）按ADR-0010完成**任务2首期CN、上海、广东分地区交付（Accepted，2026-09-07）**。任务3/4分支交付后复审确认地区日期快照、真实入口、案例归档和质量证据存在阻断缺陷，任务3、任务4均曾**Reopened**。按ADR-0011依次执行：WI-20260907-02修复任务3→WI-20260907-03重建上海/广东确定性政策案例→WI-20260907-04经明确授权替换持久库。**任务3已由`codex/task34-regional-case-rebuild`分支完成修复并重新验收（Accepted，2026-09-08）**：认证会话预创建、`claim_city_code`服务端规范化、0017快照区间、七道真实激活门禁、执行期hash/gateResults重验、历史重放API、停用API与`/plan/new`双入口、四川始终unsupported。**任务4同分支完成案例库重建并重新验收（Accepted，2026-09-08）**：真实文件SHA归档、完整归档包、精确manifest、可比较断言重放、质量分解落库、多标签、管理查询active AND filters、apply FOR UPDATE+applying+唯一约束、0018迁移、确定性模板沪18/粤18配额与`N/36/N+42`。持久库0017/0018、日期快照调度与案例替换仍待WI-20260907-04授权。当前持久库已有0015/0016、上海/广东active及452/36/528，禁止重复运行旧任务4apply。
+09-05 Stage（`docs/prd/09-05-stage-national-baseline-regional-overlays.md`）按ADR-0010完成**任务2首期CN、上海、广东分地区交付（Accepted，2026-09-07）**。任务3/4当前均为**Reopened（2026-09-09复审）**：任务3仍缺空黄金测试、停用路径地区绑定与replay三方hash校验；任务4受控CLI为空壳、apply丢失完整场景字段、E2E未证明36/18/18。按ADR-0011依次修复WI-20260907-02→WI-20260907-03；两项重新Accepted后，WI-20260907-04仍须fresh audit和用户明确授权。当前持久库只有0015/0016、上海/广东active及452/36/528，禁止执行0017/0018或重复运行旧任务4apply。
 
 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）**Accepted（2026-09-05两轮复审纠正后重新验收）**：首轮复审三项缺漏已纠正——命名契约区分"允许的精确旧协议片段"与"独立品牌标识"、`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`并新增哨兵回归（ADR-0009）、多地区Seed补齐jurisdiction作用域并有落库级测试；第二轮复审又修复扫描器注释自命中与`.gitleaksignore`说明文字历史误报，并将Next生产构建worker限制为2以适配本机及4GB Demo资源档。最终新鲜复验：`npm test` 359/359、Gitleaks 8.29.1完整历史43提交零发现、`npm run build`以2 workers退出0。通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层，规则格式唯一规范值`SOCILA-DSL-1.0`；活动代码与配置完成Socila硬切换；服务JWT身份为`socila-next-core`；粤川示例仅保留测试夹具，生产Seed与持久库均为0。证据见`reports/feature-09-05-socila-naming/acceptance-report.md`。
 
@@ -74,4 +74,5 @@
 - 生产个人资料不得发送到政策模型服务。
 - 原始政策文件和DocumentTree是审计事实源。
 - 已发布规则、政策和快照不可原地修改。
+- Agent提示词只在对话中提供，禁止写入PRD、Work Item、验收报告或其他开发文档；本README只记录提示词管理规则和权限边界。
 - 合成政策案例不得描述为真实用户案例或权威政策来源。

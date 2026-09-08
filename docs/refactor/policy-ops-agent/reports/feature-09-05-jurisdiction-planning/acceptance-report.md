@@ -1,17 +1,17 @@
 # 任务3用户规划按地区快照触发验收报告
 
-> Status: Accepted（2026-09-08重开验收）
+> Status: Reopened（2026-09-09复审）
 > Branch: `codex/task34-regional-case-rebuild`
 > Baseline: `93b2b63`（WI-20260907-02按共同基线集成）
 > Scope: WI-20260907-02（任务3快照时态与真实入口加固）
 
 ## 当前结论
 
-2026-09-07独立复审指出的P1缺陷全部修复并重新验收通过。任务3 Feature恢复**Accepted**；历史代码与持久执行记录保留为审计事实，不代表本验收证据。
+2026-09-07独立复审指出的P1缺陷曾被报告为已修复；2026-09-09复审发现空黄金测试集仍可通过、停用接口未绑定路径地区、历史重放未比较快照行`contentHash`。任务3 Feature保持**Reopened**；历史代码与持久执行记录保留为审计事实。
 
 历史背景：`24b0119`/`33af7ad`实现地区画像、0015、发布记录与快照编排；复审发现新会话404、`claim_city_code`缺失、2026快照回答2030、伪完整门禁、无历史重放、无停用和无直接规划页面，原Accepted结论撤销（[复审报告](./review-report-2026-09-07.md)）。
 
-## 修复内容（对照复审P1）
+## 2026-09-08历史报告：修复内容（当前验收已撤回）
 
 | 复审发现 | 修复 |
 | --- | --- |
@@ -24,14 +24,14 @@
 | P1 无停用/直接页面 | `DELETE /api/admin/jurisdictions/:code/releases/:releaseId`停用单一区间（不删快照/plan）；`/plan/new`直接规划页与聊天同一确认契约（复用JurisdictionSelector与确认API） |
 | P2 验收报告表述 | 本报告只记录代码与隔离库证据；持久库0017与快照调度未执行、待WI-20260907-04授权 |
 
-## 迁移与隔离
+## 2026-09-08历史报告：迁移与隔离
 
 - `drizzle/0015_jurisdiction_planning_releases.sql`（SHA-256 `4ac11ead…bd801`）与`drizzle/0016_clg_case_governance.sql`（SHA-256 `3a9adc91…30dfd5`）内容未改写（`jrp-0017-migration.integration.test.ts`哈希不变量断言）。
 - 新增`drizzle/0017_jurisdiction_snapshot_schedules.sql`（journal idx16/`1788796800000`）：`effective_from/effective_to`列、active闭合定义CHECK、同地区active不重叠EXCLUDE（btree_gist）、`(jurisdiction_code, effective_from)`唯一索引、`plans.snapshot_content_hash`。
 - 组合journal从零执行两次幂等（本机隔离库`task34_drill*`，非持久库）；持久库0017未执行。
 - 快照内容hash语义统一（snapshot-service与release-gates共用canonical：Date→ISO、键排序、成员按entityType+businessKey确定性排序），执行期重算可复现。
 
-## 测试证据（2026-09-08本地新鲜执行）
+## 2026-09-08历史报告：当时记录的测试证据
 
 | 门禁 | 命令 | 结果 |
 | --- | --- | --- |
@@ -67,11 +67,19 @@
 - 持久库0017迁移、日期快照调度、快照激活/停用、账本repair：全部待WI-20260907-04在fresh audit后经用户明确授权执行。
 - 本机持久库（`socila-postgres/policyops`）未被修改；所有集成测试仅使用隔离库。
 
-## Definition of Done对照
+## 2026-09-09复审结论
 
-- JRP-FR-001～029、JRP-NFR-001～010、JRP-AC-001～012均有真实代码与测试映射（traceability.md WI-20260907-02行）。
-- 新会话、领取地市、2026/2030、完整门禁、哈希漂移、历史重放、停用和直接页面全部有Red/Green与Chromium E2E。
-- 上海、广东日期快照区间隔离通过（EXCLUDE+区间选择）；四川无发布记录且始终unsupported。
-- 0017只在隔离库执行（两次幂等）；持久账本repair和快照调度未授权保持未执行。
-- Node、数据库、Chromium E2E、TypeScript、ESLint、Build、Python与安全门禁全部新鲜通过且零skip（pip-audit除外，环境代理阻塞）。
+详细代码证据与重新验收条件见[第二轮独立复审报告](./review-report-2026-09-09.md)。
+
+- 本次默认`npm test`曾因5秒测试超时失败；提高超时后650/650通过，只能说明环境抖动已被复现和绕过。
+- 本次环境缺少`SOCILA_TEST_DATABASE_URL`，`npm run test:db`无法独立复现报告中的114/25零skip证据。
+- 任务3必须先补空黄金测试集、停用路径地区绑定和三方snapshot hash校验，再重新取得隔离DB/E2E证据。
+
+## 当前Definition of Done对照（2026-09-09）
+
+- 未通过：JRP-FR-007/JRP-AC-007的空黄金测试集fail-closed反例。
+- 未通过：JRP-FR-027/JRP-AC-009的停用路径地区与release记录地区一致性。
+- 未通过：JRP-FR-028/JRP-AC-008的保存hash、快照行hash和成员重算hash三方一致性。
+- 未复核：显式全新隔离数据库下的完整DB门禁零skip，以及覆盖上述反例的Chromium E2E。
+- 仍满足权限边界：0017只允许在隔离库验证；持久账本repair、快照调度和激活/停用未获本轮授权。
 - README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability与复审报告同步。

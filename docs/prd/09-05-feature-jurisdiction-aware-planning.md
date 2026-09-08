@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Reopened
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## 文档元数据
 
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-jurisdiction-aware-planning.md` |
 | 类型 | Feature |
-| 状态 | Accepted（2026-09-08重开验收）；分支`codex/task34-regional-case-rebuild`完成WI-20260907-02全部修复并取得新鲜门禁 |
+| 状态 | Reopened（2026-09-09复审）；原Accepted结论因发布门禁与历史重放缺口撤回 |
 | 前置依赖 | 任务2首期Accepted；CN、上海、广东候选快照已存在；四川Deferred/Blocked |
 | 后续消费者 | 地区化案例库重建Feature |
 | 执行顺序 | 先完成本Feature修复，再开发地区化案例库；不再与任务4并行 |
@@ -30,7 +30,7 @@
 
 当前持久库0015和上海/广东active记录是审计事实，但不构成本PRD重新Accepted的证据。修复代码不得再次执行旧激活流程或改写持久库，持久执行由独立Work Item控制。
 
-2026-09-08：WI-20260907-02全部修复完成并重新验收（分支`codex/task34-regional-case-rebuild`）——新会话预创建、`profile.claim_city_code`服务端规范化、0017快照区间（`effective_from/effective_to`+同地区不重叠EXCLUDE）、按`jurisdiction_code+as_of_date`唯一选择、2026/2030时间片派生、七道真实激活门禁、执行期hash与完整gateResults重验、历史plan真实重放API、停用API与`/plan/new`双入口、四川始终unsupported；0015/0016 SQL哈希不变，0017仅在隔离库执行。验收证据：`reports/feature-09-05-jurisdiction-planning/acceptance-report.md`（2026-09-08）。
+2026-09-08报告所称修复仍需2026-09-09复审：发布门禁空测试集可通过、停用接口未绑定路径地区、历史重放未比较快照行hash。任务3在这些专用反例和真实DB/E2E证据完成前保持Reopened。
 
 ## 2. 目标与非目标
 
@@ -59,7 +59,7 @@
 - **JRP-FR-004 日期快照**：按地区和`as_of_date`读取恰好一个active快照区间，不使用“最新快照”隐式替代。
 - **JRP-FR-005 发布记录**：保存地区、快照、生效起止日期、状态、完整门禁、操作者和时间。
 - **JRP-FR-006 管理员操作**：只有新鲜管理员可激活、切换或停用；全部经过publishing application用例。
-- **JRP-FR-007 完整激活门禁**：引用、Schema、参数依赖、冲突、黄金测试、两次重放和规范化内容哈希全部通过后才可active。
+- **JRP-FR-007 完整激活门禁**：引用、Schema、参数依赖、冲突、至少一条适用黄金测试、两次重放和规范化内容哈希全部通过后才可active；空测试集必须失败。
 - **JRP-FR-008 快照执行**：规则、参数和顺序只从选中的不可变快照成员恢复。
 - **JRP-FR-009 规划留痕**：plan保存地区、解析路径、snapshot ID/hash和`as_of_date`。
 - **JRP-FR-010 双入口**：聊天和`/plan/new`在提交前使用同一服务端地区确认组件。
@@ -79,8 +79,8 @@
 - **JRP-FR-024 快照区间**：发布记录增加`effective_from/effective_to`，active区间必须闭合定义且同地区不重叠。
 - **JRP-FR-025 时间片生成**：根据已批准规则/参数有效期边界确定性生成快照时间片，至少覆盖广东2026与2030窗口。
 - **JRP-FR-026 执行期完整性**：每次计算重算成员规范化哈希，并确认完整门禁与当前快照hash一致。
-- **JRP-FR-027 停用**：新鲜管理员可停用单一区间；停用不删除快照或历史plan。
-- **JRP-FR-028 历史重放API**：owner可重放自己的plan；结果返回原快照元数据和漂移结论。
+- **JRP-FR-027 停用**：新鲜管理员可停用单一区间；URL地区代码必须与release记录地区一致，跨地区release ID拒绝；停用不删除快照或历史plan。
+- **JRP-FR-028 历史重放API**：owner可重放自己的plan；执行前必须比较plan保存hash、快照行contentHash和成员重算hash三方一致性，并返回原快照元数据和漂移结论。
 - **JRP-FR-029 迁移兼容**：0015/0016历史SQL不改；0017增加区间和约束，账本时间修复由独立受控Work Item执行。
 
 ## 4. 数据与接口
@@ -158,9 +158,9 @@ type JurisdictionSnapshotSchedule = {
 - **JRP-AC-004** 2026与2030广东请求命中不同snapshot且结果分别符合能力边界。
 - **JRP-AC-005** 时间片缺失、重叠、门禁缺项、hash漂移均fail-closed。
 - **JRP-AC-006** 广东有效领取地市代码产生正确金额；缺失、未知、跨省代码只产生稳定问题且不估算。
-- **JRP-AC-007** 激活真实运行全部门禁；伪造`pass`不能绕过。
-- **JRP-AC-008** snapshot切换后历史plan仍按原snapshot逐字节重放。
-- **JRP-AC-009** 停用广东不影响上海；四川始终unsupported且零快照读取。
+- **JRP-AC-007** 激活真实运行全部门禁；空黄金测试集或伪造`pass`均不能绕过。
+- **JRP-AC-008** snapshot切换后历史plan仍按原snapshot逐字节重放；保存hash、快照行hash或重算hash任一不一致必须明确失败。
+- **JRP-AC-009** 停用广东不影响上海；使用广东URL停用上海release ID被拒绝；四川始终unsupported且零快照读取。
 - **JRP-AC-010** 聊天和直接规划页面使用相同确认、错误和结果契约。
 - **JRP-AC-011** 两个重叠区间并发激活只有一组成功。
 - **JRP-AC-012** 0017从零执行两次幂等，未修改0015/0016 SQL哈希。

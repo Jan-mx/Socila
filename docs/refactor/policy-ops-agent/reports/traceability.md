@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## 用途
 
@@ -56,8 +56,8 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 
 | Work Item | 规格 | 实现位置 | 测试路径 | 验收证据 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| WI-20260907-02 | `docs/work-items/WI-20260907-02-task3-temporal-entry-hardening.md` | 实际：`src/app/api/conversations/route.ts`（POST预创建）、`src/components/chat/ChatPanel.tsx`（服务端创建）、`src/server/modules/conversation/application/create-conversation.use-case.ts`、`src/server/modules/planning/application/{claim-city.ts,replay-plan.use-case.ts,jurisdiction-compute.use-case.ts}`（claim_city_code规范化/区间选择/hash与gateResults重验）、`src/server/modules/publishing/application/{release-gates.ts,snapshot-slices.ts,jurisdiction-release.use-case.ts}`（七道真实门禁/时间片/停用）、`drizzle/0017_jurisdiction_snapshot_schedules.sql`、`src/app/api/admin/jurisdictions/[code]/{release,releases/[releaseId]}/route.ts`、`src/app/api/plan/[id]/replay/route.ts`、`src/app/(client)/plan/new/page.tsx`、`src/lib/ai/tools.ts`、`src/lib/validators/plan-input.ts`、`src/lib/engine/orchestrator.ts`（快照执行）、`e2e/task3-regional.spec.ts` | 实际：`src/server/modules/policy/__tests__/jrp-0017-migration.integration.test.ts`、`src/server/modules/planning/application/__tests__/{jurisdiction-compute.use-case.test.ts,jurisdiction-compute.integration.test.ts,replay-plan.use-case.test.ts,claim-city.test.ts}`、`src/server/modules/publishing/application/__tests__/{release-gates.test.ts,jurisdiction-release.use-case.test.ts,snapshot-slices.test.ts}`、`src/server/modules/conversation/application/__tests__/create-conversation.use-case.test.ts`、`src/lib/ai/__tests__/tools-jurisdiction.test.ts`、`e2e/task3-regional.spec.ts` | `reports/feature-09-05-jurisdiction-planning/acceptance-report.md`（2026-09-08重开验收） | Accepted；任务3修复完成（2026-09-08） |
-| WI-20260907-03 | `docs/work-items/WI-20260907-03-regional-policy-case-rebuild.md` | 实际：`src/lib/case-governance/{archive.ts,replay.ts,manifest.ts,generator.ts,scoring.ts,multi-label.ts,apply.ts,reconcile.ts}`、`drizzle/0018_case_library_rebuild.sql`、`scripts/rcl-case-library.ts`、`src/server/modules/case-governance/`、`e2e/task4-case-library.spec.ts` | 实际：`src/lib/case-governance/__tests__/{archive,replay,manifest,generator,scoring,multi-label}.test.ts`、`src/server/modules/policy/__tests__/{rcl-0018-rebuild-schema,rcl-apply,rcl-end-to-end}.integration.test.ts`、`e2e/task4-case-library.spec.ts` | `reports/stage-09-05-case-governance/acceptance-report.md`（2026-09-08重开验收） | Accepted；任务4重建完成（2026-09-08） |
+| WI-20260907-02 | `docs/work-items/WI-20260907-02-task3-temporal-entry-hardening.md` | 初版实现保留；待补空黄金测试、停用路径地区绑定、三方snapshot hash | 待补专用Red/Green、显式隔离DB和真实Chromium E2E | `reports/feature-09-05-jurisdiction-planning/acceptance-report.md`（2026-09-09复审） | Reopened |
+| WI-20260907-03 | `docs/work-items/WI-20260907-03-regional-policy-case-rebuild.md` | 初版实现保留；待实现真实CLI和完整场景字段写入 | 待补CLI、apply字段、归档、36/18/18及权限E2E | `reports/stage-09-05-case-governance/acceptance-report.md`（2026-09-09复审） | Reopened |
 | WI-20260907-04 | `docs/work-items/WI-20260907-04-persistent-case-library-replacement.md` | 计划：账本repair、0017/0018、日期snapshot、旧452/36/500→新N/36/N替换 | 计划：fresh audit、目标指纹、幂等、恢复对账；持久写入前请求授权 | ADR-0011；执行后补任务3/4验收证据 | Blocked；等待WI-02/WI-03及授权 |
 | WI-20260907-01 | `docs/work-items/WI-20260907-01-sichuan-policy-followup.md` | 计划：四川三项正式来源到位后的规则、参数、物化、审核和候选快照 | 计划：权威引用、黄金、隔离、物化、快照重放；不得提前填写PASS | ADR-0010；等待解锁后新增独立验收证据 | Blocked；不阻塞任务2首期 |
 | WI-20260906-02 | `docs/work-items/WI-20260906-02-stage-e-persistent-repair.md` | 实际：持久库`socila-postgres/policyops`（0014迁移+`scripts/materialize-policy-regions.ts` repair一次）；证据`audit-policyops-wi-02.json`、`repair-policyops-wi-02.json`、备份`backup/db/policyops-wi-02-{pre,post}-*.dump`（Git忽略） | 无新增代码/测试；复用WI-01既有守卫与集成覆盖；只读验证`restore-reconcile.ts`/`planning-regression.ts` | 任务2验收报告§15/§17 | Accepted；任务2首期最终Accepted |
@@ -69,8 +69,8 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | 任务 | 需求范围 | 计划实现 | 计划测试 | 状态 |
 | --- | --- | --- | --- | --- |
 | 任务2 CN/沪/GD首期 | NRP-FR-001～022、NRP-NFR-001～012、NRP-AC-001～016（ADR-0010范围） | 广东delta、失业金额规则、三地区审核与候选快照 | 已有任务2验收报告§17 | Accepted；保持不变 |
-| 任务3 地区感知规划修复 | JRP-FR-001～029、JRP-NFR-001～010、JRP-AC-001～012 | 实际：0015/0016保留+0017日期snapshot区间（EXCLUDE不重叠）、认证会话预创建、双入口（聊天+`/plan/new`）、七道真实激活门禁、执行期hash/gateResults重验、历史重放API、停用API、四川unsupported | 实际：WI-02测试矩阵全部专用Red/Green+DB集成+Chromium E2E（2026-09-08） | Accepted（2026-09-08重开验收）；持久库0017与快照调度仍由WI-04受控执行 |
-| 任务4 地区案例重建 | RCL-FR-001～022、RCL-NFR-001～008、RCL-AC-001～015 | 实际：真SHA归档、完整归档包、精确manifest、可比较断言重放、质量分解、多标签、active AND filters、FOR UPDATE+applying并发、0018、确定性模板沪18/粤18配额 | 实际：WI-03测试矩阵全部专用Red/Green+DB集成+Chromium E2E（2026-09-08） | Accepted（2026-09-08重开验收）；持久替换（旧452/36/500→新N/36/N）仍由WI-04授权执行 |
+| 任务3 地区感知规划修复 | JRP-FR-001～029、JRP-NFR-001～010、JRP-AC-001～012 | 代码初版实现0017、入口、区间、门禁、重放和停用，但复审发现空黄金测试集、停用路径地区绑定和三方snapshot hash缺口 | 需补WI-02反例、显式隔离DB和Chromium E2E；报告中DB门禁当前环境不可独立复现 | Reopened（2026-09-09） |
+| 任务4 地区案例重建 | RCL-FR-001～022、RCL-NFR-001～008、RCL-AC-001～015 | 代码初版实现归档库、生成器、apply和0018，但复审发现受控CLI为空壳、apply场景字段为空、E2E未核对36/18/18 | 需补WI-03真实CLI、完整字段、归档和E2E反例 | Reopened（2026-09-09） |
 
 ## 09-07 任务2首期：广东增量物化与地区就绪（2026-09-07）
 

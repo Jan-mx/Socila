@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Reopened
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## 文档元数据
 
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-case-library-governance.md` |
 | 类型 | Feature；替代原“上海案例库精简为452/36/528”方案 |
-| 状态 | Accepted（2026-09-08重开验收）；分支`codex/task34-regional-case-rebuild`完成WI-20260907-03全部修复并取得新鲜门禁 |
+| 状态 | Reopened（2026-09-09复审）；原Accepted结论因CLI、apply和数据契约缺口撤回 |
 | 前置依赖 | 任务2首期Accepted；任务3经`WI-20260907-02`修复并重新Accepted |
 | 执行顺序 | 任务3修复 → 本Feature代码与隔离验收 → 持久库替换Work Item |
 | 退出门禁 | 完整旧库可恢复归档、新地区案例确定性生成、沪粤36条展示、精确替换和完整E2E均通过 |
@@ -28,7 +28,7 @@
 
 因此旧CLG-FR/CLG-NFR/CLG-AC及452/36/528结论只保留为历史，不再是当前验收标准。本PRD采用新的RCL编号，全量退役旧案例及其500条来源回归测试，并依据修复后的上海、广东日期快照生成无个人数据的确定性政策案例。
 
-2026-09-08：WI-20260907-03全部修复完成并重新验收（分支`codex/task34-regional-case-rebuild`提交`feat: 重建地区化政策案例库`）——真实文件SHA归档、完整归档包（selection/manifest/restore报告+不自包含sha256sums）、restore绑定provenance、精确manifest（行ID/内容hash/快照/评分/来源）、可比较断言重放（无可比断言不得分）、质量总分与逐项分解落库、多标签分类接入、管理查询`active AND filters`、apply使用FOR UPDATE+`applying`状态+归档条目唯一约束、0018迁移（0016哈希不变）、确定性模板生成（沪18/粤18配额、每case一条回归test、42条DSL示例保留、最终`N/36/N+42`）。验收证据：`reports/stage-09-05-case-governance/acceptance-report.md`（2026-09-08）。
+2026-09-08报告所称修复仍需2026-09-09复审：受控CLI仍是空壳，apply写入场景/断言/输入/期望为空，专用E2E未验证36/18/18。任务4在这些专用反例和真实DB/E2E证据完成前保持Reopened。
 
 治理前完整dump及独立SHA目前存在，是旧851/117/528的恢复来源；不得把现有错误case-library归档视为已验证。
 
@@ -60,7 +60,7 @@
 - **RCL-FR-003 真文件SHA**：归档清单对真实文件字节计算SHA-256；`sha256sums.txt`最后生成且不包含自身。
 - **RCL-FR-004 恢复证明**：记录来源dump SHA、PostgreSQL/pgvector版本、恢复目标、全部表/sequence计数和规范化哈希。
 - **RCL-FR-005 不可变报告**：必须存在选择报告、manifest和最终`restore-report.json`；pending、缺文件或hash不符禁止apply。
-- **RCL-FR-006 精确manifest**：绑定旧目标行、新数据行、快照ID/hash、场景输入/期望、评分和测试来源映射。
+- **RCL-FR-006 精确manifest**：绑定旧目标行、新数据行、快照ID/hash、scenarioKey、asOfDate、完整输入/期望/断言、覆盖义务、证据、评分和测试来源映射。
 - **RCL-FR-007 场景Schema**：每个案例包含稳定UID、地区、日期、能力、输入、断言、覆盖义务、证据引用、snapshot ID/hash和generator版本。
 - **RCL-FR-008 确定性生成**：同一模板、snapshot和generator版本产生逐字节一致产物与manifestHash。
 - **RCL-FR-009 覆盖义务**：覆盖每个用户可见规则分支、needs-agent分支、有效期边界和地区隔离路径。
@@ -72,10 +72,10 @@
 - **RCL-FR-015 质量落库**：case和showcase保存总分、逐项分解、原因、snapshot和证据；active/selected行不得为空。
 - **RCL-FR-016 可比较重放**：至少一个声明断言被实际计算并比对才能获得重放分；缺少可比字段为失败。
 - **RCL-FR-017 多标签**：地区、性别、年龄、就业、险种、政策能力和needs-agent标签同时保留，不提前返回单分类。
-- **RCL-FR-018 原子替换**：单事务删除当前旧452/36/500、同步42条DSL示例并插入新`N/36/N`。
+- **RCL-FR-018 原子替换**：单事务删除当前旧452/36/500、同步42条DSL示例并插入新`N/36/N`；所有manifest场景字段必须原样落库，禁止null或空对象占位。
 - **RCL-FR-019 并发裁决**：批次`FOR UPDATE`、`restore_verified→applying→applied`条件更新和目标唯一约束保证一次成功。
 - **RCL-FR-020 查询契约**：公开仅返回36条selected+published；管理查询使用`active AND filters`。
-- **RCL-FR-021 受控执行器**：支持audit、prepare-archive、verify-archive、generate、plan-replacement、apply和verify；默认只读audit。
+- **RCL-FR-021 受控执行器**：audit、prepare-archive、verify-archive、generate、plan-replacement、apply和verify必须调用真实实现并输出可验证结果；只打印模式名后退出视为失败，默认只读audit。
 - **RCL-FR-022 迁移兼容**：0016历史SQL不改；0018使用idx17/`1788796860000`，移除地区默认、补生成元数据、质量分解、批次状态和唯一约束。
 
 ## 4. 场景与数据契约
@@ -144,14 +144,14 @@ type RegionalPolicyScenario = {
 - **RCL-AC-005** 相同场景模板重复生成相同N、产物和manifestHash。
 - **RCL-AC-006** 无可比较断言、错误snapshot或hash不一致的场景不能入库。
 - **RCL-AC-007** 新cases仅沪粤且一对一关联地区回归tests。
-- **RCL-AC-008** showcase严格36、沪粤18/18并满足各自9/9、6/6/6、6/6/6配额。
+- **RCL-AC-008** showcase严格36、沪粤18/18并满足各自9/9、6/6/6、6/6/6配额；数据库和Chromium E2E均精确断言。
 - **RCL-AC-009** case/showcase质量分和分解全部非空，多标签完整。
 - **RCL-AC-010** 两个并发apply只有一个写入，另一个返回确定性no-op/已应用结果。
-- **RCL-AC-011** 替换成功后计数为`N/36/N+42`且42条DSL示例完整。
+- **RCL-AC-011** 替换成功后计数为`N/36/N+42`且42条DSL示例完整；新case/showcase/test场景字段与manifest逐字节一致且非空。
 - **RCL-AC-012** 公开API只返回36条；管理q/topic不能返回非active记录。
 - **RCL-AC-013** 四川规划负例稳定unsupported且不生成case。
 - **RCL-AC-014** 0018从零执行两次幂等，不改0016 SQL哈希。
-- **RCL-AC-015** 专用Chromium E2E覆盖公开、管理、归档元数据与权限。
+- **RCL-AC-015** 专用Chromium E2E覆盖公开36条、沪粤18/18、治理字段、管理过滤、归档元数据与匿名/普通用户/管理员权限。
 
 ## 9. Definition of Done
 

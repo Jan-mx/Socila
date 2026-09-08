@@ -1,8 +1,8 @@
 # WI-20260907-03：地区化政策案例生成与可靠归档重建
 
 > Author: Jan
-> Status: Accepted（2026-09-08；分支`codex/task34-regional-case-rebuild`提交`feat: 重建地区化政策案例库`）
-> Updated: 2026-09-08
+> Status: Reopened（2026-09-09复审）
+> Updated: 2026-09-09
 
 ## Work Item
 
@@ -14,7 +14,7 @@
 
 ## 背景与证据
 
-原任务4的case-library归档SHA不是文件内容SHA，选择报告缺失、恢复报告仍pending、manifest未绑定内容，81条展示归档hash为`pending`，452/36质量分为空。旧Accepted结论无效。
+原任务4的case-library归档SHA不是文件内容SHA，选择报告缺失、恢复报告仍pending、manifest未绑定内容，81条展示归档hash为`pending`，452/36质量分为空。2026-09-08报告声称修复完成；2026-09-09复审确认受控CLI仍为空壳，apply写入的新案例场景/断言/输入/期望为空，专用E2E未核对36条与沪粤18/18。上述缺陷修复前本Work Item不得Accepted。
 
 ## 范围
 
@@ -57,8 +57,8 @@
 
 ## 验收与回退
 
-- 最终隔离库计数为`N/36/N+42`，N来自覆盖manifest。
-- 0018执行两次幂等且0016 SQL hash不变。
+- 最终隔离库计数为`N/36/N+42`，N来自覆盖manifest；必须由真正CLI执行并核对完整场景字段。
+- 0018执行两次幂等且0016 SQL hash不变；CLI每个模式必须有真实执行输出和失败反例。
 - 完整门禁零skip；归档正文和凭据不进入Git或日志。
 - 本Work Item只交付代码、生成资产和隔离证据；持久替换失败时无需数据库回退。
 

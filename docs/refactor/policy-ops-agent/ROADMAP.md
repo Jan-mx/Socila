@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## 状态说明
 
@@ -24,8 +24,8 @@
 | 文档分类与低上下文读取改造 | Done | 当前事实、报告和归档分离，README路由可用 |
 | Socila命名统一与地区DSL分层 | Done | `SOCILA-DSL-1.0`与地区Manifest稳定，粤川示例退出生产Seed，上海黄金结果无漂移 |
 | 任务2：CN/上海/广东权威政策首期交付 | Done | 三地区管理员批准与候选快照重放完成；四川Deferred不阻塞 |
-| 任务3：地区规划时态与真实入口修复 | Reopened | WI-20260907-02完成日期快照、领取地市、完整门禁、历史重放、停用和双入口 |
-| 任务4：上海/广东政策案例库全量重建 | Blocked | 等任务3Accepted后完成可信旧库归档和确定性`N/36/N+42`案例体系 |
+| 任务3：地区规划时态与真实入口修复 | Reopened | 补空黄金测试、停用路径校验、三方snapshot hash和可复核DB/E2E证据 |
+| 任务4：上海/广东政策案例库全量重建 | Reopened | 实现真实CLI、完整字段写入、可信归档和36/18/18 E2E |
 | 持久库旧案例替换 | Blocked | 前两项Accepted、fresh audit和明确授权后执行账本repair、0017/0018及旧库替换 |
 | 远程Personal Demo服务器部署 | Planned | 目标服务器全栈healthy、域名/HTTPS和离机备份验证 |
 | 首批公开政策采集与RAG建库 | Planned | 白名单来源原件、DocumentTree、Chunk和索引形成闭环 |

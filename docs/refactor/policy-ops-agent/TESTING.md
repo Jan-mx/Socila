@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## 测试先行
 
@@ -218,7 +218,7 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 四川地区级门禁：无候选快照、无活动发布，规划请求返回unsupported且不得使用上海或广东实体。
 - 原任务3/4并行方案已被复审推翻。任务3先修真实入口和日期快照；任务4随后使用其已验收snapshot区间生成案例。
 
-### 任务3 Reopened专用反例（2026-09-08已全部Green）
+### 任务3 Reopened专用反例（2026-09-09仍有缺口）
 
 - 新会话必须先持久创建再确认地区（`create-conversation.use-case.test.ts`、`e2e/task3-regional.spec.ts` JRP-AC-001）；选择器不得对不存在会话返回404。
 - `claim_city_code`缺失、非广东、未知或仅自由文本时不得估算失业金额（`claim-city.test.ts`、`jurisdiction-compute.use-case.test.ts`）；有效代码由服务端规范化后执行。
@@ -226,8 +226,10 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 激活必须真实运行引用、Schema、依赖、冲突、黄金、双重重放和内容哈希七道门禁（`release-gates.test.ts` 9例）；伪造pass不能绕过（`jurisdiction-release.use-case.test.ts`）。
 - 历史plan按保存snapshot逐字节重放（`replay-plan.use-case.test.ts` 7例+集成）；停用广东不影响上海（集成）；四川始终unsupported。
 - 聊天和直接规划页面使用同一地区确认契约并有专用Chromium E2E（`e2e/task3-regional.spec.ts` 3例）。
+- 空黄金测试集必须拒绝激活；停用API必须校验URL地区与release记录地区一致；replay必须校验保存hash、快照行hash与重算hash三方一致。
+- DB门禁必须在命令中显式提供全新隔离`SOCILA_TEST_DATABASE_URL`并证明零skip；缺环境变量导致的skip/失败不能作为PASS。
 
-### 地区案例全量重建专用反例（2026-09-08已全部Green）
+### 地区案例全量重建专用反例（2026-09-09仍有缺口）
 
 - 归档SHA必须来自真实文件字节（`archive.test.ts` 9例：篡改检测、必备文件、sha清单不自包含）；篡改、缺少selection/restore报告或pending状态均拒绝apply。
 - manifest绑定精确行ID/内容hash、snapshot/hash、评分和测试来源（`manifest.test.ts` 7例）；任一漂移使授权失效（RCL-AC-003）。
@@ -239,3 +241,6 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 最终组合migration顺序为0015→0016→0017→0018，并从零执行两次验证幂等（`rcl-0018-rebuild-schema.integration.test.ts`：0016哈希不变）。
 - 端到端：生成→快照规划器计算期望→评分→N/36/N+42（`rcl-end-to-end.integration.test.ts`）；四川始终unsupported。
 - 专用Chromium E2E：`e2e/task4-case-library.spec.ts`（RCL-AC-012/013/015）。
+- 受控CLI的七个模式必须调用真实实现并产生可验证产物/结果；只打印模式名或说明后退出视为失败。
+- apply后cases/showcase/tests的scenarioKey、asOfDate、输入、期望、断言、覆盖、证据和质量分解必须与manifest逐字节一致，禁止null或空占位。
+- Chromium E2E必须读取API或页面计数，精确断言公开36条、上海18、广东18、治理字段非空及管理员/普通用户权限。

@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## 用途
 
@@ -47,12 +47,16 @@ Draft → Ready → In Progress → Blocked / Accepted → Archived
 
 实现前编写或更新测试；实现后把实际测试路径写入traceability，把执行结果写入PROGRESS或验收报告。
 
+## Agent提示词规则
+
+Agent提示词只在对话中交付，禁止写入Work Item正文、验收报告或其他开发文档。Work Item只保存范围、权限边界、测试、验收和回退条件。
+
 ## 当前Work Item
 
 | Work Item | 状态 | 用途 |
 | --- | --- | --- |
-| `WI-20260907-02-task3-temporal-entry-hardening.md` | Ready | 修复任务3新会话、领取地市、日期快照、完整门禁、历史重放和停用入口 |
-| `WI-20260907-03-regional-policy-case-rebuild.md` | Blocked | 等任务3重新Accepted后重建上海/广东确定性政策案例和可靠旧库归档 |
+| `WI-20260907-02-task3-temporal-entry-hardening.md` | Reopened | 空黄金测试集、停用路径地区绑定和replay三方hash校验仍需修复 |
+| `WI-20260907-03-regional-policy-case-rebuild.md` | Reopened | CLI为空壳、apply场景字段不完整、E2E未验证36/18/18 |
 | `WI-20260907-04-persistent-case-library-replacement.md` | Blocked | 等前两项Accepted并取得fresh明确授权后替换持久库旧案例 |
 | `WI-20260907-01-sichuan-policy-followup.md` | Blocked | 四川三项正式权威来源到位后独立开发、物化、审核和候选快照验收 |
 | `WI-20260906-02-stage-e-persistent-repair.md` | Accepted | 已完成本机0014迁移、四包draft快照repair及前后完整恢复对账 |

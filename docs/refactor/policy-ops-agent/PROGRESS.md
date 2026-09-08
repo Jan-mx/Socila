@@ -2,12 +2,12 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## 当前结论
 
 - 七阶段重构Goal：**Accepted**，七份阶段验收报告全部PASS。
-- 当前分支：`refactor/policy-ops-agent-platform`。
+- 当前开发分支：`codex/task34-regional-case-rebuild`（文档与代码基线来自`57f051d`）。
 - 当前运行事实源：单机Docker Compose中的PostgreSQL、MinIO和Agent存储；Neon不再承接运行时读写。
 - 本机定位：开发机，生产Compose数据卷保留但不常驻；远程服务器部署列入路线图。
 - 09-02 Feature（用户与管理员双角色鉴权，PRD `docs/prd/09-02-feature-user-admin-auth.md`）：**Accepted**（验收证据：`reports/feature-09-02-auth/acceptance-report.md`）。
@@ -40,9 +40,9 @@
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化、三地区批准和候选快照重放完成；四川无快照 | 保持Accepted，不因任务3/4复审回退 |
-| 任务3：地区感知用户规划 | **Accepted（2026-09-08重开验收）**：0015/0016保留+0017日期snapshot区间、认证会话预创建、claim_city_code服务端规范化、七道真实激活门禁、执行期hash/gateResults重验、历史重放API、停用API、双入口（聊天+`/plan/new`）、四川unsupported；全部门禁与专用Chromium E2E新鲜通过 | 持久库0017与日期snapshot调度仍由WI-20260907-04经明确授权执行；本Feature代码验收不改持久库 |
-| 任务4：地区化政策案例库 | **Accepted（2026-09-08重开验收）**：真实文件SHA归档、完整归档包、精确manifest、可比较断言重放、质量分解落库、多标签、active AND filters、FOR UPDATE+applying并发裁决、0018（0016哈希不变）、确定性模板沪18/粤18配额、N/36/N+42；全部门禁与专用Chromium E2E新鲜通过 | 持久替换（旧452/36/500→新N/36/N）仍由WI-20260907-04经fresh audit后用户明确授权执行；代码验收不改持久库 |
-| 持久库案例替换 | **Blocked**：当前0015/0016、沪粤active、452/36/528保持 | 前两项Accepted并取得fresh明确授权后执行WI-20260907-04 |
+| 任务3：地区感知用户规划 | **Reopened（2026-09-09）**：报告称已修复，但空黄金测试集、停用地区绑定、replay快照行hash仍缺少可信反例证据 | 修复WI-20260907-02；不得重复执行持久0015或旧激活 |
+| 任务4：地区化政策案例库 | **Reopened（2026-09-09）**：CLI为空壳，apply丢失场景数据，当前分支未证明真实案例替换可执行 | 修复WI-20260907-03；不得重复运行旧apply |
+| 持久库案例替换 | **Blocked**：当前0015/0016、沪粤active、452/36/528保持 | 任务3/4重新Accepted、fresh DB/E2E证据和用户明确授权后执行WI-20260907-04 |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
 | 四川医保退休年限正式文件（缺口4） | Deferred；仅2025-03征求意见稿，无正式印发 | `WI-20260907-01`：正式印发后采集，不阻塞任务2首期 |
 | 川人社办发〔2023〕18号（缺口5） | Deferred；白名单域未检索到 | `WI-20260907-01`：等待用户提供原件或官方入口恢复 |
@@ -327,6 +327,20 @@
 | 本轮边界 | 只修改文档；未修改代码、未连接数据库、未删除案例、未执行migration或激活 |
 
 本轮文档基线验证为`npm test` 51文件/485通过。实现和执行证据不得提前填写PASS；提示词只在对话中提供。
+
+## 第二轮独立复审（任务3/4，2026-09-09）
+
+| 项目 | 结论 |
+| --- | --- |
+| 分支 | `7aa9bfc`已推送且工作区原始状态干净；本轮只修改复审文档 |
+| 任务3 | 空黄金测试集可通过；停用路由忽略路径地区；replay未比较快照行hash，保持Reopened |
+| 任务4 | `rcl-case-library.ts`七模式为空壳；apply写入完整场景字段为空；E2E未验证36/18/18，保持Reopened |
+| Node | 默认5秒超时出现1失败；`npx vitest run --testTimeout=20000`为71文件/650通过 |
+| DB集成 | 当前环境未设置`SOCILA_TEST_DATABASE_URL`，测试出现skip/失败；报告中的114/25未独立复现 |
+| 静态/安全 | tsc退出0；eslint 0 error/6 warning；scan-secrets 769文件零命中 |
+| 持久边界 | 只读仍为Drizzle 16、cases/showcase/tests/snapshots=452/36/528/6；0017/0018和新案例替换未执行 |
+
+本轮新增的执行提示词只在对话中提供。PRD、Work Item、验收报告和开发文档不得保存可执行提示词；旧WI-20260906-01/02内嵌提示词已移除。
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 

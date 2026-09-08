@@ -111,25 +111,6 @@
 - 完整staged diff与敏感信息检查通过。
 - 创建并推送单一提交：`fix: 加固政策包快照修复事务与审计`。
 
-## 其他Agent执行提示词
+## 提示词交付规则
 
-```text
-你正在F:\Socila仓库的refactor/policy-ops-agent-platform分支工作。
-
-目标：执行docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md，只完成repair代码加固、测试和文档同步。不得执行本机持久库migration、repair、apply、发布、管理员批准、PolicySnapshot生成、数据删除或用户流量激活。
-
-开始前必须读取：
-1. AGENTS.md
-2. docs/refactor/policy-ops-agent/README.md
-3. docs/refactor/policy-ops-agent/PROGRESS.md
-4. docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md
-5. docs/prd/09-05-stage-national-baseline-regional-overlays.md
-6. 与任务直接相关的ARCHITECTURE.md、TESTING.md、OPERATIONS.md
-7. 验收报告中任务2复审、缺陷修复与repair准备章节
-
-严格按Work Item的范围、实现要求、测试矩阵、持久库边界和完成条件执行。先写最小失败测试并保存Red证据，再实现最小修复；不要降低约束、测试、引用或验收阈值。工作期间将受影响README设为Updating，验收完成后恢复Active。
-
-至少运行repair专用单元/数据库集成测试、npm test、npm run test:db、npx tsc --noEmit、npx eslint src scripts、npm run build、npm run test:e2e:auth、Agent ruff/mypy/非集成与集成pytest、Gitleaks、scan-secrets和allowlist哨兵，并在无.env.local环境复跑Node单测。演练设施使用任务专属名称并在finally清理，不触碰socila持久资源。
-
-完成后更新Work Item验证结果并设为Accepted，更新PROGRESS、traceability和验收报告的实际证据；任务2整体仍保持Reopened。检查完整staged diff和敏感信息后，提交fix: 加固政策包快照修复事务与审计并推送当前upstream。不要创建PR或合并main。最终明确报告提交SHA、门禁结果以及“未执行0014、未执行repair、未修改持久库”。
-```
+本Work Item历史上曾包含Agent提示词；提示词已移除。Agent提示词只在对话中交付，不写入Work Item、PRD、验收报告或其他开发文档。

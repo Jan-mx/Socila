@@ -2,14 +2,14 @@
 
 > Author: Jan
 > Status: Blocked
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## Work Item
 
 - ID：WI-20260907-04
 - 关联PRD：任务3地区规划、地区化政策案例库全量重建
 - 关联需求：JRP-FR-029、RCL-FR-018～022、RCL-NFR-001～008
-- 前置：WI-20260907-02和WI-20260907-03均Accepted；用户基于fresh audit明确授权
+- 前置：WI-20260907-02和WI-20260907-03均重新Accepted；Agent 3实际实现并验证全部受控命令；用户基于fresh audit明确授权
 
 ## 当前持久事实
 
@@ -49,6 +49,6 @@
 
 ## 完成条件
 
-- 两个前置Work Item均Accepted且用户授权与fresh manifest完全匹配。
+- 两个前置Work Item均重新Accepted，Agent 3受控命令和隔离验证全部通过，且用户授权与fresh manifest完全匹配。
 - 所有写入、幂等、恢复和零漂移证据进入任务3/4验收报告。
 - README、PROGRESS、OPERATIONS和traceability同步后将本Work Item设为Accepted。
