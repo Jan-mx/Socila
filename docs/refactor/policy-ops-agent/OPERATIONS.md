@@ -140,8 +140,10 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 ## 任务3/4 Reopened运行边界（ADR-0011）
 
 > 当前持久事实（2026-09-07，只读复审）：Drizzle账本16条，0015/0016已经执行；上海、广东release为active，四川0；`cases/showcase_cases/tests/policy_snapshots=452/36/528/6`。旧任务4已删除399/81，但case-library归档SHA无效、selection报告缺失、restore报告仍pending。禁止重复运行旧任务4apply。
+>
+> 2026-09-08：任务3代码修复已Accepted（分支`codex/task34-regional-case-rebuild`）。代码库新增0017快照区间migration（`effective_from/effective_to`+EXCLUDE不重叠），但**持久库尚未执行0017**；日期快照调度、0017执行与持久库替换仍全部属于WI-20260907-04受控写入。
 
-- WI-20260907-02与WI-20260907-03只允许代码、生成资产和隔离数据库测试。
+- WI-20260907-02与WI-20260907-03只允许代码、生成资产和隔离数据库测试（WI-02已Accepted，2026-09-08）。
 - 0015/0016历史SQL不可改写；源journal校正不等于持久账本已repair。
 - 0017/0018、日期快照调度、旧案例删除和新案例插入全部属于WI-20260907-04受控写入。
 - 治理前/后完整dump保留在Git忽略目录；现有错误case-library归档不得作为恢复门禁PASS证据。

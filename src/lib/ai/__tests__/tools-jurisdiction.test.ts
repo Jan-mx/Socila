@@ -87,3 +87,31 @@ describe("工具调用与已确认地区一致性（JRP-NFR-008）", () => {
     );
   });
 });
+describe("computePlan 工具领取地市代码契约（JRP-FR-022/023/AC-006）", () => {
+  it("工具 Schema 接受合法六位 claim_city_code（440100=广州）", () => {
+    const parsed = computePlanSchema.safeParse({
+      jurisdiction_code: "440000",
+      claim_city_code: "440100",
+      basic: { birth_year: 1973, gender: "male" },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("非法领取地市代码格式被 Schema 拒绝（JRP-AC-006）", () => {
+    const parsed = computePlanSchema.safeParse({
+      jurisdiction_code: "440000",
+      claim_city_code: "广州",
+      basic: { birth_year: 1973, gender: "male" },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("工具 Schema 拒绝直接提交 claim_city 自由文本（AC-003：自由文本城市被拒绝）", () => {
+    const parsed = computePlanSchema.safeParse({
+      jurisdiction_code: "440000",
+      claim_city: "广州",
+      basic: { birth_year: 1973, gender: "male" },
+    });
+    expect(parsed.success).toBe(false);
+  });
+});

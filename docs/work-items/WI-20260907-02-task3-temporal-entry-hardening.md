@@ -1,8 +1,8 @@
 # WI-20260907-02：任务3快照时态与真实入口加固
 
 > Author: Jan
-> Status: Ready
-> Updated: 2026-09-07
+> Status: Accepted（2026-09-08；分支`codex/task34-regional-case-rebuild`提交`fix: 补齐地区规划时态与真实入口`）
+> Updated: 2026-09-08
 
 ## Work Item
 
@@ -64,3 +64,7 @@
 ## 文档同步
 
 - 任务3 PRD、README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability和任务3复审报告。
+
+## 验收记录（2026-09-08）
+
+全部测试矩阵场景取得专用Red/Green与Chromium E2E证据（验收报告：`reports/feature-09-05-jurisdiction-planning/acceptance-report.md`）：新会话预创建确认200、广东领取地市有效代码产生金额而缺失/未知/跨省不估算、2026/2030命中不同snapshot区间、缺失/重叠均409零plan、门禁缺项/伪pass/成员篡改均拒绝、历史plan切换当前快照后逐字节重放、停用广东不影响上海、四川始终unsupported、聊天与`/plan/new`同一契约。0017仅在隔离库执行；持久库未修改。

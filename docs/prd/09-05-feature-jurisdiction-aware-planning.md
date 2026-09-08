@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-jurisdiction-aware-planning.md` |
 | 类型 | Feature |
-| 状态 | Reopened；分支`codex/task3-jurisdiction-planning`的原Accepted结论被2026-09-07独立复审推翻 |
+| 状态 | Accepted（2026-09-08重开验收）；分支`codex/task34-regional-case-rebuild`完成WI-20260907-02全部修复并取得新鲜门禁 |
 | 前置依赖 | 任务2首期Accepted；CN、上海、广东候选快照已存在；四川Deferred/Blocked |
 | 后续消费者 | 地区化案例库重建Feature |
 | 执行顺序 | 先完成本Feature修复，再开发地区化案例库；不再与任务4并行 |
@@ -29,6 +29,8 @@
 - 缺少停用应用用例/API和直接规划页面。
 
 当前持久库0015和上海/广东active记录是审计事实，但不构成本PRD重新Accepted的证据。修复代码不得再次执行旧激活流程或改写持久库，持久执行由独立Work Item控制。
+
+2026-09-08：WI-20260907-02全部修复完成并重新验收（分支`codex/task34-regional-case-rebuild`）——新会话预创建、`profile.claim_city_code`服务端规范化、0017快照区间（`effective_from/effective_to`+同地区不重叠EXCLUDE）、按`jurisdiction_code+as_of_date`唯一选择、2026/2030时间片派生、七道真实激活门禁、执行期hash与完整gateResults重验、历史plan真实重放API、停用API与`/plan/new`双入口、四川始终unsupported；0015/0016 SQL哈希不变，0017仅在隔离库执行。验收证据：`reports/feature-09-05-jurisdiction-planning/acceptance-report.md`（2026-09-08）。
 
 ## 2. 目标与非目标
 

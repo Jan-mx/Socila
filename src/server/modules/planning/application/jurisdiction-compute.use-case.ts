@@ -20,6 +20,11 @@ import {
   type SnapshotRuleSetRow,
 } from "@/lib/engine/orchestrator";
 import { extractNeedsAgent } from "@/lib/engine/calc-extractors";
+import { normalizeClaimCityCode } from "./claim-city";
+import {
+  canonicalMemberHash,
+  RELEASE_GATE_KEYS,
+} from "@/server/modules/publishing/application/release-gates";
 import type { PlanningWriteRepository } from "./write-ports";
 import {
   JurisdictionContextMismatchError,
@@ -69,6 +74,9 @@ export interface PlanningReleaseRow {
   gateResults: Record<string, unknown>;
   activatedAt: Date | null;
   activatedBy: string | null;
+  /** JRP-FR-024：区间列（0017）；null 兼容历史行（未迁移/未启用区间语义）。 */
+  effectiveFrom?: string | Date | null;
+  effectiveTo?: string | Date | null;
   updatedAt: Date;
 }
 
@@ -94,8 +102,16 @@ export interface ComputeJurisdictionPlanDeps {
   resolveChain: (
     code: string,
   ) => Promise<Array<{ code: string; name: string; level: string; path: string }>>;
-  /** 地区规划发布记录查询（JRP-FR-005）。 */
-  getActiveRelease: (code: string) => Promise<PlanningReleaseRow | null>;
+  /**
+   * 地区规划发布记录查询（JRP-FR-005/024）：按地区和 as_of_date 唯一匹配
+   * 覆盖该日期的 active 区间；恰好一个返回，多匹配必须抛错（fail-closed）。
+   */
+  getActiveRelease: (
+    code: string,
+    asOfDate: string,
+  ) => Promise<PlanningReleaseRow | null>;
+  /** 地区是否存在任何发布记录（区分 unsupported 与日期无匹配，JRP-FR-004）。 */
+  hasAnyRelease: (code: string) => Promise<boolean>;
   /** 活动快照读取（含成员，JRP-FR-004）。 */
   getSnapshot: (snapshotId: string) => Promise<SnapshotWithMembers | null>;
   /** 地区未解决冲突列表（JRP-AC-007）。 */
@@ -109,6 +125,19 @@ export interface ComputeJurisdictionPlanDeps {
 
 function defaultAsOfDate(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** 统一 format：Date 或 'YYYY-MM-DD' → 'YYYY-MM-DD'（区间比较用）。 */
+function formatDateValue(value: string | Date): string {
+  if (value instanceof Date) {
+    const iso = value.toISOString().slice(0, 10);
+    return iso;
+  }
+  return String(value).slice(0, 10);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
@@ -165,10 +194,37 @@ export async function computeJurisdictionPlan(
     throw new JurisdictionInvalidError();
   }
 
-  // JRP-FR-005/013：地区发布记录——四川延期期间无记录 → unsupported。
-  const release = await deps.getActiveRelease(jurisdictionCode);
+  // JRP-FR-004/024：as_of_date 在发布记录查询前确定（默认今天）；按地区和日期
+  // 读取恰好一个 active 区间。缺失（无任何发布）→ unsupported；有发布但日期
+  // 无匹配区间、或多匹配 → 409 POLICY_SNAPSHOT_UNAVAILABLE（fail-closed）。
+  const asOfDate = input.asOfDate ?? defaultAsOfDate();
+
+  const release = await deps.getActiveRelease(jurisdictionCode, asOfDate);
   if (!release || release.status !== "active") {
-    throw new JurisdictionUnsupportedError();
+    const hasAny = await deps.hasAnyRelease(jurisdictionCode);
+    if (!hasAny) {
+      // 四川延期期间无任何发布记录 → unsupported（JRP-FR-013/AC-003/017）。
+      throw new JurisdictionUnsupportedError();
+    }
+    // 有发布记录但 as_of_date 不在任何 active 区间内 → 409（JRP-FR-004/AC-005）。
+    throw new PolicySnapshotUnavailableError();
+  }
+
+  // 防御：即使仓储返回了行，也复核日期落在区间内（不存在"用最新快照隐式替代"）。
+  if (
+    release.effectiveFrom !== undefined &&
+    release.effectiveFrom !== null
+  ) {
+    const from = formatDateValue(release.effectiveFrom);
+    if (from > asOfDate) {
+      throw new PolicySnapshotUnavailableError();
+    }
+    const to = release.effectiveTo
+      ? formatDateValue(release.effectiveTo)
+      : null;
+    if (to !== null && to < asOfDate) {
+      throw new PolicySnapshotUnavailableError();
+    }
   }
 
   // JRP-FR-004：活动快照（不使用"最新创建快照"隐式替换）。
@@ -183,6 +239,19 @@ export async function computeJurisdictionPlan(
   // JRP-NFR-003 fail-closed：活动快照地区必须与发布记录/请求地区一致。
   if (snapshot.snapshot.jurisdictionCode !== jurisdictionCode) {
     throw new PolicyStoreUnavailableError();
+  }
+
+  // JRP-FR-026/AC-005：执行期完整性——重算成员规范化哈希并与快照 contentHash
+  // 核对（防成员被篡改/漂移），同时确认发布记录的 gateResults 包含七道激活门禁
+  // 且全部为 pass（缺项或非 pass 一律拒绝计算，伪造 pass 不能绕过）。
+  const recomputedHash = canonicalMemberHash(snapshot.members);
+  if (recomputedHash !== snapshot.snapshot.contentHash) {
+    throw new PolicySnapshotUnavailableError();
+  }
+  for (const gateKey of RELEASE_GATE_KEYS) {
+    if (release.gateResults[gateKey] !== "pass") {
+      throw new PolicySnapshotUnavailableError();
+    }
   }
 
   // JRP-AC-007：地区存在未解决冲突时阻止计算。
@@ -210,9 +279,33 @@ export async function computeJurisdictionPlan(
     }
   }
 
-  const asOfDate = input.asOfDate ?? defaultAsOfDate();
+  // JRP-FR-022/023：领取地市代码服务端规范化——有效广东地级市代码转换为规则
+  // 内部 claim_city 规范名称；未知、跨省、未确认代码一律不注入（规则按缺失
+  // 领取地市处理，needs_agent + 问题，不估算失业金额，JRP-AC-006）。自由文本
+  // 名称由公开 Schema 拒绝，此处只消费六位代码。
+  const rawProfile = isRecord(input.user.profile) ? input.user.profile : undefined;
+  const claimCityCode =
+    rawProfile && typeof rawProfile.claim_city_code === "string"
+      ? rawProfile.claim_city_code
+      : undefined;
+  const claimCity = normalizeClaimCityCode({
+    jurisdictionCode,
+    claimCityCode,
+  });
+
+  const userInput: Record<string, unknown> = structuredClone(input.user);
+  const profile = isRecord(userInput.profile) ? userInput.profile : undefined;
+  if (profile) {
+    delete profile.claim_city_code;
+    if (claimCity.claimCity !== null) {
+      profile.claim_city = claimCity.claimCity;
+    } else {
+      delete profile.claim_city;
+    }
+  }
+
   const result = await runEngine({
-    user: input.user,
+    user: userInput,
     asOfDate,
     ruleSet: ruleSetRow,
     rules: ruleRows,
@@ -237,7 +330,7 @@ export async function computeJurisdictionPlan(
       throw new Error("owner_user_id is required to persist a plan");
     }
     const saved = await deps.savePlan?.({
-      userInput: input.user,
+      userInput: userInput,
       calcResult: calc as Record<string, unknown>,
       planOutput: (result.plan ?? {}) as Record<string, unknown>,
       trace: result.trace as unknown[],
@@ -265,6 +358,15 @@ export async function computeJurisdictionPlan(
       resolved_jurisdiction_path: snapshot.snapshot.resolvedPath,
       snapshot_id: snapshot.snapshot.id,
       as_of_date: asOfDate,
+      // JRP-FR-024：实际命中的发布区间。
+      release_effective_from:
+        release.effectiveFrom != null
+          ? formatDateValue(release.effectiveFrom)
+          : null,
+      release_effective_to:
+        release.effectiveTo != null
+          ? formatDateValue(release.effectiveTo)
+          : null,
       rules_executed: result.meta.rules_executed,
       rule_set_id: result.meta.rule_set_id,
       policy_pack_id: result.meta.policy_pack_id,

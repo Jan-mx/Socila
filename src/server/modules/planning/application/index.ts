@@ -35,7 +35,8 @@ export function createJurisdictionComputePlan() {
             path: n.path,
           }));
         },
-        getActiveRelease: (code) => reads.getActiveRelease(code),
+        getActiveRelease: (code, asOfDate) => reads.getActiveRelease(code, asOfDate),
+        hasAnyRelease: (code) => reads.hasAnyRelease(code),
         getSnapshot: (id) => reads.getSnapshot(id),
         listOpenConflicts: (code) => reads.listOpenConflicts(code),
         savePlan: new DrizzlePlanningWriteRepository().savePlan.bind(

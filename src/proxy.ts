@@ -71,6 +71,8 @@ export const config = {
   matcher: [
     "/chat",
     "/chat/:path*",
+    "/plan",
+    "/plan/:path*",
     "/account/:path*",
     "/admin/:path*",
     "/api/chat",

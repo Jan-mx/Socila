@@ -51,12 +51,20 @@ export function extractCandidateFromUpdateProfile(
 
 // ─── Zod Schemas ──────────────────────────────────────────────────────────────
 
-/** computePlan 工具输入 Schema（导出供契约测试：JRP-FR-001/011）。 */
+/** computePlan 工具输入 Schema（导出供契约测试：JRP-FR-001/011/022/023）。 */
 export const computePlanSchema = z.object({
   jurisdiction_code: z
     .string()
     .regex(JURISDICTION_CODE_PATTERN, "地区代码必须是 CN 或 6 位行政区划代码")
     .describe("已确认的规划地区代码（如 310000=上海、440000=广东），必须与会话已确认地区一致"),
+  // JRP-FR-022/023：领取地市六位行政代码（如 440100=广州）。服务端确认代码
+  // 属于广东启用地级市后转换为规则内部 claim_city 规范名称；模型不得直接提交
+  // claim_city 自由文本名称（公开 Schema 拒绝，AC-003）。
+  claim_city_code: z
+    .string()
+    .regex(/^\d{6}$/, "领取地市代码必须是六位行政代码")
+    .optional()
+    .describe("失业保险金领取地市六位行政代码（如 440100=广州、440300=深圳），仅广东地区适用"),
   basic: z.object({
     birth_year: z
       .number()
@@ -178,7 +186,9 @@ export const computePlanSchema = z.object({
     .describe(
       "规划目标：min_cost=最低花费，max_pension=最大养老金，keep_medical=保医保，balanced=均衡",
     ),
-});
+  // JRP-FR-003/AC-003：工具请求同样拒绝规则集/参数包/快照字段与 claim_city
+  // 自由文本名称等未知字段（strict：未知字段拒绝，不得剥离后继续）。
+}).strict();
 
 const validateFieldSchema = z.object({
   field: z
@@ -246,6 +256,10 @@ async function computePlanExecute(
       subsidy: params.subsidy,
       mi: params.mi,
       objective: params.objective,
+      // JRP-FR-022：AI 工具传递领取地市六位代码；服务端规范化后进入规则。
+      ...(params.claim_city_code
+        ? { profile: { claim_city_code: params.claim_city_code } }
+        : {}),
     };
 
     // 09-02：方案只落库到认证用户名下；无归属用户时拒绝持久化。

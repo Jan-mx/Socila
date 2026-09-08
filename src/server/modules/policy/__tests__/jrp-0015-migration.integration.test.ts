@@ -64,6 +64,9 @@ describe("0015 地区规划发布记录migration（JRP-FR-005/009）", () => {
   it("创建发布记录表与 plans 留痕列，重复执行幂等", async () => {
     await withClient(async (client) => {
       await runInTx(client, async (c) => {
+        // 共享演练库可能已有其他集成测试写入的多区间行（0017 语义），
+        // 0015 行为测试在事务内清空该表后独立验证（回滚不影响库）。
+        await c.query(`DELETE FROM jurisdiction_planning_releases`);
         // 表与列存在。
         const table = await c.query(
           `SELECT column_name FROM information_schema.columns

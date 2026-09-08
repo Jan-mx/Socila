@@ -25,7 +25,7 @@ export type AccessDecision =
       code: "AUTH_REQUIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED";
     };
 
-const PROTECTED_PAGE_PREFIXES = ["/admin", "/account", "/chat"];
+const PROTECTED_PAGE_PREFIXES = ["/admin", "/account", "/chat", "/plan"];
 
 function isProtectedPage(pathname: string): boolean {
   return PROTECTED_PAGE_PREFIXES.some(

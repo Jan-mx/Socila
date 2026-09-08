@@ -3,6 +3,9 @@ import { z } from "zod";
 /** 稳定地区代码（JRP-FR-002：CN 或 6 位行政区划代码）。 */
 const JURISDICTION_CODE_PATTERN = /^(CN|\d{6})$/;
 
+/** 六位地级市行政代码（JRP-FR-022：claim_city_code）。 */
+const CLAIM_CITY_CODE_PATTERN = /^\d{6}$/;
+
 const BasicSchema = z.object({
   birth_year_text: z.string().nullable().optional(),
   birth_year: z.number().int().nullable().optional(),
@@ -46,12 +49,25 @@ const MiSchema = z.object({
   enroll_date: z.string().nullable().optional(),
 });
 
+/**
+ * 领取地市画像（JRP-FR-022/023）：对外只接受六位行政代码，服务端确认代码
+ * 属于广东启用地级市后转换为规则内部 claim_city 规范名称；自由文本名称
+ * （claim_city）不在公开 Schema 中，客户端提交一律被 strict 拒绝（JRP-AC-003/006）。
+ */
+const ProfileSchema = z.object({
+  claim_city_code: z
+    .string()
+    .regex(CLAIM_CITY_CODE_PATTERN, "领取地市代码必须是六位行政代码")
+    .optional(),
+});
+
 export const UserProfileSchema = z.object({
   basic: BasicSchema.optional(),
   social: SocialSchema.optional(),
   status: StatusSchema.optional(),
   subsidy: SubsidySchema.optional(),
   mi: MiSchema.optional(),
+  profile: ProfileSchema.optional(),
   objective: z
     .enum(["min_cost", "max_pension", "keep_medical", "balanced"])
     .nullable()

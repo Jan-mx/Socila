@@ -191,6 +191,9 @@ export const plans = pgTable("plans", {
   sessionId: text("session_id"),
   // 归属用户（CORE-FR-009）：认证用户出现后写入，优先于 sessionId 参与归属校验。
   ownerUserId: text("owner_user_id"),
+  // 历史重放 hash（JRP-FR-014/028，migration 0017）：plan 保存执行时快照内容哈希，
+  // 重放时按 snapshotId+hash+asOfDate 恢复并报告漂移。
+  snapshotContentHash: text("snapshot_content_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -254,9 +257,10 @@ export const policySnapshotMembers = pgTable("policy_snapshot_members", {
   provenance: jsonb("provenance").notNull(),
 });
 
-// ─── 地区规划发布记录（任务3 JRP-FR-005/006/007，migration 0015）────────────
-// 每个地区最多一条当前发布记录和一个活动快照；active 必须具有非空快照、
-// 激活人、激活时间及门禁结果。激活/切换/停用只允许经 publishing 应用用例，
+// ─── 地区规划发布记录（任务3 JRP-FR-005/006/007/024，migration 0015+0017）────
+// 每地区可有多条区间记录（0017撤销0015的每地区唯一索引）；active 必须具有
+// 非空快照、激活人、激活时间、闭合区间（effective_from）且同地区 active 区间
+// 不重叠（0017 EXCLUDE 约束）。激活/切换/停用只允许经 publishing 应用用例，
 // 禁止直接 SQL 修改状态。四川延期期间不创建本表记录。
 
 export const jurisdictionPlanningReleases = pgTable(
@@ -271,13 +275,13 @@ export const jurisdictionPlanningReleases = pgTable(
     gateResults: jsonb("gate_results").notNull().default({}),
     activatedAt: timestamp("activated_at"),
     activatedBy: text("activated_by"),
+    // JRP-FR-024：区间列（0017）。effective_from 非空闭合定义见迁移 CHECK；
+    // effective_to 为 NULL 表示开放上界（2030窗口）。
+    effectiveFrom: date("effective_from"),
+    effectiveTo: date("effective_to"),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
-    // 每地区最多一条当前发布记录（激活/切换经 upsert 更新）。
-    uniqueIndex("jurisdiction_planning_releases_jurisdiction_unique").on(
-      table.jurisdictionCode,
-    ),
     // 同一活动快照不得同时是多个地区的活动快照；NULL（inactive）不参与唯一。
     uniqueIndex("jurisdiction_planning_releases_active_snapshot_unique").on(
       table.activeSnapshotId,

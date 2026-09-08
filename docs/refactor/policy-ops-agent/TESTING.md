@@ -218,14 +218,14 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 四川地区级门禁：无候选快照、无活动发布，规划请求返回unsupported且不得使用上海或广东实体。
 - 原任务3/4并行方案已被复审推翻。任务3先修真实入口和日期快照；任务4随后使用其已验收snapshot区间生成案例。
 
-### 任务3 Reopened专用反例
+### 任务3 Reopened专用反例（2026-09-08已全部Green）
 
-- 新会话必须先持久创建再确认地区；选择器不得对不存在会话返回404。
-- `claim_city_code`缺失、非广东、未知或仅自由文本时不得估算失业金额；有效代码由服务端规范化后执行。
-- 2026和2030广东请求必须命中不同snapshot区间；缺失、重叠、gateResults缺项或成员hash漂移均fail-closed。
-- 激活必须真实运行引用、Schema、依赖、冲突、黄金和双重重放门禁；伪造pass不能通过。
-- 历史plan按保存snapshot逐字节重放；停用广东不影响上海；四川始终unsupported。
-- 聊天和直接规划页面使用同一地区确认契约并有专用Chromium E2E。
+- 新会话必须先持久创建再确认地区（`create-conversation.use-case.test.ts`、`e2e/task3-regional.spec.ts` JRP-AC-001）；选择器不得对不存在会话返回404。
+- `claim_city_code`缺失、非广东、未知或仅自由文本时不得估算失业金额（`claim-city.test.ts`、`jurisdiction-compute.use-case.test.ts`）；有效代码由服务端规范化后执行。
+- 2026和2030广东请求必须命中不同snapshot区间（`snapshot-slices.test.ts` 时间片派生、`jurisdiction-compute.integration.test.ts`）；缺失、重叠、gateResults缺项或成员hash漂移均fail-closed（`jrp-0017-migration.integration.test.ts` EXCLUDE、compute用例执行期完整性）。
+- 激活必须真实运行引用、Schema、依赖、冲突、黄金、双重重放和内容哈希七道门禁（`release-gates.test.ts` 9例）；伪造pass不能绕过（`jurisdiction-release.use-case.test.ts`）。
+- 历史plan按保存snapshot逐字节重放（`replay-plan.use-case.test.ts` 7例+集成）；停用广东不影响上海（集成）；四川始终unsupported。
+- 聊天和直接规划页面使用同一地区确认契约并有专用Chromium E2E（`e2e/task3-regional.spec.ts` 3例）。
 
 ### 地区案例全量重建专用反例
 

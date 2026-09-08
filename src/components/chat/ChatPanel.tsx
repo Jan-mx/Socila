@@ -323,13 +323,44 @@ export function ChatPanel({
   conversationId: externalConversationId,
   initialMessages,
 }: ChatPanelProps) {
-  // Stable conversationId: use provided or generate once at mount.
-  const [conversationId] = useState(
-    () => externalConversationId ?? crypto.randomUUID(),
+  // 任务3 JRP-FR-021/JRP-AC-001：会话必须先经认证 API 持久创建，获得服务端
+  // 生成的真实 ID 后才允许地区确认——不再本地生成 UUID（消除选择器 404 竞态）。
+  const [conversationId, setConversationId] = useState<string | null>(
+    () => externalConversationId ?? null,
   );
+  const [conversationCreateError, setConversationCreateError] = useState<
+    string | null
+  >(null);
   const [acknowledgedConversationId, setAcknowledgedConversationId] = useState<
     string | null
   >(() => externalConversationId ?? null);
+
+  // 无外部会话 ID 时先经 POST /api/conversations 预创建（JRP-FR-021）。
+  useEffect(() => {
+    if (externalConversationId || conversationId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (!res.ok) throw new Error(`create-failed:${res.status}`);
+        const data = (await res.json()) as { conversation: { id: string } };
+        if (cancelled) return;
+        setConversationId(data.conversation.id);
+        setAcknowledgedConversationId(data.conversation.id);
+      } catch {
+        if (!cancelled) {
+          setConversationCreateError("会话初始化失败，请稍后重试");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, externalConversationId]);
 
   // Session state: accumulated user profile across turns.
   const [sessionProfile, setSessionProfile] = useState<Record<string, unknown>>(
@@ -382,8 +413,13 @@ export function ChatPanel({
     ],
   );
 
+  // 任务3 JRP-FR-021：会话创建完成前不允许发送/确认地区（选择器与发送区展示
+  // 创建状态，避免对不存在的会话发起请求导致 404 竞态）。
+  const conversationReady = conversationId !== null;
+  const chatId = conversationId ?? "conversation-pending";
+
   const chat = useChat({
-    id: conversationId,
+    id: chatId,
     transport,
     messages: initialMessages ?? [],
     onFinish: ({ message }) => {
@@ -413,7 +449,7 @@ export function ChatPanel({
             typeof output.plan_id === "string" ? output.plan_id : undefined;
           const needsAgent = output.needs_agent === true;
 
-          if (planIdFromTool && !needsAgent && onPlanComputed) {
+          if (planIdFromTool && !needsAgent && onPlanComputed && conversationId) {
             onPlanComputed(planIdFromTool, conversationId);
           }
         }
@@ -510,25 +546,33 @@ export function ChatPanel({
         </div>
 
         <div className="border-t border-border bg-card px-6 py-5 sm:px-7 sm:py-6">
-          <JurisdictionSelector
-            conversationId={conversationId}
-            profile={sessionProfile}
-            onConfirmed={(jurisdiction) => {
-              setSessionProfile((prev) => ({
-                ...prev,
-                jurisdiction: {
-                  code: jurisdiction.code,
-                  name: jurisdiction.name,
-                  confirmed: true,
-                  confirmedAt: new Date().toISOString(),
-                  source: "selector",
-                },
-              }));
-            }}
-          />
-          <div className="mt-3">
-            <ChatComposer />
-          </div>
+          {!conversationReady ? (
+            <div className="flex min-h-14 items-center justify-center text-sm text-muted-foreground">
+              {conversationCreateError ?? "正在初始化会话…"}
+            </div>
+          ) : (
+            <>
+              <JurisdictionSelector
+                conversationId={conversationId!}
+                profile={sessionProfile}
+                onConfirmed={(jurisdiction) => {
+                  setSessionProfile((prev) => ({
+                    ...prev,
+                    jurisdiction: {
+                      code: jurisdiction.code,
+                      name: jurisdiction.name,
+                      confirmed: true,
+                      confirmedAt: new Date().toISOString(),
+                      source: "selector",
+                    },
+                  }));
+                }}
+              />
+              <div className="mt-3">
+                <ChatComposer />
+              </div>
+            </>
+          )}
           <p className="mt-3.5 text-center text-sm text-muted-foreground">
             Enter 发送 · Shift+Enter 换行
           </p>
