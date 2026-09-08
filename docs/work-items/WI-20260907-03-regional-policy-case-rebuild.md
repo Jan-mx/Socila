@@ -1,8 +1,8 @@
 # WI-20260907-03：地区化政策案例生成与可靠归档重建
 
 > Author: Jan
-> Status: Blocked
-> Updated: 2026-09-07
+> Status: Accepted（2026-09-08；分支`codex/task34-regional-case-rebuild`提交`feat: 重建地区化政策案例库`）
+> Updated: 2026-09-08
 
 ## Work Item
 

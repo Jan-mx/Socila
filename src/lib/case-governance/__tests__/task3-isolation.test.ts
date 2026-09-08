@@ -1,10 +1,10 @@
 /**
- * 执行要求一.12 / CLG-AC-015 任务3并行隔离：
- * 案例治理模块不得依赖任务3（migration 0015、地区发布记录、planning发布表），
- * 其目标测试在任务3不存在/未合入时仍可独立通过。
- *
- * 本测试为源码契约：扫描case-governance目录的import图与字符串，
- * 断言不存在对0015、planning发布记录/publishes/policy_import_batches的引用。
+ * RCL-FR-016 / RCL-AC-006 快照规划器依赖契约：
+ * 任务3已按 ADR-0011 串行合入并重新 Accepted，RCL 生成器的期望结果
+ * 必须由修复后的快照规划器（orchestrateSnapshot）计算（PRD §4：结构化
+ * 模板是输入事实源，期望只由快照规划器计算）。本测试为源码契约：
+ * 生成器与重放路径必须引用任务3的快照驱动编排器，且不得直接依赖
+ * 地区发布记录/账本写入表（publishes/policy_import_batches）。
  *
  * Red：实现前模块 `src/lib/case-governance/manifest` 不存在，import失败即Red。
  */
@@ -21,17 +21,17 @@ function listSourceFiles(): string[] {
     .map((f) => path.join(GOVERNANCE_DIR, f));
 }
 
-describe("CLG-AC-015 任务3并行隔离（源码契约）", () => {
+describe("RCL-AC-015 快照规划器依赖契约（源码契约）", () => {
   const files = listSourceFiles();
 
   it("case-governance有实现源文件（非空目录）", () => {
     expect(files.length).toBeGreaterThan(0);
   });
 
-  it("不import任务3/planning发布记录模块", () => {
+  it("不import任务3发布记录/账本写入模块（RCL只读快照，不触碰发布表）", () => {
     const forbiddenImports = [
-      "@/server/modules/planning",
-      "planning/",
+      "jurisdiction-release",
+      "jurisdictionPlanningReleases",
       "publishes",
       "policy_import_batch",
     ];
@@ -60,9 +60,13 @@ describe("CLG-AC-015 任务3并行隔离（源码契约）", () => {
     }
   });
 
-  it("任务3未合入时本模块测试可独立通过（无0015依赖即证明）", () => {
-    // drizzle目录不得包含0015（任务3未合入冻结基线的事实）
-    const drizzleFiles = readdirSync(path.resolve(process.cwd(), "drizzle"));
-    expect(drizzleFiles.some((f) => f.startsWith("0015"))).toBe(false);
+  it("任务3已合入：生成器依赖快照驱动编排器（RCL-FR-016 期望由快照规划器计算）", () => {
+    // 生成器/重放模块必须引用任务3的快照驱动编排器（orchestrateSnapshot），
+    // 期望值不允许由本模块自行计算（PRD §4）。
+    const replaySrc = readFileSync(
+      path.join(GOVERNANCE_DIR, "replay.ts"),
+      "utf-8",
+    );
+    expect(replaySrc).toMatch(/orchestrateSnapshot|orchestrateInMemory|computeJurisdictionPlan/);
   });
 });

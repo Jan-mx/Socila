@@ -1,74 +1,57 @@
 /**
- * CLG-FR-010 多标签分类：展示案例分类为多标签集合，
- * 不再因性别/年龄提前返回而丢失就业、险种和补贴标签。
- *
- * Red：实现前模块 `src/lib/case-governance/multi-label` 不存在。
+ * RCL-FR-017 多标签分类测试：地区、性别、年龄、就业、险种、政策能力和
+ * needs-agent 标签同时保留（不提前返回单分类）。
  */
 import { describe, it, expect } from "vitest";
-import { classifyShowcase } from "../multi-label";
-import type { ShowcaseCandidateRecord } from "../types";
+import { classifyScenario, birthYearBand } from "../multi-label";
+import { generateShowcaseScenarios } from "../generator";
 
-function record(overrides: Partial<ShowcaseCandidateRecord> = {}): ShowcaseCandidateRecord {
-  return {
-    caseUid: "71c427049305-01",
-    sourceCaseUid: "71c427049305",
-    gender: "female",
-    birthYear: 1974,
-    employmentStatus: "flexible",
-    input: { basic: { gender: "female", birth_year: 1974 }, status: { employment_status: "flexible" } },
-    expected: { retire_age: "37岁", subsidy_4050: true, subsidy_daling: true },
-    transcriptLength: 200,
-    sourceFile: "f.xlsx",
-    caseText: "t",
-    publicText: "p",
-    replay: { match: true, differences: [] },
-    ...overrides,
-  } as ShowcaseCandidateRecord;
-}
-
-describe("CLG-FR-010 多标签分类", () => {
-  it("灵活就业女性1974年生且享4050/大龄补贴 → 同时输出性别、年龄段、就业、补贴标签", () => {
-    const tags = classifyShowcase(record());
-    expect(tags).toContain("female");
-    expect(tags).toContain("1970_1979");
-    expect(tags).toContain("flexible");
-    expect(tags).toContain("4050");
-    expect(tags).toContain("daling");
-  });
-
-  it("不再因性别提前返回而丢失就业标签（旧categorize缺陷回归）", () => {
-    const tags = classifyShowcase(record());
-    expect(tags.includes("flexible") || tags.includes("employed") || tags.includes("unemployed")).toBe(true);
-    if (record().expected.subsidy_4050) {
-      expect(tags).toContain("4050");
-    }
-  });
-
-  it("失业男性1985年生享岗位补贴 → 输出male/from_1980/unemployed/gangwei", () => {
-    const tags = classifyShowcase(
-      record({
-        gender: "male",
-        birthYear: 1985,
-        employmentStatus: "unemployed",
-        expected: { retire_age: "37岁", subsidy_gangwei: true },
+describe("RCL-FR-017 多标签分类", () => {
+  it("场景分类同时包含地区/性别/年龄/就业/险种/能力标签", async () => {
+    const scenarios = await generateShowcaseScenarios(
+      // 为每条断言提供值，使needs-agent标签可判定。
+      (t) => ({
+        snapshotId: "snap-1",
+        snapshotContentHash: "hash-1",
+        values: t.assertionSpecs.map((s) => ({
+          path: s.path,
+          value: s.path.endsWith("needs_agent") ? true : 1,
+        })),
       }),
     );
+    const sh = scenarios.find((s) => s.jurisdictionCode === "310000")!;
+    const tags = classifyScenario(sh);
+    expect(tags).toContain("上海");
+    expect(tags).toContain("310000");
     expect(tags).toContain("male");
-    expect(tags).toContain("from_1980");
-    expect(tags).toContain("unemployed");
-    expect(tags).toContain("gangwei");
-  });
-
-  it("1970年前出生 → before_1970", () => {
-    const tags = classifyShowcase(record({ birthYear: 1965, gender: "male", employmentStatus: "employed" }));
-    expect(tags).toContain("before_1970");
+    expect(tags.some((t) => t.startsWith("band:") || ["before_1970", "1970_1979", "from_1980"].includes(t))).toBe(true);
     expect(tags).toContain("employed");
+    expect(tags.some((t) => t.startsWith("capability:"))).toBe(true);
+    expect(tags.some((t) => t.startsWith("险种:"))).toBe(true);
   });
 
-  it("输出稳定且无重复（确定性，CLG-NFR-002）", () => {
-    const a = classifyShowcase(record());
-    const b = classifyShowcase(record());
-    expect(a).toEqual(b);
-    expect(new Set(a).size).toBe(a.length);
+  it("needs-agent 场景带 needs-agent 标签；正常场景不带", async () => {
+    const scenarios = await generateShowcaseScenarios((t) => ({
+      snapshotId: "snap-1",
+      snapshotContentHash: "hash-1",
+      values: t.assertionSpecs.map((s) => ({
+        path: s.path,
+        value: s.path.endsWith("needs_agent") ? true : 1,
+      })),
+    }));
+    const withNa = scenarios.find((s) =>
+      s.assertions.some((a) => a.path.endsWith("needs_agent")),
+    )!;
+    expect(classifyScenario(withNa)).toContain("needs-agent");
+    const normal = scenarios.find((s) =>
+      !s.assertions.some((a) => a.path.endsWith("needs_agent")),
+    )!;
+    expect(classifyScenario(normal)).not.toContain("needs-agent");
+  });
+
+  it("birthYearBand 年龄段映射", () => {
+    expect(birthYearBand(1965)).toBe("before_1970");
+    expect(birthYearBand(1975)).toBe("1970_1979");
+    expect(birthYearBand(1985)).toBe("from_1980");
   });
 });

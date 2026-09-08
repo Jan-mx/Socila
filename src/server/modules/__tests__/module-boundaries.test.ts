@@ -53,13 +53,14 @@ function isBareModulePath(spec: string): boolean {
 describe("module boundaries (src/server/modules)", () => {
   const files = [...walkFiles(MODULES_DIR)];
 
-  it("discovers the nine module skeletons", () => {
+  it("discovers the ten module skeletons", () => {
     const modules = readdirSync(MODULES_DIR).filter(
       (d) => d !== "__tests__" && statSync(path.join(MODULES_DIR, d)).isDirectory(),
     );
     expect(modules.sort()).toEqual([
       "agent-integration",
       "audit",
+      "case-governance",
       "conversation",
       "identity",
       "jurisdiction",

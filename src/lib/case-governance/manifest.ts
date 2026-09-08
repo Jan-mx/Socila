@@ -1,100 +1,187 @@
 /**
- * CLG-FR-013/014/015 治理manifest：
- * - audit输出确定性manifest：sourceCounts/retainedCounts/deletedCounts/manifestHash；
- * - KEEP = 回归 ∪ 展示来源（PRD §6.2）；固定目标452/36/528（CLG-AC-010）；
- * - manifestHash = SHA-256(算法版本+核心对象canonical)，重复生成一致（CLG-NFR-002）。
+ * RCL-FR-006/015、RCL-AC-003/011 精确manifest：
+ * - 绑定旧目标行（删除集合）的精确行ID与内容hash（RCL-AC-003：任一漂移失效）；
+ * - 绑定新数据行（cases/showcase/tests）的行ID、内容hash、快照ID/hash、
+ *   质量评分与分解、来源映射（RCL-FR-006）；
+ * - 绑定42条DSL示例（保留，RCL-AC-011）；
+ * - 最终计数 N/36/N+42，N 来自覆盖manifest（RCL-FR-015，禁止硬编码452/500）；
+ * - manifestHash 由算法版本+全部绑定内容确定性计算（RCL-NFR-002）。
  */
 import { canonicalJson, sha256hex } from "./hashes";
-import {
-  computeRetainedCaseSet,
-  normalizeCaseUid,
-  resolveSourceCaseUids,
-} from "./source-chain";
-import type { GovernanceManifest, GovernanceManifestInput } from "./types";
+import type { GeneratedScenario } from "./generator";
 
-export const FIXED_TARGET = { cases: 452, showcaseCases: 36, tests: 528 } as const;
+export interface BoundRow {
+  /** 数据库行ID（apply前重新核对）。 */
+  rowId: number;
+  uid?: string | null;
+  /** 规范化内容哈希（行内容真实SHA，RCL-FR-003语义）。 */
+  contentHash: string;
+}
 
-export const ARCHIVE_BATCH_STATUSES = [
-  "prepared",
-  "restore_verified",
-  "applied",
-  "rolled_back",
-] as const;
+export interface NewCaseRow extends BoundRow {
+  jurisdictionCode: string;
+  qualityScore: number;
+  qualityBreakdown: Record<string, unknown>;
+  multiLabels: string[];
+  snapshotId: string;
+  snapshotHash: string;
+  sourceTestUid: string;
+}
+
+export interface NewShowcaseRow extends BoundRow {
+  jurisdictionCode: string;
+  sourceCaseUid: string;
+  qualityScore: number;
+  qualityBreakdown: Record<string, unknown>;
+  multiLabels: string[];
+  snapshotId: string;
+  snapshotHash: string;
+}
+
+export interface NewTestRow extends BoundRow {
+  jurisdictionCode: string;
+  sourceCaseUid: string;
+}
+
+export interface ExampleTestRow extends BoundRow {
+  jurisdictionCode: string | null;
+}
+
+export interface RclManifestInput {
+  algorithmVersion: string;
+  generatorVersion: string;
+  /** 新cases（N条）。 */
+  newCases: NewCaseRow[];
+  /** 新showcase（36条）。 */
+  newShowcase: NewShowcaseRow[];
+  /** 新地区回归tests（N条，RCL-FR-013一对一）。 */
+  newTests: NewTestRow[];
+  /** 42条DSL示例（保留不删，RCL-AC-011）。 */
+  exampleTests: ExampleTestRow[];
+  /** 旧库删除目标（apply前逐行核对，RCL-AC-003）。 */
+  oldTargets: {
+    cases: BoundRow[];
+    showcase: BoundRow[];
+    tests: BoundRow[];
+  };
+  /** 生成所绑定的快照（修复后日期快照，RCL-FR-007）。 */
+  snapshot: { id: string; contentHash: string } | null;
+}
+
+export interface RclManifest {
+  algorithmVersion: string;
+  generatorVersion: string;
+  snapshot: { id: string; contentHash: string } | null;
+  /** N（新cases数，来自覆盖manifest）。 */
+  caseCount: number;
+  showcaseCount: number;
+  newTestCount: number;
+  exampleTestCount: number;
+  newCases: NewCaseRow[];
+  newShowcase: NewShowcaseRow[];
+  newTests: NewTestRow[];
+  exampleTests: ExampleTestRow[];
+  oldTargets: {
+    cases: BoundRow[];
+    showcase: BoundRow[];
+    tests: BoundRow[];
+  };
+  counts: {
+    cases: number;
+    showcase: number;
+    tests: number;
+  };
+  manifestHash: string;
+  createdAt: string;
+}
 
 export function computeManifestHash(content: unknown): string {
   return sha256hex(canonicalJson(content));
 }
 
-export function buildGovernanceManifest(
-  input: GovernanceManifestInput,
-): GovernanceManifest {
-  const caseUidSet = new Set(input.caseUids);
-  const sourceMap = resolveSourceCaseUids(input.showcaseRows, caseUidSet);
-  const showcaseSourceUids = new Set(sourceMap.values());
-  const retained = computeRetainedCaseSet(
-    input.regressionCaseUids,
-    showcaseSourceUids,
-  );
-
-  const retainedCaseUids = input.caseUids.filter((uid) => retained.has(uid));
-  const deletedCaseUids = input.caseUids.filter((uid) => !retained.has(uid));
-  const curated = new Set(input.curatedShowcaseUids ?? []);
-  const deletedShowcaseUids = input.showcaseRows
-    .map((r) => r.caseUid)
-    .filter((uid) => !curated.has(uid));
+/** 构建精确manifest：N = newCases.length（不硬编码452/500，RCL-FR-015）。 */
+export function buildRclManifest(input: RclManifestInput): RclManifest {
+  const caseCount = input.newCases.length;
+  const showcaseCount = input.newShowcase.length;
+  const newTestCount = input.newTests.length;
+  const exampleTestCount = input.exampleTests.length;
+  const counts = {
+    cases: caseCount,
+    showcase: showcaseCount,
+    tests: newTestCount + exampleTestCount,
+  };
 
   const core = {
     algorithmVersion: input.algorithmVersion,
-    retainedCaseUids: [...retainedCaseUids].sort(),
-    deletedCaseUids: [...deletedCaseUids].sort(),
-    curatedShowcaseUids: [...curated].sort(),
-    showcaseRows: input.showcaseRows
-      .map((r) => ({ caseUid: r.caseUid, sourceCaseUid: normalizeCaseUid(r.sourceCaseUid || r.caseUid) }))
-      .sort((a, b) => a.caseUid.localeCompare(b.caseUid)),
-    testCount: input.testCount,
+    generatorVersion: input.generatorVersion,
+    snapshot: input.snapshot,
+    newCases: [...input.newCases]
+      .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash, snapshotHash: r.snapshotHash, sourceTestUid: r.sourceTestUid }))
+      .sort((a, b) => a.rowId - b.rowId),
+    newShowcase: [...input.newShowcase]
+      .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash, sourceCaseUid: r.sourceCaseUid, snapshotHash: r.snapshotHash }))
+      .sort((a, b) => a.rowId - b.rowId),
+    newTests: [...input.newTests]
+      .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash, sourceCaseUid: r.sourceCaseUid }))
+      .sort((a, b) => a.rowId - b.rowId),
+    exampleTests: [...input.exampleTests]
+      .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash }))
+      .sort((a, b) => a.rowId - b.rowId),
+    oldTargets: {
+      cases: [...input.oldTargets.cases]
+        .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash }))
+        .sort((a, b) => a.rowId - b.rowId),
+      showcase: [...input.oldTargets.showcase]
+        .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash }))
+        .sort((a, b) => a.rowId - b.rowId),
+      tests: [...input.oldTargets.tests]
+        .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash }))
+        .sort((a, b) => a.rowId - b.rowId),
+    },
+    counts,
   };
   const manifestHash = computeManifestHash(core);
 
   return {
     algorithmVersion: input.algorithmVersion,
-    sourceCounts: {
-      cases: input.caseUids.length,
-      regressionCases: input.regressionCaseUids.size,
-      showcaseCases: input.showcaseRows.length,
-      showcaseSourceCases: showcaseSourceUids.size,
-      tests: input.testCount,
-      regressionTests: input.regressionTestCount,
-      exampleTests: input.exampleTestCount,
+    generatorVersion: input.generatorVersion,
+    snapshot: input.snapshot,
+    caseCount,
+    showcaseCount,
+    newTestCount,
+    exampleTestCount,
+    newCases: [...input.newCases].sort((a, b) => a.rowId - b.rowId),
+    newShowcase: [...input.newShowcase].sort((a, b) => a.rowId - b.rowId),
+    newTests: [...input.newTests].sort((a, b) => a.rowId - b.rowId),
+    exampleTests: [...input.exampleTests].sort((a, b) => a.rowId - b.rowId),
+    oldTargets: {
+      cases: [...input.oldTargets.cases].sort((a, b) => a.rowId - b.rowId),
+      showcase: [...input.oldTargets.showcase].sort((a, b) => a.rowId - b.rowId),
+      tests: [...input.oldTargets.tests].sort((a, b) => a.rowId - b.rowId),
     },
-    retainedCaseUids,
-    deletedCaseUids,
-    deletedShowcaseUids,
-    retainedCounts: {
-      cases: retainedCaseUids.length,
-      showcaseCases: curated.size,
-      tests: input.testCount,
-    },
-    deletedCounts: {
-      cases: deletedCaseUids.length,
-      showcaseCases: deletedShowcaseUids.length,
-    },
+    counts,
     manifestHash,
     createdAt: new Date().toISOString(),
   };
 }
 
-export function assertFixedTargetCounts(
-  cases: number,
-  showcaseCases: number,
-  tests: number,
+/** 断言最终计数 N/36/N+42（RCL-AC-011；N 必须来自manifest而非硬编码）。 */
+export function assertRclCounts(
+  manifest: Pick<RclManifest, "counts" | "caseCount" | "exampleTestCount">,
 ): void {
-  if (
-    cases !== FIXED_TARGET.cases ||
-    showcaseCases !== FIXED_TARGET.showcaseCases ||
-    tests !== FIXED_TARGET.tests
-  ) {
+  const { counts, caseCount, exampleTestCount } = manifest;
+  if (counts.cases !== caseCount) {
+    throw new Error(`cases计数 ${counts.cases} ≠ manifest N=${caseCount}（RCL-FR-015）`);
+  }
+  if (counts.showcase !== 36) {
+    throw new Error(`showcase计数 ${counts.showcase} ≠ 36（RCL-AC-008）`);
+  }
+  if (counts.tests !== caseCount + exampleTestCount) {
     throw new Error(
-      `目标计数偏离固定基线：当前${cases}/${showcaseCases}/${tests}，期望${FIXED_TARGET.cases}/${FIXED_TARGET.showcaseCases}/${FIXED_TARGET.tests}；范围变化必须停止（CLG-NFR-005）`,
+      `tests计数 ${counts.tests} ≠ N+42=${caseCount + exampleTestCount}（RCL-AC-011）`,
     );
   }
 }
+
+/** 旧CLG固定目标断言（452/36/528）已废止：不再提供 assertFixedTargetCounts。 */
+export type { GeneratedScenario };

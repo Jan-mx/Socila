@@ -227,13 +227,15 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 历史plan按保存snapshot逐字节重放（`replay-plan.use-case.test.ts` 7例+集成）；停用广东不影响上海（集成）；四川始终unsupported。
 - 聊天和直接规划页面使用同一地区确认契约并有专用Chromium E2E（`e2e/task3-regional.spec.ts` 3例）。
 
-### 地区案例全量重建专用反例
+### 地区案例全量重建专用反例（2026-09-08已全部Green）
 
-- 归档SHA必须来自真实文件字节；篡改、缺少selection/restore报告或pending状态均拒绝apply。
-- manifest绑定精确行ID/内容hash、snapshot/hash、评分和测试来源；任一漂移使授权失效。
-- 无可比较显式断言的快照重放不得得分；active/selected案例质量总分和分解均非空。
-- 相同模板重复生成相同N、36和manifestHash；cases仅沪粤，每个case一条回归test，42条DSL示例完整。
-- showcase严格沪18/粤18，每地区男女9/9、三个年龄段各6、三种就业状态各6。
-- 两个并发替换只有一组成功；管理查询必须为`active AND filters`。
-- 完整旧851/117/500归档必须在全新PG17+pgvector真实恢复并对账。
-- 最终组合migration顺序为0015→0016→0017→0018，并从零执行两次验证幂等。
+- 归档SHA必须来自真实文件字节（`archive.test.ts` 9例：篡改检测、必备文件、sha清单不自包含）；篡改、缺少selection/restore报告或pending状态均拒绝apply。
+- manifest绑定精确行ID/内容hash、snapshot/hash、评分和测试来源（`manifest.test.ts` 7例）；任一漂移使授权失效（RCL-AC-003）。
+- 无可比较显式断言的快照重放不得得分（`replay.test.ts` 6例：空断言/路径不存在→失败）；active/selected案例质量总分和分解均非空（`scoring.test.ts`）。
+- 相同模板重复生成相同N、36和manifestHash（`generator.test.ts` 12例）；cases仅沪粤，每个case一条回归test，42条DSL示例完整。
+- showcase严格沪18/粤18，每地区男女9/9、三个年龄段各6、三种就业状态各6（RCL-AC-008）。
+- 两个并发apply只有一组成功（`rcl-apply.integration.test.ts` 7例：FOR UPDATE+applying+唯一约束）；管理查询必须为`active AND filters`。
+- 完整旧851/117/500归档必须在全新PG17+pgvector真实恢复并对账（`reconcile.ts`：表集合/行数/规范化哈希）。
+- 最终组合migration顺序为0015→0016→0017→0018，并从零执行两次验证幂等（`rcl-0018-rebuild-schema.integration.test.ts`：0016哈希不变）。
+- 端到端：生成→快照规划器计算期望→评分→N/36/N+42（`rcl-end-to-end.integration.test.ts`）；四川始终unsupported。
+- 专用Chromium E2E：`e2e/task4-case-library.spec.ts`（RCL-AC-012/013/015）。

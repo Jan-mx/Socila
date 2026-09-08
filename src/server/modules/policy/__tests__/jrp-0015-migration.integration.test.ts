@@ -64,9 +64,11 @@ describe("0015 地区规划发布记录migration（JRP-FR-005/009）", () => {
   it("创建发布记录表与 plans 留痕列，重复执行幂等", async () => {
     await withClient(async (client) => {
       await runInTx(client, async (c) => {
-        // 共享演练库可能已有其他集成测试写入的多区间行（0017 语义），
+        // 共享演练库可能已有其他集成测试写入的多区间行（0017/0018 语义），
         // 0015 行为测试在事务内清空该表后独立验证（回滚不影响库）。
         await c.query(`DELETE FROM jurisdiction_planning_releases`);
+        // 0015 行为测试：先执行0015 SQL（含IF NOT EXISTS索引重建），再断言其结构。
+        await c.query(readFileSync(MIGRATION_FILE, "utf8"));
         // 表与列存在。
         const table = await c.query(
           `SELECT column_name FROM information_schema.columns
@@ -101,7 +103,7 @@ describe("0015 地区规划发布记录migration（JRP-FR-005/009）", () => {
                 'jurisdiction_planning_releases_active_snapshot_unique')`,
         );
         expect(uniq.rows).toHaveLength(2);
-        // 幂等重跑。
+        // 幂等重跑（第二次执行不再创建已存在对象）。
         await c.query(readFileSync(MIGRATION_FILE, "utf8"));
       });
     });
@@ -110,6 +112,7 @@ describe("0015 地区规划发布记录migration（JRP-FR-005/009）", () => {
   it("约束矩阵：非法status拒绝、active缺少快照/激活人/时间拒绝（JRP-FR-005）", async () => {
     await withClient(async (client) => {
       await runInTx(client, async (c) => {
+        await c.query(`DELETE FROM jurisdiction_planning_releases`);
         await c.query(readFileSync(MIGRATION_FILE, "utf8"));
         // 非法 status：不满足 status_check 且不满足 active_required_check。
         // 每个预期失败用 SAVEPOINT 隔离，避免 aborted 事务级联。
@@ -145,6 +148,7 @@ describe("0015 地区规划发布记录migration（JRP-FR-005/009）", () => {
   it("plans.snapshot_id 外键指向 policy_snapshots，非法快照ID被拒绝（JRP-FR-009）", async () => {
     await withClient(async (client) => {
       await runInTx(client, async (c) => {
+        await c.query(`DELETE FROM jurisdiction_planning_releases`);
         await c.query(readFileSync(MIGRATION_FILE, "utf8"));
         await c.query("SAVEPOINT sp_plan_fk");
         await expect(

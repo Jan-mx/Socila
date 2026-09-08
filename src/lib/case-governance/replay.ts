@@ -1,22 +1,35 @@
 /**
- * CLG-FR-006 快照重放：用任务2上海候选快照成员（规则+参数）对展示案例input
- * 进行in-memory重放，与expected比较核心结论字段；无未解释差异视为一致。
+ * RCL-FR-016、RCL-AC-006 快照重放（可比较断言）：
+ * 场景携带显式断言（path/operator/value），重放必须对**至少一个**声明断言
+ * 实际计算并比对——全部断言都不可比（路径不存在/operator不支持/空列表）
+ * → 重放失败，不得获得重放分（修复旧实现"无可比expected仍判match"的P1缺陷）。
  *
- * snapshotMembersToReplayInput：把policy_snapshot_members行（entity_type +
- * payload行）转换为orchestrateInMemory可执行的RuleDefinition[]与扁平参数。
+ * snapshotMembersToReplayInput：把 policy_snapshot_members 行转换为
+ * orchestrateInMemory 可执行的 RuleDefinition[] 与扁平参数。
  */
 import type { RuleDefinition } from "@/types/engine";
-import type { ReplayComparison } from "./types";
+
+export interface ScenarioAssertion {
+  path: string;
+  operator: "eq" | "contains" | "is_null";
+  value?: unknown;
+}
+
+export interface ReplayComparison {
+  match: boolean;
+  differences: string[];
+  /** 实际可比对并执行的断言数（至少1才算可比较重放）。 */
+  comparableAssertions: number;
+  /** 无可比较断言时的稳定原因。 */
+  reason?: string;
+}
 
 export interface SnapshotReplayEnv {
   rules: RuleDefinition[];
   params: Record<string, unknown>;
 }
 
-/**
- * 快照成员行 → 引擎重放环境。规则行按RuleDefinition字段映射；
- * 参数行按type映射（table/timeline取rows，标量取value）。
- */
+/** 快照成员行 → 引擎重放环境。 */
 export function snapshotMembersToReplayInput(
   members: Array<{ entity_type: string; payload: unknown }>,
 ): SnapshotReplayEnv {
@@ -65,97 +78,82 @@ function rowToRuleDefinition(row: Record<string, unknown>): RuleDefinition | nul
   };
 }
 
-/** 规范化数字：保留原始值的字符串提取（用于比较退休年龄等文本/数字）。 */
-function toComparable(value: unknown): unknown {
+/** 按路径取值（calc.retirement.legal_retire_date → 嵌套查找）。 */
+function getByPath(root: Record<string, unknown>, path: string): unknown {
+  let acc: unknown = root;
+  for (const key of path.split(".")) {
+    if (acc === null || acc === undefined || typeof acc !== "object") return undefined;
+    acc = (acc as Record<string, unknown>)[key];
+  }
+  return acc;
+}
+
+/** 数值与字符串相互归一化比较（引擎输出 2412 与断言 2412 一致；"60" 与 60 一致）。 */
+function comparable(value: unknown): unknown {
   if (typeof value === "number") return value;
   if (typeof value === "string") {
     const trimmed = value.trim();
-    const numeric = Number(trimmed.replace(/[^\d.-]/g, ""));
-    if (!Number.isNaN(numeric) && trimmed.replace(/[^\d.-]/g, "").length > 0) {
-      return numeric;
-    }
+    const numeric = Number(trimmed);
+    if (trimmed !== "" && !Number.isNaN(numeric)) return numeric;
     return trimmed;
   }
   return value;
 }
 
-/** 日期归一化到月级："2030-02-01" 与 "2030-02" 视为同一月。 */
-function toMonthKey(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const m = value.trim().match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
-  if (!m) return null;
-  return `${m[1]}-${m[2]}`;
-}
-
-/** 两个月键相差不超过1个月（出生月份默认导致的退休日期偏差）。 */
-function monthDiffLe1(a: string, b: string): boolean {
-  const [ay, am] = a.split("-").map(Number);
-  const [by, bm] = b.split("-").map(Number);
-  const diff = Math.abs(ay * 12 + am - (by * 12 + bm));
-  return diff <= 1;
-}
-
-/** 引擎caveat列表（如出生月份默认C-BIRTH-MONTH-DEFAULT解释日期偏差）。 */
-function hasCaveat(calc: Record<string, unknown>, caveatId: string): boolean {
-  const caveats = calc.caveats;
-  if (!Array.isArray(caveats)) return false;
-  return caveats.some(
-    (c) => (c as { caveat_id?: string }).caveat_id === caveatId,
-  );
-}
-
 /**
- * 比较重放结果与expected：只比较重放结果中**存在对应语义**的字段，
- * 且仅在值不一致时记为未解释差异；expected字段在重放中无对应值
- * （如案例叙述数字"37岁开始领失业金"）时跳过，不构成差异（可解释）。
- * 映射顺序：calc顶层 → plan顶层 → calc.retirement嵌套。
+ * 断言重放：至少一个断言必须实际计算并比对（RCL-FR-016）。
+ * - eq：路径值（数值归一化）等于断言值；
+ * - contains：路径值（数组或字符串）包含断言值；
+ * - is_null：路径值为 null 或 undefined。
+ * 全部断言不可比 → match=false + reason="无可比较断言"。
  */
-export function compareReplayToExpected(
+export function compareReplayWithAssertions(
   replayResult: { plan: Record<string, unknown>; calc: Record<string, unknown>; user?: Record<string, unknown> },
-  expected: Record<string, unknown>,
+  assertions: ScenarioAssertion[],
 ): ReplayComparison {
   const differences: string[] = [];
-  const retirement = (replayResult.calc.retirement ?? {}) as Record<string, unknown>;
+  let comparableAssertions = 0;
 
-  // retire_age在展示语料中语义混杂（叙述年龄如"37岁开始领失业金"vs法定退休年龄），
-  // 不参与嵌套映射；仅retire_date等引擎确定字段参与快照重放验证。
-  const RETIREMENT_KEY_MAP: Record<string, string[]> = {
-    retire_date: ["legal_retire_date"],
-  };
+  for (const assertion of assertions) {
+    const actual = getByPath(replayResult, assertion.path);
+    if (actual === undefined) continue; // 该断言不可比，跳过。
 
-  for (const [key, expectedValue] of Object.entries(expected)) {
-    const expectedClean = toComparable(expectedValue);
-    if (expectedClean === null || expectedClean === undefined || expectedClean === "") continue;
-
-    // 依次尝试：calc顶层、plan顶层、retirement嵌套（退休年龄/日期）
-    const candidates: unknown[] = [replayResult.calc[key], replayResult.plan[key]];
-    for (const nestedKey of RETIREMENT_KEY_MAP[key] ?? []) {
-      candidates.push(retirement[nestedKey]);
-    }
-    const actual = candidates.map(toComparable).find((v) => v !== undefined && v !== null);
-
-    // 重放结果无对应语义值：跳过（不可验证，不构成未解释差异）
-    if (actual === undefined) continue;
-    if (actual !== expectedClean) {
-      // 可解释豁免：retire_date差异<=1个月且引擎有出生月份默认caveat
-      // （birth_month缺失时默认1月的已知偏差，caveat已提示用户补充月份）
-      if (key === "retire_date") {
-        const expectedMonth = toMonthKey(expectedValue);
-        const actualMonth = toMonthKey(
-          candidates.find((v) => toMonthKey(v) !== null),
-        );
-        if (
-          expectedMonth &&
-          actualMonth &&
-          monthDiffLe1(expectedMonth, actualMonth) &&
-          hasCaveat(replayResult.calc, "C-BIRTH-MONTH-DEFAULT")
-        ) {
-          continue;
+    comparableAssertions++;
+    let ok = false;
+    switch (assertion.operator) {
+      case "eq":
+        ok = comparable(actual) === comparable(assertion.value);
+        break;
+      case "contains":
+        if (Array.isArray(actual)) {
+          ok = actual.some((item) => comparable(item) === comparable(assertion.value));
+        } else if (typeof actual === "string") {
+          ok = actual.includes(String(assertion.value ?? ""));
+        } else {
+          ok = false;
         }
-      }
-      differences.push(`${key}: 期望${String(expectedClean)}, 实际${String(actual)}`);
+        break;
+      case "is_null":
+        ok = actual === null || actual === undefined;
+        break;
+      default:
+        comparableAssertions--; // 不支持的operator不计入可比断言
+        continue;
+    }
+    if (!ok) {
+      differences.push(
+        `${assertion.path}: 期望 ${assertion.operator}(${JSON.stringify(assertion.value)})，实际 ${JSON.stringify(actual)}`,
+      );
     }
   }
 
-  return { match: differences.length === 0, differences };
+  if (comparableAssertions === 0) {
+    return {
+      match: false,
+      differences: [],
+      comparableAssertions: 0,
+      reason: "无可比较断言：断言列表为空或全部路径在重放结果中不存在（RCL-FR-016）",
+    };
+  }
+  return { match: differences.length === 0, differences, comparableAssertions };
 }

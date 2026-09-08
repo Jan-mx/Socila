@@ -22,6 +22,7 @@ import { DrizzleJurisdictionReleaseWriteRepository } from "@/server/modules/publ
 import { activateJurisdictionRelease } from "@/server/modules/publishing/application/jurisdiction-release.use-case";
 import { computeJurisdictionPlan } from "@/server/modules/planning/application/jurisdiction-compute.use-case";
 import { DrizzleJurisdictionPlanningReadRepository } from "@/server/modules/planning/infrastructure/drizzle/jurisdiction-planning-read.repository";
+import { jurisdictionPlanningReleases } from "@/lib/db/schema";
 import { DrizzlePlanningWriteRepository } from "@/server/modules/planning/infrastructure/drizzle/planning-write.repository";
 import { DrizzlePlanningReadRepository } from "@/server/modules/planning/infrastructure/drizzle/planning-read.repository";
 import { DrizzleRulesReadRepository } from "@/server/modules/rules/infrastructure/drizzle/rules-read.repository";
@@ -134,13 +135,16 @@ function makeComputeDeps() {
   }
 
 describe("地区感知规划端到端（JRP-AC-004/005/017）", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     if (!DRILL_URL) {
       throw new Error(
         "SOCILA_TEST_DATABASE_URL 未设置：数据库集成测试需要已迁移且已 seed 的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
       );
     }
     process.env.DATABASE_URL = DRILL_URL;
+    // 共享演练库可能已有其他集成测试（如RCL端到端）写入的发布区间，
+    // 事务外清空本测试管理的发布记录，避免区间EXCLUDE冲突。
+    await db.delete(jurisdictionPlanningReleases);
   });
 
   afterAll(async () => {

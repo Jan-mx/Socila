@@ -289,6 +289,31 @@ export const jurisdictionPlanningReleases = pgTable(
   ],
 );
 
+// ─── 案例归档元数据（0016 CLG-FR-011/013，0018 RCL-FR-019/022）──────────────
+
+export const caseArchiveBatches = pgTable("case_archive_batches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  status: text("status").notNull(),
+  sourceCounts: jsonb("source_counts").notNull(),
+  retainedCounts: jsonb("retained_counts").notNull(),
+  deletedCounts: jsonb("deleted_counts").notNull(),
+  tableHashes: jsonb("table_hashes").notNull().default({}),
+  manifestHash: text("manifest_hash").notNull(),
+  storagePath: text("storage_path").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  createdBy: text("created_by").notNull(),
+});
+
+export const caseArchiveEntries = pgTable("case_archive_entries", {
+  id: serial("id").primaryKey(),
+  archiveBatchId: uuid("archive_batch_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id").notNull(),
+  caseUid: text("case_uid"),
+  contentHash: text("content_hash").notNull(),
+  archiveReason: text("archive_reason").notNull(),
+});
+
 // ─── Agent 物化台账（阶段06，DRF-FR-013）────────────────────────────────────
 
 export const agentMaterializations = pgTable("agent_materializations", {
@@ -326,6 +351,25 @@ export const showcaseCases = pgTable("showcase_cases", {
   category: text("category"),
   isPublished: boolean("is_published").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  // 0016 治理字段（CLG-FR-003）
+  jurisdictionCode: text("jurisdiction_code"),
+  sourceCaseUid: text("source_case_uid"),
+  snapshotId: uuid("snapshot_id"),
+  qualityScore: integer("quality_score"),
+  qualityStatus: text("quality_status"),
+  contentHash: text("content_hash"),
+  curatedAt: timestamp("curated_at", { withTimezone: true, mode: "date" }),
+  curatedBy: text("curated_by"),
+  // 0018 重建字段（RCL-FR-007/015/016/017）
+  scenarioKey: text("scenario_key"),
+  generatorVersion: text("generator_version"),
+  asOfDate: date("as_of_date"),
+  snapshotHash: text("snapshot_hash"),
+  coverageObligations: jsonb("coverage_obligations").default([]),
+  evidence: jsonb("evidence").default([]),
+  qualityBreakdown: jsonb("quality_breakdown"),
+  multiLabels: jsonb("multi_labels").default([]),
+  assertions: jsonb("assertions").default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -344,6 +388,22 @@ export const cases = pgTable("cases", {
   tags: jsonb("tags"),
   isRegression: boolean("is_regression").notNull().default(false),
   sourceFile: text("source_file"),
+  // 0016 治理字段（CLG-FR-002）
+  jurisdictionCode: text("jurisdiction_code"),
+  contentHash: text("content_hash"),
+  qualityScore: integer("quality_score"),
+  qualityStatus: text("quality_status"),
+  governanceReason: text("governance_reason"),
+  governedAt: timestamp("governed_at", { withTimezone: true, mode: "date" }),
+  // 0018 重建字段（RCL-FR-006/007/015/017）
+  scenarioKey: text("scenario_key"),
+  generatorVersion: text("generator_version"),
+  asOfDate: date("as_of_date"),
+  snapshotHash: text("snapshot_hash"),
+  coverageObligations: jsonb("coverage_obligations").default([]),
+  evidence: jsonb("evidence").default([]),
+  qualityBreakdown: jsonb("quality_breakdown"),
+  multiLabels: jsonb("multi_labels").default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -359,6 +419,8 @@ export const tests = pgTable("tests", {
   paramsOverride: jsonb("params_override"),
   expected: jsonb("expected").notNull(),
   source: text("source").notNull().default("manual"),
+  // 0016 来源链（CLG-FR-004/RCL-FR-013）：每个新case一条地区回归test引用source_case_uid。
+  sourceCaseUid: text("source_case_uid"),
   lastRunResult: jsonb("last_run_result"),
   lastRunAt: timestamp("last_run_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

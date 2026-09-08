@@ -37,7 +37,11 @@ export class DrizzlePlanningReadRepository implements PlanningReadRepository {
     page: number;
     pageSize: number;
   }) {
-    const whereClauses = [];
+    // RCL-FR-020：管理查询必须是 `active AND filters`——搜索/主题过滤
+    // 不得返回非 active 记录（修复旧实现用 OR 合并搜索条件的P2缺陷）。
+    const whereClauses: ReturnType<typeof eq>[] = [
+      eq(cases.qualityStatus, "active"),
+    ];
 
     if (query.q) {
       whereClauses.push(
@@ -45,7 +49,7 @@ export class DrizzlePlanningReadRepository implements PlanningReadRepository {
           ilike(cases.caseUid, `%${query.q}%`),
           ilike(cases.caseText, `%${query.q}%`),
           ilike(cases.creator, `%${query.q}%`),
-        ),
+        )!,
       );
     }
 
@@ -55,13 +59,7 @@ export class DrizzlePlanningReadRepository implements PlanningReadRepository {
       );
     }
 
-    const whereExpr =
-      whereClauses.length === 0
-        ? undefined
-        : whereClauses.length === 1
-          ? whereClauses[0]
-          : or(...whereClauses);
-
+    const whereExpr = and(...whereClauses);
     const offset = (query.page - 1) * query.pageSize;
     const [rows, totalRows] = await Promise.all([
       db

@@ -1,79 +1,96 @@
 /**
- * CLG-FR-006 快照重放：展示案例input经候选快照（任务2上海310000候选快照）
- * 重放后与expected比较，输出一致/差异；无未解释差异时为评分提供10分依据。
- *
- * Red：实现前模块 `src/lib/case-governance/replay` 不存在。
+ * RCL-FR-016、RCL-AC-006 可比较断言重放：
+ * - 场景携带显式断言（path/operator/value，见PRD §4 RegionalPolicyScenario）；
+ * - 重放必须对**至少一个**声明断言实际计算并比对，全部断言都不可比
+ *   （路径在结果中不存在、operator不支持等）→ 重放失败（不得获得重放分）；
+ * - 任一断言不满足 → match=false 且差异可解释；
+ * - 相同输入两次比较结果一致（RCL-NFR-002）。
  */
 import { describe, it, expect } from "vitest";
-import { compareReplayToExpected } from "../replay";
+import { compareReplayWithAssertions, type ScenarioAssertion } from "../replay";
 
-describe("CLG-FR-006/007 快照重放比较", () => {
-  it("核心字段一致 → match=true", () => {
-    const result = compareReplayToExpected(
-      {
-        calc: { retirement: { legal_retire_age: 37, legal_retire_date: "2036-03" } },
-        plan: { min_contrib_years: 15 },
-        user: {},
-      },
-      { retire_age: "37岁", retire_date: "2036-03", min_contrib_years: 15 },
+const FULL_CALC = {
+  retirement: { legal_retire_date: "2036-03-01", legal_retire_age_years: 60 },
+  needs_agent: false,
+  unemployment: { eligible: true, monthly_amount_est: 2412 },
+  mi: { lifetime_gap_months: null },
+};
+
+describe("RCL-FR-016 可比较断言重放", () => {
+  it("断言全部满足 → match=true", () => {
+    const assertions: ScenarioAssertion[] = [
+      { path: "calc.retirement.legal_retire_date", operator: "eq", value: "2036-03-01" },
+      { path: "calc.unemployment.monthly_amount_est", operator: "eq", value: 2412 },
+    ];
+    const result = compareReplayWithAssertions(
+      { plan: {}, calc: FULL_CALC, user: {} },
+      assertions,
     );
     expect(result.match).toBe(true);
     expect(result.differences).toEqual([]);
+    expect(result.comparableAssertions).toBe(2);
   });
 
-  it("retire_date数值不一致 → match=false且差异可解释", () => {
-    const result = compareReplayToExpected(
-      { calc: { retirement: { legal_retire_date: "2037-06-01" } }, plan: {}, user: {} },
-      { retire_date: "2036-03-01" },
+  it("断言不满足 → match=false 且差异可解释（RCL-AC-006）", () => {
+    const assertions: ScenarioAssertion[] = [
+      { path: "calc.unemployment.monthly_amount_est", operator: "eq", value: 9999 },
+    ];
+    const result = compareReplayWithAssertions(
+      { plan: {}, calc: FULL_CALC, user: {} },
+      assertions,
     );
     expect(result.match).toBe(false);
-    expect(result.differences.some((d) => d.includes("retire_date"))).toBe(true);
+    expect(result.differences.some((d) => d.includes("monthly_amount_est"))).toBe(true);
   });
 
-  it("补贴布尔不一致 → match=false", () => {
-    const result = compareReplayToExpected(
-      { calc: { subsidy_4050: false }, plan: {}, user: {} },
-      { subsidy_4050: true },
+  it("无可比较断言（断言列表为空或全部路径不存在）→ 重放失败，不得分（RCL-FR-016/AC-006）", () => {
+    // 空断言列表。
+    const empty = compareReplayWithAssertions({ plan: {}, calc: FULL_CALC, user: {} }, []);
+    expect(empty.match).toBe(false);
+    expect(empty.reason).toContain("无可比较断言");
+
+    // 断言路径在重放结果中不存在。
+    const missing = compareReplayWithAssertions(
+      { plan: {}, calc: FULL_CALC, user: {} },
+      [{ path: "calc.nonexistent.field", operator: "eq", value: 1 }],
     );
-    expect(result.match).toBe(false);
+    expect(missing.match).toBe(false);
+    expect(missing.reason).toContain("无可比较断言");
   });
 
-  it("expected为空而calc多出字段 → 不误报", () => {
-    const result = compareReplayToExpected(
-      { calc: { x: 1, subsidy_4050: true }, plan: {}, user: {} },
-      {},
+  it("operator=contains 与 is_null 支持（PRD §4）", () => {
+    const contains = compareReplayWithAssertions(
+      { plan: {}, calc: { warnings: ["缺参", "其他"] }, user: {} },
+      [{ path: "calc.warnings", operator: "contains", value: "缺参" }],
+    );
+    expect(contains.match).toBe(true);
+
+    const isNull = compareReplayWithAssertions(
+      { plan: {}, calc: { mi: { lifetime_gap_months: null } }, user: {} },
+      [{ path: "calc.mi.lifetime_gap_months", operator: "is_null" }],
+    );
+    expect(isNull.match).toBe(true);
+  });
+
+  it("部分断言可比且满足、其余不可比 → 至少一个可比即可通过（RCL-FR-016）", () => {
+    const assertions: ScenarioAssertion[] = [
+      { path: "calc.retirement.legal_retire_date", operator: "eq", value: "2036-03-01" },
+      { path: "calc.unknown.path", operator: "eq", value: 1 },
+    ];
+    const result = compareReplayWithAssertions(
+      { plan: {}, calc: FULL_CALC, user: {} },
+      assertions,
     );
     expect(result.match).toBe(true);
+    expect(result.comparableAssertions).toBe(1);
   });
 
-  it("expected字段在重放结果中无对应语义 → 跳过不构成差异（可解释）", () => {
-    const result = compareReplayToExpected(
-      { calc: { retirement: { legal_retire_age_years: 50 } }, plan: {}, user: {} },
-      { retire_age: "37岁" },
-    );
-    // "37岁"为案例叙述数字（如失业金领取年龄），引擎无对应语义 → 不误报
-    expect(result.match).toBe(true);
-  });
-
-  it("引擎有对应语义且不一致 → 未解释差异（retire_date）", () => {
-    // 语义字段一致场景：引擎legal_retire_date与期望一致
-    const ok = compareReplayToExpected(
-      { calc: { retirement: { legal_retire_date: "2036-03-01" } }, plan: {}, user: {} },
-      { retire_date: "2036-03-01" },
-    );
-    expect(ok.match).toBe(true);
-    const bad = compareReplayToExpected(
-      { calc: { retirement: { legal_retire_date: "2037-06-01" } }, plan: {}, user: {} },
-      { retire_date: "2036-03-01" },
-    );
-    expect(bad.match).toBe(false);
-    expect(bad.differences.some((d) => d.includes("retire_date"))).toBe(true);
-  });
-
-  it("相同输入两次比较结果一致（CLG-NFR-002）", () => {
-    const input = { calc: { retirement: { legal_retire_age: 37 } }, plan: {}, user: {} };
-    const a = compareReplayToExpected(input, { retire_age: "37岁" });
-    const b = compareReplayToExpected(input, { retire_age: "37岁" });
+  it("相同输入两次比较结果一致（RCL-NFR-002）", () => {
+    const assertions: ScenarioAssertion[] = [
+      { path: "calc.retirement.legal_retire_date", operator: "eq", value: "2036-03-01" },
+    ];
+    const a = compareReplayWithAssertions({ plan: {}, calc: FULL_CALC, user: {} }, assertions);
+    const b = compareReplayWithAssertions({ plan: {}, calc: FULL_CALC, user: {} }, assertions);
     expect(a).toEqual(b);
   });
 });

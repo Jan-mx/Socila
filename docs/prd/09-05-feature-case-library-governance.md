@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-case-library-governance.md` |
 | 类型 | Feature；替代原“上海案例库精简为452/36/528”方案 |
-| 状态 | Reopened；分支`codex/task4-case-governance`的原Accepted结论被2026-09-07独立复审推翻 |
+| 状态 | Accepted（2026-09-08重开验收）；分支`codex/task34-regional-case-rebuild`完成WI-20260907-03全部修复并取得新鲜门禁 |
 | 前置依赖 | 任务2首期Accepted；任务3经`WI-20260907-02`修复并重新Accepted |
 | 执行顺序 | 任务3修复 → 本Feature代码与隔离验收 → 持久库替换Work Item |
 | 退出门禁 | 完整旧库可恢复归档、新地区案例确定性生成、沪粤36条展示、精确替换和完整E2E均通过 |
@@ -27,6 +27,8 @@
 - 当前452/36的`quality_score`全部为空，多标签未接入实际构建路径。
 
 因此旧CLG-FR/CLG-NFR/CLG-AC及452/36/528结论只保留为历史，不再是当前验收标准。本PRD采用新的RCL编号，全量退役旧案例及其500条来源回归测试，并依据修复后的上海、广东日期快照生成无个人数据的确定性政策案例。
+
+2026-09-08：WI-20260907-03全部修复完成并重新验收（分支`codex/task34-regional-case-rebuild`提交`feat: 重建地区化政策案例库`）——真实文件SHA归档、完整归档包（selection/manifest/restore报告+不自包含sha256sums）、restore绑定provenance、精确manifest（行ID/内容hash/快照/评分/来源）、可比较断言重放（无可比断言不得分）、质量总分与逐项分解落库、多标签分类接入、管理查询`active AND filters`、apply使用FOR UPDATE+`applying`状态+归档条目唯一约束、0018迁移（0016哈希不变）、确定性模板生成（沪18/粤18配额、每case一条回归test、42条DSL示例保留、最终`N/36/N+42`）。验收证据：`reports/stage-09-05-case-governance/acceptance-report.md`（2026-09-08）。
 
 治理前完整dump及独立SHA目前存在，是旧851/117/528的恢复来源；不得把现有错误case-library归档视为已验证。
 
