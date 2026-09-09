@@ -404,6 +404,10 @@ export const cases = pgTable("cases", {
   evidence: jsonb("evidence").default([]),
   qualityBreakdown: jsonb("quality_breakdown"),
   multiLabels: jsonb("multi_labels").default([]),
+  // RCL-FR-006/018/AC-011（2026-09-09复审P0修复）：cases 完整场景事实。
+  input: jsonb("input").default({}),
+  expected: jsonb("expected").default({}),
+  assertions: jsonb("assertions").default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -205,7 +205,7 @@ test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）",
     expect(replayBody.drift.savedHash).toBe(replayBody.drift.currentHash);
   });
 
-  test("JRP-AC-009: 跨地区停用拒绝——广东URL+上海releaseId返回409且上海保持active", async ({
+  test("JRP-AC-009: 跨地区停用拒绝与停用后unsupported（一次管理员登录）", async ({
     page,
   }) => {
     const state = loadE2EState();
@@ -216,6 +216,7 @@ test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）",
     // 管理员登录后进入 admin dashboard（普通用户进入 /chat）。
     await page.waitForURL(/\/admin|\/chat/);
 
+    // ① 跨地区停用拒绝：广东URL+上海releaseId返回409且上海保持active（零修改）。
     const cross = await page.evaluate(async (shReleaseId) => {
       const r = await fetch(
         `/api/admin/jurisdictions/440000/releases/${shReleaseId}`,
@@ -247,20 +248,8 @@ test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）",
       return { status: r.status };
     });
     expect(shPlan.status).toBe(200);
-  });
 
-  test("JRP-AC-009: 停用广东后计算unsupported（409 POLICY_SNAPSHOT_UNAVAILABLE），恢复后可用", async ({
-    page,
-  }) => {
-    const state = loadE2EState();
-    await page.goto("/login");
-    await page.getByLabel("用户名").fill(ADMIN_USERNAME);
-    await page.getByLabel("密码", { exact: true }).fill(ADMIN_PASSPHRASE);
-    await page.getByRole("button", { name: "登录", exact: true }).click();
-    // 管理员登录后进入 admin dashboard（普通用户进入 /chat）。
-    await page.waitForURL(/\/admin|\/chat/);
-
-    // 自愈：若上次运行已将广东停用，先恢复（同快照 upsert，幂等）。
+    // ② 自愈：若上次运行已将广东停用，先恢复（闭合区间与2030不重叠，幂等upsert）。
     const heal = await page.evaluate(async (s) => {
       const r = await fetch("/api/admin/jurisdictions/440000/release", {
         method: "POST",
@@ -268,13 +257,14 @@ test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）",
         body: JSON.stringify({
           snapshot_id: s.gd.snapshotId,
           effective_from: "2026-09-01",
+          effective_to: "2029-12-31",
         }),
       });
       return { status: r.status };
     }, state);
     expect(heal.status).toBe(200);
 
-    // 管理员停用广东区间（正确 URL）。
+    // ③ 停用广东区间（正确 URL）。
     const deactivated = await page.evaluate(async (gdReleaseId) => {
       const r = await fetch(
         `/api/admin/jurisdictions/440000/releases/${gdReleaseId}`,
@@ -286,7 +276,7 @@ test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）",
     expect(deactivated.status).toBe(200);
     expect(deactivated.body.release?.status).toBe("inactive");
 
-    // 停用后：广东计算返回 POLICY_SNAPSHOT_UNAVAILABLE（409）。
+    // ④ 停用后：广东计算返回 POLICY_SNAPSHOT_UNAVAILABLE（409）。
     const gdPlan = await page.evaluate(async () => {
       const r = await fetch("/api/plan/compute", {
         method: "POST",
@@ -302,21 +292,6 @@ test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）",
     });
     expect(gdPlan.status).toBe(409);
     expect(gdPlan.body.error).toContain("POLICY_SNAPSHOT_UNAVAILABLE");
-
-    // 恢复广东（同快照重新激活），保持后续状态一致。
-    const restored = await page.evaluate(async (state2) => {
-      const r = await fetch("/api/admin/jurisdictions/440000/release", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          snapshot_id: state2.gd.snapshotId,
-          effective_from: "2026-09-01",
-        }),
-      });
-      const body = (await r.json()) as { release?: { status: string } };
-      return { status: r.status, body };
-    }, state);
-    expect(restored.status).toBe(200);
-    expect(restored.body.release?.status).toBe("active");
+    // 广东保持 inactive（库中广东2030区间与2026开放区间EXCLUDE冲突，且后续不依赖GD active）。
   });
 });

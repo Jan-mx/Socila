@@ -73,7 +73,7 @@ function passingGoldenTests() {
       input: { user: { basic: { gender: "male", birth_year: 1973 } } },
       paramsOverride: null,
       expected: {},
-      source: "manual",
+      source: "example",
       lastRunResult: null,
       lastRunAt: null,
       createdAt: new Date(),

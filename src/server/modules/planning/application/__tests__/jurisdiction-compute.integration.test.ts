@@ -10,9 +10,9 @@
  * 快照与现有集成测试按共享演练库惯例共存。
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { plans } from "@/lib/db/schema";
+import { plans, tests } from "@/lib/db/schema";
 import { createPolicySnapshotService } from "@/server/modules/policy/application/snapshot-service";
 import { createJurisdictionTreeService } from "@/server/modules/jurisdiction/application/tree-service";
 import { DrizzleJurisdictionReadRepository } from "@/server/modules/jurisdiction/infrastructure/drizzle/jurisdiction-read.repository";
@@ -154,6 +154,8 @@ describe("地区感知规划端到端（JRP-AC-004/005/017）", () => {
     // 共享演练库可能已有其他集成测试（如RCL端到端）写入的发布区间，
     // 事务外清空本测试管理的发布记录，避免区间EXCLUDE冲突。
     await db.delete(jurisdictionPlanningReleases);
+    // 防御清理：既往演练残留的RPCT回归tests会进入激活门禁黄金重放并导致失败。
+    await db.delete(tests).where(sql`name like 'RPCT-%'`);
   });
 
   afterAll(async () => {

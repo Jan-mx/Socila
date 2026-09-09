@@ -19,6 +19,11 @@ ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "coverage_obligations" jsonb DEFAUL
 ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "evidence" jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "quality_breakdown" jsonb;
 ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "multi_labels" jsonb DEFAULT '[]'::jsonb;
+-- RCL-FR-006/018/AC-011：cases 必须保存完整场景事实（input/expected/assertions），
+-- apply 时逐字节落库，禁止 null/空对象/空数组占位（2026-09-09复审P0修复）。
+ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "input" jsonb DEFAULT '{}'::jsonb;
+ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "expected" jsonb DEFAULT '{}'::jsonb;
+ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "assertions" jsonb DEFAULT '[]'::jsonb;
 
 -- ─── showcase_cases 重建字段（RCL-FR-007/015/016/017）─────────────────────
 ALTER TABLE "showcase_cases" ADD COLUMN IF NOT EXISTS "scenario_key" text;
@@ -41,3 +46,8 @@ ALTER TABLE "case_archive_batches" ADD CONSTRAINT "case_archive_batches_status_c
 DROP INDEX IF EXISTS "case_archive_entries_batch_entity_unique";
 CREATE UNIQUE INDEX IF NOT EXISTS "case_archive_entries_batch_entity_unique"
   ON "case_archive_entries" ("archive_batch_id", "entity_type", "entity_id");
+
+-- ─── 归档条目实体类型扩展（RCL-FR-002/019：cases/showcase/tests 三实体）──
+ALTER TABLE "case_archive_entries" DROP CONSTRAINT IF EXISTS "case_archive_entries_entity_type_check";
+ALTER TABLE "case_archive_entries" ADD CONSTRAINT "case_archive_entries_entity_type_check"
+  CHECK ("entity_type" IN ('case', 'showcase_case', 'test'));

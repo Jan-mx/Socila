@@ -9,6 +9,7 @@
  */
 import { canonicalJson, sha256hex } from "./hashes";
 import type { GeneratedScenario } from "./generator";
+import type { ScenarioAssertion } from "./replay";
 
 export interface BoundRow {
   /** 数据库行ID（apply前重新核对）。 */
@@ -18,8 +19,20 @@ export interface BoundRow {
   contentHash: string;
 }
 
+/**
+ * 新case行（RCL-FR-006/018、RCL-AC-011）：除行绑定/质量外必须携带完整场景
+ * 事实——scenarioKey、asOfDate、完整input/expected与显式断言、覆盖义务、证据。
+ * apply 落库时这些字段必须逐字节写入（禁止null/空对象/空数组占位）。
+ */
 export interface NewCaseRow extends BoundRow {
   jurisdictionCode: string;
+  scenarioKey: string;
+  asOfDate: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+  assertions: ScenarioAssertion[];
+  coverageObligations: string[];
+  evidence: Array<{ documentId: string; locator: string }>;
   qualityScore: number;
   qualityBreakdown: Record<string, unknown>;
   multiLabels: string[];
@@ -30,6 +43,13 @@ export interface NewCaseRow extends BoundRow {
 
 export interface NewShowcaseRow extends BoundRow {
   jurisdictionCode: string;
+  scenarioKey: string;
+  asOfDate: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+  assertions: ScenarioAssertion[];
+  coverageObligations: string[];
+  evidence: Array<{ documentId: string; locator: string }>;
   sourceCaseUid: string;
   qualityScore: number;
   qualityBreakdown: Record<string, unknown>;
@@ -41,6 +61,9 @@ export interface NewShowcaseRow extends BoundRow {
 export interface NewTestRow extends BoundRow {
   jurisdictionCode: string;
   sourceCaseUid: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+  ruleId?: string | null;
 }
 
 export interface ExampleTestRow extends BoundRow {
@@ -115,14 +138,58 @@ export function buildRclManifest(input: RclManifestInput): RclManifest {
     algorithmVersion: input.algorithmVersion,
     generatorVersion: input.generatorVersion,
     snapshot: input.snapshot,
+    // RCL-FR-006：manifestHash 绑定完整场景事实（行绑定+内容+场景+质量+来源），
+    // 任一字段漂移都改变 manifestHash（RCL-AC-003）。
     newCases: [...input.newCases]
-      .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash, snapshotHash: r.snapshotHash, sourceTestUid: r.sourceTestUid }))
+      .map((r) => ({
+        rowId: r.rowId,
+        contentHash: r.contentHash,
+        jurisdictionCode: r.jurisdictionCode,
+        scenarioKey: r.scenarioKey,
+        asOfDate: r.asOfDate,
+        input: r.input,
+        expected: r.expected,
+        assertions: r.assertions,
+        coverageObligations: r.coverageObligations,
+        evidence: r.evidence,
+        qualityScore: r.qualityScore,
+        qualityBreakdown: r.qualityBreakdown,
+        multiLabels: r.multiLabels,
+        snapshotId: r.snapshotId,
+        snapshotHash: r.snapshotHash,
+        sourceTestUid: r.sourceTestUid,
+      }))
       .sort((a, b) => a.rowId - b.rowId),
     newShowcase: [...input.newShowcase]
-      .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash, sourceCaseUid: r.sourceCaseUid, snapshotHash: r.snapshotHash }))
+      .map((r) => ({
+        rowId: r.rowId,
+        contentHash: r.contentHash,
+        jurisdictionCode: r.jurisdictionCode,
+        scenarioKey: r.scenarioKey,
+        asOfDate: r.asOfDate,
+        input: r.input,
+        expected: r.expected,
+        assertions: r.assertions,
+        coverageObligations: r.coverageObligations,
+        evidence: r.evidence,
+        sourceCaseUid: r.sourceCaseUid,
+        qualityScore: r.qualityScore,
+        qualityBreakdown: r.qualityBreakdown,
+        multiLabels: r.multiLabels,
+        snapshotId: r.snapshotId,
+        snapshotHash: r.snapshotHash,
+      }))
       .sort((a, b) => a.rowId - b.rowId),
     newTests: [...input.newTests]
-      .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash, sourceCaseUid: r.sourceCaseUid }))
+      .map((r) => ({
+        rowId: r.rowId,
+        contentHash: r.contentHash,
+        jurisdictionCode: r.jurisdictionCode,
+        sourceCaseUid: r.sourceCaseUid,
+        input: r.input,
+        expected: r.expected,
+        ruleId: r.ruleId ?? null,
+      }))
       .sort((a, b) => a.rowId - b.rowId),
     exampleTests: [...input.exampleTests]
       .map((r) => ({ rowId: r.rowId, contentHash: r.contentHash }))

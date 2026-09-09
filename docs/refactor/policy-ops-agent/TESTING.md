@@ -233,18 +233,19 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 
 `src/server/modules/identity/__tests__/identity-container.test.ts`的三个`freshContainer()`用例经`vi.resetModules()`重新求值identity-container的完整依赖图（`@/lib/db`→drizzle/pg链），在并行单元套件负载下单测可能超过vitest默认5秒；三个用例显式放宽到30秒（`it(..., 30_000)`）。这是模块重载固有成本，断言本身仍是确定性环境变量契约（缺失pepper拒绝、相同拒绝、合法放行），不以超时掩盖失败。
 
-### 地区案例全量重建专用反例（2026-09-09仍有缺口）
+### 地区案例全量重建专用反例（2026-09-09第二轮修复后全量Green）
 
-- 归档SHA必须来自真实文件字节（`archive.test.ts` 9例：篡改检测、必备文件、sha清单不自包含）；篡改、缺少selection/restore报告或pending状态均拒绝apply。
-- manifest绑定精确行ID/内容hash、snapshot/hash、评分和测试来源（`manifest.test.ts` 7例）；任一漂移使授权失效（RCL-AC-003）。
-- 无可比较显式断言的快照重放不得得分（`replay.test.ts` 6例：空断言/路径不存在→失败）；active/selected案例质量总分和分解均非空（`scoring.test.ts`）。
+- 归档SHA必须来自真实文件字节（`archive.test.ts` 9例：篡改检测、必备文件、sha清单不自包含）；篡改、缺少selection/restore报告或pending状态均拒绝apply；`executor.ts`的`bufferSha256`对二进制dump直接Buffer哈希（String(buffer)有损解码已修复）。
+- manifest绑定精确行ID/内容hash、snapshot/hash、评分和测试来源（`manifest.test.ts`）；**完整场景字段**：新行绑定scenarioKey/asOfDate/input/expected/assertions/coverage/evidence，任一漂移使manifestHash变化（RCL-AC-003）。
+- 无可比较显式断言的快照重放不得得分（`replay.test.ts` 6例）；active/selected案例质量总分和分解均非空（`scoring.test.ts`）。
 - 相同模板重复生成相同N、36和manifestHash（`generator.test.ts` 12例）；cases仅沪粤，每个case一条回归test，42条DSL示例完整。
 - showcase严格沪18/粤18，每地区男女9/9、三个年龄段各6、三种就业状态各6（RCL-AC-008）。
-- 两个并发apply只有一组成功（`rcl-apply.integration.test.ts` 7例：FOR UPDATE+applying+唯一约束）；管理查询必须为`active AND filters`。
+- 两个并发apply只有一组成功（`rcl-apply.integration.test.ts`：FOR UPDATE+applying+唯一约束）；管理查询必须为`active AND filters`。
+- **行内容hash绑定**：plan-replacement与apply统一按行内容重算规范化hash（原生SQL行、排除基础设施列），库中content_hash列为空也能精确绑定，任一行漂移拒绝且零写入（RCL-AC-003）。
 - 完整旧851/117/500归档必须在全新PG17+pgvector真实恢复并对账（`reconcile.ts`：表集合/行数/规范化哈希）。
-- 最终组合migration顺序为0015→0016→0017→0018，并从零执行两次验证幂等（`rcl-0018-rebuild-schema.integration.test.ts`：0016哈希不变）。
+- 最终组合migration顺序为0015→0016→0017→0018，并从零执行两次验证幂等（`rcl-0018-rebuild-schema.integration.test.ts`：0016哈希不变；0018含cases.input/expected/assertions列与归档条目entity_type含test）。
 - 端到端：生成→快照规划器计算期望→评分→N/36/N+42（`rcl-end-to-end.integration.test.ts`）；四川始终unsupported。
-- 专用Chromium E2E：`e2e/task4-case-library.spec.ts`（RCL-AC-012/013/015）。
-- 受控CLI的七个模式必须调用真实实现并产生可验证产物/结果；只打印模式名或说明后退出视为失败。
-- apply后cases/showcase/tests的scenarioKey、asOfDate、输入、期望、断言、覆盖、证据和质量分解必须与manifest逐字节一致，禁止null或空占位。
-- Chromium E2E必须读取API或页面计数，精确断言公开36条、上海18、广东18、治理字段非空及管理员/普通用户权限。
+- **受控CLI七模式真实演练**（`rcl-cli.integration.test.ts` 11例，spawn真实CLI）：audit→generate→plan-replacement→prepare-archive（真实pg_dump）→真实恢复演练（第二实例pg_restore+reconcile全表对账+verified restore-report+重算sha256sums）→verify-archive→apply（--i-am-authorized）→verify；每个模式断言真实JSON输出与退出码；缺授权退出1、归档篡改退出2。
+- apply后cases/showcase/tests的scenarioKey、asOfDate、输入、期望、断言、覆盖、证据和质量分解必须与manifest逐字节一致，禁止null或空对象占位（`assertCompleteScenarioFields`事务内fail-closed）。
+- Chromium E2E（`e2e/task4-case-library.spec.ts`）精确断言公开36条、上海18、广东18、治理字段非空、管理active过滤、归档批次可读及匿名401/普通用户403。
+- 激活门禁的golden_tests只加载source='example'的DSL示例（RCL-FR-007；回归tests不进入黄金重放）。

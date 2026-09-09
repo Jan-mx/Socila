@@ -41,7 +41,7 @@
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化、三地区批准和候选快照重放完成；四川无快照 | 保持Accepted，不因任务3/4复审回退 |
 | 任务3：地区感知用户规划 | **Accepted（2026-09-09第二轮修复）**：空黄金测试集fail-closed、停用URL地区绑定、replay三方hash、隔离DB 116/116零skip、E2E 19/19（含replay/跨地区停用/停用后unsupported） | 保持Accepted；0017与持久快照调度待WI-20260907-04授权 |
-| 任务4：地区化政策案例库 | **Reopened（2026-09-09）**：CLI为空壳，apply丢失场景数据，当前分支未证明真实案例替换可执行 | 修复WI-20260907-03；不得重复运行旧apply |
+| 任务4：地区化政策案例库 | **Accepted（2026-09-09第二轮修复）**：CLI七模式真实执行、完整场景字段落库、真实CLI闭环演练（删851/500插36/36/36）、E2E精确36/18/18；持久库未apply | 保持Accepted（代码层）；持久替换待WI-20260907-04授权 |
 | 持久库案例替换 | **Blocked**：当前0015/0016、沪粤active、452/36/528保持 | 任务3/4重新Accepted、fresh DB/E2E证据和用户明确授权后执行WI-20260907-04 |
 | 最终分支集成 | **Blocked**：当前最终开发分支尚未合入重构分支 | WI-02/03/04全部Accepted后执行WI-20260909-01；只合并`codex/task34-regional-case-rebuild` |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
@@ -355,6 +355,19 @@
 | Chromium E2E（全新`task34r2_e2e`库+Jan引导+seed+`scripts/e2e-task3-setup.ts`预创建沪粤快照+standalone） | PASS；全套19/19（auth 10+task3 6+task4 3），task3新增JRP-AC-008历史replay三方一致、JRP-AC-009跨地区停用409且零修改、JRP-AC-009停用后409 POLICY_SNAPSHOT_UNAVAILABLE并恢复 |
 | Secret与Gitleaks | PASS；scan-secrets --all 772文件零命中；Gitleaks 8.29.1完整历史79 commits no leaks；allowlist哨兵3场景全过 |
 | 边界 | 0017只在隔离库验证；持久账本repair、日期快照调度、激活/停用未授权执行；持久policyops全程未连接未修改；演练容器资源零新增（复用既有jrp-drill-pg容器建新库） |
+
+## 当前任务验证（任务4第二轮修复：受控CLI七模式真实执行，2026-09-09本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 已记录；executor模块缺失（Cannot find module）、apply写入空占位（manifest类型不承载完整场景） |
+| Node单元（`npm test`） | PASS；72文件/663通过、skip 0（含executor七动作8例、release-gates空黄金集+example过滤、manifest完整场景类型、rcl-apply完整字段反例） |
+| TypeScript / ESLint / Build | PASS；tsc退出0；eslint 0 error/6 warning（均为既有）；build退出0（1条既有warning：citation-verifier动态fs访问） |
+| 数据库集成（显式`SOCILA_TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5439/task34r2b_drill`，全新PG17+pgvector） | PASS；migration×2幂等（含0018扩展：cases.input/expected/assertions列+归档条目entity_type含test）、bootstrap×2、seed×2、`npm run test:db` 26文件/129通过skip 0（含新增rcl-cli 11例：audit→generate→plan→prepare-archive真实pg_dump→真实恢复演练（第二实例pg_restore+reconcile全表对账+verified restore-report+重算sha256sums）→verify-archive→apply（删851/500插36/36/36）→verify（36/36/78、沪粤18/18、配额、字段非空））、`agent.migrate --with-roles`×2幂等、`pytest -m integration` 20通过skip 0 |
+| Python门禁 | PASS；ruff 0问题、mypy 33文件0错误、pytest非集成94通过、pip-audit无已知漏洞 |
+| Chromium E2E（全新`task34r2_e2e`库+`scripts/e2e-rcl-setup.ts`真实CLI替换演练+standalone） | PASS；全套19/19，task4 4例精确断言36条/沪18粤18/治理字段非空/管理active过滤/归档批次可读/匿名401/普通用户403/四川unsupported |
+| Secret与Gitleaks | PASS；scan-secrets --all 773文件零命中；Gitleaks 8.29.1完整历史no leaks；allowlist哨兵3场景全过 |
+| 边界 | 0018/删除/插入只在隔离库演练；持久policyops全程未连接未修改；持久库替换待WI-20260907-04授权 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 

@@ -1,12 +1,12 @@
 # 任务4案例库治理与地区化重建验收报告
 
-> Status: Reopened（2026-09-09复审）
+> Status: Accepted（2026-09-09第二轮修复重新验收；代码与隔离库层面，持久库未apply）
 > Branch: `codex/task34-regional-case-rebuild`
 > Scope: WI-20260907-03（地区化政策案例生成与可靠归档重建）
 
 ## 当前结论
 
-2026-09-07独立复审指出的P0/P1/P2缺陷曾被报告为已修复；2026-09-09复审发现受控CLI仍为空壳，apply仍丢失完整场景数据，专用E2E不足以证明36/18/18。任务4 Feature保持**Reopened**；历史代码与持久执行记录保留为审计事实。
+2026-09-09复审发现的三项P0/P1（受控CLI空壳、apply丢失完整场景数据、E2E未证明36/18/18）已于第二轮修复并取得专用反例证据，任务4 Feature恢复**Accepted（2026-09-09）**——**代码与隔离库层面**：持久库0018、删除、插入与归档状态写入均未执行，仍待WI-20260907-04在fresh audit后经用户明确授权。历史代码与持久执行记录保留为审计事实。
 
 历史背景：`e26a543`实现0016、案例治理与452/36/528路径；复审发现归档SHA用文件名而非文件内容、selection报告缺失、restore报告pending、manifest未绑定内容、81条展示hash为pending、无可比断言仍判match、质量分空、多标签未接入、并发无行锁、地区默认硬编码（[复审报告](./review-report-2026-09-07.md)）。
 
@@ -86,3 +86,51 @@
 - 未复核：真实CLI在全新PG17+pgvector隔离库完成旧库归档恢复、新案例生成、替换和重复验证。
 - 仍满足权限边界：本轮未执行持久0017/0018，也未删除或替换当前452/36/500。
 - README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability与复审报告同步。
+
+## 2026-09-09第二轮修复验收（重新验收）
+
+### 9.1 TDD Red（专用反例，旧实现失败证据）
+
+| 反例 | Red证据（旧实现） |
+| --- | --- |
+| 受控CLI空壳 | `executor.test.ts`首跑`Cannot find module '../executor'`（七动作模块不存在）；CLI七模式只打印说明并退出0 |
+| apply完整场景字段 | `rcl-apply.integration.test.ts`新增用例断言cases/showcase/tests场景字段与manifest逐字节一致——旧实现写null/{}/[]占位失败 |
+
+### 9.2 修复实现
+
+| 缺陷 | 实现 |
+| --- | --- |
+| P0 CLI空壳 | `src/lib/case-governance/executor.ts`七动作（audit/prepareRclArchive/verifyRclArchive/generateRclScenarios/planRclReplacement/applyRclReplacement/verifyRclReplacement）+`bufferSha256`（二进制dump直接Buffer哈希，修复String(buffer)有损解码）；`scripts/rcl-case-library.ts`改为薄壳调用executor并输出可验证JSON、按失败原因返回非零退出码 |
+| P0 apply丢失场景 | `manifest.ts`的`NewCaseRow/NewShowcaseRow/NewTestRow`扩展scenarioKey/asOfDate/input/expected/assertions/coverage/evidence；0018追加cases.input/expected/assertions列（幂等IF NOT EXISTS）与归档条目entity_type含test；`apply.ts`逐字节写入（cases.isRegression=true、showcase.inputData/expectedData/assertions、tests.input/expected+sourceCaseUid）+事务内`assertCompleteScenarioFields`（空占位fail-closed零写入） |
+| P1 manifest类型 | manifestHash绑定完整场景字段（任一漂移改变hash，RCL-AC-003）；plan-replacement与apply统一按行内容重算规范化hash（原生SQL行、排除基础设施列），库中content_hash列为空也能精确绑定 |
+| P1 E2E未证明36/18/18 | `e2e/task4-case-library.spec.ts`重写：`/api/showcase-cases`精确36条、沪18粤18、qualityScore/qualityBreakdown/multiLabels/assertions/scenarioKey/asOfDate非空；管理搜索`q=RPC-`只返回active；管理员归档批次可读；匿名401/普通用户403；四川unsupported；配套`scripts/e2e-rcl-setup.ts`在E2E库完成真实CLI替换演练 |
+| P1 真实CLI闭环 | `rcl-cli.integration.test.ts` 11例spawn真实CLI：audit→generate→plan→prepare-archive（真实pg_dump）→真实恢复演练（第二实例pg_restore+reconcile全表对账+verified restore-report+重算sha256sums）→verify-archive→apply（删851/500插36/36/36）→verify（36/36/78、配额、字段非空） |
+| RCL-FR-007 golden语义 | `release-gates.ts`golden_tests只加载source='example'的DSL示例（回归tests不进入激活门禁重放），空集合fail-closed |
+
+### 9.3 专用Green与全量门禁（2026-09-09本地新鲜执行）
+
+| 门禁 | 命令/条件 | 结果 |
+| --- | --- | --- |
+| 专用单元 | `executor.test.ts` 8、`release-gates.test.ts` 10、`rcl-apply.integration.test.ts` 9、`manifest.test.ts` | 全部通过 |
+| Node单元 | `npm test` | 72文件/663通过、skip 0 |
+| TypeScript / ESLint / Build | `npx tsc --noEmit`、`npx eslint src scripts`、`npm run build`（2 workers） | 退出0；0 error/6既有warning；1条既有warning（citation-verifier动态fs访问） |
+| DB集成 | 全新PG17+pgvector库`task34r2b_drill`，显式`SOCILA_TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5439/task34r2b_drill`；migration×2（含0018扩展）、bootstrap×2、seed×2全部幂等 | `npm run test:db` 26文件/129通过、skip 0（含rcl-cli 11例真实CLI演练） |
+| Agent迁移与Python集成 | `agent.migrate --with-roles`×2幂等；`pytest -m integration` | 20通过、skip 0 |
+| Python静态与单元 | ruff、mypy（33文件0错误）、`pytest -m "not integration"`、pip-audit | 全部通过；94通过skip 0；无已知漏洞 |
+| Chromium E2E | 全新`task34r2_e2e`库+`scripts/e2e-rcl-setup.ts`真实CLI替换演练+standalone | 全套19/19；task4 4例精确36/18/18、治理字段、管理过滤、归档权限 |
+| Secret扫描 / Gitleaks / 哨兵 | `scan-secrets --all`、Gitleaks 8.29.1完整历史、`verify-gitleaks-allowlist.mjs` | 773文件零命中；no leaks found；3场景全过 |
+
+### 9.4 复验说明
+
+- E2E登录/注册存在每小时频率限制（`LOGIN_USER_RATE_LIMIT=5`、`REGISTER_RATE_LIMIT=5`），task3/task4 spec通过合并admin测试与复用注册用户控制在限额内（admin登录共4次<5）。
+- `git`历史Gitleaks在提交前扫描为80 commits基线；提交后需复扫。
+- 数据库门禁全程使用显式隔离URL；未连接、未修改本机持久policyops库；未执行0017/0018、删除、插入或归档状态写入。
+
+### 9.5 Definition of Done对照（2026-09-09）
+
+- RCL-FR-001～022、RCL-NFR-001～008、RCL-AC-001～015：全部具有真实代码与测试映射（§9.2/§9.3）。
+- 旧完整库归档可恢复（真实恢复演练：第二实例pg_restore+reconcile全表对账）；现有错误归档不再作为通过证据。
+- 新案例确定性生成，最终`N/36/N+42`（36/36/78）与manifest逐项一致；沪粤公开各18条；CN和四川严格留在内部测试边界。
+- 代码阶段不写持久库；真实替换待WI-20260907-04在fresh audit后经用户明确授权。
+- Node/DB/Chromium/TS/ESLint/Build/Python/安全门禁新鲜通过且零skip。
+- README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability与本报告已同步；任务4 PRD与WI-20260907-03已置Accepted（代码层）。

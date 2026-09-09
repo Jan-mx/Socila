@@ -102,11 +102,13 @@ async function activateRegion(
 }
 
 describe("RCL 端到端：生成→评分→替换→N/36/N+42（RCL-AC-005/007/008/009/011/013）", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     if (!DRILL_URL) {
       throw new Error("SOCILA_TEST_DATABASE_URL 未设置（CI database-gates 自动提供）");
     }
     process.env.DATABASE_URL = DRILL_URL;
+    // 防御清理：既往演练残留的RPCT回归tests会进入激活门禁黄金重放并导致失败。
+    await db.delete(tests).where(sql`name like 'RPCT-%'`);
   });
 
   afterAll(async () => {
@@ -209,6 +211,13 @@ describe("RCL 端到端：生成→评分→替换→N/36/N+42（RCL-AC-005/007/
         uid: s.caseUid,
         contentHash: s.caseUid, // 占位；真实contentHash由行内容计算
         jurisdictionCode: s.jurisdictionCode,
+        scenarioKey: s.scenarioKey,
+        asOfDate: s.asOfDate,
+        input: s.input,
+        expected: {},
+        assertions: s.assertions,
+        coverageObligations: s.coverageObligations,
+        evidence: s.evidence,
         qualityScore: score.total,
         qualityBreakdown: score as unknown as Record<string, unknown>,
         multiLabels: labels,
@@ -230,6 +239,13 @@ describe("RCL 端到端：生成→评分→替换→N/36/N+42（RCL-AC-005/007/
         uid: s.caseUid,
         contentHash: s.caseUid,
         jurisdictionCode: s.jurisdictionCode,
+        scenarioKey: s.scenarioKey,
+        asOfDate: s.asOfDate,
+        input: s.input,
+        expected: {},
+        assertions: s.assertions,
+        coverageObligations: s.coverageObligations,
+        evidence: s.evidence,
         sourceCaseUid: s.caseUid,
         qualityScore: 90,
         qualityBreakdown: {},
@@ -243,6 +259,8 @@ describe("RCL 端到端：生成→评分→替换→N/36/N+42（RCL-AC-005/007/
         contentHash: s.testUid,
         jurisdictionCode: s.jurisdictionCode,
         sourceCaseUid: s.caseUid,
+        input: { user: s.input },
+        expected: {},
       })),
       exampleTests: [],
       oldTargets: { cases: [], showcase: [], tests: [] },

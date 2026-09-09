@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { eq, inArray, sql } from "drizzle-orm";
+import { rowContentHash } from "@/lib/case-governance/hashes";
 import { db } from "@/lib/db";
 import {
   caseArchiveBatches,
@@ -27,28 +28,83 @@ import { buildRclManifest, type RclManifest } from "@/lib/case-governance/manife
 
 const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
 
-function makeManifest(overrides: Partial<RclManifest> = {}): RclManifest {
+async function makeManifest(overrides: Partial<RclManifest> = {}): Promise<RclManifest> {
+  // 旧目标行hash：从库读完整行按行内容重算（库中content_hash列可能为空，
+  // 行内容哈希才是内容绑定权威，RCL-FR-002/AC-003；2026-09-09统一读取路径）。
+  const oldCaseRows = await db.execute(sql`SELECT * FROM "cases" WHERE id IN (900, 901) ORDER BY id`);
+  const oldShowRows = await db.execute(sql`SELECT * FROM "showcase_cases" WHERE id = 800`);
+  const oldCaseTargets = oldCaseRows.rows.map((r) => ({
+    rowId: Number((r as { id: number }).id),
+    uid: String((r as { case_uid: string | null }).case_uid ?? null),
+    contentHash: rowContentHash(r as Record<string, unknown>, ["id", "created_at", "updated_at", "governed_at", "post_date"]),
+  }));
+  const oldShowTargets = oldShowRows.rows.map((r) => ({
+    rowId: Number((r as { id: number }).id),
+    uid: String((r as { case_uid: string | null }).case_uid ?? null),
+    contentHash: rowContentHash(r as Record<string, unknown>, ["id", "created_at", "updated_at", "curated_at"]),
+  }));
   const m = buildRclManifest({
     algorithmVersion: "RCL-MANIFEST-1.0",
     generatorVersion: "RCL-GEN-1.0",
     newCases: [
-      { rowId: 1, uid: "RPC-310000-SH-NEW-1-V1", contentHash: "new-h-1", jurisdictionCode: "310000", qualityScore: 90, qualityBreakdown: { input: 40 }, multiLabels: ["male"], snapshotId: "11111111-1111-4111-8111-111111111111", snapshotHash: "snap-h-1", sourceTestUid: "RPCT-310000-SH-NEW-1-V1" },
+      {
+        rowId: 1,
+        uid: "RPC-310000-SH-NEW-1-V1",
+        contentHash: "new-h-1",
+        jurisdictionCode: "310000",
+        scenarioKey: "SH-RETIREMENT-TEST",
+        asOfDate: "2026-09-01",
+        input: { basic: { gender: "male", birth_year: 1965 } },
+        expected: { retirement: { legal_retire_date: "2028-10-01" } },
+        assertions: [{ path: "calc.retirement.legal_retire_date", operator: "eq", value: "2028-10-01" }],
+        coverageObligations: ["capability:retirement"],
+        evidence: [{ documentId: "DOC-SH-POLICY-2025", locator: "正文" }],
+        qualityScore: 90,
+        qualityBreakdown: { inputCompleteness: 40, coverageObligations: 30, snapshotReplay: 20, total: 90 },
+        multiLabels: ["male", "before_1970", "employed"],
+        snapshotId: "11111111-1111-4111-8111-111111111111",
+        snapshotHash: "snap-h-1",
+        sourceTestUid: "RPCT-310000-SH-NEW-1-V1",
+      },
     ],
     newShowcase: [
-      { rowId: 2, uid: "RPC-310000-SH-NEW-1-V1", contentHash: "new-sh-1", jurisdictionCode: "310000", sourceCaseUid: "RPC-310000-SH-NEW-1-V1", qualityScore: 90, qualityBreakdown: { input: 40 }, multiLabels: ["male"], snapshotId: "11111111-1111-4111-8111-111111111111", snapshotHash: "snap-h-1" },
+      {
+        rowId: 2,
+        uid: "RPC-310000-SH-NEW-1-V1",
+        contentHash: "new-sh-1",
+        jurisdictionCode: "310000",
+        scenarioKey: "SH-RETIREMENT-TEST",
+        asOfDate: "2026-09-01",
+        input: { basic: { gender: "male", birth_year: 1965 } },
+        expected: { retirement: { legal_retire_date: "2028-10-01" } },
+        assertions: [{ path: "calc.retirement.legal_retire_date", operator: "eq", value: "2028-10-01" }],
+        coverageObligations: ["capability:retirement"],
+        evidence: [{ documentId: "DOC-SH-POLICY-2025", locator: "正文" }],
+        sourceCaseUid: "RPC-310000-SH-NEW-1-V1",
+        qualityScore: 90,
+        qualityBreakdown: { inputCompleteness: 40, coverageObligations: 30, snapshotReplay: 20, total: 90 },
+        multiLabels: ["male", "before_1970", "employed"],
+        snapshotId: "11111111-1111-4111-8111-111111111111",
+        snapshotHash: "snap-h-1",
+      },
     ],
     newTests: [
-      { rowId: 3, uid: "RPCT-310000-SH-NEW-1-V1", contentHash: "new-t-1", jurisdictionCode: "310000", sourceCaseUid: "RPC-310000-SH-NEW-1-V1" },
+      {
+        rowId: 3,
+        uid: "RPCT-310000-SH-NEW-1-V1",
+        contentHash: "new-t-1",
+        jurisdictionCode: "310000",
+        sourceCaseUid: "RPC-310000-SH-NEW-1-V1",
+        input: { user: { basic: { gender: "male", birth_year: 1965 } } },
+        expected: { retirement: { legal_retire_date: "2028-10-01" } },
+      },
     ],
     exampleTests: [
       { rowId: 4, uid: "示例1", contentHash: "ex-h-1", jurisdictionCode: "CN" },
     ],
     oldTargets: {
-      cases: [
-        { rowId: 900, uid: "old-case-1", contentHash: "old-h-1" },
-        { rowId: 901, uid: "old-case-2", contentHash: "old-h-2" },
-      ],
-      showcase: [{ rowId: 800, uid: "old-show-1", contentHash: "old-sh-1" }],
+      cases: oldCaseTargets,
+      showcase: oldShowTargets,
       tests: [{ rowId: 700, uid: "old-test-1", contentHash: "old-t-1" }],
     },
     snapshot: { id: "11111111-1111-4111-8111-111111111111", contentHash: "snap-h-1" },
@@ -57,11 +113,15 @@ function makeManifest(overrides: Partial<RclManifest> = {}): RclManifest {
 }
 
 describe("RCL apply（FR-018/019/020、AC-003/010/011）", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     if (!DRILL_URL) {
       throw new Error("SOCILA_TEST_DATABASE_URL 未设置（CI database-gates 自动提供）");
     }
     process.env.DATABASE_URL = DRILL_URL;
+    // 全局清理：既往运行残留的RPC行（避免caseUid查询返回多条）。
+    await db.delete(cases).where(sql`case_uid like 'RPC-%'`);
+    await db.delete(showcaseCases).where(sql`case_uid like 'RPC-%'`);
+    await db.delete(tests).where(sql`name like 'RPCT-%'`);
   });
 
   async function seedFixture(): Promise<{ batchId: string; manifest: RclManifest }> {
@@ -82,7 +142,9 @@ describe("RCL apply（FR-018/019/020、AC-003/010/011）", () => {
     await db.delete(cases).where(inArray(cases.id, [900, 901]));
     await db.delete(cases).where(sql`case_uid like 'RPC-%'`);
     await db.delete(showcaseCases).where(inArray(showcaseCases.id, [800]));
+    await db.delete(showcaseCases).where(sql`case_uid like 'RPC-%'`);
     await db.delete(tests).where(inArray(tests.id, [700]));
+    await db.delete(tests).where(sql`name like 'RPCT-%'`);
     await db.delete(caseArchiveEntries);
     await db.delete(caseArchiveBatches);
 
@@ -105,7 +167,7 @@ describe("RCL apply（FR-018/019/020、AC-003/010/011）", () => {
       { id: 700, name: "old-test-1", sourceCaseUid: "old-test-1", source: "regression", input: {}, expected: {} },
     ]);
 
-    const manifest = makeManifest();
+    const manifest = await makeManifest();
     const batchRows = await db
       .insert(caseArchiveBatches)
       .values({
@@ -156,6 +218,85 @@ describe("RCL apply（FR-018/019/020、AC-003/010/011）", () => {
     expect(newCase[0].qualityBreakdown).not.toBeNull();
   });
 
+  it("apply落库完整场景字段：cases/showcase/tests与manifest逐字节一致且非空（RCL-FR-018/AC-011，复审P0）", async () => {
+    const { batchId, manifest } = await seedFixture();
+    await executeRclApply({ db, manifest, batchId, actor: "test-admin" });
+
+    // cases：scenarioKey/asOfDate/input/expected/assertions/coverage/evidence 逐字节一致。
+    const newCase = await db.select().from(cases).where(eq(cases.caseUid, "RPC-310000-SH-NEW-1-V1"));
+    expect(newCase).toHaveLength(1);
+    const c = newCase[0];
+    const mc = manifest.newCases[0];
+    expect(c.scenarioKey).toBe(mc.scenarioKey);
+    expect(String(c.asOfDate)).toBe(mc.asOfDate);
+    expect(c.input).toEqual(mc.input);
+    expect(c.expected).toEqual(mc.expected);
+    expect(c.assertions).toEqual(mc.assertions);
+    expect(c.coverageObligations).toEqual(mc.coverageObligations);
+    expect(c.evidence).toEqual(mc.evidence);
+    expect(c.isRegression).toBe(true);
+    // 禁止null/空对象/空数组占位。
+    expect(c.input).not.toEqual({});
+    expect(c.assertions).not.toEqual([]);
+    expect(c.coverageObligations).not.toEqual([]);
+    expect(c.evidence).not.toEqual([]);
+
+    // showcase：inputData/expectedData/assertions/coverage/evidence 完整。
+    const newShow = await db.select().from(showcaseCases).where(eq(showcaseCases.caseUid, "RPC-310000-SH-NEW-1-V1"));
+    expect(newShow).toHaveLength(1);
+    const s = newShow[0];
+    const ms = manifest.newShowcase[0];
+    expect(s.inputData).toEqual(ms.input);
+    expect(s.expectedData).toEqual(ms.expected);
+    expect(s.assertions).toEqual(ms.assertions);
+    expect(s.scenarioKey).toBe(ms.scenarioKey);
+    expect(String(s.asOfDate)).toBe(ms.asOfDate);
+    expect(s.coverageObligations).toEqual(ms.coverageObligations);
+    expect(s.evidence).toEqual(ms.evidence);
+    expect(s.inputData).not.toEqual({});
+    expect(s.assertions).not.toEqual([]);
+
+    // tests：input/expected 完整且引用source_case_uid。
+    const newTest = await db.select().from(tests).where(eq(tests.name, "RPCT-310000-SH-NEW-1-V1"));
+    expect(newTest).toHaveLength(1);
+    const t = newTest[0];
+    const mt = manifest.newTests[0];
+    expect(t.input).toEqual(mt.input);
+    expect(t.expected).toEqual(mt.expected);
+    expect(t.sourceCaseUid).toBe(mt.sourceCaseUid);
+    expect(t.input).not.toEqual({});
+    expect(t.expected).not.toEqual({});
+  });
+
+  it("manifest场景字段不完整（空input/空assertions占位）→ apply拒绝且零写入（RCL-FR-018 fail-closed）", async () => {
+    const { batchId, manifest } = await seedFixture();
+    // 构造字段缺失的manifest：字段缺失必然改变manifestHash，因此先把批次哈希
+    // 更新为stripped的哈希（模拟audit生成的不完整manifest被误记录到批次），
+    // apply 必须在事务内以场景字段门禁拒绝并整体回滚（零写入）。
+    const stripped = buildRclManifest({
+      algorithmVersion: manifest.algorithmVersion,
+      generatorVersion: manifest.generatorVersion,
+      newCases: [{ ...manifest.newCases[0], input: {}, assertions: [] }],
+      newShowcase: manifest.newShowcase,
+      newTests: manifest.newTests,
+      exampleTests: manifest.exampleTests,
+      oldTargets: manifest.oldTargets,
+      snapshot: manifest.snapshot,
+    });
+    await db
+      .update(caseArchiveBatches)
+      .set({ manifestHash: stripped.manifestHash })
+      .where(eq(caseArchiveBatches.id, batchId));
+    await expect(
+      executeRclApply({ db, manifest: stripped, batchId, actor: "test-admin" }),
+    ).rejects.toBeInstanceOf(RclApplyRejectedError);
+    // 零写入：旧目标仍在，新行不存在，批次回滚到 restore_verified。
+    expect((await db.select().from(cases).where(inArray(cases.id, [900, 901])))).toHaveLength(2);
+    expect((await db.select().from(cases).where(eq(cases.caseUid, "RPC-310000-SH-NEW-1-V1")))).toHaveLength(0);
+    const batchAfter = await db.select().from(caseArchiveBatches).where(eq(caseArchiveBatches.id, batchId));
+    expect(batchAfter[0].status).toBe("restore_verified");
+  });
+
   it("prepared批次apply被拒且零写入（RCL-NFR-001/AC-002）", async () => {
     const { manifest } = await seedFixture();
     const prepared = await db
@@ -178,7 +319,7 @@ describe("RCL apply（FR-018/019/020、AC-003/010/011）", () => {
 
   it("manifest哈希与批次不符 → 拒绝（RCL-AC-003）", async () => {
     const { batchId } = await seedFixture();
-    const drifted = makeManifest({ manifestHash: "deadbeef".repeat(8) });
+    const drifted = await makeManifest({ manifestHash: "drift-manifest-hash-not-real-" + "x".repeat(32) });
     await expect(
       executeRclApply({ db, manifest: drifted, batchId, actor: "test-admin" }),
     ).rejects.toBeInstanceOf(RclApplyRejectedError);

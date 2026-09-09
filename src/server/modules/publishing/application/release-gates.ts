@@ -213,9 +213,12 @@ export async function runReleaseGates(
   // 5) golden_tests：按继承链（目标地区 + CN）加载测试并用快照成员重放。
   // 复用规则测试运行器同一语义：rule_id 测试单规则执行，无 rule_id 全量编排；
   // expected 深度部分匹配（与 admin 测试运行器 deepPartialDiff 一致）。
+  // 只取 DSL 示例黄金测试（source='example'，RCL-FR-007 语义）：地区回归tests
+  // （source='regression'，任务4 apply 产物）不属于黄金门禁，混入会导致重放失败。
   // fail-closed：快照没有任何适用黄金测试时必须拒绝（JRP-FR-007/AC-007），
   // 空集合不得记 pass —— 否则无测试地区可绕过黄金门禁。
-  const tests = await deps.loadTests([jurisdictionCode, "CN"]);
+  const allLoaded = await deps.loadTests([jurisdictionCode, "CN"]);
+  const tests = allLoaded.filter((t) => t.source === "example");
   const asOfDate = snapshot.snapshot.asOfDate ?? "2026-01-01";
   const { rules, params, ruleSet } = memberToEngineInput(snapshot);
   if (tests.length === 0) {

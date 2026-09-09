@@ -1,7 +1,7 @@
 # 地区化政策案例库全量重建 PRD
 
 > Author: Jan
-> Status: Reopened
+> Status: Accepted（2026-09-09第二轮修复重新验收）
 > Updated: 2026-09-09
 
 ## 文档元数据
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-case-library-governance.md` |
 | 类型 | Feature；替代原“上海案例库精简为452/36/528”方案 |
-| 状态 | Reopened（2026-09-09复审）；原Accepted结论因CLI、apply和数据契约缺口撤回 |
+| 状态 | Accepted（2026-09-09第二轮修复重新验收）；原Accepted结论曾因CLI、apply和数据契约缺口撤回 |
 | 前置依赖 | 任务2首期Accepted；任务3经`WI-20260907-02`修复并重新Accepted |
 | 执行顺序 | 任务3修复 → 本Feature代码与隔离验收 → 持久库替换Work Item |
 | 退出门禁 | 完整旧库可恢复归档、新地区案例确定性生成、沪粤36条展示、精确替换和完整E2E均通过 |
@@ -28,7 +28,7 @@
 
 因此旧CLG-FR/CLG-NFR/CLG-AC及452/36/528结论只保留为历史，不再是当前验收标准。本PRD采用新的RCL编号，全量退役旧案例及其500条来源回归测试，并依据修复后的上海、广东日期快照生成无个人数据的确定性政策案例。
 
-2026-09-08报告所称修复仍需2026-09-09复审：受控CLI仍是空壳，apply写入场景/断言/输入/期望为空，专用E2E未验证36/18/18。任务4在这些专用反例和真实DB/E2E证据完成前保持Reopened。
+2026-09-08报告所称修复仍需2026-09-09复审：受控CLI仍是空壳，apply写入场景/断言/输入/期望为空，专用E2E未验证36/18/18。2026-09-09第二轮修复已完成：CLI七模式真实执行、manifest完整场景字段逐字节落库、真实CLI归档/恢复/生成/替换演练、E2E精确36/18/18（见§9验收记录），本PRD恢复**Accepted**；持久库0018/删除/插入仍待WI-20260907-04授权。
 
 治理前完整dump及独立SHA目前存在，是旧851/117/528的恢复来源；不得把现有错误case-library归档视为已验证。
 
@@ -168,3 +168,18 @@ type RegionalPolicyScenario = {
 - `WI-20260907-02-task3-temporal-entry-hardening.md`：阻塞本Feature的前置任务。
 - `WI-20260907-03-regional-policy-case-rebuild.md`：本Feature代码交付。
 - `WI-20260907-04-persistent-case-library-replacement.md`：代码Accepted后的持久执行。
+
+## 9. 验收记录（2026-09-09第二轮修复重新验收）
+
+2026-09-09复审P0/P1缺陷全部修复并取得专用反例证据，本PRD恢复**Accepted**（代码与隔离库层面；持久库尚未apply）：
+
+1. **受控CLI七模式真实执行**（RCL-FR-021）：`scripts/rcl-case-library.ts`改为调用`src/lib/case-governance/executor.ts`七动作——audit（真实计数+目标指纹）、generate（36场景+快照规划器期望回填）、plan-replacement（旧目标行内容hash绑定+完整manifestHash）、prepare-archive（真实pg_dump+selection+manifest+pending restore+最后不自包含sha256sums.txt）、verify-archive（文件字节SHA+必备文件+restore verified→批次restore_verified）、apply（--i-am-authorized+事务内FOR UPDATE/applying/唯一约束替换）、verify（N/36/N+42+配额+字段完整性）；每个模式输出可验证JSON并按失败原因返回非零退出码。
+2. **完整场景字段落库**（RCL-FR-006/018/AC-011）：`NewCaseRow/NewShowcaseRow/NewTestRow`扩展scenarioKey/asOfDate/input/expected/assertions/coverage/evidence；0018追加cases的input/expected/assertions列（幂等IF NOT EXISTS）；apply逐字节写入（cases的isRegression=true、showcase的inputData/expectedData/assertions、tests的input/expected+sourceCaseUid）；`assertCompleteScenarioFields`在事务内fail-closed（null/空对象/空数组占位拒绝且零写入）。
+3. **真实CLI闭环演练**（RCL-AC-004/005/008/011）：全新隔离PG17+pgvector库上audit→generate→plan→prepare-archive（docker pg_dump）→真实恢复演练（第二实例pg_restore+reconcileDatabases全表对账+verified restore-report+重算sha256sums）→verify-archive→apply（删851 cases/500回归tests、插36/36/36）→verify（36/36/78，沪粤18/18、男女9/9、年龄段6/6/6、就业态6/6/6、字段非空）；每个case一条地区回归test、42条DSL示例保留。
+4. **行内容hash绑定**（RCL-AC-003）：plan-replacement与apply统一按行内容重算规范化hash（原生SQL行、排除基础设施列）比较，库中content_hash列为空也能精确绑定；任一行漂移拒绝且零写入。
+5. **激活门禁黄金语义**（RCL-FR-007）：golden_tests只加载source='example'的DSL示例（回归tests不进入激活门禁重放），空集合fail-closed。
+6. **Chromium E2E精确验证**（RCL-AC-008/009/011/012/013/015）：`e2e/task4-case-library.spec.ts`经`/api/showcase-cases`精确断言36条、沪18粤18、qualityScore/qualityBreakdown/multiLabels/assertions/scenarioKey/asOfDate非空；管理搜索`q=RPC-`只返回active；管理员归档元数据可读（apply批次在列）；匿名401/普通用户403；四川unsupported。配套`scripts/e2e-rcl-setup.ts`在E2E库完成真实CLI替换演练。
+
+门禁汇总：`npm test` 72文件/663、`test:db` 26文件/129零skip（含rcl-cli 11例真实CLI演练）、Chromium E2E全套19/19、tsc/eslint退出0（0 error、6条既有warning）、`npm run build`退出0（1条既有warning）、ruff/mypy/pytest 94+20零skip、pip-audit无已知漏洞、scan-secrets 773文件零命中、Gitleaks 8.29.1完整历史no leaks、allowlist哨兵3场景全过。
+
+**代码Accepted与持久库尚未apply**：本PRD验收覆盖代码、生成资产与隔离库证据；持久库0018迁移、旧452/36/500删除、新N/36/N插入与归档状态写入均未执行，仍待WI-20260907-04在fresh audit后经用户明确授权。

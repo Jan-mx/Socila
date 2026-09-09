@@ -1,7 +1,7 @@
 # WI-20260907-03：地区化政策案例生成与可靠归档重建
 
 > Author: Jan
-> Status: Reopened（2026-09-09复审）
+> Status: Accepted（2026-09-09第二轮修复验收）
 > Updated: 2026-09-09
 
 ## Work Item
@@ -14,7 +14,7 @@
 
 ## 背景与证据
 
-原任务4的case-library归档SHA不是文件内容SHA，选择报告缺失、恢复报告仍pending、manifest未绑定内容，81条展示归档hash为`pending`，452/36质量分为空。2026-09-08报告声称修复完成；2026-09-09复审确认受控CLI仍为空壳，apply写入的新案例场景/断言/输入/期望为空，专用E2E未核对36条与沪粤18/18。上述缺陷修复前本Work Item不得Accepted。
+原任务4的case-library归档SHA不是文件内容SHA，选择报告缺失、恢复报告仍pending、manifest未绑定内容，81条展示归档hash为`pending`，452/36质量分为空。2026-09-08报告声称修复完成；2026-09-09复审确认受控CLI仍为空壳，apply写入的新案例场景/断言/输入/期望为空，专用E2E未核对36条与沪粤18/18。2026-09-09第二轮修复完成并取得全部专用反例证据，本Work Item**Accepted**（代码与隔离库层面；持久库替换仍待WI-20260907-04）。
 
 ## 范围
 
@@ -65,3 +65,14 @@
 ## 文档同步
 
 - 任务4 PRD、README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability和任务4复审报告。
+
+## 验收记录（2026-09-09第二轮修复）
+
+1. **受控CLI七模式真实执行**：`scripts/rcl-case-library.ts`调用`executor.ts`七动作，输出可验证JSON并按失败原因返回非零退出码；默认只读audit；apply必须`--i-am-authorized`。
+2. **完整场景字段**：manifest类型承载scenarioKey/asOfDate/input/expected/assertions/coverage/evidence；0018追加cases.input/expected/assertions列；apply逐字节落库且事务内fail-closed校验（空占位拒绝零写入）。
+3. **真实CLI闭环**：隔离库audit→generate→plan→prepare-archive（真实pg_dump）→真实恢复演练（第二实例pg_restore+reconcile全表对账+verified restore-report+重算sha256sums）→verify-archive→apply（删851/500插36/36/36）→verify（36/36/78、沪粤18/18、配额、字段非空）。
+4. **行内容hash绑定**：plan与apply统一行内容重算hash比较，任一漂移拒绝零写入（RCL-AC-003）。
+5. **golden语义**：激活门禁只加载source=example黄金测试（RCL-FR-007）。
+6. **E2E**：`e2e/task4-case-library.spec.ts`精确36/18/18、治理字段、管理active过滤、归档权限；全套19/19。
+
+门禁：`npm test` 72文件/663、`test:db` 26文件/129零skip、E2E 19/19、tsc/eslint 0 error、build退出0（1条既有warning）、Python 94+20零skip、Gitleaks/scan-secrets/哨兵全过。持久库未执行任何写入。
