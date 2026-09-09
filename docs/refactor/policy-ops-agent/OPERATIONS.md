@@ -137,21 +137,21 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 7. 管理员批准完成后，只读列出三地区候选快照成员、版本、provenance和黄金结果；本次三地区候选快照已创建并重放，未来新快照仍需另行取得写入授权。
 8. 创建后重复重放并验证隔离；四川无快照且不开放流量。案例删除和地区激活不包含在本runbook授权内。
 
-## 任务3/4 Reopened运行边界（ADR-0011）
+## 任务3 Accepted、任务4/WI-04 Reopened运行边界（ADR-0011）
 
 > 当前持久事实（2026-09-07，只读复审）：Drizzle账本16条，0015/0016已经执行；上海、广东release为active，四川0；`cases/showcase_cases/tests/policy_snapshots=452/36/528/6`。旧任务4已删除399/81，但case-library归档SHA无效、selection报告缺失、restore报告仍pending。禁止重复运行旧任务4apply。
 >
-> 2026-09-09复审：任务3与任务4代码仍为Reopened。0017/0018只存在于代码分支，持久库尚未执行；受控CLI、apply完整字段、发布门禁和E2E证据未闭环前，禁止进入WI-20260907-04阶段A之外的任何写入。
+> 历史时点（2026-09-09第二轮修复前）：任务3与任务4代码曾同时Reopened，0017/0018尚未执行。后续实际执行及当前第三轮结论见下一段。
 >
-> 2026-09-09任务3/4重新Accepted后，任务4已完成（第一阶段只读准备→用户授权"允许以上操作"→第二阶段受控写入）：本机`localhost:5432/policyops`账本时间repair（0014-0016及0010-0013，SQL hash不变）、0017/0018应用（第二次no-op）、42条DSL示例同步、沪粤非重叠日期快照激活（四川0发布）、旧452/36/500单事务替换为新36/36/78；操作前备份`policyops-rcl-b-pre-20260909185630.dump`（`59ee2f5f…`）与操作后备份`policyops-rcl-b-post-20260909202053.dump`（`934c4758…`）均已在全新PG17+pgvector恢复并对账一致。四川仍0发布、仅unsupported负例。
+> 2026-09-09持久执行历史：本机已变为36/36/78并写入0017/0018及沪粤日期快照，pre/post备份文件SHA与sidecar一致。第三轮复审撤回Accepted：账本实际21条、旧test归档hash为空、restore明细为空、applied manifest声明85 tests而当前实际78。当前冻结写入，禁止重跑stage-a/stage-b、恢复pre dump或执行最终合并。
 
-- WI-20260907-02与WI-20260907-03均Reopened，只允许代码、生成资产和隔离数据库测试。
+- WI-20260907-02保持Accepted；WI-20260907-03与WI-20260907-04均Reopened。任务4修复只允许代码、生成资产、隔离数据库测试和当前库只读审计。
 - 0015/0016历史SQL不可改写；源journal校正不等于持久账本已repair。
-- 0017/0018、日期快照调度、旧案例删除和新案例插入全部属于WI-20260907-04受控写入。
+- 0017/0018、日期快照调度和案例替换已经发生，但验收因账本/manifest/归档缺口撤回；后续只允许WI-04 repair-forward，不得重跑旧替换。
 - 治理前/后完整dump保留在Git忽略目录；现有错误case-library归档不得作为恢复门禁PASS证据。
 - 未获fresh明确授权时，不得修改迁移账本、创建/激活snapshot区间或写案例表。
 
-## 地区化案例持久替换runbook（WI-20260907-04，当前Blocked）
+## 历史地区化案例持久替换runbook（WI-20260907-04，已执行但验收撤回）
 
 ### 阶段A：只读与隔离准备
 
@@ -177,6 +177,16 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 8. 创建操作后dump和SHA，在全新PG17+pgvector完成全部表、sequence和规范化hash对账。
 
 任一步失败立即停止。事务提交后的恢复不包含在原授权中，必须报告差异并再次取得用户确认；不得默认把治理前dump恢复到持久库。
+
+## 当前repair-forward门禁（WI-20260907-04，Reopened）
+
+1. 冻结当前36/36/78、21条迁移账本、10条snapshot和3个归档批次；旧stage-a/stage-b脚本仅作历史证据，不得重跑。
+2. 先在代码层修复旧test真实hash、manifest自校验、SHA/selection/restore完整验证及42 example原子同步，并在随机端口隔离PG17+pgvector取得零skip门禁。
+3. 只读恢复pre/post dump，分别核对全部schema、表、真实sequence和规范化hash；从pre dump重建旧500 regression可信归档。
+4. 对当前库生成36/36/78 attestation manifest，逐行绑定case/showcase/regression/example、snapshot、release、批次和账本。
+5. 对照0010～0018当前SQL hash、实际Schema和21条账本，列出重复/不匹配行、prepared遗留批次和未引用snapshot的精确处置。
+6. 输出fresh repair manifestHash、targetFingerprint、预期写集合和回退点后停止；旧授权不构成repair-forward授权。
+7. 只有用户针对该次fresh清单明确授权后才能写入；当前文档不预设删除、账本更新或快照处置方式。
 
 ## 任务3/4最终分支集成runbook（WI-20260909-01，当前Blocked）
 

@@ -233,7 +233,7 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 
 `src/server/modules/identity/__tests__/identity-container.test.ts`的三个`freshContainer()`用例经`vi.resetModules()`重新求值identity-container的完整依赖图（`@/lib/db`→drizzle/pg链），在并行单元套件负载下单测可能超过vitest默认5秒；三个用例显式放宽到30秒（`it(..., 30_000)`）。这是模块重载固有成本，断言本身仍是确定性环境变量契约（缺失pepper拒绝、相同拒绝、合法放行），不以超时掩盖失败。
 
-### 地区案例全量重建专用反例（2026-09-09第二轮修复后全量Green）
+### 地区案例全量重建专用反例（2026-09-09第三轮复审未闭环）
 
 - 归档SHA必须来自真实文件字节（`archive.test.ts` 9例：篡改检测、必备文件、sha清单不自包含）；篡改、缺少selection/restore报告或pending状态均拒绝apply；`executor.ts`的`bufferSha256`对二进制dump直接Buffer哈希（String(buffer)有损解码已修复）。
 - manifest绑定精确行ID/内容hash、snapshot/hash、评分和测试来源（`manifest.test.ts`）；**完整场景字段**：新行绑定scenarioKey/asOfDate/input/expected/assertions/coverage/evidence，任一漂移使manifestHash变化（RCL-AC-003）。
@@ -249,3 +249,7 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - apply后cases/showcase/tests的scenarioKey、asOfDate、输入、期望、断言、覆盖、证据和质量分解必须与manifest逐字节一致，禁止null或空对象占位（`assertCompleteScenarioFields`事务内fail-closed）。
 - Chromium E2E（`e2e/task4-case-library.spec.ts`）精确断言公开36条、上海18、广东18、治理字段非空、管理active过滤、归档批次可读及匿名401/普通用户403。
 - 激活门禁的golden_tests只加载source='example'的DSL示例（RCL-FR-007；回归tests不进入黄金重放）。
+- 旧regression test必须按完整业务行计算非空hash；修改任一业务字段均使apply拒绝，不能只比较`sourceCaseUid`。
+- SHA清单必须精确覆盖必备文件；restore报告必须验证dump SHA、版本、全部表和真实sequence明细，空明细`verified`必须失败。
+- 42条DSL example的保留/更新/新增/删除集合必须进入manifest并在同一apply事务执行；当前28或49条不得自适应成为合法目标。
+- manifest文件、批次hash和重算hash必须三方一致；以452/36/500+28镜像演练后最终必须得到匹配manifest的36/36/78。

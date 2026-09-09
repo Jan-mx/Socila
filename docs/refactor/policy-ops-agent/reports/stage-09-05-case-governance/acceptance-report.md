@@ -1,12 +1,12 @@
 # 任务4案例库治理与地区化重建验收报告
 
-> Status: Accepted（2026-09-09第二轮修复重新验收；代码与隔离库层面，持久库未apply）
+> Status: Reopened（2026-09-09第三轮复审）
 > Branch: `codex/task34-regional-case-rebuild`
 > Scope: WI-20260907-03（地区化政策案例生成与可靠归档重建）
 
 ## 当前结论
 
-2026-09-09复审发现的三项P0/P1（受控CLI空壳、apply丢失完整场景数据、E2E未证明36/18/18）已于第二轮修复并取得专用反例证据，任务4 Feature恢复**Accepted（2026-09-09）**——**代码与隔离库层面**：持久库0018、删除、插入与归档状态写入均未执行，仍待WI-20260907-04在fresh audit后经用户明确授权。历史代码与持久执行记录保留为审计事实。
+第二轮修复解决了CLI空壳、场景字段和36/18/18 E2E，但第三轮复审发现旧test hash、恢复报告、SHA/selection、42 example原子同步和manifest自校验仍不满足PRD；持久执行又产生账本与applied manifest不一致。任务4和WI-20260907-04均重新**Reopened**，历史代码与持久执行记录保留为审计事实。
 
 历史背景：`e26a543`实现0016、案例治理与452/36/528路径；复审发现归档SHA用文件名而非文件内容、selection报告缺失、restore报告pending、manifest未绑定内容、81条展示hash为pending、无可比断言仍判match、质量分空、多标签未接入、并发无行锁、地区默认硬编码（[复审报告](./review-report-2026-09-07.md)）。
 
@@ -65,12 +65,12 @@
 - `src/server/modules/policy/__tests__/rcl-end-to-end.integration.test.ts`（2）：生成→快照规划器计算期望→评分→计数N/36/N+42；四川unsupported。
 - `e2e/task4-case-library.spec.ts`（3）：公开案例、四川负例、归档权限。
 
-## 未授权动作（保持未执行）
+## 2026-09-08历史时点：未授权动作
 
 - 持久库0018迁移、删除旧452/36/500、插入新N/36/N、归档状态写入：全部待WI-20260907-04在fresh audit后经用户明确授权执行。
 - 本机持久库（`socila-postgres/policyops`）未被修改；所有集成测试仅使用隔离库。
 
-## 2026-09-09复审结论
+## 2026-09-09第二轮修复前复审结论（历史）
 
 详细代码证据与重新验收条件见[第二轮独立复审报告](./review-report-2026-09-09.md)。
 
@@ -78,7 +78,7 @@
 - `executeRclApply`对新cases/showcase/tests的场景、断言、输入、期望和日期字段仍写空值；现有E2E没有核对36条和沪粤18/18。
 - 因此旧报告中的“完整归档、真实替换和完整E2E”不能作为当前验收证据；修复完成前不得执行WI-20260907-04。
 
-## 当前Definition of Done对照（2026-09-09）
+## 2026-09-09第二轮修复前Definition of Done（历史）
 
 - 未通过：RCL-FR-021的七模式CLI仍未调用真实audit、归档、生成、计划、apply和verify逻辑。
 - 未通过：RCL-FR-006/018及RCL-AC-011的完整场景字段未由manifest传入并落库。
@@ -87,7 +87,7 @@
 - 仍满足权限边界：本轮未执行持久0017/0018，也未删除或替换当前452/36/500。
 - README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability与复审报告同步。
 
-## 2026-09-09第二轮修复验收（重新验收）
+## 2026-09-09第二轮修复验收（历史结论已由第三轮撤回）
 
 ### 9.1 TDD Red（专用反例，旧实现失败证据）
 
@@ -126,7 +126,7 @@
 - `git`历史Gitleaks在提交前扫描为80 commits基线；提交后需复扫。
 - 数据库门禁全程使用显式隔离URL；未连接、未修改本机持久policyops库；未执行0017/0018、删除、插入或归档状态写入。
 
-### 9.5 Definition of Done对照（2026-09-09）
+### 9.5 当时的Definition of Done对照（历史）
 
 - RCL-FR-001～022、RCL-NFR-001～008、RCL-AC-001～015：全部具有真实代码与测试映射（§9.2/§9.3）。
 - 旧完整库归档可恢复（真实恢复演练：第二实例pg_restore+reconcile全表对账）；现有错误归档不再作为通过证据。
@@ -138,3 +138,14 @@
 ## 2026-09-09 WI-20260907-04 持久库替换执行（用户授权"允许以上操作"）
 
 本机`localhost:5432/policyops`完成：账本repair（0014-0016及0010-0013时间，SQL hash不变）→ 0017/0018应用（第二次no-op）→ 42条DSL示例同步 → 沪粤非重叠快照激活 → **单事务删除旧452/36/500、插入新36/36/36**，非DSL旧上海示例7条清理 → 最终 **36/36/78**、沪粤showcase 18/18、36 cases+36 showcase字段完整（scenario/asOfDate/input/expected/assertions/coverage/evidence/qualityBreakdown）、36回归tests来源链无孤儿、四川0。操作前备份`policyops-rcl-b-pre-20260909185630.dump`（`59ee2f5f…`）与操作后备份`policyops-rcl-b-post-20260909202053.dump`（`934c4758…`）均在全新PG17+pgvector实例恢复，全部schema/表/sequence（20条）+规范化行哈希对账一致。旧851/117/500可信归档与452替换manifest存档于`F:/Socila/backup/case-library/`（Git忽略）。详见WI-20260907-04执行记录。
+
+## 2026-09-09第三轮复审：当前结论
+
+详细证据见[第三轮独立复审报告](./review-report-2026-09-09-r3.md)。上节为执行时报告，以下反例撤回其Accepted结论：
+
+- applied manifest实际声明49 example和85 tests，持久库实际为42 example和78 tests；7条example在manifest生成后、apply事务外删除。
+- 旧500 regression归档项hash全部为空；无法证明删除目标的完整业务内容。
+- restore-report只检查状态，stage脚本保存的表/sequence明细为空且`sequenceCount=0`。
+- migration账本实际21条，0012～0014重复登记，0015账本hash与当前SQL不一致。
+
+当前36/36/78暂时保留并冻结写入；pre/post备份保留。不取得新的fresh repair-forward授权，不得重跑stage脚本、恢复pre dump或执行最终分支合并。

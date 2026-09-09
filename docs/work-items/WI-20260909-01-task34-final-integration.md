@@ -11,11 +11,13 @@
 - 关联需求：任务3/4 Definition of Done及交付治理
 - 源分支：`origin/codex/task34-regional-case-rebuild`
 - 目标分支：`origin/refactor/policy-ops-agent-platform`
-- 前置：WI-20260907-02、WI-20260907-03和WI-20260907-04全部Accepted；源、目标分支均已推送且工作区干净
+- 前置：WI-20260907-02、WI-20260907-03和WI-20260907-04全部Accepted；旧500 regression可信归档、当前36/36/78 attestation manifest、迁移账本repair和pre/post真实恢复对账均闭环；源、目标分支均已推送且工作区干净
 
 ## 目标
 
 在任务3、任务4和持久库受控替换全部验收完成后，以一个显式merge commit把最终集成分支完整合入重构分支。只合并`codex/task34-regional-case-rebuild`，不再单独合并`codex/task3-jurisdiction-planning`或`codex/task4-case-governance`。
+
+当前阻断事实：源分支为`7b3f21a`，目标分支仍为`57f051d`且尚未合并；任务4与WI-20260907-04已因第三轮复审重新Reopened。在二者修复、repair-forward及可信验收完成前不得执行本Work Item。
 
 ## 范围
 
@@ -35,7 +37,7 @@
 ## 执行步骤
 
 1. `fetch`远端并确认源、目标工作区干净，两个本地分支分别与其upstream一致。
-2. 确认三个前置Work Item均Accepted，验收报告包含可复核的零skip门禁和持久库收尾证据。
+2. 确认三个前置Work Item均Accepted，验收报告包含可复核的零skip门禁、旧500 regression非空内容hash、当前36/36/78可信manifest、规范迁移账本和持久库收尾证据。
 3. 记录`sourceSha`、`targetBeforeSha`和`mergeBaseSha`；列出并审查目标分支在merge-base之后的独有提交。
 4. 如目标存在未审查提交、任一前置状态不符或远端已前进，停止并重新复审，不使用旧SHA继续。
 5. 在`refactor/policy-ops-agent-platform`工作区执行带`--no-ff --no-commit`的合并。

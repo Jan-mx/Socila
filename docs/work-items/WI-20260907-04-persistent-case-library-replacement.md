@@ -1,7 +1,7 @@
 # WI-20260907-04：持久库旧案例全量替换
 
 > Author: Jan
-> Status: Accepted（2026-09-09持久库受控替换已完成）
+> Status: Reopened（2026-09-09第三轮复审）
 > Updated: 2026-09-09
 
 ## Work Item
@@ -9,17 +9,18 @@
 - ID：WI-20260907-04
 - 关联PRD：任务3地区规划、地区化政策案例库全量重建
 - 关联需求：JRP-FR-029、RCL-FR-018～022、RCL-NFR-001～008
-- 前置：WI-20260907-02和WI-20260907-03均重新Accepted；Agent 3实际实现并验证全部受控命令；用户基于fresh audit明确授权
+- 当前前置：WI-20260907-02保持Accepted；WI-20260907-03完成第三轮修复并重新Accepted；基于当前36/36/78的fresh repair-forward audit取得新授权
 
-## 当前持久事实
+## 当前持久事实（2026-09-09第三轮只读复审）
 
-- Drizzle账本16条，0015/0016已执行但时间戳高于实际执行日期。
-- 上海、广东发布记录active；四川无发布记录。
-- `cases/showcase_cases/tests/policy_snapshots=452/36/528/6`。
-- 500条旧回归tests仍关联旧案例；当前case/showcase质量分为空。
-- 治理前、后完整dump及独立SHA存在；现有case-library归档不可作为通过证据。
+- Drizzle账本21条；0012～0014出现重复登记，0015账本hash与当前SQL文件hash不一致。
+- `cases/showcase_cases/tests/policy_snapshots=36/36/78/10`；tests为42 example+36 regression，场景字段初步非空。
+- 发布记录共5条：上海active 1/inactive 1、广东active 2/inactive 1；四川0发布。
+- 归档批次为2个applied和1个prepared；两个新批次的500条test归档项hash全部为空。
+- applied manifest声明49 example、目标tests=85，但持久库实际为42 example、tests=78；当前状态无匹配的可信attestation manifest。
+- 操作前/后dump及sidecar SHA存在且文件hash匹配；恢复报告正文与迁移账本仍需重新只读取证。
 
-## 阶段A：只读准备
+## 历史阶段A：首次替换只读准备（已执行，不得重跑）
 
 1. 核对账本、发布记录、计数、当前行hash和备份SHA。
 2. 新建当前库备份，并在全新PG17+pgvector完成全表/sequence恢复对账。
@@ -28,7 +29,7 @@
 5. audit精确绑定0015/0016账本行、SQL hash、旧删除集合、新插入集合和目标指纹。
 6. 向用户报告后停止；提示词、代码提交和旧授权均不构成阶段B授权。
 
-## 阶段B：明确授权后的受控写入
+## 历史阶段B：首次替换受控写入（已执行，不得重跑）
 
 授权必须精确覆盖：本机`localhost:5432/policyops`的0015/0016账本时间repair、0017/0018、上海/广东快照区间、删除旧452/36/500及插入fresh manifest中的`N/36/N`。不包含远程库、四川激活、Secret、部署或其他删除。
 
@@ -66,3 +67,15 @@
 7. 操作前备份 `policyops-rcl-b-pre-20260909185630.dump`（`59ee2f5f…`）已验证可恢复（回退依据）。
 
 归档与manifest存档：`F:/Socila/backup/case-library/rcl-stage-a-*`（旧851归档、452替换manifest）、`rcl-stage-b-*`（持久库替换manifest，replacement manifestHash 见报告）。
+
+## 第三轮复审结论（2026-09-09）
+
+上述执行历史保留，但Accepted结论撤回。当前36/36/78数据暂时保留并冻结写入，不自动恢复pre dump。先修复任务4归档/manifest代码，再从pre/post dump和当前库完成只读取证，生成repair-forward清单并取得新的明确授权后才能重新验收。
+
+## 当前repair-forward范围
+
+1. 代码层先修复旧test真实hash、manifest自校验、SHA/selection/restore完整验证和42 example原子同步。
+2. 只读恢复pre/post dump，从pre重建旧500 regression可信归档，为当前36/36/78生成attestation manifest。
+3. 对照0010～0018 SQL、实际Schema和21条账本，列出重复/不匹配账本行、prepared批次和未引用snapshot。
+4. 输出fresh manifestHash、targetFingerprint、精确拟写集合和回退点后停止。
+5. 只有用户针对该次清单明确授权后才能repair-forward；不得自动恢复pre dump或重跑首次替换。

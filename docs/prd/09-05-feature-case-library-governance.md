@@ -1,7 +1,7 @@
 # 地区化政策案例库全量重建 PRD
 
 > Author: Jan
-> Status: Accepted（2026-09-09第二轮修复重新验收）
+> Status: Reopened（2026-09-09第三轮复审）
 > Updated: 2026-09-09
 
 ## 文档元数据
@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-case-library-governance.md` |
 | 类型 | Feature；替代原“上海案例库精简为452/36/528”方案 |
-| 状态 | Accepted（2026-09-09第二轮修复重新验收）；原Accepted结论曾因CLI、apply和数据契约缺口撤回 |
+| 状态 | Reopened（2026-09-09第三轮复审）；第二轮Accepted结论因归档、manifest和事务缺口撤回 |
 | 前置依赖 | 任务2首期Accepted；任务3经`WI-20260907-02`修复并重新Accepted |
 | 执行顺序 | 任务3修复 → 本Feature代码与隔离验收 → 持久库替换Work Item |
 | 退出门禁 | 完整旧库可恢复归档、新地区案例确定性生成、沪粤36条展示、精确替换和完整E2E均通过 |
@@ -28,7 +28,7 @@
 
 因此旧CLG-FR/CLG-NFR/CLG-AC及452/36/528结论只保留为历史，不再是当前验收标准。本PRD采用新的RCL编号，全量退役旧案例及其500条来源回归测试，并依据修复后的上海、广东日期快照生成无个人数据的确定性政策案例。
 
-2026-09-08报告所称修复仍需2026-09-09复审：受控CLI仍是空壳，apply写入场景/断言/输入/期望为空，专用E2E未验证36/18/18。2026-09-09第二轮修复已完成：CLI七模式真实执行、manifest完整场景字段逐字节落库、真实CLI归档/恢复/生成/替换演练、E2E精确36/18/18（见§9验收记录），本PRD恢复**Accepted**；持久库0018/删除/插入仍待WI-20260907-04授权。
+2026-09-08报告所称修复曾在2026-09-09第二轮验收中标为Accepted；第三轮复审确认仍有阻断缺口：500条旧regression归档hash为空、恢复报告只验证`status`且表/sequence明细为空、SHA清单未要求精确覆盖、manifest不强制42条example、7条example在manifest生成后及apply事务外删除。持久执行产生的applied manifest声明85 tests，但持久库实际为78。因此本PRD重新**Reopened**，历史执行事实保留但不得作为当前PASS证据。
 
 治理前完整dump及独立SHA目前存在，是旧851/117/528的恢复来源；不得把现有错误case-library归档视为已验证。
 
@@ -56,11 +56,11 @@
 ## 3. 功能需求
 
 - **RCL-FR-001 旧库事实源**：旧完整库以治理前dump为准，包含851 cases、117 showcase、500旧回归tests及28历史DSL示例。
-- **RCL-FR-002 完整旧档案**：对旧三类目标逐行记录table、ID、UID、规范化内容SHA、来源和删除原因。
-- **RCL-FR-003 真文件SHA**：归档清单对真实文件字节计算SHA-256；`sha256sums.txt`最后生成且不包含自身。
-- **RCL-FR-004 恢复证明**：记录来源dump SHA、PostgreSQL/pgvector版本、恢复目标、全部表/sequence计数和规范化哈希。
-- **RCL-FR-005 不可变报告**：必须存在选择报告、manifest和最终`restore-report.json`；pending、缺文件或hash不符禁止apply。
-- **RCL-FR-006 精确manifest**：绑定旧目标行、新数据行、快照ID/hash、scenarioKey、asOfDate、完整输入/期望/断言、覆盖义务、证据、评分和测试来源映射。
+- **RCL-FR-002 完整旧档案**：对旧三类目标逐行记录table、ID、UID、规范化内容SHA、来源和删除原因；旧regression test必须按完整业务行计算非空hash，不得只绑定`source_case_uid`。
+- **RCL-FR-003 真文件SHA**：归档清单对真实文件字节计算SHA-256；`sha256sums.txt`最后生成且不包含自身，并且必须恰好覆盖全部必备文件一次。
+- **RCL-FR-004 恢复证明**：记录来源dump SHA、PostgreSQL/pgvector版本、恢复目标、全部表/sequence计数和规范化哈希；表/sequence明细为空或计数不一致不得标记verified。
+- **RCL-FR-005 不可变报告**：必须存在选择报告、manifest和最终`restore-report.json`；pending、缺文件、hash不符、伪造verified、配额异常或批次不匹配禁止apply。
+- **RCL-FR-006 精确manifest**：绑定旧目标行、新数据行、精确42条DSL example同步集合、快照ID/hash、scenarioKey、asOfDate、完整输入/期望/断言、覆盖义务、证据、评分和测试来源映射；读取和apply时必须重算manifestHash。
 - **RCL-FR-007 场景Schema**：每个案例包含稳定UID、地区、日期、能力、输入、断言、覆盖义务、证据引用、snapshot ID/hash和generator版本。
 - **RCL-FR-008 确定性生成**：同一模板、snapshot和generator版本产生逐字节一致产物与manifestHash。
 - **RCL-FR-009 覆盖义务**：覆盖每个用户可见规则分支、needs-agent分支、有效期边界和地区隔离路径。
@@ -72,7 +72,7 @@
 - **RCL-FR-015 质量落库**：case和showcase保存总分、逐项分解、原因、snapshot和证据；active/selected行不得为空。
 - **RCL-FR-016 可比较重放**：至少一个声明断言被实际计算并比对才能获得重放分；缺少可比字段为失败。
 - **RCL-FR-017 多标签**：地区、性别、年龄、就业、险种、政策能力和needs-agent标签同时保留，不提前返回单分类。
-- **RCL-FR-018 原子替换**：单事务删除当前旧452/36/500、同步42条DSL示例并插入新`N/36/N`；所有manifest场景字段必须原样落库，禁止null或空对象占位。
+- **RCL-FR-018 原子替换**：单事务删除当前旧452/36/500、同步精确42条DSL示例并插入新`N/36/N`；禁止在manifest生成后或事务外删除example，所有manifest场景字段必须原样落库。
 - **RCL-FR-019 并发裁决**：批次`FOR UPDATE`、`restore_verified→applying→applied`条件更新和目标唯一约束保证一次成功。
 - **RCL-FR-020 查询契约**：公开仅返回36条selected+published；管理查询使用`active AND filters`。
 - **RCL-FR-021 受控执行器**：audit、prepare-archive、verify-archive、generate、plan-replacement、apply和verify必须调用真实实现并输出可验证结果；只打印模式名后退出视为失败，默认只读audit。
@@ -137,10 +137,10 @@ type RegionalPolicyScenario = {
 
 ## 8. 验收场景
 
-- **RCL-AC-001** 修改任一归档文件后SHA验证失败。
+- **RCL-AC-001** 修改任一归档文件、删除其SHA清单行、增加重复/额外/路径穿越条目后验证失败。
 - **RCL-AC-002** 缺少selection/restore报告或report为pending时apply零写入拒绝。
-- **RCL-AC-003** 任一旧目标ID、内容hash、测试来源或snapshot漂移时旧manifest失效。
-- **RCL-AC-004** 完整旧851/117/500从归档真实恢复并逐表、sequence一致。
+- **RCL-AC-003** 任一旧目标ID、完整业务内容hash、测试来源、manifest正文或snapshot漂移时旧manifest失效。
+- **RCL-AC-004** 完整旧851/117/500从归档真实恢复并逐表、sequence一致；仅`status=verified`的空报告必须拒绝。
 - **RCL-AC-005** 相同场景模板重复生成相同N、产物和manifestHash。
 - **RCL-AC-006** 无可比较断言、错误snapshot或hash不一致的场景不能入库。
 - **RCL-AC-007** 新cases仅沪粤且一对一关联地区回归tests。
@@ -155,13 +155,12 @@ type RegionalPolicyScenario = {
 
 ## 9. Definition of Done
 
-- RCL-FR-001～022、RCL-NFR-001～008和RCL-AC-001～015均有实现、专用测试和traceability。
-- 旧完整库归档可恢复；现有错误归档不再被标记为通过证据。
-- 新案例确定性生成，最终`N/36/N+42`与manifest逐项一致。
-- 上海、广东公开各18条；CN和四川严格留在内部测试边界。
-- 代码阶段不写持久库；真实替换只有在fresh audit后取得用户明确授权才执行。
-- Node、DB、Chromium、TypeScript、ESLint、Build、Python和安全门禁新鲜通过且零skip。
-- README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability和复审报告同步。
+- 未完成：旧500 regression真实内容hash与可恢复归档。
+- 未完成：restore/SHA/selection/manifest完整验证和精确42条example原子同步。
+- 未完成：当前36/36/78可信attestation、迁移账本repair和错误批次审计闭环。
+- 已保留：确定性沪粤36条场景、完整场景字段和地区隔离代码主体。
+- 重新验收必须取得专用Red/Green、随机端口隔离DB、pre/post/当前三方恢复对账及完整安全门禁。
+- 当前禁止重跑旧stage脚本、写持久库或执行最终分支合并。
 
 ## 10. 关联任务
 
@@ -169,9 +168,9 @@ type RegionalPolicyScenario = {
 - `WI-20260907-03-regional-policy-case-rebuild.md`：本Feature代码交付。
 - `WI-20260907-04-persistent-case-library-replacement.md`：代码Accepted后的持久执行。
 
-## 9. 验收记录（2026-09-09第二轮修复重新验收）
+## 11. 历史验收记录（2026-09-09第二轮结论已撤回）
 
-2026-09-09复审P0/P1缺陷全部修复并取得专用反例证据，本PRD恢复**Accepted**（代码与隔离库层面；持久库尚未apply）：
+历史记录：2026-09-09第二轮曾将P0/P1标记为已修复并恢复**Accepted**；该结论已由第三轮复审撤回：
 
 1. **受控CLI七模式真实执行**（RCL-FR-021）：`scripts/rcl-case-library.ts`改为调用`src/lib/case-governance/executor.ts`七动作——audit（真实计数+目标指纹）、generate（36场景+快照规划器期望回填）、plan-replacement（旧目标行内容hash绑定+完整manifestHash）、prepare-archive（真实pg_dump+selection+manifest+pending restore+最后不自包含sha256sums.txt）、verify-archive（文件字节SHA+必备文件+restore verified→批次restore_verified）、apply（--i-am-authorized+事务内FOR UPDATE/applying/唯一约束替换）、verify（N/36/N+42+配额+字段完整性）；每个模式输出可验证JSON并按失败原因返回非零退出码。
 2. **完整场景字段落库**（RCL-FR-006/018/AC-011）：`NewCaseRow/NewShowcaseRow/NewTestRow`扩展scenarioKey/asOfDate/input/expected/assertions/coverage/evidence；0018追加cases的input/expected/assertions列（幂等IF NOT EXISTS）；apply逐字节写入（cases的isRegression=true、showcase的inputData/expectedData/assertions、tests的input/expected+sourceCaseUid）；`assertCompleteScenarioFields`在事务内fail-closed（null/空对象/空数组占位拒绝且零写入）。
@@ -182,4 +181,4 @@ type RegionalPolicyScenario = {
 
 门禁汇总：`npm test` 72文件/663、`test:db` 26文件/129零skip（含rcl-cli 11例真实CLI演练）、Chromium E2E全套19/19、tsc/eslint退出0（0 error、6条既有warning）、`npm run build`退出0（1条既有warning）、ruff/mypy/pytest 94+20零skip、pip-audit无已知漏洞、scan-secrets 773文件零命中、Gitleaks 8.29.1完整历史no leaks、allowlist哨兵3场景全过。
 
-**代码Accepted与持久库尚未apply**：本PRD验收覆盖代码、生成资产与隔离库证据；持久库0018迁移、旧452/36/500删除、新N/36/N插入与归档状态写入均未执行，仍待WI-20260907-04在fresh audit后经用户明确授权。
+以上为第二轮历史记录。第三轮复审已撤回该Accepted结论；当前修复和持久库repair-forward条件见第三轮复审报告及WI-20260907-03/04。

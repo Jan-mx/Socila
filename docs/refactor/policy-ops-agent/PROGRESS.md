@@ -17,7 +17,7 @@
 - 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）：**Accepted**（验收证据：`reports/feature-09-05-socila-naming/acceptance-report.md`）。SDL-FR-001～014、SDL-NFR-001～007全部有实现与测试映射，SDL-AC-001～010新鲜证据通过：通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层（24规则/29参数/`SOCILA-DSL-1.0`/Manifest `jurisdiction_code=310000`）、Seed经Manifest发现（零硬编码地区）、活动代码与配置SSP/SSRP→Socila硬切换（命名扫描零命中，无旧变量/Cookie/localStorage/服务身份兼容）、Node与Python服务JWT身份原子切换`socila-next-core`（固定向量重签+CI冒烟同步）、粤川示例转测试夹具（生产Seed不写入）、0010迁移完成dsl_version规范化与六条示例精确清理（删除前新鲜pg_dump+SHA-256清单+PG17+pgvector真实恢复逐表对账25表一致；删除后diff仅params 33→29、packs 2→0及0009补齐空表；备份/旧卷/历史快照未动）；Gitleaks完整历史19条历史命中经人工核实为测试合成值并以`.gitleaks.toml`精确allowlist闭环（ADR-0008）。
 - 09-05 Feature **复审纠正完成并重新Accepted（2026-09-05）**：三项复审缺漏全部纠正——①命名契约扫描器收敛到`src/lib/naming/socila-naming-contract.ts`并以"允许片段剥离"区分精确旧协议值与独立品牌标识（npm test恢复359/359全绿）；②`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`+`condition="AND"`，新增哨兵回归`scripts/verify-gitleaks-allowlist.mjs`接入CI（ADR-0009替代ADR-0008；哨兵证明允许路径上其他规则照常检测、trace无整文件跳过）；③多地区Seed补齐jurisdiction作用域（seed-rules/seed-params/seed-misc/excel-import，tests行写入jurisdictionCode，协议workflow只装载一次，0011回填存量NULL），新增multi-region-seed落库级集成测试。全部门禁新鲜复验通过后恢复Accepted。
 - 09-05 Feature复审历史：曾因命名契约、Gitleaks allowlist和多地区Seed缺漏Reopened；相关缺漏及第二轮扫描器/Gitleaks/Build复审均已修复并取得新鲜门禁，当前最终状态为**Accepted**，详见任务验收报告§8～§10。
-- 09-05全国政策能力当前顺序按ADR-0011调整为：任务2首期Accepted保持不变→WI-20260907-02修复任务3→WI-20260907-03重建上海/广东确定性政策案例→WI-20260907-04经明确授权替换持久库→WI-20260909-01以merge commit合入`refactor/policy-ops-agent-platform`。任务3/4原并行方案被复审推翻。
+- 09-05全国政策能力当前顺序：任务2与任务3保持Accepted→修复WI-20260907-03归档/manifest→WI-20260907-04只读取证并经新授权repair-forward→WI-20260909-01以merge commit合入`refactor/policy-ops-agent-platform`。最终合并尚未执行。
 
 ## 已完成能力
 
@@ -40,10 +40,10 @@
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化、三地区批准和候选快照重放完成；四川无快照 | 保持Accepted，不因任务3/4复审回退 |
-| 任务3：地区感知用户规划 | **Accepted（2026-09-09第二轮修复）**：空黄金测试集fail-closed、停用URL地区绑定、replay三方hash、隔离DB 116/116零skip、E2E 19/19（含replay/跨地区停用/停用后unsupported） | 保持Accepted；0017与持久快照调度待WI-20260907-04授权 |
-| 任务4：地区化政策案例库 | **Accepted（2026-09-09第二轮修复）**：CLI七模式真实执行、完整场景字段落库、真实CLI闭环演练（删851/500插36/36/36）、E2E精确36/18/18；持久库未apply | 保持Accepted（代码层）；持久替换待WI-20260907-04授权 |
-| 持久库案例替换 | **Accepted（2026-09-09）**：账本repair、0017/0018、沪粤日期快照、旧452/36/500→新36/36/78已完成，操作前/后备份均恢复对账一致 | 保持Accepted；四川0发布、四川仅unsupported负例 |
-| 最终分支集成 | **Blocked**：当前最终开发分支尚未合入重构分支 | WI-02/03/04全部Accepted后执行WI-20260909-01；只合并`codex/task34-regional-case-rebuild` |
+| 任务3：地区感知用户规划 | **Accepted（2026-09-09第二轮修复）**：空黄金测试集fail-closed、停用URL地区绑定、replay三方hash、隔离DB 116/116零skip、E2E 19/19 | 代码验收保持；0017与快照已持久执行，但账本/任务4审计待repair-forward |
+| 任务4：地区化政策案例库 | **Reopened（2026-09-09第三轮复审）**：旧test hash、restore/SHA/selection、42 example原子同步和manifest自校验未闭环 | 修复WI-20260907-03并在随机端口隔离DB重验 |
+| 持久库案例替换 | **Reopened（2026-09-09第三轮复审）**：数据已是36/36/78，但账本21条、错误归档批次和不匹配manifest待repair-forward | 冻结写入；先只读生成可信旧归档、当前attestation和repair目标指纹，再请求新授权 |
+| 最终分支集成 | **Blocked**：源`7b3f21a`尚未合入目标`57f051d` | 任务4/WI-04重新Accepted后执行WI-20260909-01；当前禁止合并 |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
 | 四川医保退休年限正式文件（缺口4） | Deferred；仅2025-03征求意见稿，无正式印发 | `WI-20260907-01`：正式印发后采集，不阻塞任务2首期 |
 | 川人社办发〔2023〕18号（缺口5） | Deferred；白名单域未检索到 | `WI-20260907-01`：等待用户提供原件或官方入口恢复 |
@@ -385,9 +385,22 @@
 | B-7备份 | 操作后备份 `policyops-rcl-b-post-20260909202053.dump`（`934c4758…`）全新实例恢复+全表/sequence/规范化行哈希对账一致 |
 | 边界 | 未触碰远程库、四川激活、Secret轮换、生产部署；未执行WI-20260909-01最终合并 |
 
+## 第三轮独立复审（任务4/WI-04，2026-09-09）
+
+| 项目 | 当前事实 |
+| --- | --- |
+| 代码 | 旧regression test写空hash；restore只验证status；SHA/selection和manifest自校验不完整；example删除在apply事务外 |
+| 账本 | 21条；0012～0014重复登记，0015账本hash与当前SQL不一致 |
+| 数据 | 36 cases、36 showcase、42 example、36 regression、10 snapshots；场景字段初步完整 |
+| 归档 | 2 applied+1 prepared；两个新批次各500条test entry为空hash；applied manifest声明85 tests而当前为78 |
+| 备份 | pre/post dump文件SHA与sidecar一致，保留作为只读复核与回退点；不自动恢复 |
+| 分支 | 源`codex/task34-regional-case-rebuild@7b3f21a`，目标`refactor/policy-ops-agent-platform@57f051d`，尚未合并 |
+
+任务3保持Accepted；任务4和WI-04重新Reopened，WI-20260909-01保持Blocked。下一步为代码修复→当前库只读取证→用户基于fresh repair-forward清单另行授权。
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
-任务2首期保持Accepted。下一步严格串行：WI-20260907-02修复任务3→WI-20260907-03重建地区化案例库→WI-20260907-04受控替换持久库→WI-20260909-01将最终集成分支以merge commit合入`refactor/policy-ops-agent-platform`。前两项只在隔离库开发验收；第三项必须先完成fresh audit、备份和恢复演练，再请求明确授权；第四项不写数据库、不合并旧任务分支或`main`。不得重复执行旧任务4apply。四川后续只按`WI-20260907-01-sichuan-policy-followup.md`推进，不影响本次沪粤案例重建。09-03发布动作仍为未来人工动作：
+任务2首期和任务3保持Accepted。下一步严格串行：修复WI-20260907-03归档/manifest代码→对当前36/36/78、pre/post dump及21条迁移账本只读取证→基于fresh目标指纹取得新授权后repair-forward→WI-20260907-04重新Accepted→执行WI-20260909-01最终合并。当前禁止重跑stage-a/stage-b、恢复pre dump或合并`refactor/policy-ops-agent-platform`。四川后续仍按`WI-20260907-01-sichuan-policy-followup.md`独立推进。09-03发布动作仍为未来人工动作：
 
 1. 重构前版本基线：**已完成**。annotated tag `v1.0.0`已推送至origin，并精确指向`main`提交`1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`；不得移动或重建。
 2. 用户未来人工发布流程（PRD §17.2）：
