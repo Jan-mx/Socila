@@ -55,6 +55,7 @@ Agent提示词只在对话中交付，禁止写入Work Item正文、验收报告
 
 | Work Item | 状态 | 用途 |
 | --- | --- | --- |
+| `WI-20260909-01-task34-final-integration.md` | Blocked | 等任务3、任务4和持久库替换全部Accepted后，以merge commit合入重构分支 |
 | `WI-20260907-02-task3-temporal-entry-hardening.md` | Reopened | 空黄金测试集、停用路径地区绑定和replay三方hash校验仍需修复 |
 | `WI-20260907-03-regional-policy-case-rebuild.md` | Reopened | CLI为空壳、apply场景字段不完整、E2E未验证36/18/18 |
 | `WI-20260907-04-persistent-case-library-replacement.md` | Blocked | 等前两项Accepted并取得fresh明确授权后替换持久库旧案例 |

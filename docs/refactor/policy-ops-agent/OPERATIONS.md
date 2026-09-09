@@ -175,3 +175,15 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 8. 创建操作后dump和SHA，在全新PG17+pgvector完成全部表、sequence和规范化hash对账。
 
 任一步失败立即停止。事务提交后的恢复不包含在原授权中，必须报告差异并再次取得用户确认；不得默认把治理前dump恢复到持久库。
+
+## 任务3/4最终分支集成runbook（WI-20260909-01，当前Blocked）
+
+只有WI-20260907-02、WI-20260907-03和WI-20260907-04全部Accepted后才能执行。本runbook只操作Git，不授权数据库、快照、Secret、部署、PR或`main`写入。
+
+1. `fetch`后确认`codex/task34-regional-case-rebuild`和`refactor/policy-ops-agent-platform`工作区干净、upstream同步，记录源SHA、目标合并前SHA和merge-base。
+2. 只合并`origin/codex/task34-regional-case-rebuild`；不得再次合并两个旧任务分支，也不得使用squash、rebase、cherry-pick或force-push。
+3. 审查目标分支独有提交；存在未审查变更或远端前进时停止并更新基线。
+4. 在目标工作区执行`git merge --no-ff --no-commit origin/codex/task34-regional-case-rebuild`。任何冲突立即`git merge --abort`，不得猜测解决。
+5. 无冲突时审查完整暂存差异和0015→0018 journal顺序，运行完整Node、显式隔离数据库零skip、Chromium、TypeScript、ESLint、Build、Python及安全门禁。
+6. 新增独立集成验收报告并同步状态文档后，创建`merge: 集成任务3与任务4地区化交付`，推送`origin/refactor/policy-ops-agent-platform`。
+7. 核对本地HEAD、upstream和远端SHA一致；三个`codex/*`分支全部保留，不删除、不合并`main`。

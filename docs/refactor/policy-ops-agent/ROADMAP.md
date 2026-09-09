@@ -27,6 +27,7 @@
 | 任务3：地区规划时态与真实入口修复 | Reopened | 补空黄金测试、停用路径校验、三方snapshot hash和可复核DB/E2E证据 |
 | 任务4：上海/广东政策案例库全量重建 | Reopened | 实现真实CLI、完整字段写入、可信归档和36/18/18 E2E |
 | 持久库旧案例替换 | Blocked | 前两项Accepted、fresh audit和明确授权后执行账本repair、0017/0018及旧库替换 |
+| 任务3/4最终分支集成 | Blocked | WI-02/03/04全部Accepted后，以merge commit将最终集成分支合入`refactor/policy-ops-agent-platform` |
 | 远程Personal Demo服务器部署 | Planned | 目标服务器全栈healthy、域名/HTTPS和离机备份验证 |
 | 首批公开政策采集与RAG建库 | Planned | 白名单来源原件、DocumentTree、Chunk和索引形成闭环 |
 | 完整真实Agent闭环观察 | Planned | 真实政策从采集到管理员审核和Core draft可追踪完成 |
