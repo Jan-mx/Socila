@@ -134,3 +134,7 @@
 - 0017只在隔离库（`task34r2_drill`）执行；持久账本repair、日期快照调度、激活/停用保持未授权未执行。
 - Node/DB/Chromium/TS/ESLint/Build/Python/安全门禁全部新鲜通过且零skip。
 - README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability与本报告已同步；任务3 PRD与WI-20260907-02已置Accepted。
+
+## 2026-09-09 WI-20260907-04 持久库受控替换执行（用户授权"允许以上操作"）
+
+任务3相关的持久库执行：账本0014-0016时间repair（SQL hash不变）、0017应用（plans.snapshot_content_hash、release区间列）、沪粤非重叠日期快照激活（沪[2026-09-01,∞)、粤[2026-09-01,2029-12-31]、粤[2030-01-01,∞)），四川0发布。快照驱动规划按新区间运行（2026广东快照与2030快照分开），历史plan重放三方hash校验保持。详见WI-20260907-04执行记录与PROGRESS。

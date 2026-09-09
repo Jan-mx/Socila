@@ -134,3 +134,7 @@
 - 代码阶段不写持久库；真实替换待WI-20260907-04在fresh audit后经用户明确授权。
 - Node/DB/Chromium/TS/ESLint/Build/Python/安全门禁新鲜通过且零skip。
 - README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability与本报告已同步；任务4 PRD与WI-20260907-03已置Accepted（代码层）。
+
+## 2026-09-09 WI-20260907-04 持久库替换执行（用户授权"允许以上操作"）
+
+本机`localhost:5432/policyops`完成：账本repair（0014-0016及0010-0013时间，SQL hash不变）→ 0017/0018应用（第二次no-op）→ 42条DSL示例同步 → 沪粤非重叠快照激活 → **单事务删除旧452/36/500、插入新36/36/36**，非DSL旧上海示例7条清理 → 最终 **36/36/78**、沪粤showcase 18/18、36 cases+36 showcase字段完整（scenario/asOfDate/input/expected/assertions/coverage/evidence/qualityBreakdown）、36回归tests来源链无孤儿、四川0。操作前备份`policyops-rcl-b-pre-20260909185630.dump`（`59ee2f5f…`）与操作后备份`policyops-rcl-b-post-20260909202053.dump`（`934c4758…`）均在全新PG17+pgvector实例恢复，全部schema/表/sequence（20条）+规范化行哈希对账一致。旧851/117/500可信归档与452替换manifest存档于`F:/Socila/backup/case-library/`（Git忽略）。详见WI-20260907-04执行记录。

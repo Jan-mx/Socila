@@ -1,7 +1,7 @@
 # WI-20260907-04：持久库旧案例全量替换
 
 > Author: Jan
-> Status: Blocked
+> Status: Accepted（2026-09-09持久库受控替换已完成）
 > Updated: 2026-09-09
 
 ## Work Item
@@ -52,3 +52,17 @@
 - 两个前置Work Item均重新Accepted，Agent 3受控命令和隔离验证全部通过，且用户授权与fresh manifest完全匹配。
 - 所有写入、幂等、恢复和零漂移证据进入任务3/4验收报告。
 - README、PROGRESS、OPERATIONS和traceability同步后将本Work Item设为Accepted。
+
+## 执行记录（2026-09-09，用户明确授权"允许以上操作"）
+
+阶段A（只读准备）与阶段B（受控写入）均已在本机 `localhost:5432/policyops` 完成：
+
+1. **B-1 账本时间repair**：0014/0015/0016账本created_at修复（0014→1788705240000、0015→1788777720000、0016→1788785400000），SQL hash全部不变；另修正0010-0013未来时间戳（0017/0018可执行的必备前置，阶段A报告第6节明示）。
+2. **B-2 迁移**：0017、0018应用（release区间列+EXCLUDE、cases完整场景列），第二次执行no-op。
+3. **B-3 快照调度**：同步42条DSL示例（CN19+沪9+粤10+川4）；旧沪粤无区间release停用（审计保留）；新激活沪[2026-09-01,∞)、粤[2026-09-01,2029-12-31]、粤[2030-01-01,∞)（非重叠）；四川保持0发布。
+4. **B-5 单事务替换**：删除旧452 cases/36 showcase/500回归tests，插入新36/36/36；旧上海示例中非DSL的7条清理（最终42示例）；复跑apply为no-op。
+5. **B-6 验证**：最终 **36/36/78**、沪粤showcase 18/18、36 cases+36 showcase字段完整（scenario/asOfDate/input/assertions/qualityBreakdown）、36回归tests来源链无孤儿、四川0。
+6. **B-7 备份与恢复**：操作后备份 `policyops-rcl-b-post-20260909202053.dump`（SHA-256 `934c4758…`）在全新PG17+pgvector实例恢复，全部schema/表/sequence+规范化行哈希对账一致。
+7. 操作前备份 `policyops-rcl-b-pre-20260909185630.dump`（`59ee2f5f…`）已验证可恢复（回退依据）。
+
+归档与manifest存档：`F:/Socila/backup/case-library/rcl-stage-a-*`（旧851归档、452替换manifest）、`rcl-stage-b-*`（持久库替换manifest，replacement manifestHash 见报告）。
