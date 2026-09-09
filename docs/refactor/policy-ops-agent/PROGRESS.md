@@ -40,7 +40,7 @@
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化、三地区批准和候选快照重放完成；四川无快照 | 保持Accepted，不因任务3/4复审回退 |
-| 任务3：地区感知用户规划 | **Reopened（2026-09-09）**：报告称已修复，但空黄金测试集、停用地区绑定、replay快照行hash仍缺少可信反例证据 | 修复WI-20260907-02；不得重复执行持久0015或旧激活 |
+| 任务3：地区感知用户规划 | **Accepted（2026-09-09第二轮修复）**：空黄金测试集fail-closed、停用URL地区绑定、replay三方hash、隔离DB 116/116零skip、E2E 19/19（含replay/跨地区停用/停用后unsupported） | 保持Accepted；0017与持久快照调度待WI-20260907-04授权 |
 | 任务4：地区化政策案例库 | **Reopened（2026-09-09）**：CLI为空壳，apply丢失场景数据，当前分支未证明真实案例替换可执行 | 修复WI-20260907-03；不得重复运行旧apply |
 | 持久库案例替换 | **Blocked**：当前0015/0016、沪粤active、452/36/528保持 | 任务3/4重新Accepted、fresh DB/E2E证据和用户明确授权后执行WI-20260907-04 |
 | 最终分支集成 | **Blocked**：当前最终开发分支尚未合入重构分支 | WI-02/03/04全部Accepted后执行WI-20260909-01；只合并`codex/task34-regional-case-rebuild` |
@@ -342,6 +342,19 @@
 | 持久边界 | 只读仍为Drizzle 16、cases/showcase/tests/snapshots=452/36/528/6；0017/0018和新案例替换未执行 |
 
 本轮新增的执行提示词只在对话中提供。PRD、Work Item、验收报告和开发文档不得保存可执行提示词；旧WI-20260906-01/02内嵌提示词已移除。
+
+## 当前任务验证（任务3第二轮修复：空黄金测试集/停用地区绑定/三方hash，2026-09-09本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 已记录；空黄金测试集旧实现错误记pass（新用例ok=true失败）、停用广东URL+上海releaseId旧实现成功停用、replay三方hash旧实现仅两方比较（4失败：缺ReplaySnapshotDriftError/漂移仍重放/缺保存hash容忍） |
+| Node单元（`npm test`） | PASS；71文件/655通过、skip 0（含release-gates空集合反例、jurisdiction-release跨地区停用拒绝、replay三方hash四反例、compute savePlan hash断言）；identity-container模块重载用例显式30秒超时稳定化（2026-09-09复审P2） |
+| TypeScript / ESLint / Build | PASS；tsc退出0；eslint 0 error/6 warning（均为既有，非本次引入）；build退出0（1条既有warning：citation-verifier动态fs访问，基线stash复现确认非本次引入） |
+| 数据库集成（显式`SOCILA_TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5439/task34r2_drill`，全新PG17+pgvector） | PASS；migration×2幂等、bootstrap×2幂等、seed×2幂等、`npm run test:db` 25文件/116通过skip 0（含停用经用例、跨地区停用拒绝且SH保持active、2026/2030广东命中不同snapshot且2030男30年360月落库）、`agent.migrate --with-roles`×2幂等、`pytest -m integration` 20通过skip 0 |
+| Python门禁 | PASS；ruff 0问题、mypy 33文件0错误、pytest非集成94通过、pip-audit无已知漏洞（本地项目自身not found为预期提示） |
+| Chromium E2E（全新`task34r2_e2e`库+Jan引导+seed+`scripts/e2e-task3-setup.ts`预创建沪粤快照+standalone） | PASS；全套19/19（auth 10+task3 6+task4 3），task3新增JRP-AC-008历史replay三方一致、JRP-AC-009跨地区停用409且零修改、JRP-AC-009停用后409 POLICY_SNAPSHOT_UNAVAILABLE并恢复 |
+| Secret与Gitleaks | PASS；scan-secrets --all 772文件零命中；Gitleaks 8.29.1完整历史79 commits no leaks；allowlist哨兵3场景全过 |
+| 边界 | 0017只在隔离库验证；持久账本repair、日期快照调度、激活/停用未授权执行；持久policyops全程未连接未修改；演练容器资源零新增（复用既有jrp-drill-pg容器建新库） |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 

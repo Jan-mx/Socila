@@ -17,6 +17,7 @@ import {
   deactivateJurisdictionRelease,
   requireFreshAdminForRelease,
   ReleaseGateError,
+  ReleaseJurisdictionMismatchError,
   ReleaseNotFoundError,
 } from "../jurisdiction-release.use-case";
 import { canonicalMemberHash } from "../release-gates";
@@ -61,6 +62,26 @@ function makeSnap(snapshotId: string, jurisdictionCode: string) {
   };
 }
 
+/** 一条必然通过的黄金测试（空 expected；JRP-FR-007 至少一条适用测试）。 */
+function passingGoldenTests() {
+  return [
+    {
+      id: 1,
+      name: "R-120 基础通过",
+      jurisdictionCode: "310000",
+      ruleId: "R-120-COMPUTE-RETIRE-DATE",
+      input: { user: { basic: { gender: "male", birth_year: 1973 } } },
+      paramsOverride: null,
+      expected: {},
+      source: "manual",
+      lastRunResult: null,
+      lastRunAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ];
+}
+
 function makeDeps(overrides: Record<string, unknown> = {}) {
   const upsert = vi.fn(async (data: Record<string, unknown>) => ({
     id: 1,
@@ -74,7 +95,7 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     ),
     getSnapshot: vi.fn(async () => null),
     listOpenConflicts: vi.fn(async () => []),
-    loadTests: vi.fn(async () => []),
+    loadTests: vi.fn(async () => passingGoldenTests() as never),
     // 门禁注入：引用校验通过（单元测试不读真实仓库文件）。
     verifyEvidence: vi.fn(() => ({
       verified: true,
@@ -316,6 +337,7 @@ describe("停用发布区间（JRP-FR-027/AC-009）", () => {
 
     const result = await deactivateJurisdictionRelease(deps as never, {
       releaseId: 42,
+      jurisdictionCode: "440000",
       actor: ADMIN,
     });
     expect(result.status).toBe("inactive");
@@ -324,11 +346,37 @@ describe("停用发布区间（JRP-FR-027/AC-009）", () => {
     expect(deactivateById).toHaveBeenCalledWith(42);
   });
 
+  it("URL地区代码与release记录地区不一致：拒绝且零修改（广东URL+上海releaseId，JRP-FR-027/AC-009）", async () => {
+    const getById = vi.fn(async () => ({
+      id: 42,
+      jurisdictionCode: "310000", // 记录是上海
+      activeSnapshotId: "snap-sh",
+      status: "active",
+      gateResults: {},
+      activatedAt: new Date("2026-09-07T10:00:00Z"),
+      activatedBy: "admin-1",
+      updatedAt: new Date("2026-09-07T10:00:00Z"),
+    }));
+    const deactivateById = vi.fn(async () => null);
+    const deps = makeDeps({ getById, deactivateById });
+
+    await expect(
+      deactivateJurisdictionRelease(deps as never, {
+        releaseId: 42,
+        jurisdictionCode: "440000", // URL 是广东
+        actor: ADMIN,
+      }),
+    ).rejects.toBeInstanceOf(ReleaseJurisdictionMismatchError);
+    // 拒绝时不得修改任何 release（零写入）。
+    expect(deactivateById).not.toHaveBeenCalled();
+  });
+
   it("非新鲜管理员停用：拒绝且零变化（JRP-FR-027/AC-010）", async () => {
     const deps = makeDeps();
     await expect(
       deactivateJurisdictionRelease(deps as never, {
         releaseId: 42,
+        jurisdictionCode: "440000",
         actor: { id: "user-1", role: "user", status: "active" },
       }),
     ).rejects.toThrow("管理员");
@@ -342,6 +390,7 @@ describe("停用发布区间（JRP-FR-027/AC-009）", () => {
     await expect(
       deactivateJurisdictionRelease(deps as never, {
         releaseId: 999,
+        jurisdictionCode: "440000",
         actor: ADMIN,
       }),
     ).rejects.toBeInstanceOf(ReleaseNotFoundError);

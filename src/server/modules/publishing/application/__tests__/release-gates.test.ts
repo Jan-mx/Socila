@@ -91,12 +91,32 @@ function makeSnap(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** 一条必然通过的黄金测试（空 expected 深度部分匹配，JRP-FR-007 至少一条）。 */
+function passingGoldenTest() {
+  return [
+    {
+      id: 1,
+      name: "R-120 基础通过",
+      jurisdictionCode: "440000",
+      ruleId: "R-120-COMPUTE-RETIRE-DATE",
+      input: { user: { basic: { gender: "male", birth_year: 1973 } } },
+      paramsOverride: null,
+      expected: {},
+      source: "manual",
+      lastRunResult: null,
+      lastRunAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ];
+}
+
 function makeDeps(overrides: Record<string, unknown> = {}): ReleaseGateDeps {
   return {
     snapshot: makeSnap(),
     jurisdictionCode: "440000",
     listOpenConflicts: vi.fn(async () => []),
-    loadTests: vi.fn(async () => []),
+    loadTests: vi.fn(async () => passingGoldenTest() as never),
     verifyEvidence: vi.fn(() => ({
       verified: true,
       errors: [],
@@ -168,6 +188,15 @@ describe("激活门禁（JRP-FR-007/AC-007）", () => {
     );
     expect(out.ok).toBe(false);
     expect(out.gateResults.conflicts).not.toBe("pass");
+  });
+
+  it("空黄金测试集 fail-closed：无适用测试地区不能绕过黄金门禁（JRP-FR-007/AC-007）", async () => {
+    const out = await runReleaseGates(
+      makeDeps({ loadTests: vi.fn(async () => []) }),
+    );
+    expect(out.ok).toBe(false);
+    expect(out.gateResults.golden_tests).not.toBe("pass");
+    expect(out.errors.join("; ")).toContain("golden_tests");
   });
 
   it("黄金测试门禁失败：快照重放与期望不一致", async () => {

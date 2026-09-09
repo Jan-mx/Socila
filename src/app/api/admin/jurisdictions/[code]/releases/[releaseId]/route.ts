@@ -7,6 +7,7 @@ import { getIdentityDeps } from "@/server/modules/identity/infrastructure/identi
 import {
   deactivateJurisdictionRelease,
   ReleaseAuthorizationError,
+  ReleaseJurisdictionMismatchError,
   ReleaseNotFoundError,
 } from "@/server/modules/publishing/application/jurisdiction-release.use-case";
 import { DrizzleJurisdictionReleaseWriteRepository } from "@/server/modules/publishing/infrastructure/drizzle/jurisdiction-release.repository";
@@ -17,6 +18,7 @@ export const dynamic = "force-dynamic";
  * DELETE /api/admin/jurisdictions/:code/releases/:releaseId（任务3 JRP-FR-027/AC-009）：
  * 停用单一发布区间。只允许新鲜管理员；停用只改状态为 inactive，
  * 不删除快照或历史 plan；广东停用不影响上海（区间隔离）。
+ * URL 路径地区代码必须与 release 记录地区一致，跨地区 release ID 拒绝（409）。
  */
 export async function DELETE(
   _req: NextRequest,
@@ -24,8 +26,7 @@ export async function DELETE(
 ) {
   const gate = await requireActor();
   if (!gate.ok) return gate.response;
-  const { code: _code, releaseId } = await params;
-  void _code;
+  const { code, releaseId } = await params;
   const releaseIdNum = Number(releaseId);
   if (!Number.isInteger(releaseIdNum) || releaseIdNum <= 0) {
     return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
@@ -52,6 +53,7 @@ export async function DELETE(
       },
       {
         releaseId: releaseIdNum,
+        jurisdictionCode: code,
         actor: { id: gate.actor.userId, role: actorRole, status: "active" },
       },
     );
@@ -63,6 +65,16 @@ export async function DELETE(
     }
     if (err instanceof ReleaseAuthorizationError) {
       return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    if (err instanceof ReleaseJurisdictionMismatchError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          url_jurisdiction_code: err.urlCode,
+          record_jurisdiction_code: err.recordCode,
+        },
+        { status: 409 },
+      );
     }
     if (err instanceof ReleaseNotFoundError) {
       return NextResponse.json({ error: err.message }, { status: 404 });

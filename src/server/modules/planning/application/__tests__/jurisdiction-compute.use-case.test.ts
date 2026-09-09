@@ -341,6 +341,8 @@ describe("computeJurisdictionPlan（JRP 地区感知规划核心用例）", () =
       savePlan,
     });
 
+    const snap = makeSnap("snap-1", "310000");
+
     const result = await computeJurisdictionPlan(
       {
         user: { basic: { gender: "male" } },
@@ -356,6 +358,8 @@ describe("computeJurisdictionPlan（JRP 地区感知规划核心用例）", () =
     const saved = savePlan.mock.calls[0][0] as Record<string, unknown>;
     expect(saved.jurisdictionCode).toBe("310000");
     expect(saved.snapshotId).toBe("snap-1");
+    // JRP-FR-009/FR-028：plan 必须保存快照内容 hash 供历史重放三方校验。
+    expect(saved.snapshotContentHash).toBe(snap.snapshot.contentHash);
     expect(saved.resolvedJurisdictionPath).toBe("/CN/310000/");
     expect(saved.asOfDate).toBe("2026-09-01");
     expect(result.planId).toBe("plan-1");

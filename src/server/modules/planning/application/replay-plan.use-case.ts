@@ -4,9 +4,11 @@
  * - owner 只能重放自己的 plan（归属校验，09-02）；
  * - 重放按 plan 保存的 snapshotId + snapshotContentHash + asOfDate 恢复执行
  *   （JRP-FR-014：不随当前活动快照调度变化）；
- * - 重放时重算快照成员规范化 hash，与 plan 保存的 hash 及当前快照 contentHash
- *   对照，返回漂移结论（JRP-FR-028）；
- * - 快照被删除/不可读时 fail-closed（409/404），不猜测替代快照。
+ * - 重放前做三方一致性校验（JRP-FR-028）：plan 保存的 snapshotContentHash、
+ *   快照行 contentHash、快照成员重算规范化 hash 必须全部一致；任一不一致
+ *   抛出明确 snapshot drift 错误（fail-closed），不得继续使用漂移快照产生
+ *   规划结果；
+ * - 快照被删除/不可读/无快照引用时 fail-closed（409/404），不猜测替代快照。
  */
 import {
   decideOwnership,
@@ -30,7 +32,7 @@ export interface ReplayPlanResult {
   snapshotContentHash: string;
   asOfDate: string;
   jurisdictionCode: string | null;
-  /** 漂移结论：plan 保存 hash vs 当前快照 hash。 */
+  /** 漂移结论：三方一致时恒为 drifted=false（不一致直接抛错，fail-closed）。 */
   drift: {
     savedHash: string;
     currentHash: string;
@@ -67,6 +69,39 @@ export class ReplaySnapshotUnavailableError extends Error {
 }
 
 /**
+ * JRP-FR-028/AC-008：三方 hash 任一不一致时的明确 snapshot drift 错误。
+ * 携带全部三方 hash 供调用方/日志输出明确漂移结论；fail-closed，
+ * 不得继续使用漂移快照产生规划结果。
+ */
+export class ReplaySnapshotDriftError extends Error {
+  readonly drift: {
+    savedHash: string;
+    rowHash: string;
+    recomputedHash: string;
+    mismatches: string[];
+  };
+  constructor(details: {
+    savedHash: string;
+    rowHash: string;
+    recomputedHash: string;
+  }) {
+    const mismatches: string[] = [];
+    if (!details.savedHash) {
+      mismatches.push("plan未保存 snapshotContentHash");
+    }
+    if (details.savedHash && details.savedHash !== details.rowHash) {
+      mismatches.push("plan保存hash与快照行contentHash不一致");
+    }
+    if (details.recomputedHash !== details.rowHash) {
+      mismatches.push("快照成员重算hash与快照行contentHash不一致");
+    }
+    super(`REPLAY_SNAPSHOT_DRIFT: ${mismatches.join("；")}`);
+    this.name = "ReplaySnapshotDriftError";
+    this.drift = { ...details, mismatches };
+  }
+}
+
+/**
  * 按保存的快照 ID/hash/日期重放历史 plan（JRP-FR-014/028）。
  * 返回原快照元数据与漂移结论；结果与保存时的执行逐字节一致（JRP-NFR-002）。
  */
@@ -92,10 +127,18 @@ export async function replayPlan(
   const snapshot = await deps.getSnapshot(plan.snapshotId);
   if (!snapshot) throw new ReplaySnapshotUnavailableError();
 
-  // JRP-FR-026：重放前重算成员规范化 hash，与 plan 保存 hash/快照 hash 对照。
+  // JRP-FR-028：重放前三方一致性校验——plan 保存 hash、快照行 contentHash、
+  // 成员重算规范化 hash 必须全部一致。任一不一致即明确 snapshot drift 并
+  // fail-closed（不继续使用漂移快照产生规划结果）。
   const recomputed = canonicalMemberHash(snapshot.members);
-  const currentHash = snapshot.snapshot.contentHash;
-  const drifted = savedHash !== "" && recomputed !== savedHash;
+  const rowHash = snapshot.snapshot.contentHash;
+  if (!savedHash || savedHash !== rowHash || recomputed !== rowHash) {
+    throw new ReplaySnapshotDriftError({
+      savedHash,
+      rowHash,
+      recomputedHash: recomputed,
+    });
+  }
 
   // 快照成员 → 引擎输入（与 compute 同一语义）。
   const ruleRows: Array<Record<string, unknown>> = [];
@@ -127,13 +170,14 @@ export async function replayPlan(
   return {
     planId: plan.id,
     snapshotId: plan.snapshotId,
-    snapshotContentHash: currentHash,
+    snapshotContentHash: rowHash,
     asOfDate,
     jurisdictionCode: plan.jurisdictionCode,
     drift: {
       savedHash,
-      currentHash,
-      drifted,
+      currentHash: rowHash,
+      // 到达此处必然三方一致（不一致已抛 ReplaySnapshotDriftError）。
+      drifted: false,
     },
     plan: (result.plan ?? {}) as Record<string, unknown>,
     calc,

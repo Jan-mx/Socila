@@ -340,6 +340,8 @@ export async function computeJurisdictionPlan(
       jurisdictionCode,
       resolvedJurisdictionPath: snapshot.snapshot.resolvedPath,
       snapshotId: snapshot.snapshot.id,
+      // JRP-FR-009/FR-028：plan 保存快照内容 hash，供历史重放三方一致性校验。
+      snapshotContentHash: snapshot.snapshot.contentHash,
       ownerUserId: input.ownerUserId,
     });
     planId = saved?.id ?? null;

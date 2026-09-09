@@ -126,6 +126,20 @@ export class ReleaseNotFoundError extends Error {
   }
 }
 
+/**
+ * JRP-FR-027/AC-009：URL 路径地区代码与 release 记录地区不一致时拒绝停用
+ * （例如用广东 URL 传上海 releaseId），被拒绝时不得修改任何 release。
+ */
+export class ReleaseJurisdictionMismatchError extends Error {
+  constructor(
+    readonly urlCode: string,
+    readonly recordCode: string,
+  ) {
+    super(`发布区间地区（${recordCode}）与URL地区（${urlCode}）不一致`);
+    this.name = "ReleaseJurisdictionMismatchError";
+  }
+}
+
 export interface ActivateReleaseInput {
   jurisdictionCode: string;
   snapshotId: string;
@@ -138,6 +152,8 @@ export interface ActivateReleaseInput {
 
 export interface DeactivateReleaseInput {
   releaseId: number;
+  /** JRP-FR-027/AC-009：必须等于 release 记录地区（来自URL路径），不一致拒绝。 */
+  jurisdictionCode: string;
   actor: ReleaseActor;
 }
 
@@ -211,6 +227,8 @@ export async function activateJurisdictionRelease(
 /**
  * 停用单一发布区间（JRP-FR-027/AC-009）：只改状态为 inactive，
  * 不删除快照或历史 plan；新鲜管理员身份校验。
+ * 停用前必须核对 URL 地区代码与 release 记录地区一致（JRP-FR-027）：
+ * 用广东 URL 传上海 releaseId 必须拒绝，且不得修改任何 release（零写入）。
  */
 export async function deactivateJurisdictionRelease(
   deps: JurisdictionReleaseDeps,
@@ -226,6 +244,13 @@ export async function deactivateJurisdictionRelease(
   const existing = await deps.getById(input.releaseId);
   if (!existing) {
     throw new ReleaseNotFoundError();
+  }
+  // JRP-FR-027/AC-009：地区绑定校验先于任何写入。
+  if (existing.jurisdictionCode !== input.jurisdictionCode) {
+    throw new ReleaseJurisdictionMismatchError(
+      input.jurisdictionCode,
+      existing.jurisdictionCode,
+    );
   }
   const deactivated = await deps.deactivateById(input.releaseId);
   if (!deactivated) {

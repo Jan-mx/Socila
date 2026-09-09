@@ -1,7 +1,7 @@
 # WI-20260907-02：任务3快照时态与真实入口加固
 
 > Author: Jan
-> Status: Reopened（2026-09-09复审）
+> Status: Accepted（2026-09-09第二轮修复验收）
 > Updated: 2026-09-09
 
 ## Work Item
@@ -69,4 +69,16 @@
 
 2026-09-08报告声称上述行为已完成；2026-09-09复审保留该报告作为历史记录，但发现空黄金测试集仍可通过、停用接口未校验路径地区、历史重放未比较快照行`contentHash`。这些反例修复前本Work Item不得Accepted。
 
-必须新增并通过：空黄金测试集拒绝、停用路径地区一致性、快照行hash漂移、保存hash/重算hash/快照hash三方不一致和真实历史重放逐字节比较。
+## 验收记录（2026-09-09第二轮修复）
+
+2026-09-09复审三项P1全部修复并取得专用反例证据，本Work Item**Accepted**：
+
+1. **空黄金测试集拒绝**：`release-gates.ts`对`loadTests`空数组记`golden_tests={fail:"快照没有任何适用黄金测试"}`并`ok=false`（Red：旧实现空集合错误记pass；Green后拒绝）。
+2. **停用路径地区一致性**：`deactivateJurisdictionRelease`新增`jurisdictionCode`输入，读取release记录后先校验`记录地区===URL地区`，不一致抛`ReleaseJurisdictionMismatchError`且不调用`deactivateById`（零写入）；路由把路径`code`传入并映射409（含url/record代码）。广东URL+上海releaseId被拒绝且上海保持active。
+3. **三方hash不一致**：`replayPlan`同时比较plan保存hash、快照行`contentHash`、成员重算规范化hash，任一不一致（或保存hash缺失）抛`ReplaySnapshotDriftError` fail-closed（不产生规划结果）；`computeJurisdictionPlan`保存plan时写入`snapshotContentHash`（JRP-FR-009）。
+4. **真实历史重放逐字节比较**：集成测试切换活动快照后重放旧plan按原snapshot逐字节一致、`drift.drifted=false`；E2E经`POST /api/plan/:id/replay`返回200与snapshotId且三方一致。
+5. **隔离DB零skip**：全新PG17+pgvector库`task34r2_drill`，命令显式`SOCILA_TEST_DATABASE_URL`；migration×2/bootstrap×2/seed×2幂等，`npm run test:db` 25文件/116通过零skip，`pytest -m integration` 20通过零skip。
+6. **Chromium E2E**：`e2e/task3-regional.spec.ts` 6例全过（新会话预创建/聊天与`/plan/new`同契约/claim_city_code/四川不可选/历史replay/跨地区停用拒绝/停用后unsupported），配套`scripts/e2e-task3-setup.ts`预创建沪粤快照并真实七道门禁激活；全套19/19。
+7. **P2超时稳定化**：`identity-container.test.ts`模块重载用例显式30秒超时并记录正式策略。
+
+门禁汇总：`npm test` 71文件/655、`test:db` 116/116、E2E 19/19、tsc/eslint退出0（0 error、6条既有warning）、`npm run build`退出0（1条既有warning：`citation-verifier.ts`动态fs访问，基线stash复现确认非本次引入）、ruff/mypy/pytest 94+20零skip、pip-audit无已知漏洞、scan-secrets 772文件零命中、Gitleaks 8.29.1完整历史79 commits no leaks、allowlist哨兵3场景全过。0017只在隔离库执行；持久账本repair、日期快照调度、激活/停用未授权执行。

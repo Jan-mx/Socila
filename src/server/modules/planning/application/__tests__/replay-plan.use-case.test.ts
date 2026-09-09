@@ -3,7 +3,9 @@
  *
  * - owner 重放自己的 plan；他人/不存在 → forbidden/not-found；
  * - 按保存的 snapshotId+hash+asOfDate 重放，不随当前活动快照切换变化；
- * - 快照 hash 漂移时返回 drifted 结论（JRP-FR-028）；
+ * - 重放前三方一致性校验（JRP-FR-028）：plan 保存 hash、快照行 contentHash、
+ *   成员重算 hash 必须全部一致；任一不一致 → 明确 snapshot drift 且 fail-closed
+ *   （不得使用漂移快照继续产生规划结果）；
  * - 快照删除/无快照引用 → fail-closed。
  */
 import { describe, it, expect, vi } from "vitest";
@@ -12,6 +14,7 @@ import {
   ReplayNotFoundError,
   ReplayForbiddenError,
   ReplaySnapshotUnavailableError,
+  ReplaySnapshotDriftError,
 } from "../replay-plan.use-case";
 import { canonicalMemberHash } from "@/server/modules/publishing/application/release-gates";
 
@@ -109,7 +112,7 @@ describe("历史 plan 重放（JRP-FR-014/028/AC-008）", () => {
     });
   });
 
-  it("plan 保存 hash 与当前快照 hash 不一致：drifted=true 但仍按保存快照重放（JRP-FR-028）", async () => {
+  it("plan 保存 hash 与快照行 hash 不一致：明确 drift 且 fail-closed，不产生规划结果（JRP-FR-028）", async () => {
     const snap = makeSnap("snap-1", "310000");
     const deps = makeDeps({
       getPlan: vi.fn(async () =>
@@ -117,12 +120,57 @@ describe("历史 plan 重放（JRP-FR-014/028/AC-008）", () => {
       ),
       getSnapshot: vi.fn(async () => snap),
     });
+    await expect(
+      replayPlan(deps as never, "plan-1", { userId: "user-1" }),
+    ).rejects.toBeInstanceOf(ReplaySnapshotDriftError);
+  });
+
+  it("快照行 contentHash 与成员重算 hash 不一致（行hash未更新/成员被篡改）：明确 drift 且 fail-closed（JRP-FR-028）", async () => {
+    const snap = makeSnap("snap-1", "310000");
+    // 成员被篡改但快照行 contentHash 与 plan 保存 hash 保持原值 → 重算hash漂移。
+    snap.members[0] = {
+      ...snap.members[0],
+      payload: { ...snap.members[0].payload, name: "被篡改的名称" },
+    };
+    const deps = makeDeps({
+      getPlan: vi.fn(async () =>
+        makePlan({ snapshotContentHash: snap.snapshot.contentHash }),
+      ),
+      getSnapshot: vi.fn(async () => snap),
+    });
+    await expect(
+      replayPlan(deps as never, "plan-1", { userId: "user-1" }),
+    ).rejects.toBeInstanceOf(ReplaySnapshotDriftError);
+  });
+
+  it("三方一致：重放成功且 drift.drifted=false（保存hash=行hash=重算hash，JRP-AC-008）", async () => {
+    const snap = makeSnap("snap-1", "310000");
+    const deps = makeDeps({
+      getPlan: vi.fn(async () =>
+        makePlan({ snapshotContentHash: snap.snapshot.contentHash }),
+      ),
+    });
     const result = await replayPlan(deps as never, "plan-1", {
       userId: "user-1",
     });
-    expect(result.drift.drifted).toBe(true);
-    expect(result.drift.savedHash).toBe("old-hash-different");
-    expect(result.drift.currentHash).toBe(snap.snapshot.contentHash);
+    expect(result.drift).toEqual({
+      savedHash: snap.snapshot.contentHash,
+      currentHash: snap.snapshot.contentHash,
+      drifted: false,
+    });
+    // 漂移错误对象携带三方 hash 便于明确结论（不吞掉细节）。
+    expect(ReplaySnapshotDriftError.name).toBe("ReplaySnapshotDriftError");
+  });
+
+  it("plan 未保存 snapshotContentHash：无法三方核对，fail-closed（JRP-FR-028）", async () => {
+    const snap = makeSnap("snap-1", "310000");
+    const deps = makeDeps({
+      getPlan: vi.fn(async () => makePlan({ snapshotContentHash: null })),
+      getSnapshot: vi.fn(async () => snap),
+    });
+    await expect(
+      replayPlan(deps as never, "plan-1", { userId: "user-1" }),
+    ).rejects.toBeInstanceOf(ReplaySnapshotDriftError);
   });
 
   it("他人 plan：ReplayForbidden（归属校验）", async () => {

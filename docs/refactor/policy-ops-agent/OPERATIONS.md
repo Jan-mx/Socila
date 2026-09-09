@@ -142,6 +142,8 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 > 当前持久事实（2026-09-07，只读复审）：Drizzle账本16条，0015/0016已经执行；上海、广东release为active，四川0；`cases/showcase_cases/tests/policy_snapshots=452/36/528/6`。旧任务4已删除399/81，但case-library归档SHA无效、selection报告缺失、restore报告仍pending。禁止重复运行旧任务4apply。
 >
 > 2026-09-09复审：任务3与任务4代码仍为Reopened。0017/0018只存在于代码分支，持久库尚未执行；受控CLI、apply完整字段、发布门禁和E2E证据未闭环前，禁止进入WI-20260907-04阶段A之外的任何写入。
+>
+> 2026-09-09第二轮修复：任务3（WI-20260907-02）已重新Accepted（空黄金测试集fail-closed、停用URL地区绑定、replay三方hash、隔离DB 116/116零skip、E2E 19/19）。任务4仍Reopened。0017/0018仍只存在于代码分支，持久库尚未执行；持久账本repair、日期快照调度、激活/停用均未授权。
 
 - WI-20260907-02与WI-20260907-03均Reopened，只允许代码、生成资产和隔离数据库测试。
 - 0015/0016历史SQL不可改写；源journal校正不等于持久账本已repair。

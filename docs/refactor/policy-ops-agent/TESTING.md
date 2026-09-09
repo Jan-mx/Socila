@@ -218,16 +218,20 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 四川地区级门禁：无候选快照、无活动发布，规划请求返回unsupported且不得使用上海或广东实体。
 - 原任务3/4并行方案已被复审推翻。任务3先修真实入口和日期快照；任务4随后使用其已验收snapshot区间生成案例。
 
-### 任务3 Reopened专用反例（2026-09-09仍有缺口）
+### 任务3专用反例（2026-09-09第二轮修复后全量Green）
 
 - 新会话必须先持久创建再确认地区（`create-conversation.use-case.test.ts`、`e2e/task3-regional.spec.ts` JRP-AC-001）；选择器不得对不存在会话返回404。
 - `claim_city_code`缺失、非广东、未知或仅自由文本时不得估算失业金额（`claim-city.test.ts`、`jurisdiction-compute.use-case.test.ts`）；有效代码由服务端规范化后执行。
-- 2026和2030广东请求必须命中不同snapshot区间（`snapshot-slices.test.ts` 时间片派生、`jurisdiction-compute.integration.test.ts`）；缺失、重叠、gateResults缺项或成员hash漂移均fail-closed（`jrp-0017-migration.integration.test.ts` EXCLUDE、compute用例执行期完整性）。
-- 激活必须真实运行引用、Schema、依赖、冲突、黄金、双重重放和内容哈希七道门禁（`release-gates.test.ts` 9例）；伪造pass不能绕过（`jurisdiction-release.use-case.test.ts`）。
-- 历史plan按保存snapshot逐字节重放（`replay-plan.use-case.test.ts` 7例+集成）；停用广东不影响上海（集成）；四川始终unsupported。
-- 聊天和直接规划页面使用同一地区确认契约并有专用Chromium E2E（`e2e/task3-regional.spec.ts` 3例）。
-- 空黄金测试集必须拒绝激活；停用API必须校验URL地区与release记录地区一致；replay必须校验保存hash、快照行hash与重算hash三方一致。
-- DB门禁必须在命令中显式提供全新隔离`SOCILA_TEST_DATABASE_URL`并证明零skip；缺环境变量导致的skip/失败不能作为PASS。
+- 2026和2030广东请求必须命中不同snapshot区间（`snapshot-slices.test.ts` 时间片派生、`jurisdiction-compute.integration.test.ts` 落库反例：2026与2030命中不同snapshotId、2030男30年360月）；缺失、重叠、gateResults缺项或成员hash漂移均fail-closed（`jrp-0017-migration.integration.test.ts` EXCLUDE、compute用例执行期完整性）。
+- 激活必须真实运行引用、Schema、依赖、冲突、黄金、双重重放和内容哈希七道门禁（`release-gates.test.ts`）；**空黄金测试集fail-closed**：`loadTests`返回空数组时`golden_tests={fail:"快照没有任何适用黄金测试"}`且`ok=false`（JRP-FR-007/AC-007，2026-09-09修复）。
+- 历史plan按保存snapshot逐字节重放（`replay-plan.use-case.test.ts`+集成）；**三方hash一致性**：plan保存`snapshotContentHash`、快照行`contentHash`、成员重算规范化hash必须全部一致，任一不一致（或保存hash缺失）抛`ReplaySnapshotDriftError` fail-closed（JRP-FR-028/AC-008，2026-09-09修复）；compute保存plan时必须写入`snapshotContentHash`（JRP-FR-009，`jurisdiction-compute.use-case.test.ts`断言）。
+- **停用URL地区绑定**：`deactivateJurisdictionRelease`校验URL地区代码与release记录地区一致，广东URL+上海releaseId抛`ReleaseJurisdictionMismatchError`且零写入（JRP-FR-027/AC-009，2026-09-09修复）；路由映射409并返回url/record代码；停用广东不影响上海（集成）；四川始终unsupported。
+- 聊天和直接规划页面使用同一地区确认契约并有专用Chromium E2E（`e2e/task3-regional.spec.ts` 6例：新会话预创建/聊天与`/plan/new`同契约/claim_city_code/四川不可选/历史replay/跨地区停用拒绝/停用后unsupported），配套`scripts/e2e-task3-setup.ts`预创建沪粤快照并经真实七道门禁激活。
+- DB门禁必须在命令中显式提供全新隔离`SOCILA_TEST_DATABASE_URL`并证明零skip（2026-09-09证据：`postgresql://postgres:postgres@localhost:5439/task34r2_drill`，25文件/116零skip）；缺环境变量导致的skip/失败不能作为PASS。
+
+#### 单元超时策略（2026-09-09任务3复审P2稳定化）
+
+`src/server/modules/identity/__tests__/identity-container.test.ts`的三个`freshContainer()`用例经`vi.resetModules()`重新求值identity-container的完整依赖图（`@/lib/db`→drizzle/pg链），在并行单元套件负载下单测可能超过vitest默认5秒；三个用例显式放宽到30秒（`it(..., 30_000)`）。这是模块重载固有成本，断言本身仍是确定性环境变量契约（缺失pepper拒绝、相同拒绝、合法放行），不以超时掩盖失败。
 
 ### 地区案例全量重建专用反例（2026-09-09仍有缺口）
 

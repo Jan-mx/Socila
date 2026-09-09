@@ -8,6 +8,7 @@ import {
   ReplayForbiddenError,
   ReplayNotFoundError,
   ReplaySnapshotUnavailableError,
+  ReplaySnapshotDriftError,
 } from "@/server/modules/planning/application/replay-plan.use-case";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +16,10 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/plan/:id/replay（任务3 JRP-FR-014/028、JRP-AC-008）：
  * owner 重放自己的历史 plan。按 plan 保存的 snapshotId + snapshotContentHash +
- * asOfDate 从不可变快照恢复执行，返回原快照元数据与漂移结论（drift）；
- * 不随当前活动快照调度变化（JRP-NFR-006）。无快照引用或快照已删除 → 409。
+ * asOfDate 从不可变快照恢复执行，返回原快照元数据；不随当前活动快照调度变化
+ * （JRP-NFR-006）。无快照引用或快照已删除 → 409；保存 hash / 快照行 hash /
+ * 成员重算 hash 三方任一不一致 → 409 REPLAY_SNAPSHOT_DRIFT（fail-closed，
+ * 不使用漂移快照产生规划结果）。
  */
 export async function POST(
   _req: NextRequest,
@@ -47,6 +50,12 @@ export async function POST(
     if (err instanceof ReplaySnapshotUnavailableError) {
       return NextResponse.json(
         { error: "REPLAY_SNAPSHOT_UNAVAILABLE" },
+        { status: 409 },
+      );
+    }
+    if (err instanceof ReplaySnapshotDriftError) {
+      return NextResponse.json(
+        { error: "REPLAY_SNAPSHOT_DRIFT", drift: err.drift },
         { status: 409 },
       );
     }

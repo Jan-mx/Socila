@@ -213,52 +213,63 @@ export async function runReleaseGates(
   // 5) golden_tests：按继承链（目标地区 + CN）加载测试并用快照成员重放。
   // 复用规则测试运行器同一语义：rule_id 测试单规则执行，无 rule_id 全量编排；
   // expected 深度部分匹配（与 admin 测试运行器 deepPartialDiff 一致）。
+  // fail-closed：快照没有任何适用黄金测试时必须拒绝（JRP-FR-007/AC-007），
+  // 空集合不得记 pass —— 否则无测试地区可绕过黄金门禁。
   const tests = await deps.loadTests([jurisdictionCode, "CN"]);
-  const goldenErrors: string[] = [];
-  const { rules, params, ruleSet } = memberToEngineInput(snapshot);
   const asOfDate = snapshot.snapshot.asOfDate ?? "2026-01-01";
-  const ruleDefs = snapshotRulesToDefinitions(
-    rules as unknown as Parameters<typeof snapshotRulesToDefinitions>[0],
-  );
-  const flatBaseParams = snapshotParamsToFlat(
-    params as unknown as Parameters<typeof snapshotParamsToFlat>[0],
-  );
-  for (const t of tests) {
-    const result = runTestCase(
-      {
-        rule_id: t.ruleId ?? null,
-        name: t.name,
-        input: (t.input ?? {}) as Record<string, unknown>,
-        params_override: (t.paramsOverride as Record<string, unknown>) ?? null,
-        expected: (t.expected ?? {}) as Record<string, unknown>,
-      },
-      ruleDefs,
-      flatBaseParams,
-      asOfDate,
+  const { rules, params, ruleSet } = memberToEngineInput(snapshot);
+  if (tests.length === 0) {
+    errors.push(
+      `golden_tests: 快照没有任何适用黄金测试（${jurisdictionCode}/CN 均无），必须至少一条`,
     );
-    if (!result.pass) {
-      // 浮点表示噪声（如 5000*(0.2+0.1)=1500.0000000000002）是既有已知偏差
-      // （golden.test.ts KNOWN_DIVERGENCES），金额/展示层取整问题，非策略回归。
-      // 门禁比较对纯数值 diff 使用相对容差，其余字段仍严格比较（fail-closed）。
-      const tolerated = result.diff.every((d) => {
-        if (typeof d.expected === "number" && typeof d.actual === "number") {
-          const scale = Math.max(1, Math.abs(d.expected), Math.abs(d.actual));
-          return Math.abs(d.expected - d.actual) / scale < 1e-9;
-        }
-        return false;
-      });
-      if (tolerated && result.diff.length > 0) continue;
-      const diffs = result.diff
-        .map((d) => `${d.path} 期望 ${JSON.stringify(d.expected)} 实际 ${JSON.stringify(d.actual)}`)
-        .join("; ");
-      goldenErrors.push(`${t.name}: ${diffs || "断言失败"}`);
-    }
-  }
-  if (goldenErrors.length === 0) {
-    gateResults.golden_tests = "pass";
+    gateResults.golden_tests = {
+      fail: "快照没有任何适用黄金测试，必须至少一条",
+    };
   } else {
-    errors.push(`golden_tests: ${goldenErrors.slice(0, 5).join("; ")}`);
-    gateResults.golden_tests = { fail: goldenErrors.slice(0, 5).join("; ") };
+    const goldenErrors: string[] = [];
+    const ruleDefs = snapshotRulesToDefinitions(
+      rules as unknown as Parameters<typeof snapshotRulesToDefinitions>[0],
+    );
+    const flatBaseParams = snapshotParamsToFlat(
+      params as unknown as Parameters<typeof snapshotParamsToFlat>[0],
+    );
+    for (const t of tests) {
+      const result = runTestCase(
+        {
+          rule_id: t.ruleId ?? null,
+          name: t.name,
+          input: (t.input ?? {}) as Record<string, unknown>,
+          params_override: (t.paramsOverride as Record<string, unknown>) ?? null,
+          expected: (t.expected ?? {}) as Record<string, unknown>,
+        },
+        ruleDefs,
+        flatBaseParams,
+        asOfDate,
+      );
+      if (!result.pass) {
+        // 浮点表示噪声（如 5000*(0.2+0.1)=1500.0000000000002）是既有已知偏差
+        // （golden.test.ts KNOWN_DIVERGENCES），金额/展示层取整问题，非策略回归。
+        // 门禁比较对纯数值 diff 使用相对容差，其余字段仍严格比较（fail-closed）。
+        const tolerated = result.diff.every((d) => {
+          if (typeof d.expected === "number" && typeof d.actual === "number") {
+            const scale = Math.max(1, Math.abs(d.expected), Math.abs(d.actual));
+            return Math.abs(d.expected - d.actual) / scale < 1e-9;
+          }
+          return false;
+        });
+        if (tolerated && result.diff.length > 0) continue;
+        const diffs = result.diff
+          .map((d) => `${d.path} 期望 ${JSON.stringify(d.expected)} 实际 ${JSON.stringify(d.actual)}`)
+          .join("; ");
+        goldenErrors.push(`${t.name}: ${diffs || "断言失败"}`);
+      }
+    }
+    if (goldenErrors.length === 0) {
+      gateResults.golden_tests = "pass";
+    } else {
+      errors.push(`golden_tests: ${goldenErrors.slice(0, 5).join("; ")}`);
+      gateResults.golden_tests = { fail: goldenErrors.slice(0, 5).join("; ") };
+    }
   }
 
   // 6) replay_twice：同一快照两次执行逐字节一致（确定性，JRP-NFR-002）。

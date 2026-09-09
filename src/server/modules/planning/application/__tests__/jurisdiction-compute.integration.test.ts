@@ -19,7 +19,11 @@ import { DrizzleJurisdictionReadRepository } from "@/server/modules/jurisdiction
 import { DrizzlePolicySnapshotRepository } from "@/server/modules/policy/infrastructure/drizzle/policy-conflict-snapshot.repository";
 import { DrizzlePolicyConflictRepository } from "@/server/modules/policy/infrastructure/drizzle/policy-conflict-snapshot.repository";
 import { DrizzleJurisdictionReleaseWriteRepository } from "@/server/modules/publishing/infrastructure/drizzle/jurisdiction-release.repository";
-import { activateJurisdictionRelease } from "@/server/modules/publishing/application/jurisdiction-release.use-case";
+import {
+  activateJurisdictionRelease,
+  deactivateJurisdictionRelease,
+  ReleaseJurisdictionMismatchError,
+} from "@/server/modules/publishing/application/jurisdiction-release.use-case";
 import { computeJurisdictionPlan } from "@/server/modules/planning/application/jurisdiction-compute.use-case";
 import { DrizzleJurisdictionPlanningReadRepository } from "@/server/modules/planning/infrastructure/drizzle/jurisdiction-planning-read.repository";
 import { jurisdictionPlanningReleases } from "@/lib/db/schema";
@@ -69,7 +73,11 @@ function makeComputeDeps() {
   };
 }
 
-  async function activate(code: string, asOfDate: string): Promise<string> {
+  async function activate(
+    code: string,
+    asOfDate: string,
+    effectiveTo?: string | null,
+  ): Promise<string> {
     const snapshotService = createPolicySnapshotService({
       resolveChain: makeTreeResolveChain(),
     });
@@ -128,6 +136,7 @@ function makeComputeDeps() {
         jurisdictionCode: code,
         snapshotId: created.snapshotId,
         effectiveFrom: asOfDate,
+        effectiveTo: effectiveTo ?? null,
         actor: { id: "jrp-admin", role: "admin", status: "active" },
       },
     );
@@ -320,7 +329,29 @@ describe("停用与历史重放（JRP-FR-027/028/AC-009）", () => {
     const releaseWrite = new DrizzleJurisdictionReleaseWriteRepository();
     const gdRelease = await releaseWrite.getByJurisdiction("440000");
     expect(gdRelease).not.toBeNull();
-    await releaseWrite.deactivateById(gdRelease!.id);
+    // 经用例停用（地区绑定校验：URL代码=440000 与记录一致）。
+    const deactivated = await deactivateJurisdictionRelease(
+      {
+        requireAdmin: async () => ({ ok: true }),
+        getSnapshot: async () => null,
+        listOpenConflicts: async () => [],
+        loadTests: async () => [],
+        upsert: async (data) => ({
+          id: 0,
+          ...data,
+          updatedAt: new Date("2026-09-07T10:00:00.000Z"),
+        }),
+        getById: (id) => releaseWrite.getById(id),
+        deactivateById: (id) => releaseWrite.deactivateById(id),
+        now: () => new Date(),
+      },
+      {
+        releaseId: gdRelease!.id,
+        jurisdictionCode: "440000",
+        actor: { id: "jrp-admin", role: "admin", status: "active" },
+      },
+    );
+    expect(deactivated.status).toBe("inactive");
 
     // 广东停用：日期无匹配 → 409（有发布记录但无 active 区间）。
     await expect(
@@ -349,6 +380,47 @@ describe("停用与历史重放（JRP-FR-027/028/AC-009）", () => {
 
     // 重新激活广东（恢复演练库状态）。
     await activate("440000", "2026-09-01");
+  });
+
+  it("跨地区停用拒绝：广东URL传上海releaseId → ReleaseJurisdictionMismatchError 且上海release保持active（JRP-AC-009/FR-027）", async () => {
+    await activate("310000", "2026-09-01");
+    await activate("440000", "2026-09-01");
+
+    const releaseWrite = new DrizzleJurisdictionReleaseWriteRepository();
+    const shRelease = await releaseWrite.getByJurisdiction("310000");
+    expect(shRelease).not.toBeNull();
+    const before = await releaseWrite.getById(shRelease!.id);
+    expect(before!.status).toBe("active");
+
+    await expect(
+      deactivateJurisdictionRelease(
+        {
+          requireAdmin: async () => ({ ok: true }),
+          getSnapshot: async () => null,
+          listOpenConflicts: async () => [],
+          loadTests: async () => [],
+          upsert: async (data) => ({
+          id: 0,
+          ...data,
+          updatedAt: new Date("2026-09-07T10:00:00.000Z"),
+        }),
+          getById: (id) => releaseWrite.getById(id),
+          deactivateById: (id) => releaseWrite.deactivateById(id),
+          now: () => new Date(),
+        },
+        {
+          releaseId: shRelease!.id,
+          jurisdictionCode: "440000", // 广东URL
+          actor: { id: "jrp-admin", role: "admin", status: "active" },
+        },
+      ),
+    ).rejects.toBeInstanceOf(ReleaseJurisdictionMismatchError);
+
+    // 被拒绝时不得修改任何 release（零写入）。
+    const after = await releaseWrite.getById(shRelease!.id);
+    expect(after!.status).toBe("active");
+    const gdAfter = await releaseWrite.getByJurisdiction("440000");
+    expect(gdAfter!.status).toBe("active");
   });
 
   it("历史 plan 重放：切换当前快照后仍按原快照重放且漂移结论正确（JRP-AC-008/FR-028）", async () => {
@@ -385,5 +457,64 @@ describe("停用与历史重放（JRP-FR-027/028/AC-009）", () => {
     expect(replay.snapshotId).toBe(firstSnapshot);
     expect(replay.planId).toBe(firstResult.planId);
     expect(replay.drift.drifted).toBe(false);
+  });
+});
+
+describe("广东2026/2030日期快照隔离（JRP-AC-004/FR-025，隔离库落库验证）", () => {
+  it("2026与2030请求命中不同snapshot区间；2030使用男30年口径（360月）", async () => {
+    // 激活封闭2026区间 [2026-09-01, 2029-12-31] 与2030区间 [2030-01-01, ∞)：
+    // 两区间不重叠（0017 EXCLUDE），同一地区可同时存在。
+    const snap2026 = await activate("440000", "2026-09-01", "2029-12-31");
+    const snap2030 = await activate("440000", "2030-01-01", null);
+    expect(snap2026).not.toBe(snap2030);
+
+    // 2026 请求 → 2026快照：医保退休地市年限缺参 → needs_agent + W-MI-LOCAL-YEARS-MISSING。
+    const r2026 = await computeJurisdictionPlan(
+      {
+        user: {
+          basic: { gender: "male", birth_year: 1965, birth_month: 1 },
+          profile: { claim_city_code: "440100" },
+          status: { employment_status: "unemployed" },
+          social: {
+            unemployment_insurance_years: 3,
+            medical_contrib_months: 120,
+          },
+        },
+        jurisdictionCode: "440000",
+        asOfDate: "2026-09-01",
+        ownerUserId: "jrp-integration-user",
+      },
+      makeComputeDeps(),
+    );
+    expect(r2026.meta.snapshot_id).toBe(snap2026);
+    expect(r2026.needsAgent).toBe(true);
+    const calc2026 = r2026.calc as Record<string, Record<string, unknown>>;
+    expect(calc2026.mi?.lifetime_required_months).toBeFalsy();
+
+    // 2030 请求 → 2030快照：男30年统一口径（360月），不再是能力级缺口。
+    const r2030 = await computeJurisdictionPlan(
+      {
+        user: {
+          basic: { gender: "male", birth_year: 1970, birth_date: "1970-06-15" },
+          status: { employment_status: "employed" },
+          social: {
+            pension_contrib_months: 120,
+            medical_contrib_months: 100,
+            unemployment_insurance_years: 3,
+          },
+        },
+        jurisdictionCode: "440000",
+        asOfDate: "2030-06-01",
+        ownerUserId: "jrp-integration-user",
+      },
+      makeComputeDeps(),
+    );
+    expect(r2030.meta.snapshot_id).toBe(snap2030);
+    const calc2030 = r2030.calc as Record<string, Record<string, unknown>>;
+    expect(calc2030.mi?.lifetime_required_months).toBe(360);
+    expect(calc2030.mi?.lifetime_gap_months).toBe(260);
+
+    // 两个日期请求命中不同快照（隔离库证据：2026/2030 非同一快照）。
+    expect(r2026.meta.snapshot_id).not.toBe(r2030.meta.snapshot_id);
   });
 });
