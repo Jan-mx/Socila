@@ -1,12 +1,12 @@
 # 任务4案例库治理与地区化重建验收报告
 
-> Status: Accepted（2026-09-10第三轮修复完成；持久替换待WI-20260907-04授权）
+> Status: Reopened（2026-09-10第五轮代码与隔离门禁完成，等待独立复审；不得提前写Accepted）
 > Branch: `codex/task34-regional-case-rebuild`
 > Scope: WI-20260907-03（地区化政策案例生成与可靠归档重建）
 
 ## 当前结论
 
-**第三轮修复完成并重新Accepted（2026-09-10）**：旧test完整内容hash、restore/SHA/selection真实验证、42条DSL example原子同步、manifest三方自校验、批次状态0行失败、落库新行hash逐项核对全部闭环（TDD Red→Green，Red证据37失败/32通过）。随机端口隔离DB `npm run test:db` 26文件/137零skip、pytest -m integration 20/20、npm test 73文件/705零skip、pre dump隔离完整CLI演练最终36/36/42/36且篡改fail-closed。**WI-20260907-04保持Reopened**：只读审计与repair-forward计划（attestation `3e081d59…`、targetFingerprint `58cef928…`、精确拟写集合与回退点）已生成，等待用户授权。历史代码与持久执行记录保留为审计事实。
+**第五轮修复完成，本报告保持Reopened（2026-09-10）**：WI-20260907-03已恢复Accepted；第五轮修复journal非单调（0010～0014 when修正为严格单调，SQL零修改）、migration账本回归8项全过、审计journal不符改为阻断、归档目录保护；全部门禁本地新鲜通过（`npm test` 74文件/720零skip、随机端口`npm run test:db` 26文件/141零skip、tsc/eslint/build退出0、scan-secrets 788文件零命中、Gitleaks 8.29.1完整历史86提交零发现、allowlist哨兵全过）；第五轮只读审计绑定新代码提交`1fe702b…`（attestationManifestHash `8941655b…`、targetFingerprint `56c479de…`、journalCheck.journalMonotonic=true、隔离库删除重复行后migration×2 no-op证据）。**独立复审前本报告顶部保持Reopened**；**WI-20260907-04保持Reopened**：repair-forward计划（绑定`1fe702b…`）已生成，等待用户授权。历史代码与持久执行记录保留为审计事实。
 
 历史背景：`e26a543`实现0016、案例治理与452/36/528路径；复审发现归档SHA用文件名而非文件内容、selection报告缺失、restore报告pending、manifest未绑定内容、81条展示hash为pending、无可比断言仍判match、质量分空、多标签未接入、并发无行锁、地区默认硬编码（[复审报告](./review-report-2026-09-07.md)）。
 
@@ -149,3 +149,19 @@
 - migration账本实际21条，0012～0014重复登记，0015账本hash与当前SQL不一致。
 
 当前36/36/78暂时保留并冻结写入；pre/post备份保留。不取得新的fresh repair-forward授权，不得重跑stage脚本、恢复pre dump或执行最终分支合并。
+
+## 2026-09-10第五轮修复与只读审计（本报告保持Reopened，等待独立复审）
+
+第四轮复审遗留的journal非单调与审计门禁缺口在代码提交`1fe702b`修复（fix: 修正迁移journal与重复账本门禁）：
+
+| 项 | 结果 |
+| --- | --- |
+| journal严格单调修复 | `drizzle/meta/_journal.json`：0010=1788560000000、0011=1788600000000、0012=1788640000000、0013=1788680000000、0014=1788705240000、0015=1788777720000、0016=1788785400000、0017=1788796800000、0018=1788796860000（idx/tag不变、SQL零修改、全部entry按idx严格递增）；migration SQL blob LF SHA与账本ID 10～16、21、22原hash继续匹配 |
+| migration账本回归 | `scripts/rcl-ledger-regression-task34.mjs`：post dump隔离恢复后8项全过——首次migration no-op账本21条；事务删除ID 18/19/20；migration×2均no-op；账本持续18条不重新生成0012～0014；ID 10～16、21、22 hash/created_at不变；ID 17缺号不补写不重排；模拟0019（when=1788797000000>1788796860000）只应用一次；工作树SQL均LF且hash===Git blob（证据`task34-r5-ledger-regression-2026-09-10/ledger-regression.json`） |
+| 审计阻断门禁 | `scripts/rcl-audit-task34.mjs`：journal非单调/与预期不符→阻断（不再仅报告）；ID 10～16、21、22账本hash===Git blob LF SHA→阻断；隔离库删除重复行后migration×2 no-op→门禁；三者全过才生成repair-forward计划；`--trusted-dir`只读复验既有可信归档（禁止覆盖） |
+| 归档目录保护 | `prepareRclArchive`：目标目录已包含历史归档专属文件（4 dump/selection/restore/sha256sums）时拒绝开始；补偿只删除本次新建文件 |
+| 门禁 | `npm test` 74文件/720零skip；随机端口全新PG17+pgvector`npm run test:db` 26文件/141零skip（migration×2/bootstrap×2/seed×2幂等、agent.migrate --with-roles×2幂等、pytest -m integration 20/20）；tsc/eslint/build退出0；scan-secrets 788文件零命中；Gitleaks 8.29.1完整历史86提交零发现；allowlist哨兵全过 |
+| 第五轮只读审计 | `F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T10-12-35/`：codeSha `1fe702b…`；attestation-current.json（36/36/78全逐行ID/UID/64位hash、10 snapshots、5 releases、3批次；attestationManifestHash `8941655b…`、targetFingerprint `56c479de…`）；audit-summary.json（journalCheck.journalMonotonic=true、ledgerGitBlobHashMatch=true 9/9、ledgerRegressionNoopAfterDelete=true、可信归档复验8文件/SHA匹配/452/36/500/500 test hash非空/restore 40表+20 sequence零mismatch/第三库恢复40表20 sequence一致）；repair-forward-plan.json（写集合只含删除账本ID 18/19/20、prepared批次91d60c5f→rolled_back、新增restore_verified可信归档批次+988条entries；36/36/78、10 snapshots、5 releases零变化；含隔离库no-op证据；repair前强制新建备份） |
+| 边界 | 全程持久policyops仅SELECT；未执行repair-forward；未恢复pre dump；未创建PR、未合并分支；可信归档目录未覆盖未删除；隔离容器/库finally清理 |
+
+**独立复审前本报告顶部保持Reopened**；WI-20260907-03已恢复Accepted（代码与隔离门禁层面），WI-20260907-04等待用户对`1fe702b…`计划的repair-forward授权，WI-20260909-01保持Blocked。

@@ -146,3 +146,16 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 
 - 门禁（2026-09-10本地新鲜）：`npm test` 74文件/713零skip；`npm run test:db` 26文件/141零skip（随机端口全新PG17+pgvector）；tsc/eslint/build退出0；pytest非集成94、`-m integration` 20/20；pip-audit无已知漏洞；Gitleaks 8.29.1完整历史85提交零发现；scan-secrets 788文件零命中；allowlist哨兵3场景全过；Markdown相对链接与`git diff --check`通过。
 - 边界：持久policyops仅SELECT；repair未执行；WI-20260909-01保持Blocked；临时容器/库finally清理；`task34-r4-trusted-old-*`目录永久保留。
+
+## 任务4第五轮修复与只读审计（2026-09-10，WI-20260907-03恢复Accepted、WI-04保持Reopened、任务4验收报告等待独立复审）
+
+| 需求 | 实现 | 测试 |
+| --- | --- | --- |
+| journal严格单调（RCL-NFR-001迁移账本规范） | `drizzle/meta/_journal.json`：0010～0014 when修正为1788560000000/1788600000000/1788640000000/1788680000000/1788705240000（0015～0018不变）；idx/tag不变、SQL零修改；全部18条按idx严格递增且max when===0018 | `migration-lf.contract.test.ts`第五轮新增3例（全部entry递增/0010～0018与预期一致/max when保证账本max下no-op） |
+| migration账本回归 | `scripts/lib/task34-ledger-regression.mjs`（8项检查：首次no-op账本21→事务删18/19/20→migration×2 no-op→账本18条→保留行不变→ID 17缺号不补写→模拟0019只应用一次→EOL）、`scripts/rcl-ledger-regression-task34.mjs`（post dump隔离容器入口） | `task34-r5-ledger-regression-2026-09-10/ledger-regression.json`（ok:true）；Red：旧journal下0014（1788991200000>账本max）会被重新应用 |
+| 迁移审计阻断门禁 | `scripts/rcl-audit-task34.mjs`：journal非单调/与预期不符→阻断throw；ID 10～16、21、22账本hash===Git blob LF SHA→阻断；隔离库删除重复行后migration×2 no-op→门禁；`--trusted-dir`只读复验既有可信归档（禁止覆盖） | 第五轮审计`task34-r4-audit-2026-09-10T10-12-35/audit-summary.json`（journalMonotonic=true、ledgerHashCheck 9/9、ledgerRegression.ok=true、reverifyDetail 8文件/SHA匹配/452/36/500/restore 40/20/0、thirdDbRestore 40表20 sequence零mismatch） |
+| prepare-archive归档目录保护 | `executor.ts` prepareRclArchive：目标目录已包含历史归档专属文件（4 dump/selection/restore/sha256sums）时拒绝开始；manifest.json为plan-replacement合法产物不拒绝；补偿只删除本次新建文件 | `executor.test.ts`第五轮3条（dump存在拒绝零写入零批次/sha256sums存在拒绝/仅manifest允许且历史文件保留）；第二次dump/写文件/最终SHA/补偿失败4条保持零prepared批次/entries |
+| 当前attestation+repair-forward（第五轮） | `scripts/rcl-audit-task34.mjs`（绑定`1fe702b…`；36/36/78全逐行ID/UID/hash、10 snapshots、5 releases、3批次；journalCheck.journalMonotonic=true；写集合只含删除账本18/19/20、prepared批次91d60c5f→rolled_back、新增restore_verified可信归档批次+988 entries；36/36/78/10/5零变化；含隔离库no-op证据；repair前强制新建备份） | `task34-r4-audit-2026-09-10T10-12-35/attestation-current.json`（attestationManifestHash `8941655b…`）、`repair-forward-plan.json`（codeSha `1fe702b…`、trustedArchiveManifestHash `da0ea94d…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`、预期最终账本18条`25d10e62…`） |
+
+- 门禁（2026-09-10本地新鲜）：`npm test` 74文件/720零skip；`npm run test:db` 26文件/141零skip（随机端口全新PG17+pgvector，migration×2/bootstrap×2/seed×2幂等）；tsc/eslint/build退出0；agent.migrate --with-roles×2幂等；pytest -m integration 20/20；scan-secrets 788文件零命中；Gitleaks 8.29.1完整历史86提交零发现；allowlist哨兵3场景全过。
+- 边界：持久policyops仅SELECT；repair未执行；WI-20260909-01保持Blocked；pre dump未恢复；`task34-r4-trusted-old-2026-09-10T06-59-14/`未覆盖未删除（第五轮只读复验通过）；临时容器/库finally清理。

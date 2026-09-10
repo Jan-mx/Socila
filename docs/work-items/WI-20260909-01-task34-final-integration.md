@@ -17,7 +17,7 @@
 
 在任务3、任务4和持久库受控替换全部验收完成后，以一个显式merge commit把最终集成分支完整合入重构分支。只合并`codex/task34-regional-case-rebuild`，不再单独合并`codex/task3-jurisdiction-planning`或`codex/task4-case-governance`。
 
-当前阻断事实：源分支为`579fed8`（任务4第四轮修复提交），目标分支仍为`57f051d`且尚未合并；任务4（WI-20260907-03）第四轮修复完成但保持Reopened，WI-20260907-04仍Reopened。在任务4/WI-04重新Accepted及repair-forward可信验收完成前不得执行本Work Item。
+当前阻断事实：源分支为`1fe702b`（任务4第五轮修复提交：journal严格单调、migration账本回归、审计阻断门禁、归档目录保护；WI-20260907-03已恢复Accepted），目标分支仍为`57f051d`且尚未合并；任务4验收报告在独立复审前保持Reopened，WI-20260907-04仍Reopened（等待repair-forward授权）。在任务4/WI-04重新Accepted及repair-forward可信验收完成前不得执行本Work Item。
 
 ## 范围
 

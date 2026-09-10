@@ -41,9 +41,9 @@
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化、三地区批准和候选快照重放完成；四川无快照 | 保持Accepted，不因任务3/4复审回退 |
 | 任务3：地区感知用户规划 | **Accepted（2026-09-09第二轮修复）**：空黄金测试集fail-closed、停用URL地区绑定、replay三方hash、隔离DB 116/116零skip、E2E 19/19 | 代码验收保持；0017与快照已持久执行，但账本/任务4审计待repair-forward |
-| 任务4：地区化政策案例库 | **Reopened（2026-09-10第四轮复审）**：第三轮修复保持有效；第四轮修复prepare补偿、applied幂等重验、migration换行契约（.gitattributes eol=lf）与迁移审计语义；随机端口隔离DB零skip | 全部代码门禁通过后恢复Accepted；不因WI-04审计回退 |
-| 持久库案例替换 | **Reopened（等待repair-forward授权）**：数据36/36/78冻结；账本21条（0012～0014的CRLF重复登记id 18/19/20、0010/0011/0015账本hash即Git LF内容、id 17缺失）、3个归档批次（2 applied+1 prepared）、未引用snapshot均已只读定位 | 基于新`repair-forward-plan.json`（绑定代码提交`579fed8…`，attestation `eb6d8d9d…`、targetFingerprint `56c479de…`、可信归档manifestHash `da0ea94d…`）等待用户明确授权后执行 |
-| 最终分支集成 | **Blocked**：源`579fed8`（第四轮修复）尚未合入目标`57f051d` | 任务4/WI-04重新Accepted后执行WI-20260909-01；当前禁止合并 |
+| 任务4：地区化政策案例库 | **Accepted（2026-09-10第五轮修复完成，等待独立复审）**：第四轮修复保持；第五轮修复journal非单调（0010～0014 when严格单调、SQL零修改）、migration账本回归8项全过（隔离库删除18/19/20后migration×2 no-op等）、审计journal不符改阻断（journalMonotonic/账本Git LF hash/隔离库no-op三门禁）、归档目录保护；随机端口隔离DB 26文件/141零skip、npm test 74文件/720零skip | 任务4验收报告顶部在独立复审前保持Reopened |
+| 持久库案例替换 | **Reopened（等待repair-forward授权）**：数据36/36/78冻结；账本21条（0012～0014的CRLF重复登记id 18/19/20、0010/0011/0015账本hash即Git LF内容、id 17缺失）、3个归档批次（2 applied+1 prepared）、未引用snapshot均已只读定位 | 基于新`repair-forward-plan.json`（绑定代码提交`1fe702b…`，attestation `8941655b…`、targetFingerprint `56c479de…`、可信归档manifestHash `da0ea94d…`、journalCheck.journalMonotonic=true）等待用户明确授权后执行 |
+| 最终分支集成 | **Blocked**：源`1fe702b`（第五轮修复）尚未合入目标`57f051d` | 任务4/WI-04重新Accepted后执行WI-20260909-01；当前禁止合并 |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
 | 四川医保退休年限正式文件（缺口4） | Deferred；仅2025-03征求意见稿，无正式印发 | `WI-20260907-01`：正式印发后采集，不阻塞任务2首期 |
 | 川人社办发〔2023〕18号（缺口5） | Deferred；白名单域未检索到 | `WI-20260907-01`：等待用户提供原件或官方入口恢复 |
@@ -420,6 +420,29 @@
 | 当前attestation（第四轮） | `task34-r4-audit-2026-09-10T06-59-14/attestation-current.json`：绑定codeSha `579fed8…`；36 cases+36 showcase+36 regression+42 example全逐行ID/UID/64位hash；10 snapshots、5 releases、3个archive批次；attestationManifestHash `eb6d8d9d…`；targetFingerprint `56c479de…`（任一数据变化即变化） |
 | repair-forward计划（第四轮） | `F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T06-59-14/repair-forward-plan.json`：codeSha `579fed8…`、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、attestationManifestHash `eb6d8d9d…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`；精确SQL写集合10步（只删账本重复行18/19/20、prepared批次91d60c5f→rolled_back、新增restore_verified可信归档批次+988 entries、业务数据零变化）、每项旧值前置条件、事务边界T1/T2/T3、回退点、失败条件；预期最终账本18条、fingerprint `25d10e62…` |
 | 边界 | 全程未写持久policyops；临时容器/库/网络/文件finally清理；可信归档目录永久保留；未执行repair、未执行WI-20260909-01、未创建PR、未合并分支 |
+
+## 第五轮独立复审（任务4/WI-04，2026-09-10）
+
+| 发现 | 修复 | 证据 |
+| --- | --- | --- |
+| journal when非单调（0010～0014未来时间戳，0014=1788991200000>0015；post恢复库上0014会被migrator重新应用） | `drizzle/meta/_journal.json`：0010=1788560000000、0011=1788600000000、0012=1788640000000、0013=1788680000000、0014=1788705240000、0015=1788777720000、0016=1788785400000、0017=1788796800000、0018=1788796860000；idx/tag不变、SQL零修改；全部18条按idx严格递增且max when===0018 | `migration-lf.contract.test.ts`新增3条单调契约；`npm test` 74文件/720零skip |
+| migration账本回归无自动验证 | `scripts/lib/task34-ledger-regression.mjs`+`scripts/rcl-ledger-regression-task34.mjs`：post dump隔离恢复后8项验证（首次no-op账本21→事务删18/19/20→migration×2 no-op→账本18条不重新生成0012～0014→保留行hash/created_at不变→ID 17不补写不重排→模拟0019 when>1788796860000只应用一次→工作树SQL均LF） | `F:/Socila/backup/case-library/task34-r5-ledger-regression-2026-09-10/ledger-regression.json` ok:true |
+| 审计journal不符仅报告 | `scripts/rcl-audit-task34.mjs`：journal非单调/与预期不符→阻断throw；ID 10～16、21、22账本hash===Git blob LF SHA→阻断；隔离库删除重复行后migration×2 no-op→门禁；`--trusted-dir`只读复验既有可信归档（禁止覆盖） | 第五轮audit三门禁全过（journalMonotonic=true、ledgerGitBlobHashMatch=true 9/9、ledgerRegressionNoopAfterDelete=true） |
+| prepare-archive无目录保护 | `executor.ts`：目标目录已包含历史归档专属文件（4 dump/selection/restore/sha256sums）时拒绝开始；manifest.json为plan-replacement合法产物不拒绝；补偿只删除本次新建文件 | `executor.test.ts`第五轮3条Red→Green；第二次dump/写文件/最终SHA/补偿失败4条保持零prepared批次/entries |
+
+## 当前任务验证（任务4第五轮修复与只读审计，2026-09-10本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| Node单元（`npm test`） | PASS；74文件/720通过、skip 0 |
+| TypeScript / ESLint / Build | PASS；tsc退出0、eslint 0 error、`npm run build`退出0 |
+| 数据库集成（任务专属随机高位端口全新PG17+pgvector容器，vector/btree_gist） | PASS；migration×2（修复后journal幂等）、bootstrap×2、seed×2幂等；`npm run test:db` 26文件/141通过、skip 0；agent.migrate --with-roles×2幂等；`pytest -m integration` 20通过、skip 0 |
+| Secret扫描 / Gitleaks / 哨兵 | PASS；scan-secrets 788文件零命中；Gitleaks 8.29.1完整历史86提交零发现；allowlist哨兵3场景全过 |
+| migration账本回归（隔离库） | PASS；8项全过（证据见上）；post dump SHA-256 `934c4758…` |
+| 第五轮只读审计（持久库仅SELECT，绑定代码提交`1fe702b…`） | 当前36/36/78/10冻结；post dump恢复对比仅`auth_refresh_sessions`运行期差异（40表+20 sequence其余一致）；journalCheck.journalMonotonic=true、journal 9/9与预期一致；账本ID 10～16、21、22 hash===Git blob LF SHA（9/9）、created_at与预期一致；隔离库删除18/19/20后migration×2 no-op；可信归档复验（`--trusted-dir`）：8文件完整、SHA全部匹配、manifest 452/36/500、500 test hash全部非空、restore 40表/20 sequence/零mismatch、第三库再次恢复一致（40表/20 sequence/零mismatch）；证据`task34-r4-audit-2026-09-10T10-12-35/` |
+| 当前attestation（第五轮） | `task34-r4-audit-2026-09-10T10-12-35/attestation-current.json`：绑定codeSha `1fe702b…`；36 cases+36 showcase+36 regression+42 example全逐行ID/UID/64位hash；10 snapshots、5 releases、3个archive批次；attestationManifestHash `8941655b…`；targetFingerprint `56c479de…` |
+| repair-forward计划（第五轮） | `F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T10-12-35/repair-forward-plan.json`：codeSha `1fe702b…`、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、attestationManifestHash `8941655b…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`；journalCheck.journalMonotonic=true、ledgerCreatedAtMatchesExpected=true、ledgerGitBlobHashMatch=true、ledgerRegressionNoopAfterDelete=true；写集合只含删除账本ID 18/19/20、prepared批次91d60c5f→rolled_back、新增restore_verified可信归档批次+988条entries（0010/0011/0015 hash零更新）；36/36/78、10 snapshots、5 releases零变化；含隔离库no-op证据；repair前强制新建备份；预期最终账本18条、fingerprint `25d10e62…` |
+| 边界 | 全程未写持久policyops；未执行repair-forward；未恢复pre dump；未执行WI-20260909-01、未创建PR、未合并分支；`task34-r4-trusted-old-2026-09-10T06-59-14/`未覆盖未删除；临时容器/库finally清理 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 

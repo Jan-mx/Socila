@@ -1,7 +1,7 @@
 # WI-20260907-03：地区化政策案例生成与可靠归档重建
 
 > Author: Jan
-> Status: Reopened（2026-09-10第四轮复审：归档补偿、applied幂等重验、迁移换行审计与可信归档持久化）
+> Status: Accepted（2026-09-10第五轮修复完成：journal严格单调修复、migration账本回归、审计阻断门禁与归档目录保护；等待独立复审）
 > Updated: 2026-09-10
 
 ## Work Item
@@ -121,3 +121,20 @@
 | 迁移审计语义不完整 | 审计只输出单一工作树hash，无法区分Git blob SHA、工作树raw、LF规范化、CRLF规范化与账本hash，也无法区分"仅EOL差异"与"真实内容差异" | 审计同时输出全部5类hash与EOL/内容差异判定；输出journal与账本时间的严格单调核对 |
 
 第四轮修复不得降低任何既有门禁；repair-forward计划必须绑定修复后的代码提交SHA重新生成。
+
+## 第五轮修复与重新验收（2026-09-10）
+
+第四轮遗留的journal非单调与审计门禁缺口在本轮闭环（代码提交`1fe702b`）：
+
+| 发现 | 修复 | 证据 |
+| --- | --- | --- |
+| journal when非单调（0010～0014为未来时间戳，0014=1788991200000 > 0015/0016/0017；在post恢复库上会让migrator重新应用0014） | `drizzle/meta/_journal.json`修正为严格单调时间：0010=1788560000000、0011=1788600000000、0012=1788640000000、0013=1788680000000、0014=1788705240000（0015～0018不变：1788777720000/1788785400000/1788796800000/1788796860000）；idx/tag不变，migration SQL零修改 | 全journal 18条按idx严格递增；`migration-lf.contract.test.ts`新增3条单调契约（全部entry递增/0010～0018与预期一致/max when===0018=1788796860000保证账本max下整体no-op） |
+| migration账本回归无自动验证 | 新增`scripts/lib/task34-ledger-regression.mjs`+`scripts/rcl-ledger-regression-task34.mjs`：post dump隔离恢复后验证8项——①修复后journal首次migration no-op账本21条；②事务删除ID 18/19/20；③migration×2均no-op；④账本持续18条不重新生成0012～0014；⑤ID 10～16、21、22的hash与created_at不变；⑥ID 17缺号不补写、不重排主键（id集合恰1..16/21/22）；⑦模拟0019（when=1788797000000>1788796860000）只应用一次；⑧工作树SQL均LF且hash===Git blob | `F:/Socila/backup/case-library/task34-r5-ledger-regression-2026-09-10/ledger-regression.json`（ok:true，全部8项通过；隔离容器/库已清理） |
+| 审计journal不符仅报告 | `scripts/rcl-audit-task34.mjs`：journal非单调/与预期不符→阻断错误（throw，不生成计划）；新增ID 10～16、21、22账本hash===Git blob LF SHA阻断检查；新增隔离库删除重复行后migration×2 no-op阻断门禁；只有三者全部通过才生成repair-forward计划；`--trusted-dir <dir>`复用并只读复验既有可信归档（8文件/SHA/manifest/restore/第三库恢复一致，禁止覆盖） | 第五轮audit：journalCheck.journalMonotonic=true、ledgerGitBlobHashMatch=true、ledgerRegressionNoopAfterDelete=true；证据`task34-r4-audit-2026-09-10T10-12-35/` |
+| prepare-archive无目录保护 | `executor.ts` prepareRclArchive：目标目录已包含任一历史归档专属文件（4个dump/selection-report/restore-report/sha256sums.txt；manifest.json为plan-replacement合法前置产物）时拒绝开始，禁止覆盖历史归档；补偿仍只删除本次新建文件（历史无关文件保留） | `executor.test.ts`第五轮3条（dump存在拒绝零写入/零批次、sha256sums存在拒绝、仅manifest允许开始且历史文件保留）；第二次dump/写文件/最终SHA/补偿失败4条保持零prepared批次/entries |
+
+门禁（2026-09-10本地新鲜）：`npm test` 74文件/720零skip；随机端口全新PG17+pgvector容器`npm run test:db` 26文件/141零skip（migration×2/bootstrap×2/seed×2幂等、agent.migrate --with-roles×2幂等、pytest -m integration 20/20）；tsc/eslint/build退出0（eslint 0 error）；scan-secrets 788文件零命中；Gitleaks 8.29.1完整历史86提交零发现；allowlist哨兵全过。修复后journal的迁移幂等与账本不变量已由隔离库回归证明（Red证据：旧journal下0014会被重新应用）。
+
+## 第五轮独立复审（2026-09-10，等待独立复审）
+
+第五轮代码与隔离门禁完成后本Work Item恢复Accepted；任务4验收报告顶部在独立复审前保持Reopened，不得提前写Accepted。

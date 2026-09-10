@@ -25,8 +25,8 @@
 | Socila命名统一与地区DSL分层 | Done | `SOCILA-DSL-1.0`与地区Manifest稳定，粤川示例退出生产Seed，上海黄金结果无漂移 |
 | 任务2：CN/上海/广东权威政策首期交付 | Done | 三地区管理员批准与候选快照重放完成；四川Deferred不阻塞 |
 | 任务3：地区规划时态与真实入口修复 | Accepted | 第二轮修复已覆盖空黄金测试、停用地区绑定和三方snapshot hash |
-| 任务4：上海/广东政策案例库全量重建 | Reopened（第四轮修复完成） | 第三轮（旧test真实hash、restore/SHA/selection验证、42 example原子同步、manifest自校验）+第四轮（prepare补偿、applied幂等重验、migration eol=lf、迁移审计语义）已全部闭环；门禁全过后恢复Accepted |
-| 持久库旧案例替换 | Reopened | 当前36/36/78冻结；可信归档（manifestHash `da0ea94d…`）与绑定`579fed8…`的repair-forward计划已生成；另行授权后执行 |
+| 任务4：上海/广东政策案例库全量重建 | Accepted（第五轮修复完成，等待独立复审） | 第三轮+第四轮（prepare补偿、applied幂等重验、migration eol=lf、迁移审计语义）+第五轮（journal严格单调、migration账本回归、审计阻断门禁、归档目录保护）已全部闭环；门禁全过（npm test 74文件/720、test:db 26文件/141零skip）；验收报告顶部在独立复审前保持Reopened |
+| 持久库旧案例替换 | Reopened | 当前36/36/78冻结；可信归档（manifestHash `da0ea94d…`）复验通过，绑定`1fe702b…`的repair-forward计划已生成（journalCheck.journalMonotonic=true、attestation `8941655b…`）；另行授权后执行 |
 | 任务3/4最终分支集成 | Blocked | 任务4和WI-04重新Accepted后，以merge commit合入`refactor/policy-ops-agent-platform` |
 | 远程Personal Demo服务器部署 | Planned | 目标服务器全栈healthy、域名/HTTPS和离机备份验证 |
 | 首批公开政策采集与RAG建库 | Planned | 白名单来源原件、DocumentTree、Chunk和索引形成闭环 |
