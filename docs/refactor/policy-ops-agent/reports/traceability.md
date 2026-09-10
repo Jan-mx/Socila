@@ -132,3 +132,17 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 - `scripts/rcl-audit-task34.mjs`：只读审计（持久库仅SELECT、pre/post dump隔离恢复、restore-reconcile对比、pre重建可信归档、当前attestation、账本/snapshot/batch审计）。
 - 证据：`F:/Socila/backup/case-library/task34-r3-audit-2026-09-10T01-15-43/`（audit-summary.json、attestation-current.json、old-archive-manifest-pre.json、compare-current-vs-post.txt、repair-forward-plan.json）。
 - 关键值：attestationManifestHash `3e081d594082e5cee5e2d05f82bae8cfb35db017a722d5cebbf2bd2dd40a84c4`；migrationLedgerFingerprint `205acb407afd2be5350f30bb40ca9190851d6124864e4c9e094d511398238f1b`；targetFingerprint `58cef928a52482e196f2bc102eb5247cef46c2e108f2f82091430e1fa090cfce`；pre重建旧归档manifestHash `da0ea94d4e8ce07b06dd50d2cdd4780110c256705fd7f024c83f5e4378cb32ef`。
+
+## 任务4第四轮修复与只读审计（2026-09-10，WI-20260907-03 Reopened、WI-04 Reopened）
+
+| 需求 | 实现 | 测试 |
+| --- | --- | --- |
+| RCL-FR-002/003/005 prepare-archive补偿 | `executor.ts` prepareRclArchive（写入跟踪/批次提交跟踪/DB补偿按batchId+status='prepared'守卫条件删除/文件补偿只删本次新建文件/`RclPrepareError`携带originalError+compensationErrors；`RclStorage.remove`新增） | `executor.test.ts`（第二次完整dump失败/写文件失败/最终SHA生成失败/补偿失败双错误，4条Red→Green） |
+| RCL-NFR-006 applied幂等重验 | `apply.ts` checkFinalState（全表计数N/36/N+42+逐行hash+42 example目标集合）；executeRclApply对applied先完整重验再noop，漂移抛稳定错误零写入 | `rcl-apply.integration.test.ts`（首次apply后篡改case/showcase/regression/example复跑拒绝，4条Red→Green；noop测试保持Green） |
+| RCL-NFR-001 migration换行契约 | 仓库根`.gitattributes`（`drizzle/*.sql text eol=lf`）；0010～0018 blob不变；Drizzle读取hash===Git blob LF SHA | `src/lib/db/migration-lf.contract.test.ts`（.gitattributes存在/autocrlf=true全新checkout LF/hash一致/blob LF，4例）；`jrp-0017-migration.integration.test.ts` 0015基线改为Git LF hash `3ae5b95f…` |
+| 迁移审计语义 | `scripts/rcl-audit-task34.mjs`（Git blob SHA/工作树raw SHA/LF规范化SHA/CRLF规范化SHA/账本SHA/仅EOL差异/真实内容差异；journal与账本created_at严格单调核对；只报告不猜测） | 审计证据`task34-r4-audit-2026-09-10T06-59-14/audit-summary.json` migrationAudit/migrationJournal/migrationLedgerTimeCheck |
+| 可信旧归档持久化 | `scripts/rcl-audit-task34.mjs`（pre恢复库→8文件归档到永久目录；452/36/500全逐行ID/UID/64位hash；verified restore-report 40表+20 sequence；sha256sums恰好7文件；第三库二次对账） | `task34-r4-trusted-old-2026-09-10T06-59-14/`（manifestHash `da0ea94d…`、dumpSha `0e3c3d8b…`、re-reconcile 40表/20 sequence ok） |
+| 当前attestation+repair-forward | `scripts/rcl-audit-task34.mjs`（绑定codeSha的36/36/78 attestation：36 cases+36 showcase+36 regression+42 example逐行ID/UID/hash、10 snapshots、5 releases、3批次；10步SQL写集合计划含前置条件/事务边界/回退点/失败条件） | `task34-r4-audit-2026-09-10T06-59-14/attestation-current.json`（`eb6d8d9d…`）、`repair-forward-plan.json`（codeSha `579fed8…`、trustedArchiveManifestHash `da0ea94d…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`、预期最终账本18条`25d10e62…`） |
+
+- 门禁（2026-09-10本地新鲜）：`npm test` 74文件/713零skip；`npm run test:db` 26文件/141零skip（随机端口全新PG17+pgvector）；tsc/eslint/build退出0；pytest非集成94、`-m integration` 20/20；pip-audit无已知漏洞；Gitleaks 8.29.1完整历史85提交零发现；scan-secrets 788文件零命中；allowlist哨兵3场景全过；Markdown相对链接与`git diff --check`通过。
+- 边界：持久policyops仅SELECT；repair未执行；WI-20260909-01保持Blocked；临时容器/库finally清理；`task34-r4-trusted-old-*`目录永久保留。

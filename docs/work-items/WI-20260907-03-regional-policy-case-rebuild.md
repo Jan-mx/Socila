@@ -1,7 +1,7 @@
 # WI-20260907-03：地区化政策案例生成与可靠归档重建
 
 > Author: Jan
-> Status: Accepted（2026-09-10第三轮修复完成）
+> Status: Reopened（2026-09-10第四轮复审：归档补偿、applied幂等重验、迁移换行审计与可信归档持久化）
 > Updated: 2026-09-10
 
 ## Work Item
@@ -108,3 +108,16 @@
 - `verify-archive`未验证restore正文、SHA清单精确覆盖、selection配额和manifest重算hash。
 - `assertRclCounts`接受任意example数量；当前持久执行在manifest生成后、apply事务外删除7条example。
 - 修复上述反例并取得随机端口隔离DB零skip证据前不得Accepted。
+
+## 第四轮复审（2026-09-10，Reopened）
+
+第三轮证据（`7e8430a`及此前记录）全部保留；第四轮复审在第三轮修复之上发现4项未闭环缺陷，本Work Item与任务4 PRD暂时改为Reopened：
+
+| 发现 | 影响 | 修复要求 |
+| --- | --- | --- |
+| prepare-archive补偿缺失 | 批次事务提交后的第五次完整dump失败、dump写文件失败、最终SHA生成失败三类故障会留下`prepared`批次与archive entries，且不清理不完整归档文件 | 任何prepare阶段失败不得留下prepared批次或entries；只精确清理本次batchId；文件失败清理本次不完整归档；补偿失败必须同时报告原始错误与补偿错误 |
+| applied幂等未重验 | `executeRclApply`对`batch.status='applied'`立即返回noop，不验证manifest正文hash、批次hash、最终N/36/N+42、42条example与cases/showcase/regression逐行hash | applied状态必须先完整重验，完全一致才noop；任一最终行缺失/增加/漂移返回稳定错误且不得再次删除或插入 |
+| migration SQL换行未固定 | 仓库根无`.gitattributes`且本机`core.autocrlf=true`，`drizzle/*.sql`工作树为CRLF，Drizzle实际读取hash与Git blob的LF SHA不一致（账本ID 18/19/20即0012/0013/0014的CRLF重复登记） | 新增`drizzle/*.sql text eol=lf`；不修改0010～0018 blob；契约测试证明`core.autocrlf=true`下仍为LF |
+| 迁移审计语义不完整 | 审计只输出单一工作树hash，无法区分Git blob SHA、工作树raw、LF规范化、CRLF规范化与账本hash，也无法区分"仅EOL差异"与"真实内容差异" | 审计同时输出全部5类hash与EOL/内容差异判定；输出journal与账本时间的严格单调核对 |
+
+第四轮修复不得降低任何既有门禁；repair-forward计划必须绑定修复后的代码提交SHA重新生成。

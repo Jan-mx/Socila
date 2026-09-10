@@ -74,8 +74,8 @@
 
 ## 当前repair-forward范围
 
-1. 代码层先修复旧test真实hash、manifest自校验、SHA/selection/restore完整验证和42 example原子同步。**已完成（WI-20260907-03 Accepted，2026-09-10）**。
-2. 只读恢复pre/post dump，从pre重建旧500 regression可信归档，为当前36/36/78生成attestation manifest。**已完成（只读）**：pre重建452/36/500可信归档manifestHash `da0ea94d…`（500 test hash全部非空）；当前36/36/78 attestation `3e081d59…`。
-3. 对照0010～0018 SQL、实际Schema和21条账本，列出重复/不匹配账本行、prepared批次和未引用snapshot。**已完成（只读）**：0012～0014重复登记（id 12/13/14旧hash与id 18/19/20重复）、0010/0011/0015账本hash与当前SQL不一致、id 17缺失；prepared批次`91d60c5f`（500 test hash为空）；未引用snapshot（CN两条重复、310000 `1f0b0e1e`）。
-4. 输出fresh manifestHash、targetFingerprint、精确拟写集合和回退点后停止。**已完成**：`F:/Socila/backup/case-library/task34-r3-audit-2026-09-10T01-15-43/repair-forward-plan.json`（attestationManifestHash `3e081d59…`、migrationLedgerFingerprint `205acb40…`、targetFingerprint `58cef928…`）。
+1. 代码层先修复旧test真实hash、manifest自校验、SHA/selection/restore完整验证和42 example原子同步。**已完成（WI-20260907-03第三轮，2026-09-10）**；第四轮再修复prepare-archive补偿（失败不留prepared批次/entries、只精确清理本次batchId、补偿错误与原错误同报）、applied幂等重验（先完整重验manifest正文hash/批次hash/最终N/36/N+42/42 example/逐行hash才noop，漂移稳定错误零写入）、migration换行契约（`.gitattributes` eol=lf，Drizzle读取hash===Git blob LF SHA）、迁移审计语义（blob/raw/LF/CRLF/账本/仅EOL/真实差异+journal与账本时间严格单调核对）。**已完成（第四轮）**。
+2. 只读恢复pre/post dump，从pre重建旧500 regression可信归档，为当前36/36/78生成attestation manifest。**已完成（第四轮只读）**：可信归档永久保存于`F:/Socila/backup/case-library/task34-r4-trusted-old-2026-09-10T06-59-14/`（manifestHash `da0ea94d…`、dumpSHA `0e3c3d8b…`、452/36/500全逐行ID/UID/64位hash、500 test hash全部非空、verified restore-report 40表+20 sequence、sha256sums恰好7文件、第三库二次对账一致）；当前36/36/78 attestation绑定代码提交`579fed8…`（attestationManifestHash `eb6d8d9d…`）。
+3. 对照0010～0018 SQL、实际Schema和21条账本，列出重复/不匹配账本行、prepared批次和未引用snapshot。**已完成（第四轮只读）**：迁移换行审计确认ID 10/11/12/13/14/15/21/22账本hash===0010～0018 Git LF内容（0010/0011/0015为原值不得更新）；ID 18/19/20===0012/0013/0014的CRLF重复登记；ID 17缺号不补写；prepared批次`91d60c5f`；未引用snapshot（CN两条重复、310000 `1f0b0e1e`）。journal when与预期时间表不符仅报告（禁止猜测修复）；账本created_at与预期严格单调一致。
+4. 输出fresh manifestHash、targetFingerprint、精确拟写集合和回退点后停止。**已完成（第四轮）**：`F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T06-59-14/repair-forward-plan.json`（codeSha `579fed8…`、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、attestationManifestHash `eb6d8d9d…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`、精确SQL写集合10步、前置条件/事务边界/回退点/失败条件；预期最终账本18条、fingerprint `25d10e62…`）。
 5. 只有用户针对该次清单明确授权后才能repair-forward；不得自动恢复pre dump或重跑首次替换。

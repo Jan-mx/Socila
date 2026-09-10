@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Blocked
-> Updated: 2026-09-09
+> Updated: 2026-09-10
 
 ## Work Item
 
@@ -17,7 +17,7 @@
 
 在任务3、任务4和持久库受控替换全部验收完成后，以一个显式merge commit把最终集成分支完整合入重构分支。只合并`codex/task34-regional-case-rebuild`，不再单独合并`codex/task3-jurisdiction-planning`或`codex/task4-case-governance`。
 
-当前阻断事实：源分支为`7b3f21a`，目标分支仍为`57f051d`且尚未合并；任务4与WI-20260907-04已因第三轮复审重新Reopened。在二者修复、repair-forward及可信验收完成前不得执行本Work Item。
+当前阻断事实：源分支为`579fed8`（任务4第四轮修复提交），目标分支仍为`57f051d`且尚未合并；任务4（WI-20260907-03）第四轮修复完成但保持Reopened，WI-20260907-04仍Reopened。在任务4/WI-04重新Accepted及repair-forward可信验收完成前不得执行本Work Item。
 
 ## 范围
 
