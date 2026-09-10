@@ -716,3 +716,130 @@ describe("RCL第四轮复审：prepare-archive补偿（RCL-FR-002/003/005）", (
     expect(err!.message).toContain("补偿亦失败");
   });
 });
+
+// ─── RCL第五轮复审Red：prepare-archive归档目录保护（WI-20260907-03）─────────
+// 目标目录已包含任一归档必备文件时必须拒绝开始（禁止覆盖历史归档）；补偿逻辑
+// 只能删除本次新建的文件（历史无关文件必须保留）。
+
+describe("RCL第五轮复审：prepare-archive归档目录保护（RCL-FR-002/003）", () => {
+  const verifiedSelection = buildSelectionReport({
+    algorithmVersion: "RCL-GEN-1.0",
+    curatedUids: [],
+    sourceCounts: {},
+    quotaStats: {},
+    violations: [],
+  });
+  const emptyManifest = {
+    manifestHash: "mh",
+    oldTargets: { cases: [], showcase: [], tests: [] },
+  } as never;
+
+  it("目标目录已包含任一历史归档专属文件（policyops-fc.dump）→ 拒绝开始，零写入零批次（禁止覆盖历史归档→Red）", async () => {
+    const { RclExecutorError } = await import("../executor");
+    const storage = fakeStorage({ "/archive/policyops-fc.dump": "历史归档dump" });
+    const db = memoryDb({
+      preExistingBatches: [{ id: "22222222-2222-4222-8222-222222222222", status: "applied" }],
+    });
+    const dump = vi.fn(async (table?: string) => Buffer.from(table ? `DUMP-${table}` : "FULLDUMP"));
+
+    await expect(
+      prepareRclArchive({
+        db: db as never,
+        storageDir: "/archive",
+        storage,
+        pgDump: dump,
+        selectionReport: verifiedSelection,
+        manifest: emptyManifest,
+        createdBy: "test",
+      }),
+    ).rejects.toBeInstanceOf(RclExecutorError);
+    // 拒绝发生在任何写入之前：无dump、无文件写入、无批次/entries、历史批次保留。
+    expect(dump).not.toHaveBeenCalled();
+    expect(storage.write).not.toHaveBeenCalled();
+    expect(db.batches.size).toBe(1);
+    expect(db.batches.has("22222222-2222-4222-8222-222222222222")).toBe(true);
+    expect(db.entries.length).toBe(0);
+    // 历史归档文件原样保留。
+    expect(storage.read("/archive/policyops-fc.dump").toString("utf8")).toContain("历史归档dump");
+  });
+
+  it("目标目录已包含sha256sums.txt → 同样拒绝开始（必备文件清单含sha清单自身）", async () => {
+    const { RclExecutorError } = await import("../executor");
+    const storage = fakeStorage({ "/archive/sha256sums.txt": "old-sums" });
+    const db = memoryDb();
+    const dump = vi.fn(async () => Buffer.from("DUMP"));
+
+    await expect(
+      prepareRclArchive({
+        db: db as never,
+        storageDir: "/archive",
+        storage,
+        pgDump: dump,
+        selectionReport: verifiedSelection,
+        manifest: emptyManifest,
+        createdBy: "test",
+      }),
+    ).rejects.toBeInstanceOf(RclExecutorError);
+    expect(dump).not.toHaveBeenCalled();
+    expect(db.batches.size).toBe(0);
+    expect(db.entries.length).toBe(0);
+    expect(storage.read("/archive/sha256sums.txt").toString("utf8")).toBe("old-sums");
+  });
+
+  it("工作目录仅有manifest.json（plan-replacement产物）→ 允许开始，不拒绝（当前流程先plan后prepare共用目录）", async () => {
+    const storage = fakeStorage({ "/archive/manifest.json": "{\"manifestHash\":\"plan产物\"}" });
+    const db = memoryDb();
+    const dump = vi.fn(async (table?: string) => Buffer.from(table ? `DUMP-${table}` : "FULLDUMP"));
+
+    const result = await prepareRclArchive({
+      db: db as never,
+      storageDir: "/archive",
+      storage,
+      pgDump: dump,
+      selectionReport: verifiedSelection,
+      manifest: emptyManifest,
+      createdBy: "test",
+    });
+    expect(result.batchId).toBeTruthy();
+    expect(dump.mock.calls.length).toBe(5);
+    expect(db.batches.size).toBe(1);
+  });
+
+  it("补偿只删除本次新建文件：历史无关文件保留，本次不完整归档被清理（当前补偿可能误删→Red）", async () => {
+    const { RclPrepareError } = await import("../executor");
+    // 目录中有一个历史无关文件（非归档必备文件，prepare允许开始），
+    // 第二次完整dump失败后：本次新建文件被清理，历史文件必须原样保留。
+    const storage = fakeStorage({ "/archive/notes.txt": "历史备注（非归档必备文件）" });
+    const db = memoryDb();
+    const dump = vi.fn(async (table?: string) => {
+      if (table === undefined && dump.mock.calls.filter((c) => c[0] === undefined).length === 2) {
+        throw new Error("第二次完整dump失败（注入）");
+      }
+      return Buffer.from(table ? `DUMP-${table}` : "FULLDUMP");
+    });
+
+    const err = await prepareRclArchive({
+      db: db as never,
+      storageDir: "/archive",
+      storage,
+      pgDump: dump,
+      selectionReport: verifiedSelection,
+      manifest: emptyManifest,
+      createdBy: "test",
+    }).then(
+      () => null,
+      (e: unknown) => e as InstanceType<typeof RclPrepareError>,
+    );
+    expect(err).toBeInstanceOf(RclPrepareError);
+    expect(db.batches.size).toBe(0);
+    expect(db.entries.length).toBe(0);
+    // 本次新建的归档文件被清理。
+    expect(storage.remove.mock.calls.length).toBeGreaterThan(0);
+    for (const [p] of storage.remove.mock.calls as Array<[string]>) {
+      expect(String(p)).not.toContain("notes.txt");
+    }
+    // 历史无关文件保留且内容不变。
+    expect(storage.exists("/archive/notes.txt")).toBe(true);
+    expect(storage.read("/archive/notes.txt").toString("utf8")).toBe("历史备注（非归档必备文件）");
+  });
+});

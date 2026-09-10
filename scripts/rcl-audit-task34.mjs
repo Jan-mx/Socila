@@ -1,35 +1,46 @@
 /**
- * 任务34第四轮阶段三：当前持久policyops只读审计 + 可信旧归档 + attestation +
+ * 任务34第五轮阶段三：当前持久policyops只读审计 + 可信旧归档 + attestation +
  * repair-forward计划（WI-20260907-04准备，绑定修复后的代码提交SHA）。
  *
  * 用法：
- *   node scripts/rcl-audit-task34.mjs <pre-dump> <post-dump> [--container <name>] [--port <port>]
+ *   node scripts/rcl-audit-task34.mjs <pre-dump> <post-dump> [--container <name>] [--port <port>] [--trusted-dir <dir>]
  *
  * 全程只读（对持久库）：
  *   - localhost:5432/policyops 仅SELECT（禁止INSERT/UPDATE/DELETE/DDL）；
  *   - pre/post dump恢复到任务专属全新隔离实例（容器）；
- *   - 旧452/36/500可信归档生成到永久目录
+ *   - 旧452/36/500可信归档：默认生成到永久目录
  *     F:/Socila/backup/case-library/task34-r4-trusted-old-<ts>/（finally不删除）；
+ *     --trusted-dir <dir> 时改为只读复验既有可信归档（8文件完整、SHA全部匹配、
+ *     manifest 452/36/500、500 test hash全部非空、restore 40表/20sequence/零
+ *     mismatch、第三库再次恢复一致），禁止覆盖或删除该目录；
  *   - 从该归档恢复第三个全新数据库并二次对账；
  *   - 生成绑定最终代码提交SHA的当前36/36/78 attestation；
  *   - 生成repair-forward计划（fresh codeSha/manifestHash/targetFingerprint/
  *     migrationLedgerFingerprint/精确SQL写集合/前置条件/回退点/失败条件），
  *     不执行任何写入。
  *   - migration换行审计（第四轮复审）：Git blob SHA / 工作树raw SHA /
- *     LF规范化SHA / CRLF规范化SHA / 账本SHA / 仅EOL差异 / 真实内容差异；
- *     同步输出journal与账本时间的严格单调核对，不符只报告不猜测。
+ *     LF规范化SHA / CRLF规范化SHA / 账本SHA / 仅EOL差异 / 真实内容差异。
+ *   - 第五轮收紧（WI-20260907-03）：journal非单调/与预期时间不符必须阻断
+ *     （不再仅报告）；ID 10～16、21、22账本hash必须等于Git blob LF SHA否则
+ *     阻断；隔离库（post恢复库）删除重复行18/19/20后migration×2必须no-op
+ *     否则阻断；只有上述全部通过才允许生成repair-forward计划。
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import pg from "pg";
+import { runLedgerMigrationRegression, LEDGER_ID_TO_PREFIX } from "./lib/task34-ledger-regression.mjs";
 
 const PRE_DUMP = process.argv[2];
 const POST_DUMP = process.argv[3];
+const TRUSTED_DIR_ARG = (() => {
+  const i = process.argv.indexOf("--trusted-dir");
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : null;
+})();
 const PERSISTENT_URL = process.env.PERSISTENT_DATABASE_URL ?? "postgresql://postgres@127.0.0.1:5432/policyops";
 if (!PRE_DUMP || !POST_DUMP) {
-  console.error("用法：node scripts/rcl-audit-task34.mjs <pre-dump> <post-dump> [--container <name>] [--port <port>]");
+  console.error("用法：node scripts/rcl-audit-task34.mjs <pre-dump> <post-dump> [--container <name>] [--port <port>] [--trusted-dir <dir>]");
   process.exit(1);
 }
 
@@ -45,8 +56,8 @@ const RESTORE_DB = `task34_r4_restore_${randomUUID().slice(0, 6)}`;
 const RE_RESTORE_DB = `task34_r4_rerestore_${randomUUID().slice(0, 6)}`;
 const TS = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const AUDIT_DIR = join("F:/Socila/backup/case-library", `task34-r4-audit-${TS}`);
-/** 永久可信旧归档目录：生成后不得在finally删除。 */
-const TRUSTED_DIR = join("F:/Socila/backup/case-library", `task34-r4-trusted-old-${TS}`);
+/** 永久可信旧归档目录：生成后不得在finally删除；--trusted-dir时复用既有目录（只读复验，禁止覆盖）。 */
+const TRUSTED_DIR = TRUSTED_DIR_ARG ?? join("F:/Socila/backup/case-library", `task34-r4-trusted-old-${TS}`);
 
 function run(cmd, args, env = {}, opts = {}) {
   const r = spawnSync(cmd, args, { cwd: WORK_DIR, encoding: "utf-8", env: { ...process.env, ...env }, ...opts });
@@ -100,7 +111,7 @@ async function main() {
   mkdirSync(TRUSTED_DIR, { recursive: true });
   const codeSha = run("git", ["rev-parse", "HEAD"]).trim();
   const report = {
-    title: "WI-20260907-04 repair-forward计划与第四轮只读审计证据",
+    title: "WI-20260907-04 repair-forward计划与第五轮只读审计证据",
     generatedAt: new Date().toISOString(),
     codeSha,
     sourceBranch: run("git", ["rev-parse", "--abbrev-ref", "HEAD"]).trim(),
@@ -229,7 +240,7 @@ async function main() {
         journalWhen: actual ?? null,
         expectedWhen: expected,
         ok,
-        note: ok ? "journal when与预期一致" : "journal when与预期不符（仅报告，禁止猜测修复）",
+        note: ok ? "journal when与预期一致" : "journal when与预期不符（阻断）",
       });
     }
     // 严格单调（按SQL前缀顺序）。
@@ -245,9 +256,16 @@ async function main() {
     }
     report.migrationJournal = { journalCheck, journalMonotonic, monotonicDetail };
 
+    // 第五轮收紧：journal非单调/与预期时间不符必须阻断（不再仅报告）。
+    if (journalMismatch || !journalMonotonic) {
+      throw new Error(
+        `journal非严格单调或0010～0018 when与预期不符（阻断）：` +
+          JSON.stringify(journalCheck.filter((c) => !c.ok).map((c) => `${c.prefix}=${c.journalWhen}≠预期${c.expectedWhen}`)),
+      );
+    }
+
     // 账本created_at同步核对：保留行（10～16、21、22）的created_at必须与预期
     // 时间表严格单调一致（drizzle migrator按账本max created_at决定重放）。
-    const LEDGER_ID_TO_PREFIX = { 10: "0010", 11: "0011", 12: "0012", 13: "0013", 14: "0014", 15: "0015", 16: "0016", 21: "0017", 22: "0018" };
     const ledgerTimeCheck = [];
     let ledgerTimeMismatch = false;
     for (const [id, prefix] of Object.entries(LEDGER_ID_TO_PREFIX)) {
@@ -258,10 +276,16 @@ async function main() {
       ledgerTimeCheck.push({
         id: Number(id), prefix, ledgerCreatedAt: row ? String(row.created_at) : null, expected,
         ok,
-        note: ok ? "账本created_at与预期一致" : "账本created_at与预期不符（仅报告）",
+        note: ok ? "账本created_at与预期一致" : "账本created_at与预期不符（阻断）",
       });
     }
     report.migrationLedgerTimeCheck = { ledgerTimeCheck, ledgerTimeMismatch };
+    if (ledgerTimeMismatch) {
+      throw new Error(
+        `账本created_at与预期时间表不符（阻断）：` +
+          JSON.stringify(ledgerTimeCheck.filter((c) => !c.ok).map((c) => `ID${c.id}(${c.prefix})=${c.ledgerCreatedAt}≠预期${c.expected}`)),
+      );
+    }
 
     report.migrationAudit = [];
     for (const f of ["0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018"]) {
@@ -288,7 +312,7 @@ async function main() {
         else if (m.hash === worktreeRawSha) variant = "worktree-raw";
         else if (m.hash === lfNormalizedSha) variant = "lf-normalized";
         else if (m.hash === crlfNormalizedSha) variant = "crlf-normalized";
-        return { id: m.id, hash: String(m.hash).slice(0, 16), createdAt: String(m.created_at), variant };
+        return { id: m.id, hash: String(m.hash), createdAt: String(m.created_at), variant };
       }).filter((r) => r.variant !== "none");
       report.migrationAudit.push({
         file: fileName,
@@ -301,8 +325,43 @@ async function main() {
       });
     }
 
-    // ── 5) 从pre恢复库生成旧452/36/500可信归档（永久目录，finally不删除） ─────
-    const trustedManifest = await buildTrustedOldArchive(PRE_DB);
+    // ── 4.5) 第五轮收紧：Git LF hash匹配 + 隔离库删除重复行后migration×2 no-op ──
+    // ID 10～16、21、22的账本hash必须等于对应SQL的Git blob LF SHA（0010/0011/0015
+    // 为原值不得更新；不匹配即阻断，不得生成repair-forward计划）。
+    const fileByPrefix = {};
+    for (const f of report.migrationAudit) fileByPrefix[f.file.slice(0, 4)] = f;
+    const ledgerHashCheck = [];
+    let ledgerHashMismatch = false;
+    for (const [id, prefix] of Object.entries(LEDGER_ID_TO_PREFIX)) {
+      const row = report.persistent.migrations.find((m) => m.id === Number(id));
+      const file = fileByPrefix[prefix];
+      const ok = row !== undefined && file !== undefined && String(row.hash) === file.gitBlobSha;
+      if (!ok) ledgerHashMismatch = true;
+      ledgerHashCheck.push({
+        id: Number(id), prefix,
+        ledgerHash: row ? String(row.hash) : null,
+        gitBlobLfSha: file?.gitBlobSha ?? null,
+        ok,
+      });
+    }
+    report.migrationLedgerHashCheck = { ledgerHashCheck, ledgerHashMismatch };
+    if (ledgerHashMismatch) {
+      throw new Error(
+        `账本hash与Git blob LF SHA不匹配（阻断）：` +
+          JSON.stringify(ledgerHashCheck.filter((c) => !c.ok).map((c) => `ID${c.id}(${c.prefix})`)),
+      );
+    }
+
+    // 隔离库（post恢复库）删除账本ID 18/19/20后migration×2必须no-op；否则阻断。
+    console.log("[audit] 运行隔离库migration账本回归（post恢复库删除18/19/20后migration×2）…");
+    report.ledgerRegression = await runLedgerMigrationRegression({ url: `${BASE}/${POST_DB}`, workDir: WORK_DIR, drizzleFolder: "drizzle" });
+    console.log(`[audit] ledgerRegression.ok=${report.ledgerRegression.ok}（删除重复行后migration×2 no-op）`);
+
+    // ── 5) 旧452/36/500可信归档：--trusted-dir时只读复验既有目录（禁止覆盖），
+    //      否则生成到永久目录（finally不删除） ────────────────────────────────
+    const trustedManifest = TRUSTED_DIR_ARG
+      ? await reverifyTrustedArchive(TRUSTED_DIR, PRE_DB)
+      : await buildTrustedOldArchive(PRE_DB);
 
     // ── 6) 当前36/36/78只读attestation（绑定codeSha） ─────────────────────
     const attestation = await buildAttestation(codeSha);
@@ -332,7 +391,7 @@ async function main() {
     console.log(`[audit] attestationManifestHash=${attestation.attestationManifestHash}`);
     console.log(`[audit] trustedArchiveManifestHash=${trustedManifest.manifestHash}`);
     console.log(`[audit] trustedArchiveDumpSha=${trustedManifest.dumpSha256.slice(0, 16)}`);
-    console.log(`[audit] journalMismatch=${journalMismatch}（仅报告，未猜测修复）`);
+    console.log(`[audit] journalMismatch=${journalMismatch}（第五轮起为阻断错误；本次阻断检查通过）`);
     console.log(`[audit] 完成`);
   } finally {
     // 清理隔离容器与全部隔离库（可信归档目录永久保留，不得删除）。
@@ -475,6 +534,122 @@ function dockerExecPgdump(db, table) {
   return execFileSync("docker", args, { maxBuffer: 512 * 1024 * 1024 });
 }
 
+/**
+ * 只读复验既有可信归档（--trusted-dir，第五轮；禁止覆盖/删除该目录）：
+ * 1) 8个文件完整（7必备+sha256sums.txt）；
+ * 2) sha256sums.txt与全部文件实际SHA逐行匹配；
+ * 3) manifest为452/36/500且500 test contentHash全部非空64位hex；
+ * 4) restore-report为verified：40表/20 sequence/零mismatch；
+ * 5) 第三库再次恢复一致：归档dump恢复到全新库RE_RESTORE_DB，与pre恢复库
+ *    全表+全sequence对账零mismatch。
+ * 任一检查失败即throw（阻断），不生成repair-forward计划。
+ */
+async function reverifyTrustedArchive(dir, sourceDb) {
+  const required = ["policyops-fc.dump", "cases.dump", "showcase_cases.dump", "tests.dump", "selection-report.json", "manifest.json", "restore-report.json", "sha256sums.txt"];
+  const missing = required.filter((f) => !existsSync(join(dir, f)));
+  if (missing.length > 0) {
+    throw new Error(`可信归档缺失必备文件（阻断）：${missing.join("、")}`);
+  }
+
+  // 2) SHA全部匹配。
+  const shaChecks = [];
+  let shaMatch = true;
+  for (const line of readFileSync(join(dir, "sha256sums.txt"), "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const m = trimmed.match(/^([0-9a-f]{64})\s{2}(.+)$/);
+    if (!m) {
+      shaMatch = false;
+      shaChecks.push({ line: trimmed, ok: false });
+      continue;
+    }
+    const [hash, file] = [m[1], m[2]];
+    const ok = existsSync(join(dir, file)) && sha256File(join(dir, file)) === hash;
+    if (!ok) shaMatch = false;
+    shaChecks.push({ file, ok });
+  }
+  if (!shaMatch) throw new Error("可信归档SHA与sha256sums.txt不匹配（阻断）");
+
+  // 3) manifest 452/36/500 + 500 test hash非空。
+  const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+  const manifestCounts = {
+    cases: manifest.oldTargets?.cases?.length ?? 0,
+    showcase: manifest.oldTargets?.showcase?.length ?? 0,
+    tests: manifest.oldTargets?.tests?.length ?? 0,
+    example: manifest.exampleTests?.length ?? 0,
+  };
+  const emptyTestHashes = (manifest.oldTargets?.tests ?? []).filter((t) => !/^[0-9a-f]{64}$/.test(t.contentHash)).length;
+  if (manifestCounts.cases !== 452 || manifestCounts.showcase !== 36 || manifestCounts.tests !== 500) {
+    throw new Error(`可信归档manifest计数不符（阻断）：${JSON.stringify(manifestCounts)}（预期452/36/500）`);
+  }
+  if (emptyTestHashes !== 0) {
+    throw new Error(`可信归档存在空test hash（阻断）：${emptyTestHashes}条`);
+  }
+
+  // 4) restore-report verified：40表/20 sequence/零mismatch。
+  const restore = JSON.parse(readFileSync(join(dir, "restore-report.json"), "utf8"));
+  const restoreOk =
+    restore?.status === "verified" &&
+    restore?.reconcile?.tableCount === 40 &&
+    restore?.reconcile?.sequenceCount === 20 &&
+    Array.isArray(restore?.reconcile?.mismatches) &&
+    restore.reconcile.mismatches.length === 0;
+  if (!restoreOk) {
+    throw new Error(`可信归档restore-report不满足40表/20sequence/零mismatch（阻断）：${JSON.stringify(restore?.reconcile)}`);
+  }
+
+  // 5) 第三库再次恢复一致：归档dump → RE_RESTORE_DB，与pre恢复库对账。
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `DROP DATABASE IF EXISTS "${RE_RESTORE_DB}" WITH (FORCE)`);
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `CREATE DATABASE "${RE_RESTORE_DB}"`);
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", RE_RESTORE_DB, "-c", "CREATE EXTENSION IF NOT EXISTS vector");
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", RE_RESTORE_DB, "-c", "CREATE EXTENSION IF NOT EXISTS btree_gist");
+  const rest2 = spawnSync("docker", ["exec", "-i", CONTAINER, "pg_restore", "-U", "postgres", "-d", RE_RESTORE_DB, "--clean", "--if-exists"], {
+    input: readFileSync(join(dir, "policyops-fc.dump")), maxBuffer: 1024 * 1024 * 1024, encoding: "buffer",
+  });
+  if (rest2.status !== 0) throw new Error(`可信归档第三库恢复失败：${rest2.stderr?.toString().slice(0, 400)}`);
+  const reconcile2 = await runTsxInline(`import { writeFileSync } from "node:fs";
+    import { drizzle } from "drizzle-orm/node-postgres";
+    import pg from "pg";
+    import { reconcileDatabases, listSequences, listBaseTables } from "@/lib/case-governance/reconcile";
+    const src = drizzle(new pg.Pool({ connectionString: ${JSON.stringify(`${BASE}/${sourceDb}`)} }));
+    const dst = drizzle(new pg.Pool({ connectionString: ${JSON.stringify(`${BASE}/${RE_RESTORE_DB}`)} }));
+    const tableMis = (await reconcileDatabases(src, dst)).mismatches;
+    const seqMis = [];
+    const [sSrc, sDst] = [await listSequences(src), await listSequences(dst)];
+    const key = (s) => \`\${s.schema}.\${s.name}\`;
+    const dstKeyed = new Map(sDst.map((s) => [key(s), s]));
+    for (const s of sSrc) {
+      const d = dstKeyed.get(key(s));
+      if (!d) { seqMis.push("sequence " + key(s) + " 恢复库缺失"); continue; }
+      if (d.lastValue !== s.lastValue || d.isCalled !== s.isCalled) seqMis.push("sequence " + key(s) + " 状态不一致");
+    }
+    for (const d of sDst) if (!sSrc.some((s) => key(s) === key(d))) seqMis.push("sequence " + key(d) + " 源库缺失");
+    const mismatches = [...tableMis, ...seqMis];
+    const tSrc = await listBaseTables(src);
+    writeFileSync(${JSON.stringify(join(AUDIT_DIR, "trusted-archive-re-reconcile.json"))}, JSON.stringify({
+      tables: tSrc.length, sequences: sSrc.length, mismatches, ok: mismatches.length === 0,
+      restoredDb: ${JSON.stringify(RE_RESTORE_DB)},
+    }, null, 2));
+    console.log("re-reconcile " + (mismatches.length === 0 ? "OK" : "FAIL: " + mismatches.join(";")));
+    process.exit(mismatches.length === 0 ? 0 : 1);
+  `, `${BASE}/${sourceDb}`, AUDIT_DIR, { TARGET: `${BASE}/${RE_RESTORE_DB}` });
+  const reReconcile = JSON.parse(readFileSync(join(AUDIT_DIR, "trusted-archive-re-reconcile.json"), "utf8"));
+  if (!reReconcile.ok) {
+    throw new Error(`可信归档第三库恢复对账不一致（阻断）：${reReconcile.mismatches.join("; ")}`);
+  }
+
+  return {
+    dir,
+    reverified: true,
+    manifestHash: manifest.manifestHash,
+    manifestRowCounts: manifestCounts,
+    dumpSha256: sha256File(join(dir, "policyops-fc.dump")),
+    files: required.slice(0, 7).map((f) => ({ fileName: f, sha256: sha256File(join(dir, f)) })),
+    reReconcile: reReconcile,
+    reverifyDetail: { shaMatch, shaChecks, emptyTestHashes, restoreReport: { tableCount: restore.reconcile.tableCount, sequenceCount: restore.reconcile.sequenceCount, mismatches: restore.reconcile.mismatches.length }, thirdDbRestore: reReconcile },
+  };
+}
+
 /** 恢复演练：RESTORE_DB ← dumpFilePath，buildVerifiedRestoreReport写verified报告。 */
 async function buildVerifiedRestoreReportInto(sourceDb, restoreDb, dumpFilePath) {
   docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `DROP DATABASE IF EXISTS "${restoreDb}" WITH (FORCE)`);
@@ -567,7 +742,7 @@ function buildRepairForwardPlan(report, attestation, trusted) {
   ));
   const preparedBatch = report.persistent.archiveBatches.find((b) => b.status === "prepared");
   return {
-    title: "WI-20260907-04 repair-forward计划（任务34第四轮只读审计，2026-09-10）",
+    title: "WI-20260907-04 repair-forward计划（任务34第五轮只读审计，2026-09-10）",
     generatedAt: new Date().toISOString(),
     status: "只读报告——未执行任何写入；等待用户针对本清单明确授权",
     codeSha: report.codeSha,
@@ -592,11 +767,22 @@ function buildRepairForwardPlan(report, attestation, trusted) {
       keepHashes: "ID 10～16、21、22的原hash全部保留；不得更新ID 10/11/15的账本hash（其hash即0010/0011/0015 Git LF内容）",
     },
     journalCheck: {
+      journalMonotonic: report.migrationJournal.journalMonotonic && report.migrationJournal.journalCheck.every((c) => c.ok),
       ledgerCreatedAtMatchesExpected: !report.migrationLedgerTimeCheck.ledgerTimeMismatch,
-      journalWhenMismatch: !report.migrationJournal.journalMonotonic || report.migrationJournal.journalCheck.some((c) => !c.ok),
+      ledgerGitBlobHashMatch: !report.migrationLedgerHashCheck.ledgerHashMismatch,
+      ledgerRegressionNoopAfterDelete: report.ledgerRegression.ok,
       ledgerDetail: report.migrationLedgerTimeCheck,
       journalDetail: report.migrationJournal,
-      disposition: "账本created_at与预期时间表一致且严格单调；journal when与预期不符仅报告（禁止猜测修复）；本计划不含journal写入",
+      ledgerHashDetail: report.migrationLedgerHashCheck,
+      disposition:
+        "journal严格单调且0010～0018 when与预期时间表一致；账本created_at与预期一致；" +
+        "ID 10～16、21、22账本hash===对应SQL的Git blob LF SHA（0010/0011/0015为原值不得更新）；" +
+        "隔离库删除重复行18/19/20后migration×2均no-op（账本保持18条，0012～0014不重新生成）；" +
+        "本计划不含journal写入",
+    },
+    ledgerRegressionEvidence: {
+      summary: "隔离库（post dump恢复）删除账本ID 18/19/20后migration×2均no-op，账本持续18条；ID 10～16、21、22的hash与created_at保持不变；ID 17缺号不补写不重排；模拟0019（when=1788797000000>1788796860000）只应用一次",
+      detail: report.ledgerRegression,
     },
     writeSet: [
       {
@@ -685,7 +871,10 @@ function buildRepairForwardPlan(report, attestation, trusted) {
       "0010～0018实际Schema与SQL不符即停止",
       "pre/post dump SHA与sidecar不一致即停止",
       "repair过程中任何新登录/写入改变targetFingerprint即停止",
-      "journal when与预期时间表不符（第四轮审计发现）：仅报告，禁止猜测修复；不构成repair前置阻塞，但必须单独记录",
+      "journal非严格单调或0010～0018 when与预期不符：第五轮起为阻断错误（不得生成计划；本次审计已阻断通过）",
+      "ID 10～16、21、22账本hash与Git blob LF SHA任一不匹配：阻断（不得生成计划；本次审计已通过）",
+      "隔离库删除重复行18/19/20后migration×2非no-op：阻断（不得生成计划；本次审计已通过）",
+      "执行repair前必须新建完整dump并验证其SHA；未创建前不得执行任何写入",
     ],
   };
 }

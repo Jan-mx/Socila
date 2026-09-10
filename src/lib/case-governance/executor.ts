@@ -189,7 +189,10 @@ function normPath(p: string): string {
 }
 
 /**
- * prepare-archive（RCL-FR-002/003/005，第三轮复审+第四轮复审补偿）：
+ * prepare-archive（RCL-FR-002/003/005，第三轮复审+第四轮复审补偿+第五轮目录保护）：
+ * 0) 目标目录已包含任一**历史归档专属文件**（4个dump+selection/restore/
+ *    sha256sums.txt，manifest.json为plan-replacement合法前置产物）时**拒绝开始**，
+ *    禁止覆盖历史归档（第五轮复审；历史归档必须完整保留）；
  * 1) 先真实pg_dump并写入全部归档文件（dump/selection/manifest/pending restore/
  *    sha256sums.txt最后生成且不自包含）；
  * 2) 全部文件就绪后，在**可回滚事务**中写入prepared批次与归档条目；
@@ -208,6 +211,20 @@ export async function prepareRclArchive(input: PrepareArchiveInput): Promise<Pre
   const now = input.now ?? (() => new Date());
   const batchId = randomUUID();
   const join = (name: string) => path.join(input.storageDir, name);
+
+  // 第五轮复审：目标目录已包含**历史归档专属文件**时必须拒绝开始（禁止覆盖历史
+  // 归档）。manifest.json/generated-scenarios.json由plan-replacement/generate
+  // 在本流程中先写入同一工作目录，不构成历史归档；dump/selection/restore/
+  // sha256sums只可能由上一次prepare-archive产生，存在即视为既有归档或
+  // 不完整残留，拒绝开始。
+  const archiveOnlyFiles: string[] = [...SHA_LIST_FILES.filter((f) => f !== "manifest.json"), "sha256sums.txt"];
+  const existingArchiveOnly = archiveOnlyFiles.filter((f) => storage.exists(join(f)));
+  if (existingArchiveOnly.length > 0) {
+    throw new RclExecutorError(
+      `prepare-archive拒绝开始：目标目录已包含归档必备文件（${existingArchiveOnly.join("、")}），` +
+        `禁止覆盖历史归档；请使用全新空目录`,
+    );
+  }
 
   // prepare开始时已存在的文件集合：补偿只清理本次新建文件。
   const preExisting = new Set(storage.list().map(normPath));

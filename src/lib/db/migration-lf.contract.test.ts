@@ -96,3 +96,47 @@ describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
     }
   });
 });
+
+describe("migration journal严格单调契约（WI-20260907-03第四轮复审修复）", () => {
+  const JOURNAL_PATH = path.join(ROOT, "drizzle/meta/_journal.json");
+  /** 0010～0018预期when（必须与持久账本ID 10～16、21、22的created_at一致）。 */
+  const EXPECTED_TIMES: Record<string, number> = {
+    "0010": 1788560000000, "0011": 1788600000000, "0012": 1788640000000,
+    "0013": 1788680000000, "0014": 1788705240000, "0015": 1788777720000,
+    "0016": 1788785400000, "0017": 1788796800000, "0018": 1788796860000,
+  };
+
+  it("journal全部entry按idx严格递增（0000～0018）", () => {
+    const journal = JSON.parse(readFileSync(JOURNAL_PATH, "utf8")) as {
+      entries: Array<{ idx: number; when: number }>;
+    };
+    const ws = journal.entries.map((e) => Number(e.when));
+    for (let i = 1; i < ws.length; i++) {
+      expect(ws[i], `entry idx=${journal.entries[i].idx} when不严格递增`).toBeGreaterThan(ws[i - 1]);
+    }
+    // idx连续且从0开始。
+    expect(journal.entries.map((e) => e.idx)).toEqual(Array.from({ length: journal.entries.length }, (_, i) => i));
+  });
+
+  it("0010～0018的journal when与预期时间表一致（严格单调；不修改SQL）", () => {
+    const journal = JSON.parse(readFileSync(JOURNAL_PATH, "utf8")) as {
+      entries: Array<{ tag: string; when: number }>;
+    };
+    const byTag: Record<string, number> = {};
+    for (const e of journal.entries) byTag[e.tag.slice(0, 4)] = Number(e.when);
+    for (const [prefix, expected] of Object.entries(EXPECTED_TIMES)) {
+      expect(byTag[prefix], `${prefix} when=${byTag[prefix]} ≠ 预期${expected}`).toBe(expected);
+    }
+  });
+
+  it("journal单调性保证迁移在账本max=0018时整体no-op（0014不得高于0015/0016/0017）", () => {
+    const journal = JSON.parse(readFileSync(JOURNAL_PATH, "utf8")) as {
+      entries: Array<{ tag: string; when: number }>;
+    };
+    const byTag: Record<string, number> = {};
+    for (const e of journal.entries) byTag[e.tag.slice(0, 4)] = Number(e.when);
+    // 持久账本max created_at=0018的when（1788796860000）；任一journal when
+    // 大于它都会让migrator重新应用该迁移（旧journal的0014=1788991200000即Re-apply）。
+    expect(Math.max(...Object.values(byTag))).toBe(1788796860000);
+  });
+});
