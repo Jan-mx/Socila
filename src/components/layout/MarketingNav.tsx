@@ -2,10 +2,12 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
-type NavKey = "home" | "chat" | "cases";
+type NavKey = "home" | "chat" | "plan" | "cases";
 
 const linkMap: Array<{ key: NavKey; href: string; label: string }> = [
   { key: "chat", href: "/chat", label: "智能助手" },
+  // 任务3 JRP-FR-010：直接规划入口（与聊天同一地区确认契约）。
+  { key: "plan", href: "/plan/new", label: "直接规划" },
   { key: "cases", href: "/cases", label: "真实案例" },
 ];
 

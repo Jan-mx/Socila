@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-11
 
 ## 状态说明
 
@@ -24,9 +24,10 @@
 | 文档分类与低上下文读取改造 | Done | 当前事实、报告和归档分离，README路由可用 |
 | Socila命名统一与地区DSL分层 | Done | `SOCILA-DSL-1.0`与地区Manifest稳定，粤川示例退出生产Seed，上海黄金结果无漂移 |
 | 任务2：CN/上海/广东权威政策首期交付 | Done | 三地区管理员批准与候选快照重放完成；四川Deferred不阻塞 |
-| 任务3：地区规划时态与真实入口修复 | Reopened | WI-20260907-02完成日期快照、领取地市、完整门禁、历史重放、停用和双入口 |
-| 任务4：上海/广东政策案例库全量重建 | Blocked | 等任务3Accepted后完成可信旧库归档和确定性`N/36/N+42`案例体系 |
-| 持久库旧案例替换 | Blocked | 前两项Accepted、fresh audit和明确授权后执行账本repair、0017/0018及旧库替换 |
+| 任务3：地区规划时态与真实入口修复 | Accepted | 第二轮修复已覆盖空黄金测试、停用地区绑定和三方snapshot hash |
+| 任务4：上海/广东政策案例库全量重建 | Accepted | 代码、隔离演练、持久repair及恢复证据已独立复审通过 |
+| 持久库旧案例替换 | Accepted | 18 migrations、可信批次+988 entries、36/36/78零漂移及40表/20 sequence恢复闭环 |
+| 任务3/4最终分支集成 | Accepted | 源`39f0e2a`已以显式merge commit合入`refactor/policy-ops-agent-platform`，等待用户独立测试 |
 | 远程Personal Demo服务器部署 | Planned | 目标服务器全栈healthy、域名/HTTPS和离机备份验证 |
 | 首批公开政策采集与RAG建库 | Planned | 白名单来源原件、DocumentTree、Chunk和索引形成闭环 |
 | 完整真实Agent闭环观察 | Planned | 真实政策从采集到管理员审核和Core draft可追踪完成 |

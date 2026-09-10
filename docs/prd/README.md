@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-11
 
 ## 用途
 
@@ -19,8 +19,8 @@ PRD不记录日常执行日志、测试退出码和提交历史。
 | `09-03-feature-core-agent-service-jwt.md` | Core与Agent双向服务JWT鉴权 | Accepted |
 | `09-05-feature-socila-naming-regional-dsl.md` | Socila活动命名统一、地区DSL分层与粤川示例测试化 | Active |
 | `09-05-stage-national-baseline-regional-overlays.md` | CN、上海、广东首期权威政策交付；四川Deferred | Accepted |
-| `09-05-feature-case-library-governance.md` | 上海/广东确定性政策案例库全量重建 | Reopened |
-| `09-05-feature-jurisdiction-aware-planning.md` | 用户规划按地区日期快照触发 | Reopened |
+| `09-05-feature-case-library-governance.md` | 上海/广东确定性政策案例库全量重建 | Accepted |
+| `09-05-feature-jurisdiction-aware-planning.md` | 用户规划按地区日期快照触发 | Accepted |
 
 ## 全国政策能力执行顺序
 
@@ -31,7 +31,8 @@ Socila命名统一与地区DSL分层
   → 任务2：CN、上海、广东权威政策与候选快照
   → 任务3：修复真实入口、领取地市和日期快照
   → 任务4：全量退役旧案例并重建上海/广东确定性政策案例
-  → 持久库受控替换（另行明确授权）
+  → 持久库repair-forward（另行明确授权）
+  → 最终集成分支合入重构分支
 ```
 
 - 第一阶段只整理协议、命名、Seed和测试数据边界，不新增真实粤川政策。
@@ -39,7 +40,7 @@ Socila命名统一与地区DSL分层
 - 任务4必须消费任务3修复并验收的日期快照；两者不再并行。
 - 旧851/117语料及500条旧回归测试完整归档后退出运行库；新案例数由覆盖manifest确定，公开36条固定上海18、广东18。
 - 新案例使用确定性模板，不使用LLM或真实用户数据；CN只做内部基线，四川只做unsupported负例。
-- 持久库当前452/36/528保持不变，未经fresh audit和明确授权不得执行账本repair、migration、快照调度或案例替换。
+- 持久库repair-forward已完成并独立复审通过：18 migrations、36/36/78、10 snapshots、5 releases、可信归档批次+988 entries；最终集成Work Item已Ready。
 
 ## 何时创建PRD
 
@@ -103,3 +104,7 @@ Draft → Approved → Active → Superseded → Archived
 ```
 
 需求发生变化时更新PRD及关联Work Item、架构和追踪记录，不在旧报告中修改历史结果。
+
+## Agent提示词规则
+
+开发提示词只在对话中提供，不写入PRD。PRD只记录需求、边界、接口、验收标准和授权条件；长期规则放在README中，不复制可执行提示词。

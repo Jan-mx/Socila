@@ -68,36 +68,64 @@
     {
       "idx": 9,
       "version": "7",
-      "when": 1788645600000,
+      "when": 1788560000000,
       "tag": "0010_sdl_dsl_normalization_example_cleanup",
       "breakpoints": true
     },
     {
       "idx": 10,
       "version": "7",
-      "when": 1788732000000,
+      "when": 1788600000000,
       "tag": "0011_sdl_tests_jurisdiction_backfill",
       "breakpoints": true
     },
     {
       "idx": 11,
       "version": "7",
-      "when": 1788818400000,
+      "when": 1788640000000,
       "tag": "0012_nrp_explicit_overlay_operation",
       "breakpoints": true
     },
     {
       "idx": 12,
       "version": "7",
-      "when": 1788904800000,
+      "when": 1788680000000,
       "tag": "0013_nrp_stage_e_materialization",
       "breakpoints": true
     },
     {
       "idx": 13,
       "version": "7",
-      "when": 1788991200000,
+      "when": 1788705240000,
       "tag": "0014_nrp_stage_e_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788777720000,
+      "tag": "0015_jurisdiction_planning_releases",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1788785400000,
+      "tag": "0016_clg_case_governance",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788796800000,
+      "tag": "0017_jurisdiction_snapshot_schedules",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788796860000,
+      "tag": "0018_case_library_rebuild",
       "breakpoints": true
     }
   ]

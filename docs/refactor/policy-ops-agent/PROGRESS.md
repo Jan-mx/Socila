@@ -2,12 +2,12 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-11
 
 ## 当前结论
 
 - 七阶段重构Goal：**Accepted**，七份阶段验收报告全部PASS。
-- 当前分支：`refactor/policy-ops-agent-platform`。
+- 当前开发分支：`refactor/policy-ops-agent-platform`；任务3/4最终集成分支已完成显式merge commit集成。
 - 当前运行事实源：单机Docker Compose中的PostgreSQL、MinIO和Agent存储；Neon不再承接运行时读写。
 - 本机定位：开发机，生产Compose数据卷保留但不常驻；远程服务器部署列入路线图。
 - 09-02 Feature（用户与管理员双角色鉴权，PRD `docs/prd/09-02-feature-user-admin-auth.md`）：**Accepted**（验收证据：`reports/feature-09-02-auth/acceptance-report.md`）。
@@ -17,7 +17,7 @@
 - 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）：**Accepted**（验收证据：`reports/feature-09-05-socila-naming/acceptance-report.md`）。SDL-FR-001～014、SDL-NFR-001～007全部有实现与测试映射，SDL-AC-001～010新鲜证据通过：通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层（24规则/29参数/`SOCILA-DSL-1.0`/Manifest `jurisdiction_code=310000`）、Seed经Manifest发现（零硬编码地区）、活动代码与配置SSP/SSRP→Socila硬切换（命名扫描零命中，无旧变量/Cookie/localStorage/服务身份兼容）、Node与Python服务JWT身份原子切换`socila-next-core`（固定向量重签+CI冒烟同步）、粤川示例转测试夹具（生产Seed不写入）、0010迁移完成dsl_version规范化与六条示例精确清理（删除前新鲜pg_dump+SHA-256清单+PG17+pgvector真实恢复逐表对账25表一致；删除后diff仅params 33→29、packs 2→0及0009补齐空表；备份/旧卷/历史快照未动）；Gitleaks完整历史19条历史命中经人工核实为测试合成值并以`.gitleaks.toml`精确allowlist闭环（ADR-0008）。
 - 09-05 Feature **复审纠正完成并重新Accepted（2026-09-05）**：三项复审缺漏全部纠正——①命名契约扫描器收敛到`src/lib/naming/socila-naming-contract.ts`并以"允许片段剥离"区分精确旧协议值与独立品牌标识（npm test恢复359/359全绿）；②`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`+`condition="AND"`，新增哨兵回归`scripts/verify-gitleaks-allowlist.mjs`接入CI（ADR-0009替代ADR-0008；哨兵证明允许路径上其他规则照常检测、trace无整文件跳过）；③多地区Seed补齐jurisdiction作用域（seed-rules/seed-params/seed-misc/excel-import，tests行写入jurisdictionCode，协议workflow只装载一次，0011回填存量NULL），新增multi-region-seed落库级集成测试。全部门禁新鲜复验通过后恢复Accepted。
 - 09-05 Feature复审历史：曾因命名契约、Gitleaks allowlist和多地区Seed缺漏Reopened；相关缺漏及第二轮扫描器/Gitleaks/Build复审均已修复并取得新鲜门禁，当前最终状态为**Accepted**，详见任务验收报告§8～§10。
-- 09-05全国政策能力当前顺序按ADR-0011调整为：任务2首期Accepted保持不变→WI-20260907-02修复任务3→WI-20260907-03重建上海/广东确定性政策案例→WI-20260907-04经明确授权替换持久库。任务3/4原并行方案被复审推翻。
+- 09-05全国政策能力当前状态：任务2、任务3、任务4、WI-20260907-04和WI-20260909-01均已Accepted；任务3/4最终集成分支已合入`refactor/policy-ops-agent-platform`。后续在用户完成该分支测试后，另行规划`refactor → main`及版本tag；本次未执行。
 
 ## 已完成能力
 
@@ -40,9 +40,10 @@
 | OCR置信度缺失 | 已有安全路径 | 关键字段默认进入人工确认 |
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化、三地区批准和候选快照重放完成；四川无快照 | 保持Accepted，不因任务3/4复审回退 |
-| 任务3：地区感知用户规划 | **Reopened**：0015和沪粤active已落库，但新会话、领取地市、日期快照、完整门禁、历史重放、停用和直接页面未闭环 | 执行WI-20260907-02；代码验收前不改持久库 |
-| 任务4：地区化政策案例库 | **Reopened**：持久库已为452/36/528，但旧归档SHA/manifest失效、质量分为空，原Accepted结论撤销 | 等任务3重新Accepted后执行WI-20260907-03；旧452/36目标废止 |
-| 持久库案例替换 | **Blocked**：当前0015/0016、沪粤active、452/36/528保持 | 前两项Accepted并取得fresh明确授权后执行WI-20260907-04 |
+| 任务3：地区感知用户规划 | **Accepted（2026-09-09第二轮修复）**：空黄金测试集fail-closed、停用URL地区绑定、replay三方hash、隔离DB 116/116零skip、E2E 19/19 | 代码验收保持；0017与快照已持久执行，但账本/任务4审计待repair-forward |
+| 任务4：地区化政策案例库 | **Accepted（2026-09-11独立复审）**：代码、隔离演练、持久repair、幂等与恢复证据全部闭环 | 保持Accepted |
+| 持久库案例替换 | **Accepted（2026-09-11独立复审）**：账本18条、可信批次+988 entries、36/36/78零漂移、repair复跑no-op、pre/post恢复40表/20 sequence一致 | 证据`task34-r8-repair-exec-2026-09-10T15-41-40/` |
+| 最终分支集成 | **Accepted（2026-09-11）**：源`39f0e2a`已以显式merge commit合入目标原基线`57f051d`，完整门禁通过 | 等待用户在refactor分支测试；不自动合并main或创建tag |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
 | 四川医保退休年限正式文件（缺口4） | Deferred；仅2025-03征求意见稿，无正式印发 | `WI-20260907-01`：正式印发后采集，不阻塞任务2首期 |
 | 川人社办发〔2023〕18号（缺口5） | Deferred；白名单域未检索到 | `WI-20260907-01`：等待用户提供原件或官方入口恢复 |
@@ -328,9 +329,161 @@
 
 本轮文档基线验证为`npm test` 51文件/485通过。实现和执行证据不得提前填写PASS；提示词只在对话中提供。
 
+## 第二轮独立复审（任务3/4，2026-09-09）
+
+| 项目 | 结论 |
+| --- | --- |
+| 分支 | `7aa9bfc`已推送且工作区原始状态干净；本轮只修改复审文档 |
+| 任务3 | 空黄金测试集可通过；停用路由忽略路径地区；replay未比较快照行hash，保持Reopened |
+| 任务4 | `rcl-case-library.ts`七模式为空壳；apply写入完整场景字段为空；E2E未验证36/18/18，保持Reopened |
+| Node | 默认5秒超时出现1失败；`npx vitest run --testTimeout=20000`为71文件/650通过 |
+| DB集成 | 当前环境未设置`SOCILA_TEST_DATABASE_URL`，测试出现skip/失败；报告中的114/25未独立复现 |
+| 静态/安全 | tsc退出0；eslint 0 error/6 warning；scan-secrets 769文件零命中 |
+| 持久边界 | 只读仍为Drizzle 16、cases/showcase/tests/snapshots=452/36/528/6；0017/0018和新案例替换未执行 |
+
+本轮新增的执行提示词只在对话中提供。PRD、Work Item、验收报告和开发文档不得保存可执行提示词；旧WI-20260906-01/02内嵌提示词已移除。
+
+## 当前任务验证（任务3第二轮修复：空黄金测试集/停用地区绑定/三方hash，2026-09-09本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 已记录；空黄金测试集旧实现错误记pass（新用例ok=true失败）、停用广东URL+上海releaseId旧实现成功停用、replay三方hash旧实现仅两方比较（4失败：缺ReplaySnapshotDriftError/漂移仍重放/缺保存hash容忍） |
+| Node单元（`npm test`） | PASS；71文件/655通过、skip 0（含release-gates空集合反例、jurisdiction-release跨地区停用拒绝、replay三方hash四反例、compute savePlan hash断言）；identity-container模块重载用例显式30秒超时稳定化（2026-09-09复审P2） |
+| TypeScript / ESLint / Build | PASS；tsc退出0；eslint 0 error/6 warning（均为既有，非本次引入）；build退出0（1条既有warning：citation-verifier动态fs访问，基线stash复现确认非本次引入） |
+| 数据库集成（显式`SOCILA_TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5439/task34r2_drill`，全新PG17+pgvector） | PASS；migration×2幂等、bootstrap×2幂等、seed×2幂等、`npm run test:db` 25文件/116通过skip 0（含停用经用例、跨地区停用拒绝且SH保持active、2026/2030广东命中不同snapshot且2030男30年360月落库）、`agent.migrate --with-roles`×2幂等、`pytest -m integration` 20通过skip 0 |
+| Python门禁 | PASS；ruff 0问题、mypy 33文件0错误、pytest非集成94通过、pip-audit无已知漏洞（本地项目自身not found为预期提示） |
+| Chromium E2E（全新`task34r2_e2e`库+Jan引导+seed+`scripts/e2e-task3-setup.ts`预创建沪粤快照+standalone） | PASS；全套19/19（auth 10+task3 6+task4 3），task3新增JRP-AC-008历史replay三方一致、JRP-AC-009跨地区停用409且零修改、JRP-AC-009停用后409 POLICY_SNAPSHOT_UNAVAILABLE并恢复 |
+| Secret与Gitleaks | PASS；scan-secrets --all 772文件零命中；Gitleaks 8.29.1完整历史79 commits no leaks；allowlist哨兵3场景全过 |
+| 边界 | 0017只在隔离库验证；持久账本repair、日期快照调度、激活/停用未授权执行；持久policyops全程未连接未修改；演练容器资源零新增（复用既有jrp-drill-pg容器建新库） |
+
+## 当前任务验证（任务4第二轮修复：受控CLI七模式真实执行，2026-09-09本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 已记录；executor模块缺失（Cannot find module）、apply写入空占位（manifest类型不承载完整场景） |
+| Node单元（`npm test`） | PASS；72文件/663通过、skip 0（含executor七动作8例、release-gates空黄金集+example过滤、manifest完整场景类型、rcl-apply完整字段反例） |
+| TypeScript / ESLint / Build | PASS；tsc退出0；eslint 0 error/6 warning（均为既有）；build退出0（1条既有warning：citation-verifier动态fs访问） |
+| 数据库集成（显式`SOCILA_TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5439/task34r2b_drill`，全新PG17+pgvector） | PASS；migration×2幂等（含0018扩展：cases.input/expected/assertions列+归档条目entity_type含test）、bootstrap×2、seed×2、`npm run test:db` 26文件/129通过skip 0（含新增rcl-cli 11例：audit→generate→plan→prepare-archive真实pg_dump→真实恢复演练（第二实例pg_restore+reconcile全表对账+verified restore-report+重算sha256sums）→verify-archive→apply（删851/500插36/36/36）→verify（36/36/78、沪粤18/18、配额、字段非空））、`agent.migrate --with-roles`×2幂等、`pytest -m integration` 20通过skip 0 |
+| Python门禁 | PASS；ruff 0问题、mypy 33文件0错误、pytest非集成94通过、pip-audit无已知漏洞 |
+| Chromium E2E（全新`task34r2_e2e`库+`scripts/e2e-rcl-setup.ts`真实CLI替换演练+standalone） | PASS；全套19/19，task4 4例精确断言36条/沪18粤18/治理字段非空/管理active过滤/归档批次可读/匿名401/普通用户403/四川unsupported |
+| Secret与Gitleaks | PASS；scan-secrets --all 773文件零命中；Gitleaks 8.29.1完整历史no leaks；allowlist哨兵3场景全过 |
+| 边界 | 0018/删除/插入只在隔离库演练；持久policyops全程未连接未修改；持久库替换待WI-20260907-04授权 |
+
+## 当前任务验证（WI-20260907-04持久库受控替换，2026-09-09用户明确授权执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| 阶段A只读核对 | 账本16条/0015-0016时间异常、沪粤active、四川0、452/36/528/6与基线一致；治理前dump `policyops-wi-02-pre-20260906-203412.dump`（`fb87d394…`）与治理后（`5e8f5abb…`）SHA MATCH |
+| 阶段A旧归档 | 全新实例恢复治理前dump（851/117/528+500回归）；0015-0018应用后生成可信归档（oldTargets=851/117/500），40表恢复对账一致、verify-archive通过 |
+| 阶段A隔离演练 | 452基线复制库`rcl_b_pre`：0017/0018+沪粤快照+CLI全流程（audit/generate/plan/prepare/恢复演练/verify/apply/verify）通过，删452/36/500、插36/36/36；replacement manifestHash与targetFingerprint见阶段A报告 |
+| 阶段A备份 | 操作前备份 `policyops-rcl-b-pre-20260909185630.dump`（`59ee2f5f…`）全新实例恢复+全表/sequence/哈希对账一致 |
+| B-1账本repair | 0014/0015/0016（及0010-0013）账本时间修复，SQL hash全部不变 |
+| B-2迁移 | 0017、0018应用（release区间EXCLUDE、cases完整场景列），第二次no-op |
+| B-3快照 | 同步42条DSL示例（CN19+沪9+粤10+川4）；旧沪粤release停用（审计保留）；新激活沪[2026-09-01,∞)、粤[2026-09-01,2029-12-31]、粤[2030-01-01,∞)非重叠；四川0发布 |
+| B-5替换 | 单事务删除452/36/500、插入36/36/36；旧上海非DSL示例7条清理（最终42）；复跑apply no-op |
+| B-6验证 | 最终36/36/78、沪粤18/18、36cases+36showcase字段完整、回归来源链36/36无孤儿、四川0 |
+| B-7备份 | 操作后备份 `policyops-rcl-b-post-20260909202053.dump`（`934c4758…`）全新实例恢复+全表/sequence/规范化行哈希对账一致 |
+| 边界 | 未触碰远程库、四川激活、Secret轮换、生产部署；未执行WI-20260909-01最终合并 |
+
+## 第三轮独立复审（任务4/WI-04，2026-09-09）
+
+| 项目 | 当前事实 |
+| --- | --- |
+| 代码 | 旧regression test写空hash；restore只验证status；SHA/selection和manifest自校验不完整；example删除在apply事务外 |
+| 账本 | 21条；0012～0014重复登记，0015账本hash与当前SQL不一致 |
+| 数据 | 36 cases、36 showcase、42 example、36 regression、10 snapshots；场景字段初步完整 |
+| 归档 | 2 applied+1 prepared；两个新批次各500条test entry为空hash；applied manifest声明85 tests而当前为78 |
+| 备份 | pre/post dump文件SHA与sidecar一致，保留作为只读复核与回退点；不自动恢复 |
+| 分支 | 源`codex/task34-regional-case-rebuild@7b3f21a`，目标`refactor/policy-ops-agent-platform@57f051d`，尚未合并 |
+
+任务3保持Accepted；任务4（WI-20260907-03）第三轮修复完成并重新Accepted，WI-04保持Reopened等待repair-forward授权，WI-20260909-01保持Blocked。repair-forward计划已生成（见下节），等待用户基于fresh清单另行授权。
+
+## 第四轮独立复审（任务4/WI-04，2026-09-10）
+
+| 发现 | 修复 | 证据 |
+| --- | --- | --- |
+| prepare-archive补偿缺失 | 任何prepare阶段失败不留prepared批次/entries；只精确清理本次batchId（status='prepared'守卫）；文件失败清理本次不完整归档；补偿失败同时报告原始错误与补偿错误（`RclPrepareError`） | Red：4条补偿用例对旧实现全失败；Green：executor.test.ts 15/15 |
+| applied幂等未重验 | `executeRclApply`对applied批次先完整重验manifest正文hash、批次hash、最终N/36/N+42、42条example与cases/showcase/regression逐行hash，完全一致才noop；任一最终行缺失/增加/漂移返回稳定错误且零写入 | Red：4条篡改用例对旧实现全失败；Green：rcl-apply.integration.test.ts 20/20 |
+| migration SQL换行未固定 | 仓库根`.gitattributes`固定`drizzle/*.sql text eol=lf`；0010～0018 blob不变；Windows `core.autocrlf=true`全新checkout仍为LF；Drizzle读取hash===Git blob LF SHA | `migration-lf.contract.test.ts` 4/4；jrp-0017哈希不变量基线改为LF值`3ae5b95f…` |
+| 迁移审计语义不完整 | `scripts/rcl-audit-task34.mjs`同时输出Git blob SHA/工作树raw SHA/LF规范化SHA/CRLF规范化SHA/账本SHA/仅EOL差异/真实内容差异；同步输出journal与账本created_at严格单调核对 | audit-summary.json `migrationAudit`/`migrationJournal`/`migrationLedgerTimeCheck` |
+
+## 当前任务验证（任务4第四轮修复与只读审计，2026-09-10本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 单元补偿4条、集成篡改4条（case/showcase/regression/example）对旧实现全部失败（旧实现直接noop/留prepared残留）；修复后全部Green |
+| Node单元（`npm test`） | PASS；74文件/713通过、skip 0 |
+| TypeScript / ESLint / Build | PASS；tsc退出0、eslint 0 error（既有warning未新增）、`npm run build`退出0 |
+| 数据库集成（任务专属随机高位端口全新PG17+pgvector容器，vector/btree_gist） | PASS；migration×2、bootstrap×2、seed×2幂等；`npm run test:db` 26文件/141通过、skip 0；agent.migrate --with-roles×2幂等；`pytest -m integration` 20通过、skip 0 |
+| 第四轮只读审计（持久库仅SELECT） | 当前36/36/78/10冻结；post dump恢复对比仅`auth_refresh_sessions`运行期差异（40表+20 sequence其余一致）；migration换行审计逐文件确认：ID 10/11/12/13/14/15/21/22账本hash===0010～0018 Git LF内容，ID 18/19/20===0012/0013/0014 CRLF重复登记，ID 17缺号不补写；journal when与预期时间表不符（仅报告，禁止猜测修复），账本created_at与预期严格单调一致 |
+| 可信旧归档（第四轮） | `F:/Socila/backup/case-library/task34-r4-trusted-old-2026-09-10T06-59-14/`永久保留：policyops-fc.dump+cases/showcase_cases/tests.dump+selection-report+manifest（452/36/500全逐行ID/UID/64位hash，500 test hash全部非空，manifestHash `da0ea94d…`）+verified restore-report（40表+20 sequence真实明细）+sha256sums（恰好7文件）；从该归档恢复第三个全新库二次对账40表/20 sequence全部一致（`trusted-archive-re-reconcile.json` ok:true） |
+| 当前attestation（第四轮） | `task34-r4-audit-2026-09-10T06-59-14/attestation-current.json`：绑定codeSha `579fed8…`；36 cases+36 showcase+36 regression+42 example全逐行ID/UID/64位hash；10 snapshots、5 releases、3个archive批次；attestationManifestHash `eb6d8d9d…`；targetFingerprint `56c479de…`（任一数据变化即变化） |
+| repair-forward计划（第四轮） | `F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T06-59-14/repair-forward-plan.json`：codeSha `579fed8…`、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、attestationManifestHash `eb6d8d9d…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`；精确SQL写集合10步（只删账本重复行18/19/20、prepared批次91d60c5f→rolled_back、新增restore_verified可信归档批次+988 entries、业务数据零变化）、每项旧值前置条件、事务边界T1/T2/T3、回退点、失败条件；预期最终账本18条、fingerprint `25d10e62…` |
+| 边界 | 全程未写持久policyops；临时容器/库/网络/文件finally清理；可信归档目录永久保留；未执行repair、未执行WI-20260909-01、未创建PR、未合并分支 |
+
+## 第五轮独立复审（任务4/WI-04，2026-09-10）
+
+| 发现 | 修复 | 证据 |
+| --- | --- | --- |
+| journal when非单调（0010～0014未来时间戳，0014=1788991200000>0015；post恢复库上0014会被migrator重新应用） | `drizzle/meta/_journal.json`：0010=1788560000000、0011=1788600000000、0012=1788640000000、0013=1788680000000、0014=1788705240000、0015=1788777720000、0016=1788785400000、0017=1788796800000、0018=1788796860000；idx/tag不变、SQL零修改；全部18条按idx严格递增且max when===0018 | `migration-lf.contract.test.ts`新增3条单调契约；`npm test` 74文件/720零skip |
+| migration账本回归无自动验证 | `scripts/lib/task34-ledger-regression.mjs`+`scripts/rcl-ledger-regression-task34.mjs`：post dump隔离恢复后8项验证（首次no-op账本21→事务删18/19/20→migration×2 no-op→账本18条不重新生成0012～0014→保留行hash/created_at不变→ID 17不补写不重排→模拟0019 when>1788796860000只应用一次→工作树SQL均LF） | `F:/Socila/backup/case-library/task34-r5-ledger-regression-2026-09-10/ledger-regression.json` ok:true |
+| 审计journal不符仅报告 | `scripts/rcl-audit-task34.mjs`：journal非单调/与预期不符→阻断throw；ID 10～16、21、22账本hash===Git blob LF SHA→阻断；隔离库删除重复行后migration×2 no-op→门禁；`--trusted-dir`只读复验既有可信归档（禁止覆盖） | 第五轮audit三门禁全过（journalMonotonic=true、ledgerGitBlobHashMatch=true 9/9、ledgerRegressionNoopAfterDelete=true） |
+| prepare-archive无目录保护 | `executor.ts`：目标目录已包含历史归档专属文件（4 dump/selection/restore/sha256sums）时拒绝开始；manifest.json为plan-replacement合法产物不拒绝；补偿只删除本次新建文件 | `executor.test.ts`第五轮3条Red→Green；第二次dump/写文件/最终SHA/补偿失败4条保持零prepared批次/entries |
+
+## 当前任务验证（任务4第五轮修复与只读审计，2026-09-10本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| Node单元（`npm test`） | PASS；74文件/720通过、skip 0 |
+| TypeScript / ESLint / Build | PASS；tsc退出0、eslint 0 error、`npm run build`退出0 |
+| 数据库集成（任务专属随机高位端口全新PG17+pgvector容器，vector/btree_gist） | PASS；migration×2（修复后journal幂等）、bootstrap×2、seed×2幂等；`npm run test:db` 26文件/141通过、skip 0；agent.migrate --with-roles×2幂等；`pytest -m integration` 20通过、skip 0 |
+| Secret扫描 / Gitleaks / 哨兵 | PASS；scan-secrets 788文件零命中；Gitleaks 8.29.1完整历史86提交零发现；allowlist哨兵3场景全过 |
+| migration账本回归（隔离库） | PASS；8项全过（证据见上）；post dump SHA-256 `934c4758…` |
+| 第五轮只读审计（持久库仅SELECT，绑定代码提交`1fe702b…`） | 当前36/36/78/10冻结；post dump恢复对比仅`auth_refresh_sessions`运行期差异（40表+20 sequence其余一致）；journalCheck.journalMonotonic=true、journal 9/9与预期一致；账本ID 10～16、21、22 hash===Git blob LF SHA（9/9）、created_at与预期一致；隔离库删除18/19/20后migration×2 no-op；可信归档复验（`--trusted-dir`）：8文件完整、SHA全部匹配、manifest 452/36/500、500 test hash全部非空、restore 40表/20 sequence/零mismatch、第三库再次恢复一致（40表/20 sequence/零mismatch）；证据`task34-r4-audit-2026-09-10T10-12-35/` |
+| 当前attestation（第五轮） | `task34-r4-audit-2026-09-10T10-12-35/attestation-current.json`：绑定codeSha `1fe702b…`；36 cases+36 showcase+36 regression+42 example全逐行ID/UID/64位hash；10 snapshots、5 releases、3个archive批次；attestationManifestHash `8941655b…`；targetFingerprint `56c479de…` |
+| repair-forward计划（第五轮） | `F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T10-12-35/repair-forward-plan.json`：codeSha `1fe702b…`、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、attestationManifestHash `8941655b…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`；journalCheck.journalMonotonic=true、ledgerCreatedAtMatchesExpected=true、ledgerGitBlobHashMatch=true、ledgerRegressionNoopAfterDelete=true；写集合只含删除账本ID 18/19/20、prepared批次91d60c5f→rolled_back、新增restore_verified可信归档批次+988条entries（0010/0011/0015 hash零更新）；36/36/78、10 snapshots、5 releases零变化；含隔离库no-op证据；repair前强制新建备份；预期最终账本18条、fingerprint `25d10e62…` |
+| 边界 | 全程未写持久policyops；未执行repair-forward；未恢复pre dump；未执行WI-20260909-01、未创建PR、未合并分支；`task34-r4-trusted-old-2026-09-10T06-59-14/`未覆盖未删除；临时容器/库finally清理 |
+
+## 第六轮：repair-forward执行器隔离验收（任务4/WI-04，2026-09-10，代码提交`972b453`+`8b360c2`（可信归档校验移入事务内））
+
+| 项 | 实现/证据 |
+| --- | --- |
+| 执行器 | `scripts/rcl-repair-forward-task34.mjs`（核心`src/lib/case-repair/repair-forward.ts`，独立于case-governance以保持RCL-AC-015契约）：audit/plan/apply/verify；无参数失败、apply缺`--i-am-authorized`/`--plan-hash`/`--target-fingerprint`拒绝零写入；目标库policyops默认拒绝（需`RCL_REPAIR_ALLOW_PERSISTENT=1`）；工作树未提交拒绝 |
+| 绑定 | codeSha=HEAD、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、trustedArchiveDir永久目录、fresh attestationManifestHash/migrationLedgerFingerprint/targetFingerprint；planHash覆盖988条写集合+确定性批次ID+codeSha |
+| 确定性批次ID | `sha256("task34-r4-trusted-archive:<manifestHash>")`前16字节设v5版本/变体位=`c8a7c104-8b8b-53f5-9bfd-1c8a8a6be141` |
+| 单事务 | 账本精确条件删除（RETURNING恰好18/19/20）、prepared批次91d60c5f→rolled_back（RETURNING恰好1行）、新restore_verified可信批次（真实计数/table_hashes、created_by=task34-repair-forward）与988条参数化entries在同一REPEATABLE READ事务；开始即`pg_advisory_xact_lock`；事务内重算targetFingerprint、重建计划核对planHash、FOR UPDATE锁定核对账本行与批次、核对attestation/业务指纹/可信归档；COMMIT前终态核对；任一不一致回滚 |
+| 幂等/并发 | 复跑noop:true；部分完成/不一致→REPAIR_STATE_DRIFT；并发第二方经40001重试后noop |
+| 单元 | `src/lib/case-repair/__tests__/repair-forward.test.ts` 20例Red→Green |
+| 隔离演练 | `scripts/rcl-repair-drill-task34.mjs`：19场景全过（缺授权/错planHash/错targetFingerprint/账本旧值漂移/批次漂移/归档漂移/非法hash与重复拒绝零写入；正常apply；账本18条原值；批次rolled_back；可信批次+988 entries逐项；36/36/78/10/5及业务表hash不变；migration×2 no-op；复跑noop；并发一执行一noop；5故障点回滚；repair后dump第三库恢复40表/20 sequence零mismatch）；`task34-r6-repair-drill-2026-09-10/repair-executor-test-report.json` allPassed=true |
+
+## 当前任务验证（任务4第六轮repair执行器，2026-09-10本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | `repair-forward.test.ts`首跑模块不存在（20例失败）→ 实现后20/20 |
+| Node单元（`npm test`） | PASS；75文件/740通过、skip 0（含RCL-AC-015契约：执行器库独立于case-governance） |
+| TypeScript / ESLint / Build | PASS；tsc退出0、eslint 0 error、`npm run build`退出0 |
+| 数据库集成（随机高位端口全新PG17+pgvector） | PASS；migration×2/bootstrap×2/seed×2幂等；`npm run test:db` 26文件/141通过、skip 0；agent.migrate --with-roles×2幂等；`pytest -m integration` 20通过、skip 0 |
+| Secret扫描 / Gitleaks / 哨兵 | PASS；scan-secrets 790文件零命中；Gitleaks 8.29.1完整历史91提交零发现；allowlist哨兵3场景全过 |
+| 隔离演练 | PASS；19/19（并发`c1 noop attempts=2 / c2 applied attempts=1`；attestation交叉核对codeSha=1fe702b时===第五轮`8941655b…`） |
+| 第六轮只读审计（持久库仅SELECT，绑定`8b360c2…`） | `F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T13-42-41/`：attestation-current.json（`3b7340c1…`、targetFingerprint `56c479de…`、36/36/78/42/36、10 snapshots、5 releases、3批次）、audit-summary.json（journalMonotonic=true、账本hash 9/9===Git blob LF、隔离库删除18/19/20后migration×2 no-op、可信归档复验8文件/SHA/452/36/500/restore 40/20/0/第三库一致、执行器交叉核对10项全true）、repair-forward-plan.json（单事务写集合、executor节含apply命令、无VALUES占位）、executable-write-set.json（planHash `db55e4ab…`、988 entries、确定性批次ID、ledgerDelete三行完整旧值、ledgerKeep 1..16/21/22）、repair-executor-test-report.json（19/19） |
+| 边界 | 持久policyops仅SELECT；未执行repair-forward；未恢复pre dump；未创建PR、未合并分支；可信归档与pre/post备份未覆盖；隔离容器/库/临时归档副本finally清理 |
+
+## repair-forward持久执行（WI-20260907-04，2026-09-10，用户明确授权；等待独立复审）
+
+| 阶段 | 结果 |
+| --- | --- |
+| 授权 | 仅本机`localhost:5432/policyops`；codeSha `aeb464fc473ba05c849b98e9cc04046ca8c3c8ca`、planHash `179507da922755ce86e9d76daeba831e91ae36cb605d994e45364fcf91e63189`、targetFingerprint `56c479deb89438ff3943b61b73812cc2`、attestationManifestHash `ca4238a5c3aca5a744fcbc190e8bd147cb4450686bf6d4a38c8d0d91a55fd6f4`（`task34-r7-fresh-plan-2026-09-10T15-15-11/`） |
+| 执行前门禁 | 工作区干净、HEAD=origin=`aeb464f`；持久库migrations=21、36/36/78、42/36、10/5、batches 2 applied+1 prepared、可信批次不存在；fresh audit/plan与授权参数逐项一致（state=pending） |
+| pre备份 | `policyops-rcl-repair-pre-20260910234300.dump`（`b190d1d1…`+sidecar）全新PG17+pgvector恢复对账exit 0：40表OK/20 sequence/账本21 |
+| apply | 单事务：applied=true、ledgerDeleted=[18,19,20]、批次91d60c5f→rolled_back、988 entries、attempts=1、终态账本18（fingerprint `25d10e62…`）；`RCL_REPAIR_ALLOW_PERSISTENT=1`仅子进程 |
+| 执行后12项 | 账本18条=1～16/21/22且原值不变；批次rolled_back（历史988 entries保留）；可信批次restore_verified/task34-repair-forward；988 entries全hex无重复452/36/500；36/36/78、42/36、10/5；migration×2 no-op；复跑apply noop:true；verify --plan ok=true（repaired）；业务表规范化hash与计划一致 |
+| post备份 | `policyops-rcl-repair-post-20260910234716.dump`（`8303a4c3…`+sidecar）第三个全新实例恢复对账exit 0：40表OK/20 sequence/账本18/988 entries |
+| 边界 | 仅授权三项写入；snapshot/release/政策实体/远程库/Secret/部署零变化；未合并分支；临时容器清理；证据`F:/Socila/backup/case-library/task34-r8-repair-exec-2026-09-10T15-41-40/` |
+
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 
-任务2首期保持Accepted。下一步严格串行：WI-20260907-02修复任务3→WI-20260907-03重建地区化案例库→WI-20260907-04受控替换持久库。前两项只在隔离库开发验收；第三项必须先完成fresh audit、备份和恢复演练，再请求明确授权。不得重复执行旧任务4apply。四川后续只按`WI-20260907-01-sichuan-policy-followup.md`推进，不影响本次沪粤案例重建。09-03发布动作仍为未来人工动作：
+任务2～4、持久repair-forward和WI-20260909-01最终集成均已Accepted。当前下一步是由用户在`refactor/policy-ops-agent-platform`完成独立测试；确认后再建立单独的`refactor → main`与版本tag计划。当前仍禁止重跑stage-a/stage-b、自动恢复pre dump、合并`main`或创建tag。四川后续仍按`WI-20260907-01-sichuan-policy-followup.md`独立推进。09-03发布动作仍为未来人工动作：
 
 1. 重构前版本基线：**已完成**。annotated tag `v1.0.0`已推送至origin，并精确指向`main`提交`1c0f6e7eb48d0e6b4ef52063454afdb0c8375d4c`；不得移动或重建。
 2. 用户未来人工发布流程（PRD §17.2）：

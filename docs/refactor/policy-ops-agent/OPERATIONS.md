@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-11
 
 ## 当前Profile
 
@@ -137,17 +137,21 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 7. 管理员批准完成后，只读列出三地区候选快照成员、版本、provenance和黄金结果；本次三地区候选快照已创建并重放，未来新快照仍需另行取得写入授权。
 8. 创建后重复重放并验证隔离；四川无快照且不开放流量。案例删除和地区激活不包含在本runbook授权内。
 
-## 任务3/4 Reopened运行边界（ADR-0011）
+## 任务3 Accepted、任务4/WI-04 Reopened运行边界（ADR-0011）
 
 > 当前持久事实（2026-09-07，只读复审）：Drizzle账本16条，0015/0016已经执行；上海、广东release为active，四川0；`cases/showcase_cases/tests/policy_snapshots=452/36/528/6`。旧任务4已删除399/81，但case-library归档SHA无效、selection报告缺失、restore报告仍pending。禁止重复运行旧任务4apply。
+>
+> 历史时点（2026-09-09第二轮修复前）：任务3与任务4代码曾同时Reopened，0017/0018尚未执行。后续实际执行及当前第三轮结论见下一段。
+>
+> 2026-09-09持久执行历史：本机已变为36/36/78并写入0017/0018及沪粤日期快照，pre/post备份文件SHA与sidecar一致。第三轮复审撤回Accepted：账本实际21条、旧test归档hash为空、restore明细为空、applied manifest声明85 tests而当前实际78。当前冻结写入，禁止重跑stage-a/stage-b、恢复pre dump或执行最终合并。
 
-- WI-20260907-02与WI-20260907-03只允许代码、生成资产和隔离数据库测试。
+- WI-20260907-02保持Accepted；WI-20260907-03与WI-20260907-04均Reopened。任务4修复只允许代码、生成资产、隔离数据库测试和当前库只读审计。
 - 0015/0016历史SQL不可改写；源journal校正不等于持久账本已repair。
-- 0017/0018、日期快照调度、旧案例删除和新案例插入全部属于WI-20260907-04受控写入。
+- 0017/0018、日期快照调度和案例替换已经发生，但验收因账本/manifest/归档缺口撤回；后续只允许WI-04 repair-forward，不得重跑旧替换。
 - 治理前/后完整dump保留在Git忽略目录；现有错误case-library归档不得作为恢复门禁PASS证据。
 - 未获fresh明确授权时，不得修改迁移账本、创建/激活snapshot区间或写案例表。
 
-## 地区化案例持久替换runbook（WI-20260907-04，当前Blocked）
+## 历史地区化案例持久替换runbook（WI-20260907-04，已执行但验收撤回）
 
 ### 阶段A：只读与隔离准备
 
@@ -173,3 +177,28 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 8. 创建操作后dump和SHA，在全新PG17+pgvector完成全部表、sequence和规范化hash对账。
 
 任一步失败立即停止。事务提交后的恢复不包含在原授权中，必须报告差异并再次取得用户确认；不得默认把治理前dump恢复到持久库。
+
+## 当前repair-forward门禁（WI-20260907-04，已执行，等待复审）
+
+1. 冻结当前36/36/78、10条snapshot；迁移账本已由repair-forward修复为18条（2026-09-10）、归档批次4个（2 applied+1 rolled_back+1 restore_verified）；旧stage-a/stage-b脚本仅作历史证据，不得重跑。
+2. 代码层修复已完成（2026-09-10第三轮+第四轮+第五轮）：旧test真实hash、manifest自校验、SHA/selection/restore完整验证、42 example原子同步（第三轮）；**第四轮**——prepare-archive补偿（失败不留prepared批次/entries、只精确清理本次batchId、补偿错误与原始错误同报）、applied幂等重验（applied先完整重验manifest正文hash/批次hash/最终N/36/N+42/42 example/逐行hash，完全一致才noop，任一漂移稳定错误零写入）、migration换行契约（`.gitattributes` eol=lf，Drizzle读取hash===Git blob LF SHA）、迁移审计语义（blob/raw/LF/CRLF/账本/仅EOL/真实差异+journal与账本时间严格单调核对）；**第五轮**——journal非单调修复（`drizzle/meta/_journal.json`：0010～0014 when修正为1788560000000/1788600000000/1788640000000/1788680000000/1788705240000，0015～0018不变，idx/tag不变、SQL零修改、全部18条严格递增）、migration账本回归（`scripts/rcl-ledger-regression-task34.mjs`：隔离库删除18/19/20后migration×2 no-op等8项）、审计journal不符由仅报告改为阻断、归档目录保护（`prepareRclArchive`拒绝覆盖历史归档）。随机端口隔离PG17+pgvector `npm run test:db` 26文件/141零skip；`npm test` 74文件/720零skip。
+3. 只读恢复pre/post dump已完成：当前库vs post恢复库仅`auth_refresh_sessions`运行期差异（40表+20 sequence其余一致）；pre dump重建旧452/36/500可信归档已永久保存至`F:/Socila/backup/case-library/task34-r4-trusted-old-2026-09-10T06-59-14/`（manifestHash `da0ea94d…`、500 test hash全部非空、verified restore-report 40表+20 sequence、sha256sums恰好7文件、第三库二次对账一致；目录永久保留，不得删除）。**第五轮只读复验**（2026-09-10）：8文件完整、SHA全部匹配、manifest 452/36/500、500 test hash全部非空、restore 40表/20 sequence/零mismatch、第三库再次恢复一致（40表/20 sequence/零mismatch），目录未覆盖未删除。
+4. 当前36/36/78 attestation manifest已生成并绑定代码提交`1fe702b…`（attestationManifestHash `8941655b…`、targetFingerprint `56c479de…`），逐行绑定case/showcase/regression/example、snapshot、release、批次和账本；任一数据变化targetFingerprint即变化。
+5. 账本21条迁移换行审计完成：ID 10/11/12/13/14/15/21/22账本hash===0010～0018 Git LF内容；ID 18/19/20===0012/0013/0014的CRLF重复登记；ID 17缺号不补写；0010/0011/0015账本hash为Git LF原值，不得更新。**第五轮起**journal严格单调且0010～0018与预期一致、ID 10～16/21/22账本hash===Git blob LF SHA、隔离库删除重复行后migration×2 no-op均为阻断门禁（任一不符不得生成repair-forward计划）。prepared批次`91d60c5f`、未引用snapshot处置见repair-forward计划。
+6. **第六轮（代码提交`972b453`+`8b360c2`（可信归档校验移入事务内））已交付可审计、确定性、单事务、幂等的repair-forward执行器**`scripts/rcl-repair-forward-task34.mjs`（核心`src/lib/case-repair/repair-forward.ts`）并在post dump隔离库完成19场景演练（`F:/Socila/backup/case-library/task34-r6-repair-drill-2026-09-10/repair-executor-test-report.json` allPassed=true）。第六轮只读审计（`F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T13-42-41/`）生成attestation-current.json（codeSha `8b360c2…`、attestationManifestHash `3b7340c1…`、targetFingerprint `56c479de…`）、audit-summary.json、repair-forward-plan.json（单事务写集合、executor节、交叉核对10项全true）、executable-write-set.json（planHash `db55e4ab…`覆盖988条entries+确定性批次`c8a7c104-8b8b-53f5-9bfd-1c8a8a6be141`+codeSha；ledgerDelete三行完整旧值；ledgerKeep 1..16/21/22）、repair-executor-test-report.json（19/19）。历史授权与本轮提交均不构成repair-forward授权。
+7. **执行runbook（仅在用户针对planHash `db55e4ab…`明确授权后由用户执行）**：①新建紧邻操作时间的完整dump并核对SHA（未创建前不得写入）；②`DATABASE_URL=<policyops> node scripts/rcl-repair-forward-task34.mjs audit`确认state=pending、targetFingerprint `56c479de…`、planHash `db55e4ab…`；③`DATABASE_URL=<policyops> RCL_REPAIR_ALLOW_PERSISTENT=1 node scripts/rcl-repair-forward-task34.mjs apply --i-am-authorized --plan-hash db55e4ab990e84289a3e28d45910d455c6e90d5009643fe18eb072fb70c73848 --target-fingerprint 56c479deb89438ff3943b61b73812cc2`（单事务：REPEATABLE READ+advisory xact lock；事务内重算指纹、FOR UPDATE核对账本18/19/20与prepared批次91d60c5f、核对attestation/业务指纹/可信归档；精确删除RETURNING恰好18/19/20、批次→rolled_back恰好1行、新增restore_verified可信批次+988 entries；任一不一致回滚零写入；工作树必须干净、codeSha必须为计划绑定提交）；④`verify --plan <executable-write-set.json>`必须ok:true；⑤复跑apply必须`noop:true`（部分完成/不一致返回`REPAIR_STATE_DRIFT`，禁止补写，立即报告）；⑥新建post-repair完整dump并在全新PG17+pgvector实例恢复对账（40表/20 sequence）；⑦更新WI-20260907-04为Accepted并同步文档。任何差异立即停止，不默认恢复pre dump。
+8. **已执行（2026-09-10，用户明确授权）**：按第7条runbook在本机policyops完成一次repair-forward——pre备份`policyops-rcl-repair-pre-20260910234300.dump`（`b190d1d1…`+sidecar，全新实例恢复对账40表/20 sequence一致）→ fresh audit/plan与授权参数（codeSha `aeb464f`、planHash `179507da…`、targetFingerprint `56c479de…`、attestation `ca4238a5…`）一致 → `RCL_REPAIR_ALLOW_PERSISTENT=1`仅子进程apply单事务成功（删除18/19/20、91d60c5f→rolled_back、新增c8a7c104+988 entries、attempts=1）→ 12项验证全过（账本18条原值、36/36/78/10/5与业务表hash零变化、migration×2 no-op、复跑noop、verify ok）→ post备份`policyops-rcl-repair-post-20260910234716.dump`（`8303a4c3…`+sidecar，第三个全新实例恢复对账40表/20 sequence一致）。当前持久事实：migrations=18（1～16、21、22）、36/36/78、10 snapshots、5 releases、archive batches=2 applied+1 rolled_back+1 restore_verified。证据`F:/Socila/backup/case-library/task34-r8-repair-exec-2026-09-10T15-41-40/`。WI-20260907-04标记等待复审；独立复审通过后置Accepted，随后方可评估WI-20260909-01。
+
+## 任务3/4最终分支集成runbook（WI-20260909-01，Accepted）
+
+只有WI-20260907-02、WI-20260907-03和WI-20260907-04全部Accepted后才能执行。本runbook只操作Git，不授权数据库、快照、Secret、部署、PR或`main`写入。
+
+1. `fetch`后确认`codex/task34-regional-case-rebuild`和`refactor/policy-ops-agent-platform`工作区干净、upstream同步，记录源SHA、目标合并前SHA和merge-base。
+2. 只合并`origin/codex/task34-regional-case-rebuild`；不得再次合并两个旧任务分支，也不得使用squash、rebase、cherry-pick或force-push。
+3. 审查目标分支独有提交；存在未审查变更或远端前进时停止并更新基线。
+4. 在目标工作区执行`git merge --no-ff --no-commit origin/codex/task34-regional-case-rebuild`。任何冲突立即`git merge --abort`，不得猜测解决。
+5. 无冲突时审查完整暂存差异和0015→0018 journal顺序，运行完整Node、显式隔离数据库零skip、Chromium、TypeScript、ESLint、Build、Python及安全门禁。
+6. 新增独立集成验收报告并同步状态文档后，创建`merge: 集成任务3与任务4地区化交付`，推送`origin/refactor/policy-ops-agent-platform`。
+7. 核对本地HEAD、upstream和远端SHA一致；三个`codex/*`分支全部保留，不删除、不合并`main`。
+
+执行结果（2026-09-11）：源`39f0e2a2d6bf694091d97341041e93558ac6ded6`、目标合并前与merge-base均为`57f051da7ffb4ce4862d44845a4a1e595f9f1eaf`；自动合并无冲突。隔离DB、Chromium 19/19、Node、TypeScript、ESLint、Build、Python及安全门禁完成，任务专属容器已清理；持久库只读计数未变化。最终merge commit由提交后本地/upstream/远端三方SHA核对，未合并`main`或创建tag。

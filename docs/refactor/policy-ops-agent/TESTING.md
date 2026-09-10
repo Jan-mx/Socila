@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 ## 测试先行
 
@@ -218,22 +218,49 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 四川地区级门禁：无候选快照、无活动发布，规划请求返回unsupported且不得使用上海或广东实体。
 - 原任务3/4并行方案已被复审推翻。任务3先修真实入口和日期快照；任务4随后使用其已验收snapshot区间生成案例。
 
-### 任务3 Reopened专用反例
+### 任务3专用反例（2026-09-09第二轮修复后全量Green）
 
-- 新会话必须先持久创建再确认地区；选择器不得对不存在会话返回404。
-- `claim_city_code`缺失、非广东、未知或仅自由文本时不得估算失业金额；有效代码由服务端规范化后执行。
-- 2026和2030广东请求必须命中不同snapshot区间；缺失、重叠、gateResults缺项或成员hash漂移均fail-closed。
-- 激活必须真实运行引用、Schema、依赖、冲突、黄金和双重重放门禁；伪造pass不能通过。
-- 历史plan按保存snapshot逐字节重放；停用广东不影响上海；四川始终unsupported。
-- 聊天和直接规划页面使用同一地区确认契约并有专用Chromium E2E。
+- 新会话必须先持久创建再确认地区（`create-conversation.use-case.test.ts`、`e2e/task3-regional.spec.ts` JRP-AC-001）；选择器不得对不存在会话返回404。
+- `claim_city_code`缺失、非广东、未知或仅自由文本时不得估算失业金额（`claim-city.test.ts`、`jurisdiction-compute.use-case.test.ts`）；有效代码由服务端规范化后执行。
+- 2026和2030广东请求必须命中不同snapshot区间（`snapshot-slices.test.ts` 时间片派生、`jurisdiction-compute.integration.test.ts` 落库反例：2026与2030命中不同snapshotId、2030男30年360月）；缺失、重叠、gateResults缺项或成员hash漂移均fail-closed（`jrp-0017-migration.integration.test.ts` EXCLUDE、compute用例执行期完整性）。
+- 激活必须真实运行引用、Schema、依赖、冲突、黄金、双重重放和内容哈希七道门禁（`release-gates.test.ts`）；**空黄金测试集fail-closed**：`loadTests`返回空数组时`golden_tests={fail:"快照没有任何适用黄金测试"}`且`ok=false`（JRP-FR-007/AC-007，2026-09-09修复）。
+- 历史plan按保存snapshot逐字节重放（`replay-plan.use-case.test.ts`+集成）；**三方hash一致性**：plan保存`snapshotContentHash`、快照行`contentHash`、成员重算规范化hash必须全部一致，任一不一致（或保存hash缺失）抛`ReplaySnapshotDriftError` fail-closed（JRP-FR-028/AC-008，2026-09-09修复）；compute保存plan时必须写入`snapshotContentHash`（JRP-FR-009，`jurisdiction-compute.use-case.test.ts`断言）。
+- **停用URL地区绑定**：`deactivateJurisdictionRelease`校验URL地区代码与release记录地区一致，广东URL+上海releaseId抛`ReleaseJurisdictionMismatchError`且零写入（JRP-FR-027/AC-009，2026-09-09修复）；路由映射409并返回url/record代码；停用广东不影响上海（集成）；四川始终unsupported。
+- 聊天和直接规划页面使用同一地区确认契约并有专用Chromium E2E（`e2e/task3-regional.spec.ts` 6例：新会话预创建/聊天与`/plan/new`同契约/claim_city_code/四川不可选/历史replay/跨地区停用拒绝/停用后unsupported），配套`scripts/e2e-task3-setup.ts`预创建沪粤快照并经真实七道门禁激活。
+- DB门禁必须在命令中显式提供全新隔离`SOCILA_TEST_DATABASE_URL`并证明零skip（2026-09-09证据：`postgresql://postgres:postgres@localhost:5439/task34r2_drill`，25文件/116零skip）；缺环境变量导致的skip/失败不能作为PASS。
 
-### 地区案例全量重建专用反例
+#### 单元超时策略（2026-09-09任务3复审P2稳定化）
 
-- 归档SHA必须来自真实文件字节；篡改、缺少selection/restore报告或pending状态均拒绝apply。
-- manifest绑定精确行ID/内容hash、snapshot/hash、评分和测试来源；任一漂移使授权失效。
-- 无可比较显式断言的快照重放不得得分；active/selected案例质量总分和分解均非空。
-- 相同模板重复生成相同N、36和manifestHash；cases仅沪粤，每个case一条回归test，42条DSL示例完整。
-- showcase严格沪18/粤18，每地区男女9/9、三个年龄段各6、三种就业状态各6。
-- 两个并发替换只有一组成功；管理查询必须为`active AND filters`。
-- 完整旧851/117/500归档必须在全新PG17+pgvector真实恢复并对账。
-- 最终组合migration顺序为0015→0016→0017→0018，并从零执行两次验证幂等。
+`src/server/modules/identity/__tests__/identity-container.test.ts`的三个`freshContainer()`用例经`vi.resetModules()`重新求值identity-container的完整依赖图（`@/lib/db`→drizzle/pg链），在并行单元套件负载下单测可能超过vitest默认5秒；三个用例显式放宽到30秒（`it(..., 30_000)`）。这是模块重载固有成本，断言本身仍是确定性环境变量契约（缺失pepper拒绝、相同拒绝、合法放行），不以超时掩盖失败。
+
+### 地区案例全量重建专用反例（2026-09-09第三轮复审未闭环）
+
+- 归档SHA必须来自真实文件字节（`archive.test.ts` 9例：篡改检测、必备文件、sha清单不自包含）；篡改、缺少selection/restore报告或pending状态均拒绝apply；`executor.ts`的`bufferSha256`对二进制dump直接Buffer哈希（String(buffer)有损解码已修复）。
+- manifest绑定精确行ID/内容hash、snapshot/hash、评分和测试来源（`manifest.test.ts`）；**完整场景字段**：新行绑定scenarioKey/asOfDate/input/expected/assertions/coverage/evidence，任一漂移使manifestHash变化（RCL-AC-003）。
+- 无可比较显式断言的快照重放不得得分（`replay.test.ts` 6例）；active/selected案例质量总分和分解均非空（`scoring.test.ts`）。
+- 相同模板重复生成相同N、36和manifestHash（`generator.test.ts` 12例）；cases仅沪粤，每个case一条回归test，42条DSL示例完整。
+- showcase严格沪18/粤18，每地区男女9/9、三个年龄段各6、三种就业状态各6（RCL-AC-008）。
+- 两个并发apply只有一组成功（`rcl-apply.integration.test.ts`：FOR UPDATE+applying+唯一约束）；管理查询必须为`active AND filters`。
+- **行内容hash绑定**：plan-replacement与apply统一按行内容重算规范化hash（原生SQL行、排除基础设施列），库中content_hash列为空也能精确绑定，任一行漂移拒绝且零写入（RCL-AC-003）。
+- 完整旧851/117/500归档必须在全新PG17+pgvector真实恢复并对账（`reconcile.ts`：表集合/行数/规范化哈希）。
+- 最终组合migration顺序为0015→0016→0017→0018，并从零执行两次验证幂等（`rcl-0018-rebuild-schema.integration.test.ts`：0016哈希不变；0018含cases.input/expected/assertions列与归档条目entity_type含test）。
+- 端到端：生成→快照规划器计算期望→评分→N/36/N+42（`rcl-end-to-end.integration.test.ts`）；四川始终unsupported。
+- **受控CLI七模式真实演练**（`rcl-cli.integration.test.ts` 11例，spawn真实CLI）：audit→generate→plan-replacement→prepare-archive（真实pg_dump）→真实恢复演练（第二实例pg_restore+reconcile全表对账+verified restore-report+重算sha256sums）→verify-archive→apply（--i-am-authorized）→verify；每个模式断言真实JSON输出与退出码；缺授权退出1、归档篡改退出2。
+- apply后cases/showcase/tests的scenarioKey、asOfDate、输入、期望、断言、覆盖、证据和质量分解必须与manifest逐字节一致，禁止null或空对象占位（`assertCompleteScenarioFields`事务内fail-closed）。
+- Chromium E2E（`e2e/task4-case-library.spec.ts`）精确断言公开36条、上海18、广东18、治理字段非空、管理active过滤、归档批次可读及匿名401/普通用户403。
+- 激活门禁的golden_tests只加载source='example'的DSL示例（RCL-FR-007；回归tests不进入黄金重放）。
+- 旧regression test必须按完整业务行计算非空hash；修改任一业务字段均使apply拒绝，不能只比较`sourceCaseUid`（`hashes.test.ts` 8字段漂移、`rcl-apply.integration.test.ts` 8字段漂移Red）。
+- SHA清单必须精确覆盖必备文件；restore报告必须验证dump SHA、版本、全部表和真实sequence明细，空明细`verified`必须失败（`archive.test.ts` SHA精确覆盖与restore深验证、`rcl-cli.integration.test.ts` 真实报告由`buildVerifiedRestoreReport`生成）。
+- 42条DSL example的保留/更新/新增/删除集合必须进入manifest并在同一apply事务执行；当前28或49条不得自适应成为合法目标（`dsl-examples.test.ts` 42条确定性、`manifest.test.ts` assertRclCounts强制42、`rcl-apply.integration.test.ts` 同事务同步与回滚）。
+- manifest文件、批次hash和重算hash必须三方一致（`manifest.test.ts` recomputeManifestHash/createdAt不入hash/正文篡改拒绝）；以452/36/500+28镜像演练后最终必须得到匹配manifest的36/36/78（阶段二pre dump隔离演练，2026-09-10）。
+- 落库新行hash逐项核对：apply插入后按稳定UID重读完整行重算并与manifest比较，返回实际DB ID/UID/hash；verify同样逐项核对（`rcl-apply.integration.test.ts`、`rcl-cli.integration.test.ts` Fix 8）。
+- **prepare-archive补偿（第四轮复审）**：任何prepare阶段失败（第二次完整dump失败/写文件失败/最终SHA生成失败）均不得留下prepared批次或archive entries；只精确清理本次新建batchId（`status='prepared'`守卫条件更新，历史批次不受影响）；文件失败清理本次不完整临时归档；补偿失败必须同时报告原始错误与补偿错误（`RclPrepareError.originalError/compensationErrors`）；正常路径仍生成包含批次记录的最终完整dump（`executor.test.ts` 第四轮补偿4条Red→Green）。
+- **applied幂等重验（第四轮复审）**：`executeRclApply`对`batch.status='applied'`不得直接noop——先重验manifest正文hash、批次hash、最终N/36/N+42、42条example与cases/showcase/regression逐行hash，完全一致才返回noop；首次apply后篡改case/showcase/regression/example任一最终行，复跑apply必须返回稳定错误且零删除零插入（`rcl-apply.integration.test.ts` 第四轮篡改4条Red→Green）。
+- **migration SQL换行契约（第四轮复审）**：仓库根`.gitattributes`固定`drizzle/*.sql text eol=lf`；0010～0018 Git blob不变；显式`core.autocrlf=true`的全新checkout仍为LF；Drizzle实际读取hash必须与Git blob的LF SHA一致（`migration-lf.contract.test.ts` 4例）；`jrp-0017-migration.integration.test.ts` 0015哈希不变量基线为Git LF内容`3ae5b95f…`。
+- 测试库端口：materializer集成测试从`SOCILA_TEST_DATABASE_URL`解析实际端口（删除5439硬编码）；`scripts/db-gate-task34.mjs`以任务专属随机高位端口全新PG17+pgvector容器跑全量`npm run test:db`（2026-09-10第四轮证据：26文件/141零skip）。
+- **journal严格单调契约（第五轮复审）**：`drizzle/meta/_journal.json`全部entry按idx严格递增；0010～0018 when与预期时间表一致（1788560000000/1788600000000/1788640000000/1788680000000/1788705240000/1788777720000/1788785400000/1788796800000/1788796860000）；max when必须恰为0018=1788796860000（保证账本max下整体no-op，旧journal的0014=1788991200000会被migrator重新应用→Red）（`migration-lf.contract.test.ts` 第五轮新增3例）。
+- **migration账本回归（第五轮复审）**：`scripts/rcl-ledger-regression-task34.mjs`（共享逻辑`scripts/lib/task34-ledger-regression.mjs`）在post dump恢复的隔离库验证8项——修复后journal首次migration no-op账本21条；事务删除ID 18/19/20；migration×2均no-op；账本持续18条不重新生成0012～0014；ID 10～16、21、22 hash/created_at不变；ID 17缺号不补写不重排；模拟0019（when=1788797000000>1788796860000）只应用一次；工作树SQL均LF且hash===Git blob（2026-09-10证据：`task34-r5-ledger-regression-2026-09-10/ledger-regression.json` ok:true）。
+- **prepare-archive归档目录保护（第五轮复审）**：目标目录已包含任一历史归档专属文件（policyops-fc/cases/showcase_cases/tests.dump、selection-report、restore-report、sha256sums.txt）时必须拒绝开始（禁止覆盖历史归档，零写入零批次）；manifest.json为plan-replacement合法前置产物不拒绝；补偿只删除本次新建文件、历史无关文件保留（`executor.test.ts` 第五轮3条Red→Green；第二次dump/写文件/最终SHA/补偿失败4条保持零prepared批次/entries）。
+- **迁移审计阻断门禁（第五轮复审）**：`scripts/rcl-audit-task34.mjs`中journal非单调/与预期不符、ID 10～16/21/22账本hash≠Git blob LF SHA、隔离库删除重复行后migration×2非no-op均为阻断错误（throw，不生成repair-forward计划）；`--trusted-dir`模式只读复验既有可信归档（8文件/SHA/manifest/restore/第三库恢复一致）并禁止覆盖（2026-09-10第五轮审计：journalMonotonic=true、ledgerGitBlobHashMatch=true 9/9、ledgerRegressionNoopAfterDelete=true）。
+- **repair-forward执行器（第六轮，WI-20260907-04）**：`src/lib/case-repair/__tests__/repair-forward.test.ts` 20例（Red→Green；独立于case-governance目录以保持RCL-AC-015契约）——确定性批次ID `sha256("task34-r4-trusted-archive:<manifestHash>")`前16字节设v5位===`c8a7c104-8b8b-53f5-9bfd-1c8a8a6be141`（禁止随机UUID）；988条entries由manifest逐条构建（452/36/500）、任一非64位小写hex→`ENTRY_HASH_INVALID`、同批次entity_type+entity_id重复→`ENTRY_DUPLICATE`、计数不符→`TRUSTED_ARCHIVE_MISMATCH`；可信批次行真实计数/table_hashes/created_by；planHash覆盖entries+批次ID+codeSha且相同输入确定性；账本删除语句三组(id AND hash AND created_at)+RETURNING id；状态分类pending/repaired/drift（部分完成、988不完整、业务指纹/计数变化、账本旧值漂移均为drift）；参数守卫（无参数失败、apply缺授权/planHash/targetFingerprint拒绝、未知模式拒绝）。
+- **repair-forward隔离演练（第六轮）**：`scripts/rcl-repair-drill-task34.mjs <post-dump> --out <dir>`在任务专属全新PG17+pgvector容器按顺序验证19场景（audit/plan初始指纹一致并交叉核对attestation===第五轮审计；缺授权/错planHash/错targetFingerprint/账本旧值漂移/prepared批次漂移/可信归档临时副本漂移/非法hash与重复→拒绝且零写入；正常apply单事务；账本18条原值；批次rolled_back且历史entries保留；新可信批次字段；988 entries逐项（verify --plan）；36/36/78/10/5与业务表hash不变；migration×2 no-op；复跑noop；并发两apply一执行一noop（40001重试）；5故障注入点完整回滚；repair后dump第三库恢复40表/20 sequence零mismatch），写`repair-executor-test-report.json`；2026-09-10证据`task34-r6-repair-drill-2026-09-10/`（19/19）。审计脚本`--executor-test-report`绑定该报告且要求19项全过，并调用执行器`plan`生成`executable-write-set.json`与审计交叉核对（targetFingerprint/attestation/账本指纹/codeSha/可信归档/988/确定性ID/pending/工作树干净）。

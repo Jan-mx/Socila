@@ -1,8 +1,8 @@
 # WI-20260907-03：地区化政策案例生成与可靠归档重建
 
 > Author: Jan
-> Status: Blocked
-> Updated: 2026-09-07
+> Status: Accepted（2026-09-10第五轮修复完成：journal严格单调修复、migration账本回归、审计阻断门禁与归档目录保护；第六轮repair执行器隔离验收后任务4代码层Accepted，持久repair-forward由WI-20260907-04另行授权）
+> Updated: 2026-09-10
 
 ## Work Item
 
@@ -14,7 +14,7 @@
 
 ## 背景与证据
 
-原任务4的case-library归档SHA不是文件内容SHA，选择报告缺失、恢复报告仍pending、manifest未绑定内容，81条展示归档hash为`pending`，452/36质量分为空。旧Accepted结论无效。
+原任务4的case-library归档SHA不是文件内容SHA，选择报告缺失、恢复报告仍pending、manifest未绑定内容，81条展示归档hash为`pending`，452/36质量分为空。第二轮修复虽实现CLI和场景字段，但第三轮复审确认旧regression hash、恢复证明、SHA精确覆盖、42 example原子同步和manifest自校验仍未实现，因此本Work Item重新Reopened。
 
 ## 范围
 
@@ -57,11 +57,84 @@
 
 ## 验收与回退
 
-- 最终隔离库计数为`N/36/N+42`，N来自覆盖manifest。
-- 0018执行两次幂等且0016 SQL hash不变。
+- 最终隔离库计数为`N/36/N+42`，N来自覆盖manifest；必须由真正CLI执行并核对完整场景字段。
+- 0018执行两次幂等且0016 SQL hash不变；CLI每个模式必须有真实执行输出和失败反例。
 - 完整门禁零skip；归档正文和凭据不进入Git或日志。
 - 本Work Item只交付代码、生成资产和隔离证据；持久替换失败时无需数据库回退。
 
 ## 文档同步
 
 - 任务4 PRD、README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability和任务4复审报告。
+
+## 历史验收记录（2026-09-09第二轮结论已撤回）
+
+1. **受控CLI七模式真实执行**：`scripts/rcl-case-library.ts`调用`executor.ts`七动作，输出可验证JSON并按失败原因返回非零退出码；默认只读audit；apply必须`--i-am-authorized`。
+2. **完整场景字段**：manifest类型承载scenarioKey/asOfDate/input/expected/assertions/coverage/evidence；0018追加cases.input/expected/assertions列；apply逐字节落库且事务内fail-closed校验（空占位拒绝零写入）。
+3. **真实CLI闭环**：隔离库audit→generate→plan→prepare-archive（真实pg_dump）→真实恢复演练（第二实例pg_restore+reconcile全表对账+verified restore-report+重算sha256sums）→verify-archive→apply（删851/500插36/36/36）→verify（36/36/78、沪粤18/18、配额、字段非空）。
+4. **行内容hash绑定**：plan与apply统一行内容重算hash比较，任一漂移拒绝零写入（RCL-AC-003）。
+5. **golden语义**：激活门禁只加载source=example黄金测试（RCL-FR-007）。
+6. **E2E**：`e2e/task4-case-library.spec.ts`精确36/18/18、治理字段、管理active过滤、归档权限；全套19/19。
+
+门禁历史记录：`npm test` 72文件/663、`test:db` 26文件/129零skip、E2E 19/19、tsc/eslint 0 error、build退出0（1条既有warning）、Python 94+20零skip、Gitleaks/scan-secrets/哨兵全过。第三轮复审发现测试允许空旧test hash和伪verified恢复报告通过，故该记录不再构成当前验收。
+
+## 第三轮修复与重新验收（2026-09-10）
+
+第三轮复审反例已全部修复（TDD Red→Green，Red证据：单元37失败/32通过；集成反例含8业务字段漂移/example原子同步/批次状态/并发/新行hash）：
+
+| 复审发现 | 修复 |
+| --- | --- |
+| 旧test contentHash为空 | `planRclReplacement`读取完整旧regression test行；`testRowContentHash`（唯一规范化hash，plan/apply共用，排除仅限id/受控时间戳/运行时执行状态）；manifest每条旧test为64位非空SHA-256；apply事务内重读完整行重算，8个业务字段任一漂移稳定拒绝零写入 |
+| restore只验证status | `validateRestoreReport`深验证：sourceDump文件名/SHA、PG/pgvector版本非空、tableCount/sequenceCount与明细一致、每表真实rows+64位hash、每sequence真实lastValue/isCalled、mismatches为空、archiveFileHashes与实际文件SHA一致；空明细verified拒绝；`buildVerifiedRestoreReport`由恢复演练同一实现生成真实报告（禁止手工构造） |
+| SHA清单不精确 | `verifySha256SumsFile`：恰好覆盖7个必备文件各一次、安全basename（拒绝../绝对路径/子目录）、64位小写hex、不自包含、无重复/额外 |
+| selection violations硬编码 | `computeSelectionReport`从生成后showcase实际计算（沪粤18/18、男女9/9、年龄段6/6/6、就业态6/6/6、UID/地区/必填字段校验）；verify-archive解析并交叉核对selection-report |
+| 42 example事务外删除 | `loadDslExampleTargets`从CN19/上海9/广东10/四川4地区DSL确定性加载42条；manifest记录保留/更新/新增/删除集合（updated自带目标内容）；apply同一事务原子同步；`assertRclCounts`显式要求exampleTestCount===42（28/49等不得成为合法目标） |
+| manifest无自校验 | canonical manifest core提取；读取/verify-archive/apply/verify均重算manifestHash；文件声明/正文重算/批次三方一致fail-closed；createdAt等非确定性元数据不入hash |
+| 批次状态 | verify-archive只有精确一个prepared批次（id+状态+storagePath）匹配才能推进；状态UPDATE返回0行必须失败；prepare先写文件后事务写批次+entries（失败不留可推进批次），批次写入后重新dump完整库（自包含归档） |
+| 新行hash核对 | apply插入后按稳定UID重读全部cases/showcase/regression tests，重算完整DB行hash与manifest逐项比较，返回实际DB ID/UID/hash；verify同样逐项核对（不得只核对总数与字段非空） |
+| 测试库端口 | materializer集成测试从`SOCILA_TEST_DATABASE_URL`解析实际端口与库名（删除5439硬编码）；任务专属随机高位端口全新PG17+pgvector容器，`npm run test:db`零skip |
+
+## 第三轮验收证据（2026-09-10本地新鲜执行）
+
+- TDD Red：单元批次37失败/32通过（testRowContentHash/manifest自校验/SHA清单/restore验证/selection/dsl-examples模块缺失或行为不符）；集成反例首跑失败（旧test仅sourceCaseUid比较、example同步缺失、空明细verified通过等）。
+- Node单元：`npm test` 73文件/705通过、skip 0。
+- DB集成：随机端口隔离容器（docker自动分配高位主机端口，pgvector/pgvector:pg17，vector/btree_gist扩展）`npm run test:db` 26文件/137通过、skip 0；agent.migrate --with-roles×2幂等；`pytest -m integration` 20通过、skip 0。
+- 静态：`npx tsc --noEmit`退出0；`npx eslint src scripts` 0 error（既有warning未新增）。
+- 阶段二隔离演练：pre dump（`59ee2f5f…`）全新实例恢复→pre基线452/36/500/28核对→0017/0018补齐→沪粤快照激活→CLI完整流程（audit/generate/plan/prepare/真实恢复/verify-archive/apply/verify）→最终36/36/42/36、manifest exampleTestCount=42、counts.tests=78、旧500 test归档hash全部非空64位hex、restore-report含全部表与真实sequence明细、apply复跑no-op、篡改fail-closed。
+- 边界：全程未连接持久policyops写路径；临时容器/库/网络/文件finally清理；未执行WI-20260909-01。
+
+## 第三轮复审（2026-09-09）
+
+- 旧500 regression在manifest及归档条目中的`contentHash`全部为空，apply只校验`sourceCaseUid`。
+- `verify-archive`未验证restore正文、SHA清单精确覆盖、selection配额和manifest重算hash。
+- `assertRclCounts`接受任意example数量；当前持久执行在manifest生成后、apply事务外删除7条example。
+- 修复上述反例并取得随机端口隔离DB零skip证据前不得Accepted。
+
+## 第四轮复审（2026-09-10，Reopened）
+
+第三轮证据（`7e8430a`及此前记录）全部保留；第四轮复审在第三轮修复之上发现4项未闭环缺陷，本Work Item与任务4 PRD暂时改为Reopened：
+
+| 发现 | 影响 | 修复要求 |
+| --- | --- | --- |
+| prepare-archive补偿缺失 | 批次事务提交后的第五次完整dump失败、dump写文件失败、最终SHA生成失败三类故障会留下`prepared`批次与archive entries，且不清理不完整归档文件 | 任何prepare阶段失败不得留下prepared批次或entries；只精确清理本次batchId；文件失败清理本次不完整归档；补偿失败必须同时报告原始错误与补偿错误 |
+| applied幂等未重验 | `executeRclApply`对`batch.status='applied'`立即返回noop，不验证manifest正文hash、批次hash、最终N/36/N+42、42条example与cases/showcase/regression逐行hash | applied状态必须先完整重验，完全一致才noop；任一最终行缺失/增加/漂移返回稳定错误且不得再次删除或插入 |
+| migration SQL换行未固定 | 仓库根无`.gitattributes`且本机`core.autocrlf=true`，`drizzle/*.sql`工作树为CRLF，Drizzle实际读取hash与Git blob的LF SHA不一致（账本ID 18/19/20即0012/0013/0014的CRLF重复登记） | 新增`drizzle/*.sql text eol=lf`；不修改0010～0018 blob；契约测试证明`core.autocrlf=true`下仍为LF |
+| 迁移审计语义不完整 | 审计只输出单一工作树hash，无法区分Git blob SHA、工作树raw、LF规范化、CRLF规范化与账本hash，也无法区分"仅EOL差异"与"真实内容差异" | 审计同时输出全部5类hash与EOL/内容差异判定；输出journal与账本时间的严格单调核对 |
+
+第四轮修复不得降低任何既有门禁；repair-forward计划必须绑定修复后的代码提交SHA重新生成。
+
+## 第五轮修复与重新验收（2026-09-10）
+
+第四轮遗留的journal非单调与审计门禁缺口在本轮闭环（代码提交`1fe702b`）：
+
+| 发现 | 修复 | 证据 |
+| --- | --- | --- |
+| journal when非单调（0010～0014为未来时间戳，0014=1788991200000 > 0015/0016/0017；在post恢复库上会让migrator重新应用0014） | `drizzle/meta/_journal.json`修正为严格单调时间：0010=1788560000000、0011=1788600000000、0012=1788640000000、0013=1788680000000、0014=1788705240000（0015～0018不变：1788777720000/1788785400000/1788796800000/1788796860000）；idx/tag不变，migration SQL零修改 | 全journal 18条按idx严格递增；`migration-lf.contract.test.ts`新增3条单调契约（全部entry递增/0010～0018与预期一致/max when===0018=1788796860000保证账本max下整体no-op） |
+| migration账本回归无自动验证 | 新增`scripts/lib/task34-ledger-regression.mjs`+`scripts/rcl-ledger-regression-task34.mjs`：post dump隔离恢复后验证8项——①修复后journal首次migration no-op账本21条；②事务删除ID 18/19/20；③migration×2均no-op；④账本持续18条不重新生成0012～0014；⑤ID 10～16、21、22的hash与created_at不变；⑥ID 17缺号不补写、不重排主键（id集合恰1..16/21/22）；⑦模拟0019（when=1788797000000>1788796860000）只应用一次；⑧工作树SQL均LF且hash===Git blob | `F:/Socila/backup/case-library/task34-r5-ledger-regression-2026-09-10/ledger-regression.json`（ok:true，全部8项通过；隔离容器/库已清理） |
+| 审计journal不符仅报告 | `scripts/rcl-audit-task34.mjs`：journal非单调/与预期不符→阻断错误（throw，不生成计划）；新增ID 10～16、21、22账本hash===Git blob LF SHA阻断检查；新增隔离库删除重复行后migration×2 no-op阻断门禁；只有三者全部通过才生成repair-forward计划；`--trusted-dir <dir>`复用并只读复验既有可信归档（8文件/SHA/manifest/restore/第三库恢复一致，禁止覆盖） | 第五轮audit：journalCheck.journalMonotonic=true、ledgerGitBlobHashMatch=true、ledgerRegressionNoopAfterDelete=true；证据`task34-r4-audit-2026-09-10T10-12-35/` |
+| prepare-archive无目录保护 | `executor.ts` prepareRclArchive：目标目录已包含任一历史归档专属文件（4个dump/selection-report/restore-report/sha256sums.txt；manifest.json为plan-replacement合法前置产物）时拒绝开始，禁止覆盖历史归档；补偿仍只删除本次新建文件（历史无关文件保留） | `executor.test.ts`第五轮3条（dump存在拒绝零写入/零批次、sha256sums存在拒绝、仅manifest允许开始且历史文件保留）；第二次dump/写文件/最终SHA/补偿失败4条保持零prepared批次/entries |
+
+门禁（2026-09-10本地新鲜）：`npm test` 74文件/720零skip；随机端口全新PG17+pgvector容器`npm run test:db` 26文件/141零skip（migration×2/bootstrap×2/seed×2幂等、agent.migrate --with-roles×2幂等、pytest -m integration 20/20）；tsc/eslint/build退出0（eslint 0 error）；scan-secrets 788文件零命中；Gitleaks 8.29.1完整历史86提交零发现；allowlist哨兵全过。修复后journal的迁移幂等与账本不变量已由隔离库回归证明（Red证据：旧journal下0014会被重新应用）。
+
+## 第五轮独立复审（2026-09-10）
+
+第五轮代码与隔离门禁完成后本Work Item恢复Accepted。第六轮（代码提交`972b453`+`8b360c2`（可信归档校验移入事务内））交付WI-20260907-04的repair-forward执行器与隔离演练19场景全过（见WI-20260907-04第六轮小节），任务4 PRD与验收报告代码层Accepted；持久库repair-forward仍待用户授权。

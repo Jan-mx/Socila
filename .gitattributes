@@ -1,0 +1,10 @@
+# Drizzle迁移SQL的换行规范化（WI-20260907-03第四轮复审）
+#
+# drizzle-orm的migrator对**工作树文件字节**计算sha256并写入
+# drizzle.__drizzle_migrations.hash。若工作树换行随宿主core.autocrlf漂移
+# （Windows默认true会把checkout写成CRLF），同一份SQL在Windows与Linux上
+# 会产生不同账本hash，导致迁移账本出现同一迁移的重复登记
+# （持久库ID 18/19/20即0012/0013/0014的CRLF重复登记）。
+#
+# 固定为LF后，Drizzle实际读取的hash恒等于Git blob的LF SHA-256。
+drizzle/*.sql text eol=lf

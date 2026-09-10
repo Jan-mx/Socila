@@ -54,11 +54,13 @@ export interface CreatedSnapshot {
   ruleSetCount: number;
 }
 
-function canonical(value: unknown): string {
-  return JSON.stringify(sortKeys(value));
-}
-
-function sortKeys(value: unknown): unknown {
+/**
+ * 规范化键排序（与 release-gates 的 canonicalMemberHash 共享语义）。
+ * Date 统一序列化为 ISO 字符串：创建时与 jsonb 读回后的表示一致，
+ * 保证执行期重算成员哈希可复现（JRP-FR-026/AC-005）。
+ */
+export function sortKeys(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(sortKeys);
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
@@ -68,6 +70,10 @@ function sortKeys(value: unknown): unknown {
     return out;
   }
   return value;
+}
+
+export function canonical(value: unknown): string {
+  return JSON.stringify(sortKeys(value));
 }
 
 export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
@@ -251,8 +257,16 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
         ...activeParams.map((e) => toMember("param", e)),
         ...activeRuleSets.map((e) => toMember("rule_set", e)),
       ];
+      // 内容哈希使用确定性排序（entityType + businessKey），与执行期重算
+      // （release-gates.canonicalMemberHash）完全一致——成员顺序不再影响哈希
+      // （JRP-FR-026/AC-005：每次计算重算成员规范化哈希）。
+      const canonicalMembers = [...members].sort(
+        (a, b) =>
+          a.entityType.localeCompare(b.entityType) ||
+          a.businessKey.localeCompare(b.businessKey),
+      );
       const contentHash = createHash("sha256")
-        .update(canonical(members))
+        .update(canonical(canonicalMembers))
         .digest("hex");
 
       const created = await withTransaction(async (tx) => {

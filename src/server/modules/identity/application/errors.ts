@@ -40,11 +40,14 @@ export class IdentityError extends Error {
   }
 }
 
-/** PostgreSQL unique_violation 判定（并发注册幂等映射 409）。 */
+/** PostgreSQL unique_violation 判定（并发注册幂等映射 409）。
+ * drizzle/驱动可能把pg原生错误（含code 23505）包装在cause链中：
+ * 递归检查顶层与cause链（2026-09-09真实并发环境暴露）。 */
 export function isUniqueViolationError(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    (err as { code?: string }).code === "23505"
-  );
+  let current: unknown = err;
+  for (let depth = 0; depth < 8 && current !== null && typeof current === "object"; depth++) {
+    if ((current as { code?: string }).code === "23505") return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }

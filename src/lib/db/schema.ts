@@ -182,10 +182,18 @@ export const plans = pgTable("plans", {
   policyPackVersion: text("policy_pack_version"),
   conclusionLevel: text("conclusion_level"),
   asOfDate: date("as_of_date"),
+  // 地区感知规划留痕（任务3 JRP-FR-009）：每次规划保存地区、继承链、活动快照与日期；
+  // 历史 plan 无值保持 NULL，创建后不随活动快照切换变化。
+  jurisdictionCode: text("jurisdiction_code"),
+  resolvedJurisdictionPath: text("resolved_jurisdiction_path"),
+  snapshotId: uuid("snapshot_id").references(() => policySnapshots.id),
   // 归属会话：保存时记录创建者的匿名 session，读取时据此校验归属（旧数据为 null = 不限制）。
   sessionId: text("session_id"),
   // 归属用户（CORE-FR-009）：认证用户出现后写入，优先于 sessionId 参与归属校验。
   ownerUserId: text("owner_user_id"),
+  // 历史重放 hash（JRP-FR-014/028，migration 0017）：plan 保存执行时快照内容哈希，
+  // 重放时按 snapshotId+hash+asOfDate 恢复并报告漂移。
+  snapshotContentHash: text("snapshot_content_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -249,6 +257,63 @@ export const policySnapshotMembers = pgTable("policy_snapshot_members", {
   provenance: jsonb("provenance").notNull(),
 });
 
+// ─── 地区规划发布记录（任务3 JRP-FR-005/006/007/024，migration 0015+0017）────
+// 每地区可有多条区间记录（0017撤销0015的每地区唯一索引）；active 必须具有
+// 非空快照、激活人、激活时间、闭合区间（effective_from）且同地区 active 区间
+// 不重叠（0017 EXCLUDE 约束）。激活/切换/停用只允许经 publishing 应用用例，
+// 禁止直接 SQL 修改状态。四川延期期间不创建本表记录。
+
+export const jurisdictionPlanningReleases = pgTable(
+  "jurisdiction_planning_releases",
+  {
+    id: serial("id").primaryKey(),
+    jurisdictionCode: text("jurisdiction_code").notNull(),
+    activeSnapshotId: uuid("active_snapshot_id").references(
+      () => policySnapshots.id,
+    ),
+    status: text("status").notNull().default("inactive"),
+    gateResults: jsonb("gate_results").notNull().default({}),
+    activatedAt: timestamp("activated_at"),
+    activatedBy: text("activated_by"),
+    // JRP-FR-024：区间列（0017）。effective_from 非空闭合定义见迁移 CHECK；
+    // effective_to 为 NULL 表示开放上界（2030窗口）。
+    effectiveFrom: date("effective_from"),
+    effectiveTo: date("effective_to"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // 同一活动快照不得同时是多个地区的活动快照；NULL（inactive）不参与唯一。
+    uniqueIndex("jurisdiction_planning_releases_active_snapshot_unique").on(
+      table.activeSnapshotId,
+    ),
+  ],
+);
+
+// ─── 案例归档元数据（0016 CLG-FR-011/013，0018 RCL-FR-019/022）──────────────
+
+export const caseArchiveBatches = pgTable("case_archive_batches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  status: text("status").notNull(),
+  sourceCounts: jsonb("source_counts").notNull(),
+  retainedCounts: jsonb("retained_counts").notNull(),
+  deletedCounts: jsonb("deleted_counts").notNull(),
+  tableHashes: jsonb("table_hashes").notNull().default({}),
+  manifestHash: text("manifest_hash").notNull(),
+  storagePath: text("storage_path").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  createdBy: text("created_by").notNull(),
+});
+
+export const caseArchiveEntries = pgTable("case_archive_entries", {
+  id: serial("id").primaryKey(),
+  archiveBatchId: uuid("archive_batch_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id").notNull(),
+  caseUid: text("case_uid"),
+  contentHash: text("content_hash").notNull(),
+  archiveReason: text("archive_reason").notNull(),
+});
+
 // ─── Agent 物化台账（阶段06，DRF-FR-013）────────────────────────────────────
 
 export const agentMaterializations = pgTable("agent_materializations", {
@@ -286,6 +351,25 @@ export const showcaseCases = pgTable("showcase_cases", {
   category: text("category"),
   isPublished: boolean("is_published").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  // 0016 治理字段（CLG-FR-003）
+  jurisdictionCode: text("jurisdiction_code"),
+  sourceCaseUid: text("source_case_uid"),
+  snapshotId: uuid("snapshot_id"),
+  qualityScore: integer("quality_score"),
+  qualityStatus: text("quality_status"),
+  contentHash: text("content_hash"),
+  curatedAt: timestamp("curated_at", { withTimezone: true, mode: "date" }),
+  curatedBy: text("curated_by"),
+  // 0018 重建字段（RCL-FR-007/015/016/017）
+  scenarioKey: text("scenario_key"),
+  generatorVersion: text("generator_version"),
+  asOfDate: date("as_of_date"),
+  snapshotHash: text("snapshot_hash"),
+  coverageObligations: jsonb("coverage_obligations").default([]),
+  evidence: jsonb("evidence").default([]),
+  qualityBreakdown: jsonb("quality_breakdown"),
+  multiLabels: jsonb("multi_labels").default([]),
+  assertions: jsonb("assertions").default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -304,6 +388,26 @@ export const cases = pgTable("cases", {
   tags: jsonb("tags"),
   isRegression: boolean("is_regression").notNull().default(false),
   sourceFile: text("source_file"),
+  // 0016 治理字段（CLG-FR-002）
+  jurisdictionCode: text("jurisdiction_code"),
+  contentHash: text("content_hash"),
+  qualityScore: integer("quality_score"),
+  qualityStatus: text("quality_status"),
+  governanceReason: text("governance_reason"),
+  governedAt: timestamp("governed_at", { withTimezone: true, mode: "date" }),
+  // 0018 重建字段（RCL-FR-006/007/015/017）
+  scenarioKey: text("scenario_key"),
+  generatorVersion: text("generator_version"),
+  asOfDate: date("as_of_date"),
+  snapshotHash: text("snapshot_hash"),
+  coverageObligations: jsonb("coverage_obligations").default([]),
+  evidence: jsonb("evidence").default([]),
+  qualityBreakdown: jsonb("quality_breakdown"),
+  multiLabels: jsonb("multi_labels").default([]),
+  // RCL-FR-006/018/AC-011（2026-09-09复审P0修复）：cases 完整场景事实。
+  input: jsonb("input").default({}),
+  expected: jsonb("expected").default({}),
+  assertions: jsonb("assertions").default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -319,6 +423,8 @@ export const tests = pgTable("tests", {
   paramsOverride: jsonb("params_override"),
   expected: jsonb("expected").notNull(),
   source: text("source").notNull().default("manual"),
+  // 0016 来源链（CLG-FR-004/RCL-FR-013）：每个新case一条地区回归test引用source_case_uid。
+  sourceCaseUid: text("source_case_uid"),
   lastRunResult: jsonb("last_run_result"),
   lastRunAt: timestamp("last_run_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

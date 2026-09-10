@@ -1,8 +1,8 @@
 # 用户规划按地区快照触发 PRD
 
 > Author: Jan
-> Status: Reopened
-> Updated: 2026-09-07
+> Status: Accepted
+> Updated: 2026-09-09
 
 ## 文档元数据
 
@@ -10,11 +10,11 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-jurisdiction-aware-planning.md` |
 | 类型 | Feature |
-| 状态 | Reopened；分支`codex/task3-jurisdiction-planning`的原Accepted结论被2026-09-07独立复审推翻 |
+| 状态 | Accepted（2026-09-09第二轮修复重新验收）；原Accepted结论曾因发布门禁与历史重放缺口撤回 |
 | 前置依赖 | 任务2首期Accepted；CN、上海、广东候选快照已存在；四川Deferred/Blocked |
 | 后续消费者 | 地区化案例库重建Feature |
-| 执行顺序 | 先完成本Feature修复，再开发地区化案例库；不再与任务4并行 |
-| 退出门禁 | 真实用户入口、日期快照、发布门禁、历史重放、停用和地区隔离全部取得专用Red/Green与E2E证据 |
+| 执行顺序 | 本Feature已重新验收；下游为地区化案例库重建（WI-20260907-03），不再与任务4并行 |
+| 退出门禁 | 真实用户入口、日期快照、发布门禁、历史重放、停用和地区隔离全部取得专用Red/Green与E2E证据（2026-09-09完成） |
 
 ## 1. 背景与复审结论
 
@@ -28,7 +28,9 @@
 - 历史复算只证明旧plan的snapshot ID未变化，没有实际重放入口。
 - 缺少停用应用用例/API和直接规划页面。
 
-当前持久库0015和上海/广东active记录是审计事实，但不构成本PRD重新Accepted的证据。修复代码不得再次执行旧激活流程或改写持久库，持久执行由独立Work Item控制。
+当前持久库0015和上海/广东active记录是审计事实，但不构成本PRD验收的证据。修复代码不得再次执行旧激活流程或改写持久库，持久执行由独立Work Item控制。
+
+2026-09-09复审发现的三项P1已在本轮修复并取得专用反例证据（见§8验收记录）：空黄金测试集fail-closed拒绝、停用接口校验URL地区与release记录地区一致（跨地区拒绝且零修改）、历史重放比较保存hash/快照行hash/成员重算hash三方并fail-closed。2026-09-09第二轮修复重新验收通过，本PRD恢复**Accepted**；0017与日期快照调度仍只允许在隔离库执行，持久执行待WI-20260907-04授权。
 
 ## 2. 目标与非目标
 
@@ -57,7 +59,7 @@
 - **JRP-FR-004 日期快照**：按地区和`as_of_date`读取恰好一个active快照区间，不使用“最新快照”隐式替代。
 - **JRP-FR-005 发布记录**：保存地区、快照、生效起止日期、状态、完整门禁、操作者和时间。
 - **JRP-FR-006 管理员操作**：只有新鲜管理员可激活、切换或停用；全部经过publishing application用例。
-- **JRP-FR-007 完整激活门禁**：引用、Schema、参数依赖、冲突、黄金测试、两次重放和规范化内容哈希全部通过后才可active。
+- **JRP-FR-007 完整激活门禁**：引用、Schema、参数依赖、冲突、至少一条适用黄金测试、两次重放和规范化内容哈希全部通过后才可active；空测试集必须失败。
 - **JRP-FR-008 快照执行**：规则、参数和顺序只从选中的不可变快照成员恢复。
 - **JRP-FR-009 规划留痕**：plan保存地区、解析路径、snapshot ID/hash和`as_of_date`。
 - **JRP-FR-010 双入口**：聊天和`/plan/new`在提交前使用同一服务端地区确认组件。
@@ -77,8 +79,8 @@
 - **JRP-FR-024 快照区间**：发布记录增加`effective_from/effective_to`，active区间必须闭合定义且同地区不重叠。
 - **JRP-FR-025 时间片生成**：根据已批准规则/参数有效期边界确定性生成快照时间片，至少覆盖广东2026与2030窗口。
 - **JRP-FR-026 执行期完整性**：每次计算重算成员规范化哈希，并确认完整门禁与当前快照hash一致。
-- **JRP-FR-027 停用**：新鲜管理员可停用单一区间；停用不删除快照或历史plan。
-- **JRP-FR-028 历史重放API**：owner可重放自己的plan；结果返回原快照元数据和漂移结论。
+- **JRP-FR-027 停用**：新鲜管理员可停用单一区间；URL地区代码必须与release记录地区一致，跨地区release ID拒绝；停用不删除快照或历史plan。
+- **JRP-FR-028 历史重放API**：owner可重放自己的plan；执行前必须比较plan保存hash、快照行contentHash和成员重算hash三方一致性，并返回原快照元数据和漂移结论。
 - **JRP-FR-029 迁移兼容**：0015/0016历史SQL不改；0017增加区间和约束，账本时间修复由独立受控Work Item执行。
 
 ## 4. 数据与接口
@@ -125,7 +127,7 @@ type JurisdictionSnapshotSchedule = {
 - `POST /api/conversations/:id/jurisdiction`：确认或切换地区。
 - `POST /api/plan/compute`：按地区和日期计算，禁止版本注入。
 - `POST /api/plan/:id/replay`：按保存快照重放owner的历史plan。
-- `POST /api/admin/jurisdictions/:code/releases`：激活快照区间。
+- `POST /api/admin/jurisdictions/:code/release`：激活快照区间（实现契约：单数`release`，与`DELETE .../releases/:id`复数路径并存；2026-09-09修正文档与实现一致）。
 - `DELETE /api/admin/jurisdictions/:code/releases/:id`：停用区间。
 
 ## 5. 非功能需求
@@ -156,9 +158,9 @@ type JurisdictionSnapshotSchedule = {
 - **JRP-AC-004** 2026与2030广东请求命中不同snapshot且结果分别符合能力边界。
 - **JRP-AC-005** 时间片缺失、重叠、门禁缺项、hash漂移均fail-closed。
 - **JRP-AC-006** 广东有效领取地市代码产生正确金额；缺失、未知、跨省代码只产生稳定问题且不估算。
-- **JRP-AC-007** 激活真实运行全部门禁；伪造`pass`不能绕过。
-- **JRP-AC-008** snapshot切换后历史plan仍按原snapshot逐字节重放。
-- **JRP-AC-009** 停用广东不影响上海；四川始终unsupported且零快照读取。
+- **JRP-AC-007** 激活真实运行全部门禁；空黄金测试集或伪造`pass`均不能绕过。
+- **JRP-AC-008** snapshot切换后历史plan仍按原snapshot逐字节重放；保存hash、快照行hash或重算hash任一不一致必须明确失败。
+- **JRP-AC-009** 停用广东不影响上海；使用广东URL停用上海release ID被拒绝；四川始终unsupported且零快照读取。
 - **JRP-AC-010** 聊天和直接规划页面使用相同确认、错误和结果契约。
 - **JRP-AC-011** 两个重叠区间并发激活只有一组成功。
 - **JRP-AC-012** 0017从零执行两次幂等，未修改0015/0016 SQL哈希。
@@ -169,7 +171,7 @@ type JurisdictionSnapshotSchedule = {
 - 新会话、领取地市、2026/2030、完整门禁、哈希漂移、历史重放、停用和直接页面全部有Red/Green。
 - 上海、广东日期快照隔离通过；四川无发布记录。
 - 0017只在隔离库执行；持久账本repair和快照调度未获授权时保持未执行。
-- Node、数据库、Chromium E2E、TypeScript、ESLint、Build、Python和安全门禁全部新鲜通过且零skip。
+- Node、数据库、Chromium E2E、TypeScript、ESLint、Build、Python和安全门禁全部新鲜通过且零skip（2026-09-09第二轮验收：`npm test` 71文件/655、隔离DB 25文件/116、E2E全套19/19，全部零skip；`npm run build`仅1条既有warning：`citation-verifier.ts`动态文件系统访问，2026-09-09基线stash复现确认非本次引入）。
 - README、PROGRESS、ARCHITECTURE、TESTING、OPERATIONS、traceability和复审报告同步。
 
 ## 9. 关联任务
@@ -177,3 +179,16 @@ type JurisdictionSnapshotSchedule = {
 - `WI-20260907-02-task3-temporal-entry-hardening.md`：当前首要修复任务。
 - `WI-20260907-03-regional-policy-case-rebuild.md`：本Feature重新Accepted后的下游。
 - `WI-20260907-04-persistent-case-library-replacement.md`：前两项完成后的受控持久执行。
+
+## 9. 验收记录（2026-09-09第二轮修复重新验收）
+
+2026-09-09复审三项P1全部修复并取得专用反例证据，本PRD恢复**Accepted**：
+
+1. **空黄金测试集fail-closed**（JRP-FR-007/AC-007）：`release-gates.ts`对`loadTests`空数组记`golden_tests={fail:"快照没有任何适用黄金测试"}`并`ok=false`。Red：`release-gates.test.ts`新增用例在旧实现下`ok=true`失败；Green后通过。既有的"全部门禁通过"用例与`jurisdiction-release.use-case.test.ts`装配改为至少一条通过黄金测试（空expected深度部分匹配）。
+2. **停用地区绑定**（JRP-FR-027/AC-009）：`deactivateJurisdictionRelease`新增`jurisdictionCode`输入，读取release记录后先校验`记录地区===URL地区`，不一致抛`ReleaseJurisdictionMismatchError`且不调用`deactivateById`（零写入）；路由把路径`code`传入用例并映射409（含url/record代码）。Red：广东URL+上海releaseId在旧实现下成功停用；Green后拒绝。
+3. **历史重放三方hash**（JRP-FR-028/AC-008）：`replayPlan`同时比较plan保存的`snapshotContentHash`、快照行`contentHash`与成员重算规范化hash，任一不一致（或保存hash缺失）抛`ReplaySnapshotDriftError`（携带三方hash与mismatches）且不产生规划结果；路由映射409 `REPLAY_SNAPSHOT_DRIFT`。配套：`computeJurisdictionPlan`保存plan时写入`snapshotContentHash`（JRP-FR-009实现补全）。
+4. **隔离DB零skip**：全新PG17+pgvector库`task34r2_drill`，命令显式`SOCILA_TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5439/task34r2_drill`；migration×2幂等、bootstrap×2幂等、seed×2幂等、`npm run test:db` 25文件/116通过零skip（含新增跨地区停用拒绝与2026/2030广东不同快照落库用例）、`agent.migrate --with-roles`×2幂等、`pytest -m integration` 20通过零skip。
+5. **Chromium E2E全套**：`e2e/task3-regional.spec.ts`由3例扩展至6例（新增JRP-AC-008历史replay真实重放、JRP-AC-009跨地区停用拒绝409且上海保持active、JRP-AC-009停用后409 `POLICY_SNAPSHOT_UNAVAILABLE`并恢复），配套`scripts/e2e-task3-setup.ts`在E2E库预创建沪粤快照并经真实七道门禁激活；全套19/19通过（auth 10+task3 6+task4 3）。
+6. **P2稳定化**：`identity-container.test.ts`三个`vi.resetModules()`重载用例显式30秒超时（模块重载固有成本，断言不变），并在TESTING.md记录正式超时策略。
+
+门禁汇总与执行细节见任务3验收报告§8。0017只在隔离库执行；持久账本repair、日期快照调度、激活/停用均未授权执行。

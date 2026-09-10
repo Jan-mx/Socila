@@ -111,23 +111,6 @@
 - 检查完整staged diff和新增文本凭据特征。
 - 提交`docs: 记录任务2持久库快照修复验收`并推送当前upstream；不创建PR，不合并main。
 
-## 其他Agent执行提示词
+## 提示词交付规则
 
-```text
-你正在F:\Socila仓库的refactor/policy-ops-agent-platform分支执行任务2的持久库repair操作。
-
-首先读取：
-1. AGENTS.md
-2. docs/refactor/policy-ops-agent/README.md
-3. docs/refactor/policy-ops-agent/PROGRESS.md
-4. docs/work-items/WI-20260906-02-stage-e-persistent-repair.md
-5. docs/prd/09-05-stage-national-baseline-regional-overlays.md
-6. docs/refactor/policy-ops-agent/OPERATIONS.md
-7. 任务2验收报告§11～§14
-
-严格按照WI-20260906-02的权限边界、阶段A、阶段B、验收矩阵、失败与回退执行。本提示词不构成写入授权：先完成阶段A，只读报告后停止；只有用户在同一任务中明确授权“仅对本机localhost:5432/policyops执行一次0014迁移和一次四包draft政策包快照repair”后才能进入阶段B。
-
-禁止复用audit-policyops-stage-e-fix.json或任何旧manifest hash/target fingerprint。禁止发布、PolicySnapshot生成、管理员批准、删除、远程库、Secret轮换和流量切换。任一计数、哈希、目标、恢复对账或状态不符立即停止，不猜测、不降低门禁、不盲目重试。
-
-真实执行完成后更新WI-02、PROGRESS、OPERATIONS、traceability和任务2验收报告§15，任务2整体仍保持Reopened；检查完整staged diff和敏感信息，提交“docs: 记录任务2持久库快照修复验收”并推送当前upstream，不创建PR、不合并main。
-```
+本Work Item历史上曾包含Agent提示词；提示词已移除。持久库授权语句只在对话中交付，不写入Work Item或其他开发文档。
