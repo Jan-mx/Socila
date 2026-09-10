@@ -839,8 +839,6 @@ export async function runApply(client: Client, opts: ApplyOptions): Promise<Repa
 }
 
 async function applyOnce(client: Client, opts: ApplyOptions, attempt: number): Promise<RepairApplyResult> {
-  const loaded = loadTrustedArchive(opts.trustedDir ?? TRUSTED_ARCHIVE.dir);
-
   await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
   // 1) 任务专属advisory xact lock（事务结束自动释放）。
   await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [ADVISORY_LOCK_KEY]);
@@ -852,7 +850,10 @@ async function applyOnce(client: Client, opts: ApplyOptions, attempt: number): P
     throw new RepairForwardError("TARGET_FINGERPRINT_MISMATCH", `事务内targetFingerprint ${live.targetFingerprint} ≠ 授权参数 ${opts.targetFingerprint}`);
   }
 
-  // 3) 事务内重建可执行计划并核对planHash（绑定codeSha/可信归档/attestation/988写集合）。
+  // 3) 事务内核对可信归档目录/SHA/manifest正文重算/restore报告/988条entries格式
+  //    （任一不一致→抛错→runApply回滚，零写入），再以其entries重建可执行计划并
+  //    核对planHash（绑定codeSha/可信归档/attestation/988写集合）。
+  const loaded = loadTrustedArchive(opts.trustedDir ?? TRUSTED_ARCHIVE.dir);
   const { attestationManifestHash } = await buildAttestation(client, opts.codeSha);
   const plan = buildExecutablePlan({
     codeSha: opts.codeSha,
