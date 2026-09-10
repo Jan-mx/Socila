@@ -111,3 +111,24 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | 需求范围 | 实现位置 | 测试路径 | 验收证据 | 状态 |
 | --- | --- | --- | --- | --- |
 | JRP-FR-007/027/028/AC-007/008/009（2026-09-09复审三项P1） | `src/server/modules/publishing/application/release-gates.ts`（golden_tests：tests为空时fail-closed，不再记pass）、`src/server/modules/publishing/application/jurisdiction-release.use-case.ts`（`DeactivateReleaseInput.jurisdictionCode`+`ReleaseJurisdictionMismatchError`，地区不一致零写入）、`src/app/api/admin/jurisdictions/[code]/releases/[releaseId]/route.ts`（URL code传入用例+409+url/record代码）、`src/server/modules/planning/application/replay-plan.use-case.ts`（保存hash/快照行hash/重算hash三方一致，任一不一致抛`ReplaySnapshotDriftError` fail-closed）、`src/app/api/plan/[id]/replay/route.ts`（409 `REPLAY_SNAPSHOT_DRIFT`+drift详情）、`src/server/modules/planning/application/jurisdiction-compute.use-case.ts`（savePlan写入snapshotContentHash，JRP-FR-009）、`scripts/e2e-task3-setup.ts`（E2E沪粤快照+真实七道门禁激活）、`src/server/modules/identity/__tests__/identity-container.test.ts`（模块重载用例30秒显式超时，2026-09-09复审P2稳定化） | `src/server/modules/publishing/application/__tests__/release-gates.test.ts`（空黄金测试集必须拒绝）、`__tests__/jurisdiction-release.use-case.test.ts`（广东URL+上海releaseId→`ReleaseJurisdictionMismatchError`且deactivateById未调用）、`src/server/modules/planning/application/__tests__/replay-plan.use-case.test.ts`（三方一致成功/保存hash漂移拒绝/重算hash漂移拒绝/缺保存hash拒绝）、`__tests__/jurisdiction-compute.use-case.test.ts`（savePlan断言snapshotContentHash）、`__tests__/jurisdiction-compute.integration.test.ts`（停用经用例+跨地区拒绝且SH保持active+2026/2030广东命中不同snapshot并360月）、`e2e/task3-regional.spec.ts`（JRP-AC-008历史replay 200与三方一致、JRP-AC-009跨地区停用409且零修改、停用后409 POLICY_SNAPSHOT_UNAVAILABLE并恢复） | 任务3验收报告§8（Red/Green、显式隔离DB `task34r2_drill` 116/116零skip、E2E全套19/19、门禁汇总）；DB命令显式 `SOCILA_TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5439/task34r2_drill` | Accepted（2026-09-09）；0017/持久库仍未执行，待WI-20260907-04授权 |
+
+
+## 任务4第三轮修复（2026-09-10，WI-20260907-03重新Accepted）
+
+| 需求 | 实现 | 测试 |
+| --- | --- | --- |
+| RCL-FR-002/AC-003 旧test完整内容hash | `src/lib/case-governance/hashes.ts`（TEST_INFRA_COLUMNS/testRowContentHash/Date规范化）、`executor.ts` planRclReplacement全行读取、`apply.ts` verifyOldTargets事务内重算 | `__tests__/hashes.test.ts`（8业务字段漂移/基础设施排除）、`rcl-apply.integration.test.ts`（8字段漂移拒绝）、`rcl-cli.integration.test.ts`（旧targets hash非空） |
+| RCL-FR-005/006 manifest三方自校验 | `manifest.ts`（buildCoreFromInput/buildCoreFromBody/recomputeManifestHash/assertManifestContentHashes/assertRclCounts强制42）、`executor.ts` verifyRclArchive、`apply.ts` 事务内重算 | `manifest.test.ts`（正文篡改/createdAt不入hash/42强制/内容hash完整性）、`rcl-apply.integration.test.ts` |
+| RCL-FR-003 SHA清单精确覆盖 | `archive.ts` verifySha256SumsFile（7文件各一次/安全basename/64位hex/不自包含/无重复额外） | `archive.test.ts`（删除行/重复/额外/路径穿越/非法hash/缺清单行） |
+| RCL-FR-004/AC-004 restore真实验证 | `archive.ts` validateRestoreReport、`reconcile.ts` listSequences/tableDetailsWithHash/buildVerifiedRestoreReport | `archive.test.ts`（空明细拒绝/计数/明细/archiveFileHashes）、`rcl-cli.integration.test.ts`（真实报告生成） |
+| RCL-FR-005/AC-008 selection真实计算 | `archive.ts` computeSelectionReport/verifySelectionReport、`rcl-case-library.ts` CLI接入 | `archive.test.ts`、`executor.test.ts`、`rcl-cli.integration.test.ts`（selection真实配额断言） |
+| RCL-FR-018/AC-011 42 example原子同步 | `dsl-examples.ts` loadDslExampleTargets/buildExampleSync、`manifest.ts` exampleSync类型、`apply.ts` syncExamples | `dsl-examples.test.ts`（42条确定性/hash）、`rcl-apply.integration.test.ts`（同事务同步/回滚）、`rcl-cli.integration.test.ts` |
+| RCL-FR-019/AC-010 批次状态 | `executor.ts` prepare事务化+重dump自包含、verify精确prepared匹配+0行失败、`apply.ts` applied更新returning | `rcl-apply.integration.test.ts`（batchId不存在/applied复跑不新增）、`rcl-cli.integration.test.ts` |
+| Fix 8 新行hash核对 | `row-projections.ts`（新行DB行投影hash）、`apply.ts` verifyNewRowHashes、`executor.ts` verify per-row | `rcl-apply.integration.test.ts`（verifiedRows/漂移verify失败）、`rcl-cli.integration.test.ts`（verify检测漂移） |
+| Fix 9 测试库端口 | `materializer.integration.test.ts`（DRILL_PORT解析）、`scripts/db-gate-task34.mjs`（随机端口容器编排） | 门禁：随机端口容器26文件/137零skip |
+
+## 任务4第三轮只读审计与repair-forward（2026-09-10，WI-20260907-04保持Reopened）
+
+- `scripts/rcl-audit-task34.mjs`：只读审计（持久库仅SELECT、pre/post dump隔离恢复、restore-reconcile对比、pre重建可信归档、当前attestation、账本/snapshot/batch审计）。
+- 证据：`F:/Socila/backup/case-library/task34-r3-audit-2026-09-10T01-15-43/`（audit-summary.json、attestation-current.json、old-archive-manifest-pre.json、compare-current-vs-post.txt、repair-forward-plan.json）。
+- 关键值：attestationManifestHash `3e081d594082e5cee5e2d05f82bae8cfb35db017a722d5cebbf2bd2dd40a84c4`；migrationLedgerFingerprint `205acb407afd2be5350f30bb40ca9190851d6124864e4c9e094d511398238f1b`；targetFingerprint `58cef928a52482e196f2bc102eb5247cef46c2e108f2f82091430e1fa090cfce`；pre重建旧归档manifestHash `da0ea94d4e8ce07b06dd50d2cdd4780110c256705fd7f024c83f5e4378cb32ef`。

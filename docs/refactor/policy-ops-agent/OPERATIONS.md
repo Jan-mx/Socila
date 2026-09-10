@@ -181,11 +181,11 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 ## 当前repair-forward门禁（WI-20260907-04，Reopened）
 
 1. 冻结当前36/36/78、21条迁移账本、10条snapshot和3个归档批次；旧stage-a/stage-b脚本仅作历史证据，不得重跑。
-2. 先在代码层修复旧test真实hash、manifest自校验、SHA/selection/restore完整验证及42 example原子同步，并在随机端口隔离PG17+pgvector取得零skip门禁。
-3. 只读恢复pre/post dump，分别核对全部schema、表、真实sequence和规范化hash；从pre dump重建旧500 regression可信归档。
-4. 对当前库生成36/36/78 attestation manifest，逐行绑定case/showcase/regression/example、snapshot、release、批次和账本。
-5. 对照0010～0018当前SQL hash、实际Schema和21条账本，列出重复/不匹配行、prepared遗留批次和未引用snapshot的精确处置。
-6. 输出fresh repair manifestHash、targetFingerprint、预期写集合和回退点后停止；旧授权不构成repair-forward授权。
+2. 代码层修复已完成并重新Accepted（2026-09-10）：旧test真实hash、manifest自校验、SHA/selection/restore完整验证及42 example原子同步；随机端口隔离PG17+pgvector `npm run test:db` 26文件/137零skip。
+3. 只读恢复pre/post dump已完成：当前库vs post恢复库仅`auth_refresh_sessions`运行期差异（40表+20 sequence其余一致）；pre dump重建旧452/36/500可信归档（manifestHash `da0ea94d…`，500 test hash全部非空）。
+4. 当前36/36/78 attestation manifest已生成（attestationManifestHash `3e081d59…`），逐行绑定case/showcase/regression/example、snapshot、release、批次和账本。
+5. 账本21条审计完成：0012～0014重复登记（id 12/13/14旧hash与id 18/19/20重复）、0010/0011/0015账本hash与当前SQL不一致、id 17缺失；prepared批次`91d60c5f`、未引用snapshot（CN两条重复、310000 `1f0b0e1e`）处置建议见repair-forward计划。
+6. 已输出fresh repair manifestHash/targetFingerprint（`58cef928…`）、预期写集合和回退点（证据：`F:/Socila/backup/case-library/task34-r3-audit-2026-09-10T01-15-43/repair-forward-plan.json`）并停止；旧授权不构成repair-forward授权。
 7. 只有用户针对该次fresh清单明确授权后才能写入；当前文档不预设删除、账本更新或快照处置方式。
 
 ## 任务3/4最终分支集成runbook（WI-20260909-01，当前Blocked）

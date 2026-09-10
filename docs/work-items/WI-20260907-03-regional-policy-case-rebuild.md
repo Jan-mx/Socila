@@ -1,8 +1,8 @@
 # WI-20260907-03：地区化政策案例生成与可靠归档重建
 
 > Author: Jan
-> Status: Reopened（2026-09-09第三轮复审）
-> Updated: 2026-09-09
+> Status: Accepted（2026-09-10第三轮修复完成）
+> Updated: 2026-09-10
 
 ## Work Item
 
@@ -76,6 +76,31 @@
 6. **E2E**：`e2e/task4-case-library.spec.ts`精确36/18/18、治理字段、管理active过滤、归档权限；全套19/19。
 
 门禁历史记录：`npm test` 72文件/663、`test:db` 26文件/129零skip、E2E 19/19、tsc/eslint 0 error、build退出0（1条既有warning）、Python 94+20零skip、Gitleaks/scan-secrets/哨兵全过。第三轮复审发现测试允许空旧test hash和伪verified恢复报告通过，故该记录不再构成当前验收。
+
+## 第三轮修复与重新验收（2026-09-10）
+
+第三轮复审反例已全部修复（TDD Red→Green，Red证据：单元37失败/32通过；集成反例含8业务字段漂移/example原子同步/批次状态/并发/新行hash）：
+
+| 复审发现 | 修复 |
+| --- | --- |
+| 旧test contentHash为空 | `planRclReplacement`读取完整旧regression test行；`testRowContentHash`（唯一规范化hash，plan/apply共用，排除仅限id/受控时间戳/运行时执行状态）；manifest每条旧test为64位非空SHA-256；apply事务内重读完整行重算，8个业务字段任一漂移稳定拒绝零写入 |
+| restore只验证status | `validateRestoreReport`深验证：sourceDump文件名/SHA、PG/pgvector版本非空、tableCount/sequenceCount与明细一致、每表真实rows+64位hash、每sequence真实lastValue/isCalled、mismatches为空、archiveFileHashes与实际文件SHA一致；空明细verified拒绝；`buildVerifiedRestoreReport`由恢复演练同一实现生成真实报告（禁止手工构造） |
+| SHA清单不精确 | `verifySha256SumsFile`：恰好覆盖7个必备文件各一次、安全basename（拒绝../绝对路径/子目录）、64位小写hex、不自包含、无重复/额外 |
+| selection violations硬编码 | `computeSelectionReport`从生成后showcase实际计算（沪粤18/18、男女9/9、年龄段6/6/6、就业态6/6/6、UID/地区/必填字段校验）；verify-archive解析并交叉核对selection-report |
+| 42 example事务外删除 | `loadDslExampleTargets`从CN19/上海9/广东10/四川4地区DSL确定性加载42条；manifest记录保留/更新/新增/删除集合（updated自带目标内容）；apply同一事务原子同步；`assertRclCounts`显式要求exampleTestCount===42（28/49等不得成为合法目标） |
+| manifest无自校验 | canonical manifest core提取；读取/verify-archive/apply/verify均重算manifestHash；文件声明/正文重算/批次三方一致fail-closed；createdAt等非确定性元数据不入hash |
+| 批次状态 | verify-archive只有精确一个prepared批次（id+状态+storagePath）匹配才能推进；状态UPDATE返回0行必须失败；prepare先写文件后事务写批次+entries（失败不留可推进批次），批次写入后重新dump完整库（自包含归档） |
+| 新行hash核对 | apply插入后按稳定UID重读全部cases/showcase/regression tests，重算完整DB行hash与manifest逐项比较，返回实际DB ID/UID/hash；verify同样逐项核对（不得只核对总数与字段非空） |
+| 测试库端口 | materializer集成测试从`SOCILA_TEST_DATABASE_URL`解析实际端口与库名（删除5439硬编码）；任务专属随机高位端口全新PG17+pgvector容器，`npm run test:db`零skip |
+
+## 第三轮验收证据（2026-09-10本地新鲜执行）
+
+- TDD Red：单元批次37失败/32通过（testRowContentHash/manifest自校验/SHA清单/restore验证/selection/dsl-examples模块缺失或行为不符）；集成反例首跑失败（旧test仅sourceCaseUid比较、example同步缺失、空明细verified通过等）。
+- Node单元：`npm test` 73文件/705通过、skip 0。
+- DB集成：随机端口隔离容器（docker自动分配高位主机端口，pgvector/pgvector:pg17，vector/btree_gist扩展）`npm run test:db` 26文件/137通过、skip 0；agent.migrate --with-roles×2幂等；`pytest -m integration` 20通过、skip 0。
+- 静态：`npx tsc --noEmit`退出0；`npx eslint src scripts` 0 error（既有warning未新增）。
+- 阶段二隔离演练：pre dump（`59ee2f5f…`）全新实例恢复→pre基线452/36/500/28核对→0017/0018补齐→沪粤快照激活→CLI完整流程（audit/generate/plan/prepare/真实恢复/verify-archive/apply/verify）→最终36/36/42/36、manifest exampleTestCount=42、counts.tests=78、旧500 test归档hash全部非空64位hex、restore-report含全部表与真实sequence明细、apply复跑no-op、篡改fail-closed。
+- 边界：全程未连接持久policyops写路径；临时容器/库/网络/文件finally清理；未执行WI-20260909-01。
 
 ## 第三轮复审（2026-09-09）
 

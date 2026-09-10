@@ -1,8 +1,8 @@
 # WI-20260907-04：持久库旧案例全量替换
 
 > Author: Jan
-> Status: Reopened（2026-09-09第三轮复审）
-> Updated: 2026-09-09
+> Status: Reopened（等待repair-forward授权）
+> Updated: 2026-09-10
 
 ## Work Item
 
@@ -74,8 +74,8 @@
 
 ## 当前repair-forward范围
 
-1. 代码层先修复旧test真实hash、manifest自校验、SHA/selection/restore完整验证和42 example原子同步。
-2. 只读恢复pre/post dump，从pre重建旧500 regression可信归档，为当前36/36/78生成attestation manifest。
-3. 对照0010～0018 SQL、实际Schema和21条账本，列出重复/不匹配账本行、prepared批次和未引用snapshot。
-4. 输出fresh manifestHash、targetFingerprint、精确拟写集合和回退点后停止。
+1. 代码层先修复旧test真实hash、manifest自校验、SHA/selection/restore完整验证和42 example原子同步。**已完成（WI-20260907-03 Accepted，2026-09-10）**。
+2. 只读恢复pre/post dump，从pre重建旧500 regression可信归档，为当前36/36/78生成attestation manifest。**已完成（只读）**：pre重建452/36/500可信归档manifestHash `da0ea94d…`（500 test hash全部非空）；当前36/36/78 attestation `3e081d59…`。
+3. 对照0010～0018 SQL、实际Schema和21条账本，列出重复/不匹配账本行、prepared批次和未引用snapshot。**已完成（只读）**：0012～0014重复登记（id 12/13/14旧hash与id 18/19/20重复）、0010/0011/0015账本hash与当前SQL不一致、id 17缺失；prepared批次`91d60c5f`（500 test hash为空）；未引用snapshot（CN两条重复、310000 `1f0b0e1e`）。
+4. 输出fresh manifestHash、targetFingerprint、精确拟写集合和回退点后停止。**已完成**：`F:/Socila/backup/case-library/task34-r3-audit-2026-09-10T01-15-43/repair-forward-plan.json`（attestationManifestHash `3e081d59…`、migrationLedgerFingerprint `205acb40…`、targetFingerprint `58cef928…`）。
 5. 只有用户针对该次清单明确授权后才能repair-forward；不得自动恢复pre dump或重跑首次替换。

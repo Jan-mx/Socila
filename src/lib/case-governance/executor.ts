@@ -3,15 +3,21 @@
  * 七个模式的真实业务逻辑，脚本只做参数解析与输出包装。
  *
  * - audit：真实读取库计数与目标指纹（RCL-NFR-003 精确授权的事实源）；
- * - prepare-archive：创建 prepared 批次、写归档条目、生成 dump/selection/
- *   manifest/pending restore/最后生成不自包含 sha256sums.txt（RCL-FR-002/003/005）；
- * - verify-archive：对真实文件字节校验SHA、必备文件、restore 非 pending，
- *   通过后批次 → restore_verified（RCL-FR-005/NFR-001）；
+ * - prepare-archive：先生成dump/selection/manifest/pending restore与最后的
+ *   sha256sums.txt，再在可回滚事务中写入 prepared 批次与归档条目——prepare
+ *   失败不得留下可推进的prepared批次或不完整entries（RCL-FR-002/003/005）；
+ * - verify-archive：真实文件字节SHA精确覆盖清单 + manifest三方自校验 +
+ *   restore-report真实验证 + selection-report验证 + 批次状态精确匹配
+ *   （只有精确一个prepared批次匹配时才能推进），通过后批次→restore_verified
+ *   （RCL-FR-005/NFR-001，第三轮复审）；
  * - generate：确定性生成36条场景并用快照规划器回填断言期望（RCL-FR-007/008/014）；
- * - plan-replacement：绑定旧目标行与完整新行构建精确manifest并输出manifestHash
- *   （RCL-FR-006/018）；
- * - apply：授权+事务内受控替换（executeRclApply：FOR UPDATE/applying/唯一约束）；
- * - verify：核对 N/36/N+42、沪粤18/18、配额与字段完整性（RCL-AC-008/011/012）。
+ * - plan-replacement：读取完整旧regression test行（64位非空内容hash）与42条
+ *   DSL example同步集合，结合完整新行构建精确manifest并输出manifestHash
+ *   （RCL-FR-002/006/018）；
+ * - apply：授权+事务内受控替换（executeRclApply：FOR UPDATE/applying/唯一约束
+ *   +example原子同步+落库行hash核对）；
+ * - verify：核对 N/36/N+42、沪粤18/18、配额、字段完整性与落库行hash逐项一致
+ *   （RCL-AC-008/011，第三轮复审Fix 8）。
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
@@ -19,13 +25,39 @@ import path from "node:path";
 import { sql } from "drizzle-orm";
 import type { DbClient } from "@/lib/db";
 import { caseArchiveBatches, caseArchiveEntries } from "@/lib/db/schema";
-import { rowContentHash } from "./hashes";
-import { buildSha256SumsContent, buildSelectionReport, buildPendingRestoreReport } from "./archive";
-import { buildRclManifest, assertRclCounts, type BoundRow, type RclManifest, type NewCaseRow, type NewShowcaseRow, type NewTestRow } from "./manifest";
+import {
+  rowContentHash,
+  testRowContentHash,
+  CASE_INFRA_COLUMNS,
+  SHOWCASE_INFRA_COLUMNS,
+} from "./hashes";
+import {
+  buildSha256SumsContent,
+  buildPendingRestoreReport,
+  verifySha256SumsFile,
+  validateRestoreReport,
+  computeSelectionReport,
+  verifySelectionReport,
+  SHA_LIST_FILES,
+} from "./archive";
+import {
+  buildRclManifest,
+  assertRclCounts,
+  assertManifestContentHashes,
+  recomputeManifestHash,
+  type BoundRow,
+  type RclManifest,
+  type NewCaseRow,
+  type NewShowcaseRow,
+  type NewTestRow,
+  type ExampleSyncSets,
+} from "./manifest";
 import { generateShowcaseScenarios, buildCoverageManifest, type GeneratedScenario, type ScenarioTemplate } from "./generator";
 import { scoreCase } from "./scoring";
 import { classifyScenario } from "./multi-label";
 import { executeRclApply as defaultExecuteApply, type RclApplyResult } from "./apply";
+import { loadDslExampleTargets, buildExampleSync, type DslExampleTarget } from "./dsl-examples";
+import { newCaseDbRowHash, newShowcaseDbRowHash, newTestDbRowHash } from "./row-projections";
 
 export class RclExecutorError extends Error {
   constructor(message: string) {
@@ -112,13 +144,8 @@ export interface PrepareArchiveInput {
   pgDump?: (table?: string) => Promise<Buffer>;
   /** 生成期完整manifest（plan-replacement产物；归档内嵌）。 */
   manifest: RclManifest;
-  /** 策展选择报告输入。 */
-  selection: {
-    curatedUids: string[];
-    sourceCounts: Record<string, number>;
-    quotaStats: Record<string, number>;
-    violations: string[];
-  };
+  /** 由生成后showcase实际计算的策展选择报告（violations不得硬编码为空）。 */
+  selectionReport: ReturnType<typeof computeSelectionReport>;
   createdBy: string;
   now?: () => Date;
 }
@@ -129,19 +156,14 @@ export interface PrepareArchiveResult {
   sha256sums: string;
 }
 
-const ARCHIVE_FILES = [
-  "policyops-fc.dump",
-  "cases.dump",
-  "showcase_cases.dump",
-  "tests.dump",
-  "selection-report.json",
-  "manifest.json",
-  "restore-report.json",
-];
+const ARCHIVE_FILES = [...SHA_LIST_FILES];
 
 /**
- * prepare-archive（RCL-FR-002/003/005）：创建prepared批次与归档条目，生成
- * dump/selection/manifest/pending restore，最后生成不自包含的sha256sums.txt。
+ * prepare-archive（RCL-FR-002/003/005，第三轮复审）：
+ * 1) 先真实pg_dump并写入全部归档文件（dump/selection/manifest/pending restore/
+ *    sha256sums.txt最后生成且不自包含）；
+ * 2) 全部文件就绪后，在**可回滚事务**中写入prepared批次与归档条目——
+ *    pg_dump或文件写入失败时不得留下可推进的prepared批次或不完整entries。
  */
 export async function prepareRclArchive(input: PrepareArchiveInput): Promise<PrepareArchiveResult> {
   const storage = input.storage ?? nodeFsStorage(input.storageDir);
@@ -150,93 +172,79 @@ export async function prepareRclArchive(input: PrepareArchiveInput): Promise<Pre
   });
   const now = input.now ?? (() => new Date());
   const batchId = randomUUID();
+  const join = (name: string) => path.join(input.storageDir, name);
 
-  // 1) 批次（prepared）+ 归档条目（唯一约束：同批次同实体一条）。
-  await input.db.insert(caseArchiveBatches).values({
-    id: batchId,
-    status: "prepared",
-    sourceCounts: input.selection.sourceCounts,
-    retainedCounts: {},
-    deletedCounts: {},
-    tableHashes: {},
-    manifestHash: input.manifest.manifestHash,
-    storagePath: input.storageDir,
-    createdBy: input.createdBy,
-  });
-  for (const c of input.manifest.oldTargets.cases) {
-    await input.db.insert(caseArchiveEntries).values({
-      archiveBatchId: batchId,
-      entityType: "case",
-      entityId: c.rowId,
-      caseUid: c.uid ?? null,
-      contentHash: c.contentHash,
-      archiveReason: "RCL全量重建（ADR-0011）",
-    });
-  }
-  for (const s of input.manifest.oldTargets.showcase) {
-    await input.db.insert(caseArchiveEntries).values({
-      archiveBatchId: batchId,
-      entityType: "showcase_case",
-      entityId: s.rowId,
-      caseUid: s.uid ?? null,
-      contentHash: s.contentHash,
-      archiveReason: "RCL全量重建（ADR-0011）",
-    });
-  }
-  for (const t of input.manifest.oldTargets.tests) {
-    await input.db.insert(caseArchiveEntries).values({
-      archiveBatchId: batchId,
-      entityType: "test",
-      entityId: t.rowId,
-      caseUid: t.uid ?? null,
-      contentHash: t.contentHash,
-      archiveReason: "RCL全量重建（ADR-0011）",
-    });
-  }
+  // 1) 真实dump（pg_dump失败→无任何批次/entries写入）。
+  const fullDump = await dump();
+  const casesDump = await dump("cases");
+  const showcaseDump = await dump("showcase_cases");
+  const testsDump = await dump("tests");
+  storage.write(join("policyops-fc.dump"), fullDump);
+  storage.write(join("cases.dump"), casesDump);
+  storage.write(join("showcase_cases.dump"), showcaseDump);
+  storage.write(join("tests.dump"), testsDump);
 
-  // 2) dump文件（完整库+三表）。
-  storage.write(path.join(input.storageDir, "policyops-fc.dump"), await dump());
-  storage.write(path.join(input.storageDir, "cases.dump"), await dump("cases"));
-  storage.write(path.join(input.storageDir, "showcase_cases.dump"), await dump("showcase_cases"));
-  storage.write(path.join(input.storageDir, "tests.dump"), await dump("tests"));
-
-  // 3) selection-report（violations非空即pending）。
+  // 2) selection-report（真实计算；violations非空即pending）。
   storage.write(
-    path.join(input.storageDir, "selection-report.json"),
-    JSON.stringify(buildSelectionReport({
-      algorithmVersion: "RCL-GEN-1.0",
-      curatedUids: input.selection.curatedUids,
-      sourceCounts: input.selection.sourceCounts,
-      quotaStats: input.selection.quotaStats,
-      violations: input.selection.violations,
-      nowIso: now().toISOString(),
-    }), null, 2),
+    join("selection-report.json"),
+    JSON.stringify(input.selectionReport, null, 2),
   );
 
-  // 4) manifest.json。
-  storage.write(path.join(input.storageDir, "manifest.json"), JSON.stringify(input.manifest, null, 2));
+  // 3) manifest.json。
+  storage.write(join("manifest.json"), JSON.stringify(input.manifest, null, 2));
 
-  // 5) restore-report（pending：恢复对账由独立恢复演练完成后写verified）。
+  // 4) restore-report（pending：恢复对账由独立恢复演练完成后写verified）。
   storage.write(
-    path.join(input.storageDir, "restore-report.json"),
+    join("restore-report.json"),
     JSON.stringify(buildPendingRestoreReport({
       sourceDumpFileName: "policyops-fc.dump",
-      sourceDumpSha256: bufferSha256(storage.read(path.join(input.storageDir, "policyops-fc.dump"))),
+      sourceDumpSha256: bufferSha256(fullDump),
       nowIso: now().toISOString(),
     }), null, 2),
   );
 
-  // 6) sha256sums.txt 最后生成且不自包含（RCL-FR-003）。
-  const entries = ARCHIVE_FILES.map((fileName) => {
-    const filePath = path.join(input.storageDir, fileName);
-    return {
-      fileName,
-      path: filePath,
-      sha256: bufferSha256(storage.read(filePath)),
-    };
+  // 5) 全部文件就绪后，事务写入批次与归档条目（任一失败整体回滚，不留下
+  //    可推进的prepared批次或不完整entries）。
+  await input.db.transaction(async (tx) => {
+    await tx.insert(caseArchiveBatches).values({
+      id: batchId,
+      status: "prepared",
+      sourceCounts: input.selectionReport.sourceCounts,
+      retainedCounts: {},
+      deletedCounts: {},
+      tableHashes: {},
+      manifestHash: input.manifest.manifestHash,
+      storagePath: input.storageDir,
+      createdBy: input.createdBy,
+    });
+    const entryRows: Array<{ entityType: string; entityId: number; caseUid: string | null; contentHash: string }> = [
+      ...input.manifest.oldTargets.cases.map((c) => ({ entityType: "case", entityId: c.rowId, caseUid: c.uid ?? null, contentHash: c.contentHash })),
+      ...input.manifest.oldTargets.showcase.map((s) => ({ entityType: "showcase_case", entityId: s.rowId, caseUid: s.uid ?? null, contentHash: s.contentHash })),
+      ...input.manifest.oldTargets.tests.map((t) => ({ entityType: "test", entityId: t.rowId, caseUid: t.uid ?? null, contentHash: t.contentHash })),
+    ];
+    for (const e of entryRows) {
+      await tx.insert(caseArchiveEntries).values({
+        archiveBatchId: batchId,
+        entityType: e.entityType,
+        entityId: e.entityId,
+        caseUid: e.caseUid,
+        contentHash: e.contentHash,
+        archiveReason: "RCL全量重建（ADR-0011）",
+      });
+    }
   });
-  const sha256sums = buildSha256SumsContent(entries);
-  storage.write(path.join(input.storageDir, "sha256sums.txt"), sha256sums);
+
+  // 6) 批次与entries写入后重新生成完整库dump（自包含归档记录本身，
+  //    使恢复对账时归档表与dump一致），随后重算sha256sums.txt（最后生成、
+  //    不自包含，RCL-FR-003）。
+  storage.write(join("policyops-fc.dump"), await dump());
+  const finalEntries = ARCHIVE_FILES.map((fileName) => ({
+    fileName,
+    path: join(fileName),
+    sha256: bufferSha256(storage.read(join(fileName))),
+  }));
+  const sha256sums = buildSha256SumsContent(finalEntries);
+  storage.write(join("sha256sums.txt"), sha256sums);
 
   return { batchId, files: [...ARCHIVE_FILES, "sha256sums.txt"], sha256sums };
 }
@@ -257,16 +265,23 @@ export interface VerifyArchiveResult {
 }
 
 /**
- * verify-archive（RCL-FR-005/AC-001/002）：对真实文件字节核对sha256sums.txt、
- * 必备文件存在、restore报告必须verified；全部通过→批次restore_verified。
+ * verify-archive（RCL-FR-005/AC-001/002，第三轮复审）：
+ * 1) 真实文件字节SHA精确覆盖清单（7个必备文件各一次、安全basename、64位hex、
+ *    不自包含、无重复/额外）；
+ * 2) manifest三方自校验：文件声明hash === 正文重算hash === 批次manifestHash；
+ * 3) restore-report真实验证（来源dump SHA、版本、全部表与真实sequence明细）；
+ * 4) selection-report解析验证（violations/计数/配额与manifest实际一致）；
+ * 5) 只有精确一个prepared批次匹配（id+状态+storagePath）才能推进到
+ *    restore_verified；条件更新返回0行必须失败。
  */
 export async function verifyRclArchive(input: VerifyArchiveInput): Promise<VerifyArchiveResult> {
   const storage = input.storage ?? nodeFsStorage(input.storageDir);
   const mismatches: string[] = [];
   const dir = input.storageDir;
+  const readAll = (name: string): Buffer => storage.read(path.join(dir, name));
 
-  const required = ["policyops-fc.dump", "cases.dump", "showcase_cases.dump", "tests.dump", "selection-report.json", "manifest.json", "restore-report.json", "sha256sums.txt"];
-  for (const f of required) {
+  // 0) 必备文件存在。
+  for (const f of [...SHA_LIST_FILES, "sha256sums.txt"]) {
     if (!storage.exists(path.join(dir, f))) {
       mismatches.push(`缺失必备文件：${f}`);
     }
@@ -275,44 +290,89 @@ export async function verifyRclArchive(input: VerifyArchiveInput): Promise<Verif
     return { ok: false, mismatches, batchId: input.batchId };
   }
 
-  // sha256sums.txt 逐行核对（文件字节SHA-256）。
-  const sumsRaw = String(storage.read(path.join(dir, "sha256sums.txt")));
-  const lines = sumsRaw.trim().split("\n").filter(Boolean);
-  if (lines.some((l) => l.includes("sha256sums.txt"))) {
-    mismatches.push("sha256sums.txt 包含自身（必须不自包含）");
+  // 1) SHA清单精确覆盖（RCL-FR-003/AC-001，第三轮复审）。
+  mismatches.push(...verifySha256SumsFile(storage, dir));
+  if (mismatches.length > 0) {
+    return { ok: false, mismatches, batchId: input.batchId };
   }
-  for (const line of lines) {
-    const [hash, fileName] = line.split(/\s{2,}/);
-    if (!fileName || !hash) {
-      mismatches.push(`sha256sums.txt 行格式非法：${line}`);
-      continue;
-    }
-    const actual = bufferSha256(storage.read(path.join(dir, fileName)));
-    if (actual !== hash) {
-      mismatches.push(`SHA不符：${fileName}`);
+
+  // 2) manifest自校验（RCL第三轮复审）：声明hash === 正文重算hash；行hash完整。
+  let manifest: RclManifest | null = null;
+  try {
+    manifest = JSON.parse(String(readAll("manifest.json"))) as RclManifest;
+  } catch {
+    mismatches.push("manifest.json 无法解析");
+  }
+  if (manifest) {
+    if (typeof manifest.manifestHash !== "string" || !/^[0-9a-f]{64}$/.test(manifest.manifestHash)) {
+      mismatches.push("manifest.manifestHash 缺失或非64位hex");
+    } else if (recomputeManifestHash(manifest) !== manifest.manifestHash) {
+      mismatches.push("manifest正文重算hash与声明manifestHash不一致（RCL-FR-005 fail-closed）");
+    } else {
+      try {
+        assertManifestContentHashes(manifest);
+      } catch (err) {
+        mismatches.push(`manifest内容hash不完整：${(err as Error).message}`);
+      }
     }
   }
 
-  // restore报告必须 verified（pending/缺失 → 拒绝apply）。
-  let restore: { status?: string } = {};
+  // 3) restore-report真实验证（RCL-FR-004/AC-004，第三轮复审：仅status=verified的空报告拒绝）。
+  let restore: unknown = null;
   try {
-    restore = JSON.parse(String(storage.read(path.join(dir, "restore-report.json")))) as { status?: string };
+    restore = JSON.parse(String(readAll("restore-report.json")));
   } catch {
     mismatches.push("restore-report.json 无法解析");
   }
-  if (restore.status !== "verified") {
-    mismatches.push(`restore-report 状态为 ${restore.status ?? "缺失"}，必须 verified`);
+  if (restore) {
+    const dumpSha256 = bufferSha256(readAll("policyops-fc.dump"));
+    const fileHashes: Record<string, string> = {};
+    for (const name of SHA_LIST_FILES) fileHashes[name] = bufferSha256(readAll(name));
+    mismatches.push(...validateRestoreReport(restore, { dumpSha256, fileHashes }));
+  }
+
+  // 4) selection-report解析验证（RCL-FR-005，第三轮复审）。
+  let selection: unknown = null;
+  try {
+    selection = JSON.parse(String(readAll("selection-report.json")));
+  } catch {
+    mismatches.push("selection-report.json 无法解析");
+  }
+  if (selection && manifest) {
+    mismatches.push(...verifySelectionReport(selection, manifest));
   }
 
   if (mismatches.length > 0) {
     return { ok: false, mismatches, batchId: input.batchId };
   }
 
-  // 通过 → 批次 restore_verified（条件更新）。
-  await input.db
+  // 5) 批次状态精确匹配：只有精确一个prepared批次（id+状态+storagePath）可推进。
+  const batchRows = await input.db.execute(sql`
+    SELECT id, status, storage_path AS "storagePath", manifest_hash AS "manifestHash"
+    FROM "case_archive_batches" WHERE id = ${input.batchId}`);
+  if (batchRows.rows.length !== 1) {
+    return { ok: false, mismatches: [`归档批次 ${input.batchId} 不存在`], batchId: input.batchId };
+  }
+  const batch = batchRows.rows[0] as { id: string; status: string; storagePath: string; manifestHash: string };
+  if (batch.status !== "prepared") {
+    return { ok: false, mismatches: [`批次 ${input.batchId} 状态为「${batch.status}」，必须 prepared`], batchId: input.batchId };
+  }
+  if (batch.storagePath !== dir) {
+    return { ok: false, mismatches: [`批次storagePath ${batch.storagePath} 与 ${dir} 不一致`], batchId: input.batchId };
+  }
+  if (batch.manifestHash !== manifest!.manifestHash) {
+    return { ok: false, mismatches: [`批次manifestHash ${batch.manifestHash} 与文件声明 ${manifest!.manifestHash} 不一致`], batchId: input.batchId };
+  }
+
+  // 通过 → 批次 restore_verified（条件更新；0行=并发已推进，必须失败）。
+  const updated = await input.db
     .update(caseArchiveBatches)
     .set({ status: "restore_verified" })
-    .where(sql`id = ${input.batchId} AND status = 'prepared'`);
+    .where(sql`id = ${input.batchId} AND status = 'prepared'`)
+    .returning({ id: caseArchiveBatches.id });
+  if (updated.length === 0) {
+    return { ok: false, mismatches: [`批次 ${input.batchId} 状态更新返回0行（并发或状态漂移）`], batchId: input.batchId };
+  }
   return { ok: true, mismatches: [], batchId: input.batchId };
 }
 
@@ -366,40 +426,50 @@ export interface PlanReplacementResult {
 }
 
 /**
- * plan-replacement（RCL-FR-006/018/AC-003）：从库读取旧目标行（精确ID+内容hash
- * +UID），结合生成场景（评分/多标签/完整场景字段）构建精确manifest并输出manifestHash。
+ * plan-replacement（RCL-FR-002/006/018/AC-003，第三轮复审）：
+ * - 旧cases/showcase/tests按完整业务行重算规范化hash（tests为完整行，8个业务
+ *   字段全部进入hash，contentHash不得为空）；
+ * - 从地区DSL确定性加载42条目标example并计算保留/更新/新增/删除集合；
+ * - 新行contentHash按落库DB行投影计算（与apply事务内重读同一规则）；
+ * - assertRclCounts显式要求exampleTestCount===42（28/49等数量不得成为合法目标）。
  */
 export async function planRclReplacement(input: PlanReplacementInput): Promise<PlanReplacementResult> {
   const { db } = input;
 
-  // 旧目标：cases/showcase 按行内容重算规范化hash（库中content_hash列可能为空，
-  // 行内容哈希才是内容绑定权威，RCL-FR-002/AC-003）；tests 只删除旧回归
-  // （source='regression'），42条DSL示例（source='example'）保留为exampleTests。
+  // 旧目标：cases/showcase/tests 全部按完整行内容重算规范化hash（库中
+  // content_hash列可能为空，行内容哈希才是内容绑定权威，RCL-FR-002/AC-003）。
   const oldCaseRows = await db.execute(sql`SELECT * FROM "cases" ORDER BY id`);
   const oldShowRows = await db.execute(sql`SELECT * FROM "showcase_cases" ORDER BY id`);
-  const oldTestRows = await db.execute(sql`SELECT id, source_case_uid AS uid FROM "tests" WHERE source = 'regression' ORDER BY id`);
-  const exampleTestRows = await db.execute(sql`SELECT id, name AS uid, jurisdiction_code AS "jurisdictionCode" FROM "tests" WHERE source = 'example' ORDER BY id`);
+  const oldTestRows = await db.execute(sql`SELECT * FROM "tests" WHERE source = 'regression' ORDER BY id`);
+  const exampleTestRows = await db.execute(sql`SELECT * FROM "tests" WHERE source = 'example' ORDER BY id`);
 
   const oldCases: BoundRow[] = oldCaseRows.rows.map((r) => ({
     rowId: Number((r as { id: number }).id),
     uid: String((r as { case_uid: string | null }).case_uid ?? null),
-    contentHash: rowContentHash(r as Record<string, unknown>, ["id", "created_at", "updated_at", "governed_at", "post_date"]),
+    contentHash: rowContentHash(r as Record<string, unknown>, CASE_INFRA_COLUMNS),
   }));
   const oldShowcase: BoundRow[] = oldShowRows.rows.map((r) => ({
     rowId: Number((r as { id: number }).id),
     uid: String((r as { case_uid: string | null }).case_uid ?? null),
-    contentHash: rowContentHash(r as Record<string, unknown>, ["id", "created_at", "updated_at", "curated_at"]),
+    contentHash: rowContentHash(r as Record<string, unknown>, SHOWCASE_INFRA_COLUMNS),
   }));
+  // RCL-FR-002（第三轮复审P0）：旧regression test必须按完整业务行计算非空hash。
   const oldTests: BoundRow[] = oldTestRows.rows.map((r) => ({
     rowId: Number((r as { id: number }).id),
-    uid: (r as { uid: string | null }).uid ?? null,
-    contentHash: "",
+    uid: (r as { source_case_uid: string | null }).source_case_uid ?? null,
+    contentHash: testRowContentHash(r as Record<string, unknown>),
   }));
-  const exampleTests: Array<{ rowId: number; uid: string; contentHash: string; jurisdictionCode: string | null }> = exampleTestRows.rows.map((r) => ({
-    rowId: Number((r as { id: number }).id),
-    uid: String((r as { uid: string }).uid),
-    contentHash: rowContentHash(r as Record<string, unknown>, ["id"]),
-    jurisdictionCode: (r as { jurisdictionCode: string | null }).jurisdictionCode,
+
+  // 42条DSL example目标与同步集合（RCL-FR-018/AC-011）。
+  const dslTargets = loadDslExampleTargets();
+  const exampleSync = buildExampleSync(exampleTestRows.rows as Array<Record<string, unknown>>, dslTargets);
+  const exampleTests = dslTargets.map((t) => ({
+    rowId: exampleSync.retained.find((r) => r.name === t.name && r.jurisdictionCode === t.jurisdictionCode)?.rowId
+      ?? exampleSync.updated.find((u) => u.name === t.name && u.jurisdictionCode === t.jurisdictionCode)?.rowId
+      ?? 0,
+    uid: t.name,
+    contentHash: t.contentHash,
+    jurisdictionCode: t.jurisdictionCode,
   }));
 
   const newCases: NewCaseRow[] = input.scenarios.map((s) => {
@@ -407,10 +477,10 @@ export async function planRclReplacement(input: PlanReplacementInput): Promise<P
     const score = scoreCase({ input: s.input, coverageObligations: s.coverageObligations, replay, declaredAssertions: s.assertions.length });
     const labels = classifyScenario(s);
     const snap = input.snapshotMap[s.jurisdictionCode] ?? { id: s.snapshotId, hash: s.snapshotContentHash };
-    return {
+    const row: NewCaseRow = {
       rowId: 0,
       uid: s.caseUid,
-      contentHash: rowContentHash({ ...s, qualityScore: score.total, qualityBreakdown: score, multiLabels: labels }, ["rowId"]),
+      contentHash: "",
       jurisdictionCode: s.jurisdictionCode,
       scenarioKey: s.scenarioKey,
       asOfDate: s.asOfDate,
@@ -426,6 +496,9 @@ export async function planRclReplacement(input: PlanReplacementInput): Promise<P
       snapshotHash: snap.hash,
       sourceTestUid: s.testUid,
     };
+    // Fix 8：新行hash按落库DB行投影计算（plan/apply同一规则）。
+    row.contentHash = newCaseDbRowHash(row, "RCL-GEN-1.0");
+    return row;
   });
 
   const newShowcase: NewShowcaseRow[] = input.scenarios.map((s) => {
@@ -433,10 +506,10 @@ export async function planRclReplacement(input: PlanReplacementInput): Promise<P
     const score = scoreCase({ input: s.input, coverageObligations: s.coverageObligations, replay, declaredAssertions: s.assertions.length });
     const labels = classifyScenario(s);
     const snap = input.snapshotMap[s.jurisdictionCode] ?? { id: s.snapshotId, hash: s.snapshotContentHash };
-    return {
+    const row: NewShowcaseRow = {
       rowId: 0,
       uid: s.caseUid,
-      contentHash: rowContentHash({ ...s, qualityScore: score.total, multiLabels: labels }, ["rowId"]),
+      contentHash: "",
       jurisdictionCode: s.jurisdictionCode,
       scenarioKey: s.scenarioKey,
       asOfDate: s.asOfDate,
@@ -452,18 +525,24 @@ export async function planRclReplacement(input: PlanReplacementInput): Promise<P
       snapshotId: snap.id,
       snapshotHash: snap.hash,
     };
+    row.contentHash = newShowcaseDbRowHash(row, "RCL-GEN-1.0");
+    return row;
   });
 
-  const newTests: NewTestRow[] = input.scenarios.map((s) => ({
-    rowId: 0,
-    uid: s.testUid,
-    contentHash: rowContentHash({ name: s.testUid, jurisdictionCode: s.jurisdictionCode, input: s.input, expected: buildExpectedFromAssertions(s), sourceCaseUid: s.caseUid }, []),
-    jurisdictionCode: s.jurisdictionCode,
-    sourceCaseUid: s.caseUid,
-    input: { user: s.input },
-    expected: buildExpectedFromAssertions(s),
-    ruleId: null,
-  }));
+  const newTests: NewTestRow[] = input.scenarios.map((s) => {
+    const row: NewTestRow = {
+      rowId: 0,
+      uid: s.testUid,
+      contentHash: "",
+      jurisdictionCode: s.jurisdictionCode,
+      sourceCaseUid: s.caseUid,
+      input: { user: s.input },
+      expected: buildExpectedFromAssertions(s),
+      ruleId: null,
+    };
+    row.contentHash = newTestDbRowHash(row);
+    return row;
+  });
 
   const manifest = buildRclManifest({
     algorithmVersion: "RCL-MANIFEST-1.0",
@@ -472,12 +551,14 @@ export async function planRclReplacement(input: PlanReplacementInput): Promise<P
     newShowcase,
     newTests,
     exampleTests,
+    exampleSync,
     oldTargets: { cases: oldCases, showcase: oldShowcase, tests: oldTests },
     snapshot: input.snapshotMap["310000"]
       ? { id: input.snapshotMap["310000"].id, contentHash: input.snapshotMap["310000"].hash }
       : null,
   });
   assertRclCounts(manifest);
+  assertManifestContentHashes(manifest);
   return { manifest, manifestHash: manifest.manifestHash };
 }
 
@@ -529,6 +610,8 @@ export interface VerifyReplacementInput {
     band: Record<string, number>;
     employment: Record<string, number>;
   };
+  /** 生成期完整manifest（落库行hash逐项核对，RCL第三轮复审Fix 8）。 */
+  manifest: RclManifest;
   /** 字段完整性检查项（默认检查非空场景字段）。 */
   checkFields?: boolean;
 }
@@ -540,8 +623,9 @@ export interface VerifyReplacementResult {
 }
 
 /**
- * verify（RCL-AC-008/011/012）：核对最终计数 N/36/N+42、沪粤18/18、配额
- * 与完整场景字段；任一不符 ok=false（fail-closed，返回mismatches）。
+ * verify（RCL-AC-008/011/012，第三轮复审Fix 8）：核对最终计数 N/36/N+42、
+ * 沪粤18/18、配额、完整场景字段，并**按稳定UID重算落库完整行hash与manifest
+ * 逐项比较**——不得只核对总数和字段非空。任一新行漂移 → ok=false。
  */
 export async function verifyRclReplacement(input: VerifyReplacementInput): Promise<VerifyReplacementResult> {
   const { db } = input;
@@ -616,8 +700,80 @@ export async function verifyRclReplacement(input: VerifyReplacementInput): Promi
     if (Number((badCases.rows[0] as { n: number }).n) > 0) mismatches.push("存在active案例场景字段为空/占位（RCL-AC-011）");
   }
 
+  // Fix 8：落库完整行hash与manifest逐项比较（按稳定UID）。
+  const m = input.manifest;
+  if (m && m.newCases.length > 0) {
+    const uids = m.newCases.map((c) => c.uid!).filter(Boolean);
+    const rows = uids.length
+      ? (await db.execute(sql`SELECT * FROM "cases" WHERE case_uid IN (${sql.join(uids, sql.raw(", "))}) ORDER BY id`)).rows
+      : [];
+    if (rows.length !== m.newCases.length) {
+      mismatches.push(`落库新cases行数 ${rows.length} ≠ manifest ${m.newCases.length}（Fix 8）`);
+    }
+    for (const c of m.newCases) {
+      const row = rows.find((r) => (r as { case_uid: string | null }).case_uid === c.uid);
+      const hash = row ? rowContentHash(row as Record<string, unknown>, CASE_INFRA_COLUMNS) : "";
+      if (!row || hash !== c.contentHash) {
+        mismatches.push(`落库新case ${c.uid} hash与manifest不符（Fix 8）`);
+      }
+    }
+  }
+  if (m && m.newShowcase.length > 0) {
+    const uids = m.newShowcase.map((s) => s.uid!).filter(Boolean);
+    const rows = uids.length
+      ? (await db.execute(sql`SELECT * FROM "showcase_cases" WHERE case_uid IN (${sql.join(uids, sql.raw(", "))}) ORDER BY id`)).rows
+      : [];
+    if (rows.length !== m.newShowcase.length) {
+      mismatches.push(`落库新showcase行数 ${rows.length} ≠ manifest ${m.newShowcase.length}（Fix 8）`);
+    }
+    for (const s of m.newShowcase) {
+      const row = rows.find((r) => (r as { case_uid: string | null }).case_uid === s.uid);
+      const hash = row ? rowContentHash(row as Record<string, unknown>, SHOWCASE_INFRA_COLUMNS) : "";
+      if (!row || hash !== s.contentHash) {
+        mismatches.push(`落库新showcase ${s.uid} hash与manifest不符（Fix 8）`);
+      }
+    }
+  }
+  if (m && m.newTests.length > 0) {
+    const names = m.newTests.map((t) => t.uid!).filter(Boolean);
+    const rows = names.length
+      ? (await db.execute(sql`SELECT * FROM "tests" WHERE name IN (${sql.join(names, sql.raw(", "))}) AND source = 'regression' ORDER BY id`)).rows
+      : [];
+    if (rows.length !== m.newTests.length) {
+      mismatches.push(`落库新tests行数 ${rows.length} ≠ manifest ${m.newTests.length}（Fix 8）`);
+    }
+    for (const t of m.newTests) {
+      const row = rows.find((r) => (r as { name: string }).name === t.uid);
+      const hash = row ? testRowContentHash(row as Record<string, unknown>) : "";
+      if (!row || hash !== t.contentHash) {
+        mismatches.push(`落库新test ${t.uid} hash与manifest不符（Fix 8）`);
+      }
+    }
+  }
+  // example必须精确42条且与manifest目标集合一致（RCL-AC-011）。
+  if (m) {
+    const exampleRows = (await db.execute(sql`SELECT * FROM "tests" WHERE source = 'example' ORDER BY id`)).rows;
+    if (exampleRows.length !== 42) {
+      mismatches.push(`落库example ${exampleRows.length} ≠ 42（RCL-AC-011）`);
+    }
+    for (const row of exampleRows) {
+      const name = String((row as { name: string }).name);
+      const jc = String((row as { jurisdiction_code: string | null }).jurisdiction_code ?? "");
+      const target = m.exampleTests.find((e) => e.uid === name && e.jurisdictionCode === jc);
+      if (!target) {
+        mismatches.push(`落库example ${name} 不在manifest目标集合（RCL-AC-011）`);
+        continue;
+      }
+      const hash = testRowContentHash(row as Record<string, unknown>);
+      if (hash !== target.contentHash) {
+        mismatches.push(`落库example ${name} hash与manifest目标不符（RCL-AC-011）`);
+      }
+    }
+  }
+
   return { ok: mismatches.length === 0, counts: actual, mismatches };
 }
 
 // 供 generate 结果使用的覆盖manifest类型。
 export type CoverageManifest = ReturnType<typeof buildCoverageManifest>;
+export type { DslExampleTarget, ExampleSyncSets };

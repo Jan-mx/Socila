@@ -249,7 +249,9 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - apply后cases/showcase/tests的scenarioKey、asOfDate、输入、期望、断言、覆盖、证据和质量分解必须与manifest逐字节一致，禁止null或空对象占位（`assertCompleteScenarioFields`事务内fail-closed）。
 - Chromium E2E（`e2e/task4-case-library.spec.ts`）精确断言公开36条、上海18、广东18、治理字段非空、管理active过滤、归档批次可读及匿名401/普通用户403。
 - 激活门禁的golden_tests只加载source='example'的DSL示例（RCL-FR-007；回归tests不进入黄金重放）。
-- 旧regression test必须按完整业务行计算非空hash；修改任一业务字段均使apply拒绝，不能只比较`sourceCaseUid`。
-- SHA清单必须精确覆盖必备文件；restore报告必须验证dump SHA、版本、全部表和真实sequence明细，空明细`verified`必须失败。
-- 42条DSL example的保留/更新/新增/删除集合必须进入manifest并在同一apply事务执行；当前28或49条不得自适应成为合法目标。
-- manifest文件、批次hash和重算hash必须三方一致；以452/36/500+28镜像演练后最终必须得到匹配manifest的36/36/78。
+- 旧regression test必须按完整业务行计算非空hash；修改任一业务字段均使apply拒绝，不能只比较`sourceCaseUid`（`hashes.test.ts` 8字段漂移、`rcl-apply.integration.test.ts` 8字段漂移Red）。
+- SHA清单必须精确覆盖必备文件；restore报告必须验证dump SHA、版本、全部表和真实sequence明细，空明细`verified`必须失败（`archive.test.ts` SHA精确覆盖与restore深验证、`rcl-cli.integration.test.ts` 真实报告由`buildVerifiedRestoreReport`生成）。
+- 42条DSL example的保留/更新/新增/删除集合必须进入manifest并在同一apply事务执行；当前28或49条不得自适应成为合法目标（`dsl-examples.test.ts` 42条确定性、`manifest.test.ts` assertRclCounts强制42、`rcl-apply.integration.test.ts` 同事务同步与回滚）。
+- manifest文件、批次hash和重算hash必须三方一致（`manifest.test.ts` recomputeManifestHash/createdAt不入hash/正文篡改拒绝）；以452/36/500+28镜像演练后最终必须得到匹配manifest的36/36/78（阶段二pre dump隔离演练，2026-09-10）。
+- 落库新行hash逐项核对：apply插入后按稳定UID重读完整行重算并与manifest比较，返回实际DB ID/UID/hash；verify同样逐项核对（`rcl-apply.integration.test.ts`、`rcl-cli.integration.test.ts` Fix 8）。
+- 测试库端口：materializer集成测试从`SOCILA_TEST_DATABASE_URL`解析实际端口（删除5439硬编码）；`scripts/db-gate-task34.mjs`以任务专属随机高位端口全新PG17+pgvector容器跑全量`npm run test:db`（2026-09-10证据：26文件/137零skip）。

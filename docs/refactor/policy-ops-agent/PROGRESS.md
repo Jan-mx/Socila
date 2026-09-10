@@ -41,8 +41,8 @@
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化、三地区批准和候选快照重放完成；四川无快照 | 保持Accepted，不因任务3/4复审回退 |
 | 任务3：地区感知用户规划 | **Accepted（2026-09-09第二轮修复）**：空黄金测试集fail-closed、停用URL地区绑定、replay三方hash、隔离DB 116/116零skip、E2E 19/19 | 代码验收保持；0017与快照已持久执行，但账本/任务4审计待repair-forward |
-| 任务4：地区化政策案例库 | **Reopened（2026-09-09第三轮复审）**：旧test hash、restore/SHA/selection、42 example原子同步和manifest自校验未闭环 | 修复WI-20260907-03并在随机端口隔离DB重验 |
-| 持久库案例替换 | **Reopened（2026-09-09第三轮复审）**：数据已是36/36/78，但账本21条、错误归档批次和不匹配manifest待repair-forward | 冻结写入；先只读生成可信旧归档、当前attestation和repair目标指纹，再请求新授权 |
+| 任务4：地区化政策案例库 | **Accepted（2026-09-10第三轮修复）**：旧test完整hash、restore/SHA/selection真实验证、42 example原子同步、manifest三方自校验全部闭环；随机端口隔离DB 137/137零skip | 保持Accepted；不因WI-04审计回退 |
+| 持久库案例替换 | **Reopened（等待repair-forward授权）**：数据36/36/78冻结；账本21条（0012～0014重复登记、0015/0010/0011 hash漂移、id 17缺失）、3个归档批次（2 applied+1 prepared，新批次500 test hash为空）、未引用snapshot均已只读定位 | 基于`repair-forward-plan.json`（attestation `3e081d59…`、targetFingerprint `58cef928…`）等待用户明确授权后执行 |
 | 最终分支集成 | **Blocked**：源`7b3f21a`尚未合入目标`57f051d` | 任务4/WI-04重新Accepted后执行WI-20260909-01；当前禁止合并 |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
 | 四川医保退休年限正式文件（缺口4） | Deferred；仅2025-03征求意见稿，无正式印发 | `WI-20260907-01`：正式印发后采集，不阻塞任务2首期 |
@@ -396,7 +396,20 @@
 | 备份 | pre/post dump文件SHA与sidecar一致，保留作为只读复核与回退点；不自动恢复 |
 | 分支 | 源`codex/task34-regional-case-rebuild@7b3f21a`，目标`refactor/policy-ops-agent-platform@57f051d`，尚未合并 |
 
-任务3保持Accepted；任务4和WI-04重新Reopened，WI-20260909-01保持Blocked。下一步为代码修复→当前库只读取证→用户基于fresh repair-forward清单另行授权。
+任务3保持Accepted；任务4（WI-20260907-03）第三轮修复完成并重新Accepted，WI-04保持Reopened等待repair-forward授权，WI-20260909-01保持Blocked。repair-forward计划已生成（见下节），等待用户基于fresh清单另行授权。
+
+## 当前任务验证（任务4第三轮修复与只读审计，2026-09-10本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 单元37失败/32通过（testRowContentHash/manifest自校验/SHA清单/restore深验证/selection/dsl-examples）；集成反例首跑失败（旧test仅比较sourceCaseUid、example同步缺失、空明细verified通过） |
+| Node单元（`npm test`） | PASS；73文件/705通过、skip 0 |
+| TypeScript / ESLint | PASS；tsc退出0；eslint 0 error（既有warning未新增） |
+| 数据库集成（任务专属随机高位端口全新PG17+pgvector容器，vector/btree_gist） | PASS；migration×2、bootstrap×2、seed×2幂等；`npm run test:db` 26文件/137通过、skip 0（含rcl-apply 16、rcl-cli 12、materializer 10）；agent.migrate --with-roles×2幂等；`pytest -m integration` 20通过、skip 0 |
+| 阶段二隔离演练（pre dump `59ee2f5f…`恢复） | PASS；pre基线452/36/500/28核对→0017/0018补齐→沪粤快照激活→CLI完整流程→最终36/36/42/36；manifest exampleTestCount=42、counts.tests=78；旧500 test归档hash全部非空64位hex；restore-report含全部表与真实sequence明细；apply复跑no-op；篡改fail-closed |
+| 阶段三只读审计（持久库仅SELECT） | 当前36/36/78/10冻结；post dump恢复对比仅`auth_refresh_sessions`运行期差异（40表+20 sequence其余一致）；pre重建452/36/500可信归档manifestHash `da0ea94d…`（500 test hash全部非空）；当前attestation `3e081d59…`；账本21条：0012～0014重复登记（id 12/13/14与18/19/20）、0010/0011/0015账本hash与当前SQL不一致、id 17缺失；snapshot 10条引用关系定位；archive批次3个处置建议 |
+| repair-forward计划 | `F:/Socila/backup/case-library/task34-r3-audit-2026-09-10T01-15-43/repair-forward-plan.json`：attestationManifestHash `3e081d59…`、migrationLedgerFingerprint `205acb40…`、targetFingerprint `58cef928…`、精确拟更新账本行/归档批次/快照处置/回退点/失败条件 |
+| 边界 | 全程未写持久policyops；临时容器/库/网络/文件finally清理；未执行WI-20260909-01、未创建PR、未合并分支 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 

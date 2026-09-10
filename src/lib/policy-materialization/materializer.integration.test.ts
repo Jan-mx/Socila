@@ -18,6 +18,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Client } from "pg";
 
 const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
+// 第三轮复审：从SOCILA_TEST_DATABASE_URL解析实际端口，不再硬编码5439。
+const DRILL_PORT = DRILL_URL ? new URL(DRILL_URL).port || "5432" : "";
 // 每次运行动态库名：避免与陈旧worker的延迟DROP DATABASE互相干扰。
 const MAT_DB = `nrp_e_mat_${Date.now().toString(36)}`;
 
@@ -497,7 +499,7 @@ const CORRUPT_SNAPSHOT_ROLLBACK = [{ paramId: "legacy-incomplete-rollback", valu
 const CORRUPT_SNAPSHOT_CONCURRENT = [{ paramId: "legacy-incomplete-concurrent", value: 3 }];
 
 function repairOpts(): { allowedDatabases: string[]; allowedPorts: string[] } {
-  return { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] };
+  return { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] };
 }
 
 /** repair测试依赖（manifest/哈希/repair函数）——动态导入与既有测试一致。 */
@@ -771,7 +773,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     const hash = manifestHash(manifest);
     const audit = await auditMaterialization(manifest, true, {
       allowedDatabases: [MAT_DB],
-      allowedPorts: ['5439'],
+      allowedPorts: [DRILL_PORT],
     });
     const fp = audit.targetFingerprint;
 
@@ -792,7 +794,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
           worktreeClean: true,
           actor: "test",
         },
-        { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] },
+        { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] },
       ),
     ).rejects.toMatchObject({ reason: "UNAUTHORIZED" });
 
@@ -807,7 +809,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
           worktreeClean: true,
           actor: "test",
         },
-        { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] },
+        { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] },
       ),
     ).rejects.toMatchObject({ reason: "MANIFEST_MISMATCH" });
 
@@ -822,7 +824,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
           worktreeClean: true,
           actor: "test",
         },
-        { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] },
+        { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] },
       ),
     ).rejects.toMatchObject({ reason: "FINGERPRINT_MISMATCH" });
 
@@ -855,7 +857,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     // ── fresh audit：只显示GD delta（复现修复：不再重放四地区整包74/116/9/8）。
     const audit = await auditMaterialization(manifest, true, {
       allowedDatabases: [MAT_DB],
-      allowedPorts: ['5439'],
+      allowedPorts: [DRILL_PORT],
     });
     expect(audit.plan.counts).toEqual({
       rules: 1,
@@ -905,7 +907,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
         worktreeClean: true,
         actor: "stage-e-test",
       },
-      { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] },
+      { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] },
     );
     expect(result.noop).toBe(false);
     expect(result.publishedRowsHashBefore).toBe(oldRowsHashBefore);
@@ -1064,14 +1066,14 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
         expectedTargetFingerprint: (
           await auditMaterialization(manifest, true, {
             allowedDatabases: [MAT_DB],
-            allowedPorts: ["5439"],
+            allowedPorts: [DRILL_PORT],
           })
         ).targetFingerprint,
         manifest,
         worktreeClean: true,
         actor: "stage-e-test",
       },
-      { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] },
+      { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] },
     );
     expect(noop.noop).toBe(true);
     const afterNoop = await matQuery(
@@ -1117,13 +1119,13 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
         expectedTargetFingerprint: (
           await (
             await import("@/lib/policy-materialization/materialize")
-          ).auditMaterialization(manifest, true, { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] })
+          ).auditMaterialization(manifest, true, { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] })
         ).targetFingerprint,
         manifest,
         worktreeClean: true,
         actor: "stage-e-test",
       },
-      { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] },
+      { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] },
     );
     expect(noop.noop).toBe(true);
 
@@ -1140,7 +1142,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     const fpNow = (
       await (
         await import("@/lib/policy-materialization/materialize")
-      ).auditMaterialization(manifest, true, { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] })
+      ).auditMaterialization(manifest, true, { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] })
     ).targetFingerprint;
     await expect(
       applyMaterialization(
@@ -1152,7 +1154,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
           worktreeClean: true,
           actor: "test",
         },
-        { allowedDatabases: [MAT_DB], allowedPorts: ["5439"] },
+        { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] },
       ),
     ).rejects.toThrow(/全部回滚/);
 

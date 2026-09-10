@@ -44,8 +44,7 @@ import { DrizzlePolicyConflictRepository } from "@/server/modules/policy/infrast
 import { DrizzleJurisdictionReleaseWriteRepository } from "@/server/modules/publishing/infrastructure/drizzle/jurisdiction-release.repository";
 import { activateJurisdictionRelease } from "@/server/modules/publishing/application/jurisdiction-release.use-case";
 import { DrizzleRulesReadRepository } from "@/server/modules/rules/infrastructure/drizzle/rules-read.repository";
-import { listBaseTables } from "@/lib/case-governance/reconcile";
-import { normalizedTableHash } from "@/lib/case-governance/reconcile";
+import { buildVerifiedRestoreReport } from "@/lib/case-governance/reconcile";
 import { bufferSha256 } from "@/lib/case-governance/executor";
 
 const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
@@ -153,7 +152,7 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     await activateRegion("310000", "2026-09-01");
     await activateRegion("440000", "2026-09-01", "2029-12-31");
     await activateRegion("440000", "2030-01-01");
-  });
+  }, 240_000);
 
   afterAll(async () => {
     rmSync(storageDir, { recursive: true, force: true });
@@ -227,6 +226,15 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     }
     const restore = JSON.parse(readFileSync(join(storageDir, "restore-report.json"), "utf-8"));
     expect(restore.status).toBe("pending");
+    // 第三轮复审：selection-report必须由showcase真实计算（violations不得硬编码为空）。
+    const selection = JSON.parse(readFileSync(join(storageDir, "selection-report.json"), "utf-8"));
+    expect(selection.status).toBe("verified");
+    expect(selection.violations).toEqual([]);
+    expect(selection.sourceCounts).toEqual({ "310000": 18, "440000": 18 });
+    expect(selection.quotaStats["310000_male"]).toBe(9);
+    expect(selection.quotaStats["310000_before_1970"]).toBe(6);
+    expect(selection.quotaStats["440000_unemployed"]).toBe(6);
+    expect(selection.curatedUids).toHaveLength(36);
     // 批次处于 prepared。
     const batches = db.select({ status: caseArchiveBatches.status }).from(caseArchiveBatches).where(eq(caseArchiveBatches.id, out.batchId));
     return batches.then((rows) => expect(rows[0].status).toBe("prepared"));
@@ -247,7 +255,6 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     expect(createRestore.status).toBe(0);
 
     const dumpFile = join(storageDir, "policyops-fc.dump");
-    const sourceDumpSha = bufferSha256(readFileSync(dumpFile));
     // 恢复：dump字节经stdin传给docker exec pg_restore（Windows无cat，直接读文件Buffer）。
     const restore = spawnSync("docker", ["exec", "-i", DOCKER_PG, "pg_restore", "-U", "postgres", "-d", restoreDbName, "--clean", "--if-exists"], { input: readFileSync(dumpFile), maxBuffer: 512 * 1024 * 1024, encoding: "buffer" });
     expect(restore.status, restore.stderr?.toString().slice(0, 500)).toBe(0);
@@ -259,40 +266,30 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     restoreUrl.pathname = `/${restoreDbName}`;
     const pool = new pg.Pool({ connectionString: restoreUrl.toString() });
     const restoredDb = drizzle(pool);
-    const tables = await listBaseTables(db);
-    const mismatches: string[] = [];
-    for (const t of tables) {
-      const a = await normalizedTableHash(db, t.schema, t.table);
-      const b = await normalizedTableHash(restoredDb as never, t.schema, t.table);
-      if (a !== b) mismatches.push(`${t.schema}.${t.table}`);
-    }
+
+    // RCL-FR-004/AC-004（第三轮复审）：恢复报告必须由同一实现生成真实明细——
+    // 全部表（schema/table/rows/规范化hash）与真实sequence状态（lastValue/isCalled）；
+    // 禁止手工构造空明细verified报告。
+    const report = await buildVerifiedRestoreReport({
+      source: db,
+      restored: restoredDb as never,
+      dumpFilePath: dumpFile,
+      restoredDatabaseUrl: restoreUrl.toString().replace(/:[^:@]+@/, ":***@"),
+      archiveDir: storageDir,
+    });
     await pool.end();
-
-    const versionRes = await db.execute(sql`SELECT version()`);
-    const pgVersion = String((versionRes.rows[0] as { version: string }).version).split(" ")[1] ?? "";
-    const vectorRes = await db.execute(sql`SELECT extversion FROM pg_extension WHERE extname = 'vector'`);
-    const vectorVersion = (vectorRes.rows[0] as { extversion?: string } | undefined)?.extversion ?? null;
-
-    // 写verified restore-report（RCL-FR-004：来源dump SHA+PG/pgvector版本+表/sequence对账）。
-    const report = {
-      status: "verified" as const,
-      sourceDump: { fileName: "policyops-fc.dump", sha256: sourceDumpSha },
-      environment: {
-        postgresVersion: pgVersion,
-        pgvectorVersion: vectorVersion,
-        restoredDatabaseUrl: restoreUrl.toString().replace(/:[^:@]+@/, ":***@"),
-        restoredAt: new Date().toISOString(),
-      },
-      reconcile: {
-        tableCount: tables.length,
-        sequenceCount: 0,
-        tables: tables.map((t) => ({ schema: t.schema, table: t.table, rows: 0, hash: "" })),
-        sequences: [],
-        mismatches,
-      },
-      archiveFileHashes: {},
-    };
-    expect(mismatches).toEqual([]);
+    expect(report.status).toBe("verified");
+    expect(report.reconcile.mismatches).toEqual([]);
+    expect(report.reconcile.tableCount).toBeGreaterThan(0);
+    expect(report.reconcile.sequenceCount).toBeGreaterThan(0);
+    expect(report.reconcile.tables.every((t) => /^[0-9a-f]{64}$/.test(t.hash))).toBe(true);
+    expect(report.reconcile.sequences.every((s) => (typeof s.lastValue === "number" || s.lastValue === null) && typeof s.isCalled === "boolean")).toBe(true);
+    expect(report.environment.postgresVersion.length).toBeGreaterThan(0);
+    expect(report.environment.pgvectorVersion).toBeTruthy();
+    // archiveFileHashes与实际归档文件SHA一致。
+    for (const [fileName, sha] of Object.entries(report.archiveFileHashes)) {
+      expect(sha).toBe(bufferSha256(readFileSync(join(storageDir, fileName))));
+    }
     writeFileSync(join(storageDir, "restore-report.json"), JSON.stringify(report, null, 2));
 
     // PRD §5/§8：最终清单在恢复演练完成后最后生成（restore-report已verified），
@@ -416,6 +413,18 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     const r = runCli(["apply", "--storage", storageDir, "--batch-id", batch!.id]);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain("--i-am-authorized");
+  });
+
+  cliIt("落库新行hash漂移 → verify退出码2（不得只核对总数和字段非空，Fix 8）", async () => {
+    // 篡改一条已落库新case的业务字段。
+    await db.update(cases).set({ governanceReason: "TAMPERED-AFTER-APPLY" }).where(eq(cases.caseUid, "RPC-310000-SH-male-before_1970-employed-RETIREMENT-V1"));
+    const r = runCli(["verify", "--storage", storageDir]);
+    expect(r.code).toBe(2);
+    const out = parseJson<{ ok: boolean; mismatches: string[] }>(r.stdout, "verify-drift");
+    expect(out.ok).toBe(false);
+    expect(out.mismatches.some((m) => /hash|哈希/i.test(m))).toBe(true);
+    // 恢复篡改，避免污染后续测试。
+    await db.update(cases).set({ governanceReason: "RCL确定性模板生成（无真实用户数据）" }).where(eq(cases.caseUid, "RPC-310000-SH-male-before_1970-employed-RETIREMENT-V1"));
   });
 
   cliIt("归档文件被篡改：verify-archive退出码2并报告SHA不符（RCL-AC-001）", () => {

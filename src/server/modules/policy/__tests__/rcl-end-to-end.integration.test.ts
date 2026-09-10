@@ -263,6 +263,7 @@ describe("RCL 端到端：生成→评分→替换→N/36/N+42（RCL-AC-005/007/
         expected: {},
       })),
       exampleTests: [],
+      exampleSync: { retained: [], updated: [], added: [], deleted: [] },
       oldTargets: { cases: [], showcase: [], tests: [] },
       snapshot: { id: snapshots.get("310000")!.id, contentHash: snapshots.get("310000")!.hash },
     });

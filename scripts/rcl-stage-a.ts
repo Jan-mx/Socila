@@ -130,31 +130,37 @@ async function main() {
     // archive模式：旧目标归档（不激活/不生成新数据）——manifest绑定库中全部旧行。
     // 旧库（如治理前851基线）无新期望/evidence，激活门禁不适用；归档=行的恢复凭证。
     const { buildRclManifest } = await import("@/lib/case-governance/manifest");
-    const { rowContentHash } = await import("@/lib/case-governance/hashes");
+    const { rowContentHash, testRowContentHash, CASE_INFRA_COLUMNS, SHOWCASE_INFRA_COLUMNS } = await import("@/lib/case-governance/hashes");
+    const { buildExampleSync, loadDslExampleTargets } = await import("@/lib/case-governance/dsl-examples");
+    // RCL-FR-002（第三轮复审）：旧targets按完整业务行计算非空hash。
     const oldCaseRows = await db.execute(sql`SELECT * FROM "cases" ORDER BY id`);
     const oldShowRows = await db.execute(sql`SELECT * FROM "showcase_cases" ORDER BY id`);
-    const oldTestRows = await db.execute(sql`SELECT id, source_case_uid AS uid FROM "tests" WHERE source = 'regression' ORDER BY id`);
-    const exampleRows = await db.execute(sql`SELECT id, name AS uid, jurisdiction_code AS "jurisdictionCode" FROM "tests" WHERE source = 'example' ORDER BY id`);
+    const oldTestRows = await db.execute(sql`SELECT * FROM "tests" WHERE source = 'regression' ORDER BY id`);
+    const exampleRows = await db.execute(sql`SELECT * FROM "tests" WHERE source = 'example' ORDER BY id`);
     const oldCases = oldCaseRows.rows.map((r) => ({
       rowId: Number((r as { id: number }).id),
       uid: String((r as { case_uid: string | null }).case_uid ?? null),
-      contentHash: rowContentHash(r as Record<string, unknown>, ["id", "created_at", "updated_at", "governed_at", "post_date"]),
+      contentHash: rowContentHash(r as Record<string, unknown>, CASE_INFRA_COLUMNS),
     }));
     const oldShowcase = oldShowRows.rows.map((r) => ({
       rowId: Number((r as { id: number }).id),
       uid: String((r as { case_uid: string | null }).case_uid ?? null),
-      contentHash: rowContentHash(r as Record<string, unknown>, ["id", "created_at", "updated_at", "curated_at"]),
+      contentHash: rowContentHash(r as Record<string, unknown>, SHOWCASE_INFRA_COLUMNS),
     }));
     const oldTests = oldTestRows.rows.map((r) => ({
       rowId: Number((r as { id: number }).id),
-      uid: (r as { uid: string | null }).uid ?? null,
-      contentHash: "",
+      uid: (r as { source_case_uid: string | null }).source_case_uid ?? null,
+      contentHash: testRowContentHash(r as Record<string, unknown>),
     }));
-    const exampleTests = exampleRows.rows.map((r) => ({
-      rowId: Number((r as { id: number }).id),
-      uid: String((r as { uid: string }).uid),
-      contentHash: rowContentHash(r as Record<string, unknown>, ["id"]),
-      jurisdictionCode: (r as { jurisdictionCode: string | null }).jurisdictionCode,
+    const dslTargets = loadDslExampleTargets();
+    const exampleSync = buildExampleSync(exampleRows.rows as Array<Record<string, unknown>>, dslTargets);
+    const exampleTests = dslTargets.map((t) => ({
+      rowId: exampleSync.retained.find((r) => r.name === t.name && r.jurisdictionCode === t.jurisdictionCode)?.rowId
+        ?? exampleSync.updated.find((u) => u.name === t.name && u.jurisdictionCode === t.jurisdictionCode)?.rowId
+        ?? 0,
+      uid: t.name,
+      contentHash: t.contentHash,
+      jurisdictionCode: t.jurisdictionCode,
     }));
     const manifest = buildRclManifest({
       algorithmVersion: "RCL-MANIFEST-1.0",
@@ -163,6 +169,7 @@ async function main() {
       newShowcase: [],
       newTests: [],
       exampleTests,
+      exampleSync,
       oldTargets: { cases: oldCases, showcase: oldShowcase, tests: oldTests },
       snapshot: null,
     });

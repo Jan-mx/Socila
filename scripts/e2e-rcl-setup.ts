@@ -37,7 +37,7 @@ import { DrizzlePolicyConflictRepository } from "@/server/modules/policy/infrast
 import { DrizzleJurisdictionReleaseWriteRepository } from "@/server/modules/publishing/infrastructure/drizzle/jurisdiction-release.repository";
 import { activateJurisdictionRelease } from "@/server/modules/publishing/application/jurisdiction-release.use-case";
 import { DrizzleRulesReadRepository } from "@/server/modules/rules/infrastructure/drizzle/rules-read.repository";
-import { listBaseTables, normalizedTableHash } from "@/lib/case-governance/reconcile";
+import { buildVerifiedRestoreReport } from "@/lib/case-governance/reconcile";
 
 const E2E_URL = process.env.SOCILA_E2E_DATABASE_URL;
 if (!E2E_URL) {
@@ -171,33 +171,17 @@ async function main() {
   restoreUrl.pathname = `/${restoreDbName}`;
   const pool = new pg.Pool({ connectionString: restoreUrl.toString() });
   const restoredDb = drizzle(pool);
-  const tables = await listBaseTables(db);
-  const mismatches: string[] = [];
-  for (const t of tables) {
-    const a = await normalizedTableHash(db, t.schema, t.table);
-    const b = await normalizedTableHash(restoredDb as never, t.schema, t.table);
-    if (a !== b) mismatches.push(`${t.schema}.${t.table}`);
-  }
+  // RCL-FR-004/AC-004（第三轮复审）：恢复报告必须由同一实现生成真实明细
+  // （全部表rows/64位hash与真实sequence状态），禁止手工空明细verified。
+  const report = await buildVerifiedRestoreReport({
+    source: db,
+    restored: restoredDb as never,
+    dumpFilePath: dumpFile,
+    restoredDatabaseUrl: restoreUrl.toString().replace(/:[^:@]+@/, ":***@"),
+    archiveDir: storageDir,
+  });
   await pool.end();
-  if (mismatches.length > 0) throw new Error(`恢复对账不一致：${mismatches.join(", ")}`);
-
-  const versionRes = await db.execute(sql`SELECT version()`);
-  const pgVersion = String((versionRes.rows[0] as { version: string }).version).split(" ")[1] ?? "";
-  const vectorRes = await db.execute(sql`SELECT extversion FROM pg_extension WHERE extname = 'vector'`);
-  const vectorVersion = (vectorRes.rows[0] as { extversion?: string } | undefined)?.extversion ?? null;
-  const dumpBuf = readFileSync(dumpFile);
-  const report = {
-    status: "verified" as const,
-    sourceDump: { fileName: "policyops-fc.dump", sha256: createHash("sha256").update(dumpBuf).digest("hex") },
-    environment: {
-      postgresVersion: pgVersion,
-      pgvectorVersion: vectorVersion,
-      restoredDatabaseUrl: restoreUrl.toString().replace(/:[^:@]+@/, ":***@"),
-      restoredAt: new Date().toISOString(),
-    },
-    reconcile: { tableCount: tables.length, sequenceCount: 0, tables: [], sequences: [], mismatches },
-    archiveFileHashes: {},
-  };
+  if (report.reconcile.mismatches.length > 0) throw new Error(`恢复对账不一致：${report.reconcile.mismatches.join(", ")}`);
   writeFileSync(join(storageDir, "restore-report.json"), JSON.stringify(report, null, 2));
   // 重算sha256sums.txt（restore-report已最终化，最后生成且不自包含）。
   const finalFiles = ["policyops-fc.dump", "cases.dump", "showcase_cases.dump", "tests.dump", "selection-report.json", "manifest.json", "restore-report.json"];

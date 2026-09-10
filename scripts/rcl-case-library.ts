@@ -34,6 +34,7 @@ import {
   verifyRclReplacement,
   RclExecutorError,
 } from "@/lib/case-governance/executor";
+import { computeSelectionReport, buildSelectionReport } from "@/lib/case-governance/archive";
 import type { GeneratedScenario } from "@/lib/case-governance/generator";
 import { computeJurisdictionPlan } from "@/server/modules/planning/application/jurisdiction-compute.use-case";
 import { createJurisdictionTreeService } from "@/server/modules/jurisdiction/application/tree-service";
@@ -192,17 +193,27 @@ async function main() {
         args.push(dbName);
         return Promise.resolve(execFileSync(pgDumpCmd, args, { env: { ...process.env, PGPASSWORD: url.password ?? "" }, maxBuffer: 512 * 1024 * 1024 }));
       };
+      // RCL-FR-005/AC-008（第三轮复审）：selection-report必须由生成后的showcase
+      // 实际计算（上海18/广东18、每地区男女9/9、年龄段6/6/6、就业态6/6/6）；
+      // violations不得硬编码为空。归档模式（旧库归档，无新showcase）写空verified报告。
+      const selectionReport = manifest.newShowcase.length > 0
+        ? computeSelectionReport(manifest.newShowcase)
+        : buildSelectionReport({
+            algorithmVersion: "RCL-GEN-1.0",
+            curatedUids: [],
+            sourceCounts: {},
+            quotaStats: {},
+            violations: [],
+          });
+      if (selectionReport.status !== "verified") {
+        throw new RclExecutorError(`selection报告校验失败：${selectionReport.violations.slice(0, 8).join("；")}`);
+      }
       const result = await prepareRclArchive({
         db,
         storageDir,
         pgDump: runDump,
         manifest,
-        selection: {
-          curatedUids: manifest.newShowcase.map((s) => s.uid ?? ""),
-          sourceCounts: { "310000": manifest.newShowcase.filter((s) => s.jurisdictionCode === "310000").length, "440000": manifest.newShowcase.filter((s) => s.jurisdictionCode === "440000").length },
-          quotaStats: {},
-          violations: [],
-        },
+        selectionReport,
         createdBy: "rcl-cli",
       });
       jsonOut({ batchId: result.batchId, files: result.files, sha256sums: result.sha256sums });
@@ -249,6 +260,7 @@ async function main() {
           band: { before_1970: 12, "1970_1979": 12, from_1980: 12 },
           employment: { employed: 12, flexible: 12, unemployed: 12 },
         },
+        manifest,
       });
       jsonOut(result);
       if (!result.ok) process.exit(2);

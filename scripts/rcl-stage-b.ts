@@ -19,7 +19,7 @@ import { join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { sql } from "drizzle-orm";
-import { listBaseTables, normalizedTableHash } from "@/lib/case-governance/reconcile";
+import { buildVerifiedRestoreReport } from "@/lib/case-governance/reconcile";
 import type { RclManifest } from "@/lib/case-governance/manifest";
 
 const DB_URL = process.env.RCL_STAGE_B_URL;
@@ -55,21 +55,10 @@ async function main() {
 
   const auditOut = JSON.parse(runCliExpectOk(["audit"], "audit")) as { counts: { cases: number; showcase: number; tests: number }; targetFingerprint: string };
   runCliExpectOk(["generate", "--storage", storageDir], "generate");
+  // RCL-FR-018（第三轮复审）：42条DSL example的保留/更新/新增/删除集合进入
+  // manifest，由apply在**同一事务**内同步；禁止在plan-replacement之后或事务外
+  // 修改example（旧stage-b在apply事务外删除7条示例的缺陷已移除）。
   runCliExpectOk(["plan-replacement", "--storage", storageDir], "plan-replacement");
-
-  // 删除非当前DSL的旧示例（保留42条：CN19+上海9+广东10+四川4）。
-  // 42条DSL name 来自 dsl/regions/*/tests/rule_examples_as_tests.json（seedMisc 的 name 格式）。
-  const { discoverRegionDsl } = await import("@/lib/dsl/region-manifest");
-  const dslNames = new Set<string>();
-  for (const region of discoverRegionDsl()) {
-    const testsFile = JSON.parse(readFileSync(region.testsPath, "utf-8")) as { tests: Array<{ rule_id: string; example_name: string }> };
-    for (const t of testsFile.tests) dslNames.add(`${t.rule_id}: ${t.example_name}`);
-  }
-  const staleDel = await db.execute(
-    sql`DELETE FROM "tests" WHERE source = 'example' AND name NOT IN (${sql.join([...dslNames].map((n) => sql`${n}`), sql.raw(", "))}) RETURNING id`,
-  );
-  const deletedStaleExamples = staleDel.rows.length;
-  const exAfter = await db.execute(sql`SELECT count(*)::int AS n FROM "tests" WHERE source = 'example'`);
 
   // prepare-archive（真实pg_dump，容器stdout直出）。
   const prepareOut = JSON.parse(runCliExpectOk(["prepare-archive", "--storage", storageDir, "--pgdump-docker", DOCKER_PERSISTENT], "prepare-archive")) as { batchId: string };
@@ -93,31 +82,25 @@ async function main() {
   const { default: pg } = await import("pg");
   const restoreUrl = new URL(DB_URL!);
   restoreUrl.hostname = "localhost";
-  restoreUrl.port = "5439";
+  // RCL第三轮复审：恢复演练目标端口从环境解析（不得硬编码5439）。
+  restoreUrl.port = process.env.RCL_DRILL_PG_PORT ?? restoreUrl.port;
+  restoreUrl.hostname = "localhost";
   restoreUrl.password = process.env.RCL_DRILL_PG_PASSWORD ?? "postgres";
   restoreUrl.username = "postgres";
   restoreUrl.pathname = `/${restoreDbName}`;
   const pool = new pg.Pool({ connectionString: restoreUrl.toString() });
   const restoredDb = drizzle(pool);
-  const tables = await listBaseTables(db);
-  const mismatches: string[] = [];
-  for (const t of tables) {
-    const a = await normalizedTableHash(db, t.schema, t.table);
-    const b = await normalizedTableHash(restoredDb as never, t.schema, t.table);
-    if (a !== b) mismatches.push(`${t.schema}.${t.table}`);
-  }
+  // RCL-FR-004/AC-004（第三轮复审）：恢复报告必须包含全部表与真实sequence明细，
+  // 由同一实现（buildVerifiedRestoreReport）生成，禁止手工空明细verified。
+  const report = await buildVerifiedRestoreReport({
+    source: db,
+    restored: restoredDb as never,
+    dumpFilePath: dumpFile,
+    restoredDatabaseUrl: restoreUrl.toString().replace(/:[^:@]+@/, ":***@"),
+    archiveDir: storageDir,
+  });
   await pool.end();
-  if (mismatches.length > 0) throw new Error(`恢复对账不一致：${mismatches.join(", ")}`);
-  const versionRes = await db.execute(sql`SELECT version()`);
-  const pgVersion = String((versionRes.rows[0] as { version: string }).version).split(" ")[1] ?? "";
-  const vectorRes = await db.execute(sql`SELECT extversion FROM pg_extension WHERE extname = 'vector'`);
-  const report = {
-    status: "verified" as const,
-    sourceDump: { fileName: "policyops-fc.dump", sha256: createHash("sha256").update(readFileSync(dumpFile)).digest("hex") },
-    environment: { postgresVersion: pgVersion, pgvectorVersion: (vectorRes.rows[0] as { extversion?: string } | undefined)?.extversion ?? null, restoredDatabaseUrl: restoreUrl.toString().replace(/:[^:@]+@/, ":***@"), restoredAt: new Date().toISOString() },
-    reconcile: { tableCount: tables.length, sequenceCount: 0, tables: [], sequences: [], mismatches },
-    archiveFileHashes: {},
-  };
+  if (report.reconcile.mismatches.length > 0) throw new Error(`恢复对账不一致：${report.reconcile.mismatches.join(", ")}`);
   writeFileSync(join(storageDir, "restore-report.json"), JSON.stringify(report, null, 2));
   const finalFiles = ["policyops-fc.dump", "cases.dump", "showcase_cases.dump", "tests.dump", "selection-report.json", "manifest.json", "restore-report.json"];
   writeFileSync(join(storageDir, "sha256sums.txt"), finalFiles.map((f) => `${createHash("sha256").update(readFileSync(join(storageDir, f))).digest("hex")}  ${f}`).join("\n") + "\n");
@@ -139,9 +122,8 @@ async function main() {
   console.log(JSON.stringify({
     reportDir,
     audit: auditOut,
-    deletedStaleExamples,
-    exampleTestsAfterCleanup: exAfter.rows[0],
-    archive: { manifestHash: manifest.manifestHash.slice(0, 24) + "…", oldTargets: { cases: manifest.oldTargets.cases.length, showcase: manifest.oldTargets.showcase.length, tests: manifest.oldTargets.tests.length }, batchId: prepareOut.batchId, restoreVerifiedTableCount: tables.length },
+    exampleSyncInApplyTransaction: true,
+    archive: { manifestHash: manifest.manifestHash.slice(0, 24) + "…", oldTargets: { cases: manifest.oldTargets.cases.length, showcase: manifest.oldTargets.showcase.length, tests: manifest.oldTargets.tests.length }, batchId: prepareOut.batchId, restoreVerifiedTableCount: report.reconcile.tableCount },
     apply: applyOut,
     applyAgainNoop: applyAgain.noop,
     verify: verifyOut,

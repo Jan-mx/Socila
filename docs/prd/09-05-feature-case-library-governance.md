@@ -1,8 +1,8 @@
 # 地区化政策案例库全量重建 PRD
 
 > Author: Jan
-> Status: Reopened（2026-09-09第三轮复审）
-> Updated: 2026-09-09
+> Status: Accepted（2026-09-10第三轮修复完成；持久替换仍待WI-20260907-04授权）
+> Updated: 2026-09-10
 
 ## 文档元数据
 
@@ -10,8 +10,8 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-case-library-governance.md` |
 | 类型 | Feature；替代原“上海案例库精简为452/36/528”方案 |
-| 状态 | Reopened（2026-09-09第三轮复审）；第二轮Accepted结论因归档、manifest和事务缺口撤回 |
-| 前置依赖 | 任务2首期Accepted；任务3经`WI-20260907-02`修复并重新Accepted |
+| 状态 | Accepted（2026-09-10第三轮修复完成）；持久库替换仍由WI-20260907-04在fresh授权后执行 |
+| 前置依赖 | 任务2首期Accepted；任务3经`WI-20260907-02`修复并重新Accepted；WI-20260907-03第三轮修复重新Accepted（2026-09-10） |
 | 执行顺序 | 任务3修复 → 本Feature代码与隔离验收 → 持久库替换Work Item |
 | 退出门禁 | 完整旧库可恢复归档、新地区案例确定性生成、沪粤36条展示、精确替换和完整E2E均通过 |
 
@@ -155,12 +155,12 @@ type RegionalPolicyScenario = {
 
 ## 9. Definition of Done
 
-- 未完成：旧500 regression真实内容hash与可恢复归档。
-- 未完成：restore/SHA/selection/manifest完整验证和精确42条example原子同步。
-- 未完成：当前36/36/78可信attestation、迁移账本repair和错误批次审计闭环。
+- 已完成：旧500 regression真实内容hash与可恢复归档（plan读取完整行+唯一testRowContentHash+apply事务内重算，8业务字段漂移拒绝；pre dump隔离重建452/36/500可信归档manifestHash `da0ea94d…`，500 test hash全部非空）。
+- 已完成：restore/SHA/selection/manifest完整验证和精确42条example原子同步（restore深验证、SHA清单精确覆盖7文件、selection由showcase实际计算、manifest三方自校验、42条DSL example保留/更新/新增/删除集合同一apply事务同步）。
+- 已完成（只读）：当前36/36/78可信attestation（`3e081d59…`）、迁移账本21条只读审计（0012～0014重复、0010/0011/0015 hash漂移、id 17缺失）和错误批次审计闭环（3批次处置建议见repair-forward-plan）。
 - 已保留：确定性沪粤36条场景、完整场景字段和地区隔离代码主体。
-- 重新验收必须取得专用Red/Green、随机端口隔离DB、pre/post/当前三方恢复对账及完整安全门禁。
-- 当前禁止重跑旧stage脚本、写持久库或执行最终分支合并。
+- 重新验收已取得：专用Red/Green、随机端口隔离DB（26文件/137零skip）、pre dump隔离完整CLI演练（36/36/42/36）及完整安全门禁。
+- 当前禁止重跑旧stage脚本、写持久库或执行最终分支合并；持久替换等待repair-forward授权。
 
 ## 10. 关联任务
 

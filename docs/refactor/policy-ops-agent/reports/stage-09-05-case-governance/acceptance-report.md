@@ -1,12 +1,12 @@
 # 任务4案例库治理与地区化重建验收报告
 
-> Status: Reopened（2026-09-09第三轮复审）
+> Status: Accepted（2026-09-10第三轮修复完成；持久替换待WI-20260907-04授权）
 > Branch: `codex/task34-regional-case-rebuild`
 > Scope: WI-20260907-03（地区化政策案例生成与可靠归档重建）
 
 ## 当前结论
 
-第二轮修复解决了CLI空壳、场景字段和36/18/18 E2E，但第三轮复审发现旧test hash、恢复报告、SHA/selection、42 example原子同步和manifest自校验仍不满足PRD；持久执行又产生账本与applied manifest不一致。任务4和WI-20260907-04均重新**Reopened**，历史代码与持久执行记录保留为审计事实。
+**第三轮修复完成并重新Accepted（2026-09-10）**：旧test完整内容hash、restore/SHA/selection真实验证、42条DSL example原子同步、manifest三方自校验、批次状态0行失败、落库新行hash逐项核对全部闭环（TDD Red→Green，Red证据37失败/32通过）。随机端口隔离DB `npm run test:db` 26文件/137零skip、pytest -m integration 20/20、npm test 73文件/705零skip、pre dump隔离完整CLI演练最终36/36/42/36且篡改fail-closed。**WI-20260907-04保持Reopened**：只读审计与repair-forward计划（attestation `3e081d59…`、targetFingerprint `58cef928…`、精确拟写集合与回退点）已生成，等待用户授权。历史代码与持久执行记录保留为审计事实。
 
 历史背景：`e26a543`实现0016、案例治理与452/36/528路径；复审发现归档SHA用文件名而非文件内容、selection报告缺失、restore报告pending、manifest未绑定内容、81条展示hash为pending、无可比断言仍判match、质量分空、多标签未接入、并发无行锁、地区默认硬编码（[复审报告](./review-report-2026-09-07.md)）。
 
