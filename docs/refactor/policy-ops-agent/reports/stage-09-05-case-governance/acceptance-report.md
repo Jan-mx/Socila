@@ -1,6 +1,6 @@
 # 任务4案例库治理与地区化重建验收报告
 
-> Status: Accepted（代码层，2026-09-10第六轮：repair-forward执行器隔离验收19场景全过；持久repair-forward待WI-20260907-04用户授权，请求独立复审）
+> Status: Accepted（代码层）；持久repair-forward已于2026-09-10经用户明确授权执行并12项验证全过（WI-20260907-04等待独立复审）
 > Branch: `codex/task34-regional-case-rebuild`
 > Scope: WI-20260907-03（地区化政策案例生成与可靠归档重建）
 
@@ -182,3 +182,16 @@
 | 边界 | 持久policyops仅SELECT；未执行repair-forward；未恢复pre dump；未创建PR、未合并分支；可信归档与pre/post备份未覆盖；隔离容器/库/临时归档副本finally清理 |
 
 WI-20260907-03 Accepted；任务4 PRD与本报告代码层Accepted；WI-20260907-04继续Reopened等待用户授权；WI-20260909-01继续Blocked。请求独立复审。
+
+## 2026-09-10 WI-20260907-04 repair-forward持久执行（用户明确授权；等待独立复审）
+
+| 阶段 | 结果 |
+| --- | --- |
+| 授权与门禁 | 授权codeSha `aeb464fc473ba05c849b98e9cc04046ca8c3c8ca`、planHash `179507da922755ce86e9d76daeba831e91ae36cb605d994e45364fcf91e63189`、targetFingerprint `56c479deb89438ff3943b61b73812cc2`、attestation `ca4238a5c3aca5a744fcbc190e8bd147cb4450686bf6d4a38c8d0d91a55fd6f4`；工作区干净、HEAD=origin=`aeb464f`；持久库migrations=21/36/36/78/42/36/10/5/batches 2 applied+1 prepared/可信批次不存在；fresh audit/plan逐项一致 |
+| pre备份 | `F:/Socila/backup/db/policyops-rcl-repair-pre-20260910234300.dump`（`b190d1d1705b36d59f8accc0022e0eff07ab23697b1558f353afcc872780810f`+sidecar）全新PG17+pgvector恢复对账：40表OK/20 sequence/账本21 |
+| apply | 单事务成功：applied=true、ledgerDeleted=[18,19,20]、91d60c5f→rolled_back、c8a7c104 restore_verified+988 entries、attempts=1；终态账本18（fingerprint `25d10e62…`）、36/36/78/42/36/10/5、archiveBatches=4 |
+| 执行后12项验证 | 全部通过：账本18条=1～16/21/22且hash/created_at原值不变；批次rolled_back（历史988 entries保留）；可信批次restore_verified/task34-repair-forward/manifest `da0ea94d…`/永久归档目录；988 entries全64位hex无重复（452/36/500）；36/36/78；42/36；10/5；migration×2 no-op；复跑apply noop:true；verify --plan ok=true（repaired）；业务表规范化hash与计划一致 |
+| post备份 | `F:/Socila/backup/db/policyops-rcl-repair-post-20260910234716.dump`（`8303a4c35d390a8452266eb9c4f77b88b1c47ad3098a0ccca14e95a582466757`+sidecar）第三个全新实例恢复对账：40表OK/20 sequence/账本18/988 entries |
+| 边界 | 仅授权三项写入；snapshot/release/政策实体/远程库/Secret/部署零变化；未创建PR、未合并分支；证据`F:/Socila/backup/case-library/task34-r8-repair-exec-2026-09-10T15-41-40/` |
+
+WI-20260907-04标记等待复审；WI-20260909-01继续Blocked；请求独立复审。

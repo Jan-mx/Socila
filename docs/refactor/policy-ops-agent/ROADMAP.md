@@ -26,7 +26,7 @@
 | 任务2：CN/上海/广东权威政策首期交付 | Done | 三地区管理员批准与候选快照重放完成；四川Deferred不阻塞 |
 | 任务3：地区规划时态与真实入口修复 | Accepted | 第二轮修复已覆盖空黄金测试、停用地区绑定和三方snapshot hash |
 | 任务4：上海/广东政策案例库全量重建 | Accepted（代码层，第六轮repair执行器隔离验收，请求独立复审） | 第三～五轮修复保持；第六轮交付可审计/确定性/单事务/幂等repair-forward执行器并在隔离库19场景全过；门禁全过（npm test 75文件/740、test:db 26文件/141零skip、Gitleaks 91提交零发现） |
-| 持久库旧案例替换 | Reopened | 当前36/36/78冻结；repair执行器已隔离验收；绑定`8b360c2…`的executable-write-set（planHash `db55e4ab…`、attestation `3b7340c1…`、确定性批次`c8a7c104…`+988 entries）等待用户授权后由执行器单事务执行 |
+| 持久库旧案例替换 | 等待复审 | repair-forward已于2026-09-10经用户授权执行（codeSha `aeb464f`、planHash `179507da…`）：账本18条、批次91d60c5f rolled_back、可信批次c8a7c104+988 entries；36/36/78零变化；pre/post备份恢复对账一致；独立复审通过后Accepted |
 | 任务3/4最终分支集成 | Blocked | 任务4和WI-04重新Accepted后，以merge commit合入`refactor/policy-ops-agent-platform` |
 | 远程Personal Demo服务器部署 | Planned | 目标服务器全栈healthy、域名/HTTPS和离机备份验证 |
 | 首批公开政策采集与RAG建库 | Planned | 白名单来源原件、DocumentTree、Chunk和索引形成闭环 |

@@ -174,3 +174,15 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 
 - 门禁（2026-09-10本地新鲜）：`npm test` 75文件/740零skip；随机端口全新PG17+pgvector `npm run test:db` 26文件/141零skip（migration×2/bootstrap×2/seed×2幂等、agent.migrate --with-roles×2、pytest -m integration 20/20）；tsc/eslint（0 error）/build退出0；scan-secrets 790文件零命中；Gitleaks 8.29.1完整历史91提交零发现；allowlist哨兵全过。
 - 边界：持久policyops仅SELECT；未执行repair-forward；未恢复pre dump；未创建PR、未合并分支；可信归档与pre/post备份未覆盖；隔离容器/库/临时归档副本finally清理。
+
+## WI-20260907-04 repair-forward持久执行（2026-09-10，用户明确授权；等待独立复审）
+
+| 需求 | 执行 | 证据 |
+| --- | --- | --- |
+| RCL-NFR-003 精确授权 | 授权参数codeSha `aeb464f`/planHash `179507da…`/targetFingerprint `56c479de…`/attestation `ca4238a5…`；执行前fresh audit+plan逐项一致；`RCL_REPAIR_ALLOW_PERSISTENT=1`仅apply子进程 | `task34-r8-repair-exec-2026-09-10T15-41-40/pre-audit.json`、`pre-plan-summary.json`、`executable-write-set.fresh.json` |
+| RCL-NFR-001 可恢复 | pre备份`policyops-rcl-repair-pre-20260910234300.dump`（`b190d1d1…`）全新实例恢复对账40表/20 sequence；post备份`policyops-rcl-repair-post-20260910234716.dump`（`8303a4c3…`）第三个全新实例恢复对账40表/20 sequence/账本18/988 entries | `pre-restore-reconcile.txt`、`post-restore-reconcile.txt`（exit 0，40 OK） |
+| RCL-NFR-005 原子性 | `scripts/rcl-repair-forward-task34.mjs apply`单事务：ledgerDeleted [18,19,20]、91d60c5f→rolled_back、c8a7c104 restore_verified+988 entries、attempts=1 | `apply-result.json` |
+| RCL-NFR-006 幂等 | 相同授权参数复跑`noop:true`；`run-migrations.mjs`×2账本持续18 | `apply-rerun.json`、`migration-run1.txt`/`migration-run2.txt` |
+| RCL-NFR-008 可审计 | 执行后12项验证（账本18条=1～16/21/22原值、批次状态、988 entries hex无重复452/36/500、36/36/78、42/36、10/5、业务表规范化hash与计划一致、verify --plan ok） | `post-state.txt`、`post-verify.json`、`repair-execution-summary.json` |
+
+- 边界：仅授权三项写入；snapshot/release/政策实体/远程库/Secret/部署零变化；未创建PR、未合并分支；临时验证容器清理；可信归档与pre/post备份未覆盖。

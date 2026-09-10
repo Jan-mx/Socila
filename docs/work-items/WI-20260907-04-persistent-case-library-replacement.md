@@ -1,7 +1,7 @@
 # WI-20260907-04：持久库旧案例全量替换
 
 > Author: Jan
-> Status: Reopened（repair执行器隔离验收完成，等待用户对planHash `db55e4ab…`的repair-forward授权）
+> Status: 等待复审（2026-09-10用户明确授权后repair-forward已在本机policyops单事务执行并12项验证全过；独立复审通过前不标记Accepted）
 > Updated: 2026-09-10
 
 ## Work Item
@@ -100,3 +100,19 @@
 **等待用户授权**：授权确认后由用户执行（本机policyops，需显式`RCL_REPAIR_ALLOW_PERSISTENT=1`，repair前强制新建完整dump）：
 `DATABASE_URL=<policyops> RCL_REPAIR_ALLOW_PERSISTENT=1 node scripts/rcl-repair-forward-task34.mjs apply --i-am-authorized --plan-hash db55e4ab990e84289a3e28d45910d455c6e90d5009643fe18eb072fb70c73848 --target-fingerprint 56c479deb89438ff3943b61b73812cc2`
 本轮代码与文档提交、历史授权均不构成对该清单的授权；只有用户针对planHash `db55e4ab…`明确授权后才能执行。
+
+## repair-forward持久执行记录（2026-09-10，用户明确授权；等待独立复审）
+
+用户在同一任务中明确授权（仅本机`localhost:5432/policyops`；codeSha `aeb464fc473ba05c849b98e9cc04046ca8c3c8ca`、planHash `179507da922755ce86e9d76daeba831e91ae36cb605d994e45364fcf91e63189`、targetFingerprint `56c479deb89438ff3943b61b73812cc2`、attestationManifestHash `ca4238a5c3aca5a744fcbc190e8bd147cb4450686bf6d4a38c8d0d91a55fd6f4`；不授权修改36/36/78业务数据、snapshot、release、政策实体、远程库、Secret、部署或分支合并）后，按以下顺序执行一次repair-forward：
+
+| 阶段 | 结果 |
+| --- | --- |
+| 执行前门禁 | 工作区干净、HEAD=origin=`aeb464f`；只读核对migrations=21、36/36/78、example 42/regression 36、snapshots 10、releases 5、batches 2 applied+1 prepared、确定性可信批次不存在；fresh audit/plan与授权codeSha/planHash/targetFingerprint/attestation逐项一致（state=pending） |
+| pre-repair备份 | `F:/Socila/backup/db/policyops-rcl-repair-pre-20260910234300.dump`（SHA-256 `b190d1d1705b36d59f8accc0022e0eff07ab23697b1558f353afcc872780810f`，sidecar `.sha256`校验OK）；全新PG17+pgvector实例恢复并对账：`restore-reconcile` exit 0、40表全部OK、20 sequence、账本21 |
+| 受控apply | `RCL_REPAIR_ALLOW_PERSISTENT=1`仅作用于apply子进程；`node scripts/rcl-repair-forward-task34.mjs apply --i-am-authorized --plan-hash 179507da… --target-fingerprint 56c479de…`单事务成功：applied=true、ledgerDeleted=[18,19,20]、preparedBatchRolledBack=91d60c5f、entriesInserted=988、attempts=1、终态账本18条（fingerprint `25d10e627fe854a3c48b72127f325004481412f759d4c3f72e7fa6df43c580f4`）、36/36/78/42/36/10/5、archiveBatches=4 |
+| 执行后验证（12项全过） | ①migrations=18且ID恰为1～16、21、22；②ID 1～16、21、22的hash/created_at与计划ledgerKeep逐项一致；③批次91d60c5f=rolled_back且历史988 entries保留；④批次c8a7c104=restore_verified、created_by=task34-repair-forward、manifest_hash `da0ea94d…`、storage_path永久可信归档；⑤新批次entries恰好988、全部64位小写hex、entity_type+entity_id无重复、452/36/500；⑥cases/showcase/tests=36/36/78；⑦example=42、regression=36；⑧snapshots=10、releases=5；⑨`run-migrations.mjs`连续两次均no-op（账本持续18）；⑩相同授权参数复跑apply返回`noop:true`（零写入）；⑪`verify --plan`读取本次executable-write-set返回ok=true、state=repaired；⑫cases/showcase_cases/tests/policy_snapshots/jurisdiction_planning_releases规范化hash与计划businessFingerprints完全一致 |
+| post-repair备份 | `F:/Socila/backup/db/policyops-rcl-repair-post-20260910234716.dump`（SHA-256 `8303a4c35d390a8452266eb9c4f77b88b1c47ad3098a0ccca14e95a582466757`，sidecar校验OK）；第三个全新PG17+pgvector实例恢复并对账：exit 0、40表全部OK、20 sequence、账本18、可信批次entries 988 |
+| 证据 | `F:/Socila/backup/case-library/task34-r8-repair-exec-2026-09-10T15-41-40/`（pre-audit/pre-plan/executable-write-set.fresh/pre-restore-reconcile/apply-result/post-state/migration-run1&2/apply-rerun/post-verify/post-restore-reconcile/repair-execution-summary.json）；授权计划`task34-r7-fresh-plan-2026-09-10T15-15-11/` |
+| 边界 | 仅执行授权的三项写入；未修改snapshot/release/政策实体/远程库/Secret/部署；未合并分支、未创建PR；临时验证容器已清理；可信归档与pre/post备份未覆盖 |
+
+当前持久事实：migrations=18（1～16、21、22）、36/36/78、10 snapshots、5 releases、archive batches=2 applied+1 rolled_back+1 restore_verified（988 entries）。本Work Item标记**等待复审**，独立复审通过后再置Accepted。

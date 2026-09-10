@@ -17,7 +17,7 @@
 
 在任务3、任务4和持久库受控替换全部验收完成后，以一个显式merge commit把最终集成分支完整合入重构分支。只合并`codex/task34-regional-case-rebuild`，不再单独合并`codex/task3-jurisdiction-planning`或`codex/task4-case-governance`。
 
-当前阻断事实：源分支为`8b360c2`（任务4第六轮：可审计/确定性/单事务/幂等repair-forward执行器与隔离演练19场景全过；WI-20260907-03 Accepted，任务4 PRD/验收报告代码层Accepted），目标分支仍为`57f051d`且尚未合并；WI-20260907-04仍Reopened（等待用户对planHash `db55e4ab…`的repair-forward授权，持久policyops未写入）。在任务4/WI-04重新Accepted及repair-forward可信验收完成前不得执行本Work Item。
+当前阻断事实：源分支为`8b360c2`（任务4第六轮：可审计/确定性/单事务/幂等repair-forward执行器与隔离演练19场景全过；WI-20260907-03 Accepted，任务4 PRD/验收报告代码层Accepted），目标分支仍为`57f051d`且尚未合并；WI-20260907-04的repair-forward已于2026-09-10经用户明确授权在本机policyops单事务执行并12项验证全过（账本18条、批次rolled_back、可信批次+988 entries、36/36/78零变化、pre/post备份恢复对账一致），当前标记等待复审。在WI-04独立复审通过并置Accepted前不得执行本Work Item。
 
 ## 范围
 
