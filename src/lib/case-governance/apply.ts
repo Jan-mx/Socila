@@ -468,6 +468,132 @@ async function verifyNewRowHashes(
 }
 
 /**
+ * 最终状态核对（WI-20260907-03第四轮复审）：applied幂等重验与Fix 8共用。
+ * 对manifest声明的最终状态逐项核对：
+ * - 全表计数（cases/showcase/tests）=== manifest.counts（任一最终行缺失/增加即漂移）；
+ * - cases/showcase/regression tests按稳定UID/name重算完整行hash逐项比较；
+ * - example精确42条（manifest.exampleTests集合）且逐行hash一致，库中不允许
+ *   存在目标集合之外的example行。
+ * 返回mismatches（空数组=完全一致）与落库行的实际DB ID/UID/hash。
+ */
+async function checkFinalState(
+  tx: DbClient,
+  manifest: RclManifest,
+): Promise<{ mismatches: string[]; verifiedRows: RclApplyResult["verifiedRows"] }> {
+  const mismatches: string[] = [];
+  const verifiedRows: RclApplyResult["verifiedRows"] = { cases: [], showcase: [], tests: [] };
+
+  const countTable = async (table: string): Promise<number> => {
+    const r = await tx.execute(sql.raw(`SELECT count(*)::int AS n FROM ${table}`));
+    return Number((r.rows[0] as { n: number }).n ?? 0);
+  };
+  const caseN = await countTable('"cases"');
+  const showN = await countTable('"showcase_cases"');
+  const testN = await countTable('"tests"');
+  if (caseN !== manifest.counts.cases) mismatches.push(`最终cases ${caseN} ≠ manifest ${manifest.counts.cases}`);
+  if (showN !== manifest.counts.showcase) mismatches.push(`最终showcase ${showN} ≠ manifest ${manifest.counts.showcase}`);
+  if (testN !== manifest.counts.tests) mismatches.push(`最终tests ${testN} ≠ manifest ${manifest.counts.tests}`);
+
+  if (manifest.newCases.length > 0) {
+    const uids = manifest.newCases.map((c) => c.uid!).filter(Boolean);
+    const rows = uids.length
+      ? (await tx.execute(sql`SELECT * FROM "cases" WHERE case_uid IN (${sql.join(uids, sql.raw(", "))}) ORDER BY id`)).rows
+      : [];
+    if (rows.length !== manifest.newCases.length) {
+      mismatches.push(`最终cases行数 ${rows.length} ≠ manifest ${manifest.newCases.length}`);
+    }
+    for (const c of manifest.newCases) {
+      const row = rows.find((r) => (r as { case_uid: string | null }).case_uid === c.uid);
+      if (!row) {
+        mismatches.push(`最终case ${c.uid} 缺失`);
+        continue;
+      }
+      const hash = rowContentHash(row as Record<string, unknown>, CASE_INFRA_COLUMNS);
+      if (hash !== c.contentHash) {
+        mismatches.push(`最终case ${c.uid} hash漂移`);
+      } else {
+        verifiedRows.cases.push({ dbId: Number((row as { id: number }).id), uid: c.uid!, hash });
+      }
+    }
+  }
+
+  if (manifest.newShowcase.length > 0) {
+    const uids = manifest.newShowcase.map((s) => s.uid!).filter(Boolean);
+    const rows = uids.length
+      ? (await tx.execute(sql`SELECT * FROM "showcase_cases" WHERE case_uid IN (${sql.join(uids, sql.raw(", "))}) ORDER BY id`)).rows
+      : [];
+    if (rows.length !== manifest.newShowcase.length) {
+      mismatches.push(`最终showcase行数 ${rows.length} ≠ manifest ${manifest.newShowcase.length}`);
+    }
+    for (const s of manifest.newShowcase) {
+      const row = rows.find((r) => (r as { case_uid: string | null }).case_uid === s.uid);
+      if (!row) {
+        mismatches.push(`最终showcase ${s.uid} 缺失`);
+        continue;
+      }
+      const hash = rowContentHash(row as Record<string, unknown>, SHOWCASE_INFRA_COLUMNS);
+      if (hash !== s.contentHash) {
+        mismatches.push(`最终showcase ${s.uid} hash漂移`);
+      } else {
+        verifiedRows.showcase.push({ dbId: Number((row as { id: number }).id), uid: s.uid!, hash });
+      }
+    }
+  }
+
+  if (manifest.newTests.length > 0) {
+    const names = manifest.newTests.map((t) => t.uid!).filter(Boolean);
+    const rows = names.length
+      ? (await tx.execute(sql`SELECT * FROM "tests" WHERE name IN (${sql.join(names, sql.raw(", "))}) AND source = 'regression' ORDER BY id`)).rows
+      : [];
+    if (rows.length !== manifest.newTests.length) {
+      mismatches.push(`最终regression行数 ${rows.length} ≠ manifest ${manifest.newTests.length}`);
+    }
+    for (const t of manifest.newTests) {
+      const row = rows.find((r) => (r as { name: string }).name === t.uid);
+      if (!row) {
+        mismatches.push(`最终test ${t.uid} 缺失`);
+        continue;
+      }
+      const hash = testRowContentHash(row as Record<string, unknown>);
+      if (hash !== t.contentHash) {
+        mismatches.push(`最终test ${t.uid} hash漂移`);
+      } else {
+        verifiedRows.tests.push({ dbId: Number((row as { id: number }).id), uid: t.uid!, hash });
+      }
+    }
+  }
+
+  // example：最终库中example行必须与manifest.exampleTests目标集合逐一对应。
+  const exampleRows = (await tx.execute(sql`SELECT * FROM "tests" WHERE source = 'example' ORDER BY id`)).rows;
+  if (exampleRows.length !== manifest.exampleTests.length) {
+    mismatches.push(`最终example ${exampleRows.length} ≠ manifest目标 ${manifest.exampleTests.length}`);
+  }
+  for (const t of manifest.exampleTests) {
+    const row = exampleRows.find(
+      (r) =>
+        String((r as { name: string }).name) === t.uid &&
+        String((r as { jurisdiction_code: string | null }).jurisdiction_code ?? "") === String(t.jurisdictionCode ?? ""),
+    );
+    if (!row) {
+      mismatches.push(`最终example ${t.uid} 缺失`);
+      continue;
+    }
+    const hash = testRowContentHash(row as Record<string, unknown>);
+    if (hash !== t.contentHash) mismatches.push(`最终example ${t.uid} hash漂移`);
+  }
+  for (const row of exampleRows) {
+    const found = manifest.exampleTests.some(
+      (t) =>
+        t.uid === String((row as { name: string }).name) &&
+        String(t.jurisdictionCode ?? "") === String((row as { jurisdiction_code: string | null }).jurisdiction_code ?? ""),
+    );
+    if (!found) mismatches.push(`最终example ${String((row as { name: string }).name)} 不在manifest目标集合`);
+  }
+
+  return { mismatches, verifiedRows };
+}
+
+/**
  * 受控替换apply（RCL-FR-018/019/020）：
  * 状态条件更新 restore_verified→applying→applied；FOR UPDATE + 唯一约束并发裁决。
  */
@@ -484,7 +610,22 @@ export async function executeRclApply(input: RclApplyInput): Promise<RclApplyRes
 
     // 1) 行锁 + 状态机：restore_verified → applying。
     const batch = await lockBatch(tx, input.batchId);
+    if (batch.manifestHash !== input.manifest.manifestHash) {
+      throw new RclApplyRejectedError(
+        `manifest哈希不匹配：批次=${batch.manifestHash}，输入=${input.manifest.manifestHash}`,
+      );
+    }
     if (batch.status === "applied") {
+      // WI-20260907-03第四轮复审：applied不得直接noop——必须先重验manifest正文
+      // hash、批次hash、最终N/36/N+42、42条example与cases/showcase/regression
+      // 逐行hash；完全一致才返回noop。任一最终行缺失/增加/漂移返回稳定错误，
+      // 且不得再次删除或插入（零写入）。
+      const { mismatches, verifiedRows } = await checkFinalState(tx, input.manifest);
+      if (mismatches.length > 0) {
+        throw new RclApplyRejectedError(
+          `批次已applied但最终状态漂移（RCL-NFR-006 fail-closed，零写入）：${mismatches.slice(0, 10).join("；")}`,
+        );
+      }
       return {
         deletedCases: 0,
         deletedShowcases: 0,
@@ -493,15 +634,10 @@ export async function executeRclApply(input: RclApplyInput): Promise<RclApplyRes
         insertedShowcases: 0,
         insertedTests: 0,
         noop: true,
-        verifiedRows: EMPTY_VERIFIED_ROWS,
+        verifiedRows,
       };
     }
     assertRestoreVerified(batch);
-    if (batch.manifestHash !== input.manifest.manifestHash) {
-      throw new RclApplyRejectedError(
-        `manifest哈希不匹配：批次=${batch.manifestHash}，输入=${input.manifest.manifestHash}`,
-      );
-    }
     const toApplying = await tx
       .update(caseArchiveBatches)
       .set({ status: "applying" })

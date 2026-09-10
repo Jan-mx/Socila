@@ -214,10 +214,14 @@ describe("0015/0016 历史SQL哈希不变量（JRP-AC-012）", () => {
     const sha = (p: string) =>
       createHash("sha256").update(readFileSync(p, "utf8")).digest("hex");
 
-    // 基线：任务3分支引入0015、任务4分支引入0016时的内容哈希。
+    // 基线：任务3分支引入0015、任务4分支引入0016时的**Git blob（LF）内容哈希**。
+    // WI-20260907-03第四轮复审：仓库根.gitattributes固定 drizzle/*.sql 为
+    // text eol=lf 后，工作树文件恒为LF，Drizzle读取hash === Git blob SHA ===
+    // 账本规范hash（持久库账本ID 15/16即3ae5b95f…/3a9adc91…）。
+    // 旧基线4ac11ead…是core.autocrlf=true把工作树写成CRLF时的伪hash，已废弃。
     // 若历史语义被改动，此断言失败；哈希值随文件内容变化而更新属于警示信号。
     const h15 = sha(MIGRATION_0015);
-    expect(h15).toBe("4ac11eadb5dbc2fd2d4158bfd4ce7584e425d66116cc533cc148cbfff47bd801");
+    expect(h15).toBe("3ae5b95f3f28ef2de1f11a1115b6dd396e3fa8b374cab0b1b8aa1a4589529d87");
 
     const h16 = sha(MIGRATION_0016);
     expect(h16).toBe("3a9adc91a1bfe7ddc895763c61a32811e4883458240284879ed5a5c3c130dfd5");

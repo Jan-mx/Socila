@@ -110,15 +110,22 @@ async function makeManifest(overrides: Partial<RclManifest> = {}): Promise<RclMa
   newCase.contentHash = newCaseDbRowHash(newCase, "RCL-GEN-1.0");
   newShowcase.contentHash = newShowcaseDbRowHash(newShowcase, "RCL-GEN-1.0");
   newTest.contentHash = newTestDbRowHash(newTest);
+  // WI-20260907-03第四轮复审：manifest的exampleTests必须与库中实际example行
+  // 一致（applied幂等重验按manifest目标集合逐行核对example，含行级hash）。
+  const exampleDbRows = (await db.execute(sql`SELECT * FROM "tests" WHERE source = 'example' ORDER BY id`)).rows;
+  const exampleTests = exampleDbRows.map((r) => ({
+    rowId: Number((r as { id: number }).id),
+    uid: String((r as { name: string }).name),
+    jurisdictionCode: String((r as { jurisdiction_code: string | null }).jurisdiction_code ?? ""),
+    contentHash: testRowContentHash(r as Record<string, unknown>),
+  }));
   const m = buildRclManifest({
     algorithmVersion: "RCL-MANIFEST-1.0",
     generatorVersion: "RCL-GEN-1.0",
     newCases: [newCase],
     newShowcase: [newShowcase],
     newTests: [newTest],
-    exampleTests: [
-      { rowId: 4, uid: "示例1", contentHash: H("ex-1"), jurisdictionCode: "CN" },
-    ],
+    exampleTests,
     exampleSync: { retained: [], updated: [], added: [], deleted: [] },
     oldTargets: {
       cases: oldCaseTargets,
@@ -148,6 +155,13 @@ describe("RCL apply（FR-018/019/020、AC-003/010/011）", () => {
   });
 
   async function seedFixture(): Promise<{ batchId: string; manifest: RclManifest }> {
+    // WI-20260907-03第四轮复审：applied幂等重验按manifest最终计数（N/36/N+42）
+    // 核对全表，因此fixture必须自洽——清理seed业务行（cases/showcase/regression），
+    // 保留42条DSL example（manifest.exampleTests由实际example行构建，同步核对）。
+    await db.delete(cases);
+    await db.delete(showcaseCases);
+    await db.delete(tests).where(sql`source = 'regression'`);
+
     // 快照行（showcase.snapshot_id 外键，0016 RESTRICT）。
     await db
       .insert(policySnapshots)
@@ -633,5 +647,69 @@ describe("RCL apply（FR-018/019/020、AC-003/010/011）", () => {
     });
     expect(result.ok).toBe(false);
     expect(result.mismatches.some((m) => /hash|哈希/i.test(m))).toBe(true);
+  });
+
+  // ─── RCL第四轮复审Red：applied幂等重验（WI-20260907-03）───────────────────
+  // batch.status=applied不得直接noop：先重验manifest正文hash、批次hash、
+  // 最终N/36/N+42、42条example与cases/showcase/regression逐行hash；
+  // 完全一致才noop；任一最终行缺失/增加/漂移返回稳定错误且不得再次删除/插入。
+
+  it("首次apply后篡改落库case → 复跑apply返回稳定错误（当前直接noop→Red）", async () => {
+    const { batchId, manifest } = await seedFixture();
+    await executeRclApply({ db, manifest, batchId, actor: "test-admin" });
+    await db.update(cases).set({ governanceReason: "TAMPERED-AFTER-APPLY" }).where(eq(cases.caseUid, "RPC-310000-SH-NEW-1-V1"));
+    const entriesBefore = (await db.select().from(caseArchiveEntries)).length;
+    await expect(
+      executeRclApply({ db, manifest, batchId, actor: "test-admin" }),
+    ).rejects.toThrow(/applied但最终状态漂移|漂移/);
+    // 不得再次删除或插入：新case仍存在、旧行不复活、entries不新增。
+    expect((await db.select().from(cases).where(eq(cases.caseUid, "RPC-310000-SH-NEW-1-V1")))).toHaveLength(1);
+    expect((await db.select().from(cases).where(inArray(cases.id, [900, 901])))).toHaveLength(0);
+    expect((await db.select().from(caseArchiveEntries)).length).toBe(entriesBefore);
+    const batchAfter = await db.select().from(caseArchiveBatches).where(eq(caseArchiveBatches.id, batchId));
+    expect(batchAfter[0].status).toBe("applied");
+  });
+
+  it("首次apply后篡改落库showcase → 复跑apply返回稳定错误（当前直接noop→Red）", async () => {
+    const { batchId, manifest } = await seedFixture();
+    await executeRclApply({ db, manifest, batchId, actor: "test-admin" });
+    await db.update(showcaseCases).set({ title: "TAMPERED-TITLE" }).where(eq(showcaseCases.caseUid, "RPC-310000-SH-NEW-1-V1"));
+    await expect(
+      executeRclApply({ db, manifest, batchId, actor: "test-admin" }),
+    ).rejects.toThrow(/applied但最终状态漂移|漂移/);
+    expect((await db.select().from(showcaseCases).where(eq(showcaseCases.caseUid, "RPC-310000-SH-NEW-1-V1")))).toHaveLength(1);
+  });
+
+  it("首次apply后篡改落库regression test → 复跑apply返回稳定错误（当前直接noop→Red）", async () => {
+    const { batchId, manifest } = await seedFixture();
+    await executeRclApply({ db, manifest, batchId, actor: "test-admin" });
+    await db.execute(sql`UPDATE "tests" SET expected = '{"calc":{}}'::jsonb WHERE name = 'RPCT-310000-SH-NEW-1-V1' AND source = 'regression'`);
+    await expect(
+      executeRclApply({ db, manifest, batchId, actor: "test-admin" }),
+    ).rejects.toThrow(/applied但最终状态漂移|漂移/);
+    const rows = await db.execute(sql`SELECT count(*)::int AS n FROM "tests" WHERE name = 'RPCT-310000-SH-NEW-1-V1' AND source = 'regression'`);
+    expect(Number((rows.rows[0] as { n: number }).n)).toBe(1);
+  });
+
+  it("首次apply后篡改落库example → 复跑apply返回稳定错误（当前直接noop→Red）", async () => {
+    const { batchId, manifest } = await seedFixture();
+    await executeRclApply({ db, manifest, batchId, actor: "test-admin" });
+    // 篡改manifest目标集合中的一条example业务字段。
+    const target = manifest.exampleTests[0];
+    const orig = (await db.execute(sql`SELECT * FROM "tests" WHERE name = ${target.uid} AND jurisdiction_code = ${target.jurisdictionCode} AND source = 'example'`)).rows[0] as Record<string, unknown>;
+    expect(orig).toBeTruthy();
+    const tampered = { ...orig, input: { user: { basic: { gender: "female", birth_year: 1990 } } } };
+    try {
+      await db.execute(sql`UPDATE "tests" SET input = ${JSON.stringify(tampered.input)}::jsonb WHERE id = ${Number(orig.id)}`);
+      await expect(
+        executeRclApply({ db, manifest, batchId, actor: "test-admin" }),
+      ).rejects.toThrow(/applied但最终状态漂移|漂移/);
+      // 未再次删除/插入example（42条仍全在）。
+      const exCount = (await db.execute(sql`SELECT count(*)::int AS n FROM "tests" WHERE source = 'example'`)).rows[0] as { n: number };
+      expect(exCount.n).toBe(manifest.exampleTests.length);
+    } finally {
+      // 恢复原始example内容（黄金重放与后续测试依赖seed示例）。
+      await db.execute(sql`UPDATE "tests" SET input = ${JSON.stringify(orig.input)}::jsonb WHERE id = ${Number(orig.id)}`);
+    }
   });
 });

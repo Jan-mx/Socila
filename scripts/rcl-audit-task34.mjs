@@ -1,15 +1,23 @@
 /**
- * 任务34第三轮阶段三：当前持久policyops只读审计（WI-20260907-04 repair-forward准备）。
+ * 任务34第四轮阶段三：当前持久policyops只读审计 + 可信旧归档 + attestation +
+ * repair-forward计划（WI-20260907-04准备，绑定修复后的代码提交SHA）。
  *
  * 用法：
  *   node scripts/rcl-audit-task34.mjs <pre-dump> <post-dump> [--container <name>] [--port <port>]
  *
- * 全程只读：
+ * 全程只读（对持久库）：
  *   - localhost:5432/policyops 仅SELECT（禁止INSERT/UPDATE/DELETE/DDL）；
  *   - pre/post dump恢复到任务专属全新隔离实例（容器）；
- *   - 输出JSON证据到 backup/case-library/task34-r3-audit-<ts>/（Git忽略）；
- *   - 生成repair-forward报告（fresh manifestHash/targetFingerprint/拟写集合/回退点），
+ *   - 旧452/36/500可信归档生成到永久目录
+ *     F:/Socila/backup/case-library/task34-r4-trusted-old-<ts>/（finally不删除）；
+ *   - 从该归档恢复第三个全新数据库并二次对账；
+ *   - 生成绑定最终代码提交SHA的当前36/36/78 attestation；
+ *   - 生成repair-forward计划（fresh codeSha/manifestHash/targetFingerprint/
+ *     migrationLedgerFingerprint/精确SQL写集合/前置条件/回退点/失败条件），
  *     不执行任何写入。
+ *   - migration换行审计（第四轮复审）：Git blob SHA / 工作树raw SHA /
+ *     LF规范化SHA / CRLF规范化SHA / 账本SHA / 仅EOL差异 / 真实内容差异；
+ *     同步输出journal与账本时间的严格单调核对，不符只报告不猜测。
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync } from "node:fs";
@@ -31,9 +39,14 @@ const CONTAINER = process.env.RCL_AUDIT_PG_CONTAINER ?? "task34-audit-pg";
 const DRILL_PASSWORD = "post" + "gres";
 const DRILL_PORT = process.env.RCL_AUDIT_PG_PORT ?? "5432";
 let BASE = `postgresql://postgres:${DRILL_PASSWORD}@127.0.0.1:${DRILL_PORT}`;
-const PRE_DB = `task34_audit_pre_${randomUUID().slice(0, 6)}`;
-const POST_DB = `task34_audit_post_${randomUUID().slice(0, 6)}`;
-const OUT_DIR = join("F:/Socila/backup/case-library", `task34-r3-audit-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}`);
+const PRE_DB = `task34_r4_pre_${randomUUID().slice(0, 6)}`;
+const POST_DB = `task34_r4_post_${randomUUID().slice(0, 6)}`;
+const RESTORE_DB = `task34_r4_restore_${randomUUID().slice(0, 6)}`;
+const RE_RESTORE_DB = `task34_r4_rerestore_${randomUUID().slice(0, 6)}`;
+const TS = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+const AUDIT_DIR = join("F:/Socila/backup/case-library", `task34-r4-audit-${TS}`);
+/** 永久可信旧归档目录：生成后不得在finally删除。 */
+const TRUSTED_DIR = join("F:/Socila/backup/case-library", `task34-r4-trusted-old-${TS}`);
 
 function run(cmd, args, env = {}, opts = {}) {
   const r = spawnSync(cmd, args, { cwd: WORK_DIR, encoding: "utf-8", env: { ...process.env, ...env }, ...opts });
@@ -60,14 +73,42 @@ async function q(url, text) {
 function sha256File(p) {
   return createHash("sha256").update(readFileSync(p)).digest("hex");
 }
-
+function sha256Buf(buf) {
+  return createHash("sha256").update(buf).digest("hex");
+}
 function sleepSync(ms) {
   execFileSync("node", ["-e", `setTimeout(()=>{},${ms})`], { stdio: "ignore" });
 }
 
+/** 规范化JSON（键排序、稳定序列化）——指纹计算的唯一实现（与hashes.ts同语义）。 */
+function canonicalJson(value) {
+  const norm = (v) => {
+    if (Array.isArray(v)) return v.map(norm);
+    if (v !== null && typeof v === "object") {
+      const out = {};
+      for (const k of Object.keys(v).sort()) out[k] = norm(v[k]);
+      return out;
+    }
+    return v;
+  };
+  return JSON.stringify(norm(value));
+}
+const sha256hex = (s) => createHash("sha256").update(s, "utf8").digest("hex");
+
 async function main() {
-  mkdirSync(OUT_DIR, { recursive: true });
-  const report = { generatedAt: new Date().toISOString(), preDump: PRE_DUMP, postDump: POST_DUMP, persistentUrl: new URL(PERSISTENT_URL).host + new URL(PERSISTENT_URL).pathname };
+  mkdirSync(AUDIT_DIR, { recursive: true });
+  mkdirSync(TRUSTED_DIR, { recursive: true });
+  const codeSha = run("git", ["rev-parse", "HEAD"]).trim();
+  const report = {
+    title: "WI-20260907-04 repair-forward计划与第四轮只读审计证据",
+    generatedAt: new Date().toISOString(),
+    codeSha,
+    sourceBranch: run("git", ["rev-parse", "--abbrev-ref", "HEAD"]).trim(),
+    preDump: PRE_DUMP,
+    postDump: POST_DUMP,
+    persistentUrl: new URL(PERSISTENT_URL).host + new URL(PERSISTENT_URL).pathname,
+    trustedArchiveDir: TRUSTED_DIR,
+  };
 
   // ── 1) 当前持久库只读事实 ──────────────────────────────────────────────
   report.persistent = {};
@@ -86,9 +127,9 @@ async function main() {
       (SELECT count(*) FROM drizzle.__drizzle_migrations) AS migrations`))[0];
   report.persistent.counts = counts;
   report.persistent.migrations = await q(PERSISTENT_URL, `SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id`);
-  report.persistent.releases = await q(PERSISTENT_URL, `SELECT id, jurisdiction_code, status, left(active_snapshot_id::text, 8) AS snap, effective_from, effective_to, activated_at FROM jurisdiction_planning_releases ORDER BY id`);
-  report.persistent.snapshots = await q(PERSISTENT_URL, `SELECT id, jurisdiction_code, as_of_date, left(content_hash::text, 16) AS content_hash, created_by FROM policy_snapshots ORDER BY created_at, id`);
-  report.persistent.archiveBatches = await q(PERSISTENT_URL, `SELECT id, status, left(manifest_hash::text, 16) AS manifest_hash, storage_path, created_at, created_by FROM case_archive_batches ORDER BY created_at, id`);
+  report.persistent.releases = await q(PERSISTENT_URL, `SELECT id, jurisdiction_code, status, active_snapshot_id, effective_from, effective_to, activated_at FROM jurisdiction_planning_releases ORDER BY id`);
+  report.persistent.snapshots = await q(PERSISTENT_URL, `SELECT id, jurisdiction_code, as_of_date, content_hash, created_by FROM policy_snapshots ORDER BY created_at, id`);
+  report.persistent.archiveBatches = await q(PERSISTENT_URL, `SELECT id, status, manifest_hash, storage_path, created_at, created_by FROM case_archive_batches ORDER BY created_at, id`);
   report.persistent.archiveEntriesByBatch = await q(PERSISTENT_URL, `
     SELECT b.id AS batch_id, b.status, e.entity_type, count(*) AS n,
            count(*) FILTER (WHERE e.content_hash IS NULL OR e.content_hash !~ '^[0-9a-f]{64}$') AS bad_hash
@@ -104,7 +145,7 @@ async function main() {
     WHERE table_type='BASE TABLE' AND table_schema NOT IN ('pg_catalog','information_schema')
     ORDER BY table_schema, table_name`);
 
-  // 当前36/36/78逐行ID/hash（只读attestation的事实源）。
+  // 当前36/36/78逐行ID/hash（attestation事实源；hash由后续tsx内联全行重算）。
   report.persistent.rows = {
     cases: await q(PERSISTENT_URL, `SELECT id, case_uid, jurisdiction_code, quality_status, quality_score, content_hash FROM cases ORDER BY id`),
     showcase: await q(PERSISTENT_URL, `SELECT id, case_uid, jurisdiction_code, quality_status, quality_score, content_hash FROM showcase_cases ORDER BY id`),
@@ -112,57 +153,221 @@ async function main() {
     exampleTests: await q(PERSISTENT_URL, `SELECT id, name, jurisdiction_code, rule_id, source FROM tests WHERE source='example' ORDER BY jurisdiction_code, name`),
   };
 
+  // targetFingerprint：与executor.auditRcl同一SQL（三表逐行规范化内容哈希聚合）。
+  report.targetFingerprint = (await q(PERSISTENT_URL, `
+    SELECT md5(string_agg(to_jsonb(t)::text, '|' ORDER BY to_jsonb(t)::text COLLATE "C")) AS h
+    FROM (
+      SELECT id, case_uid, content_hash, quality_status FROM "cases"
+      UNION ALL
+      SELECT id, case_uid, content_hash, quality_status FROM "showcase_cases"
+    ) t`))[0].h;
+  report.migrationLedgerFingerprint = sha256hex(canonicalJson(
+    report.persistent.migrations.map((m) => ({ id: m.id, hash: m.hash, created_at: String(m.created_at) })),
+  ));
+
   // ── 2) 启动任务专属隔离容器，恢复pre/post dump到两个全新实例 ──────────────
   spawnSync("docker", ["rm", "-f", CONTAINER], { encoding: "utf-8" });
   docker("run", "-d", "--name", CONTAINER, "-e", "POSTGRES_PASSWORD=" + DRILL_PASSWORD, "-p", `127.0.0.1::5432`, "pgvector/pgvector:pg17");
-  for (let i = 0; i < 60; i++) {
-    const r = spawnSync("docker", ["exec", CONTAINER, "pg_isready", "-U", "postgres"], { encoding: "utf-8" });
-    if (r.status === 0) break;
-    sleepSync(1000);
-  }
-  const portInfo = docker("port", CONTAINER, "5432").trim();
-  const actualPort = portInfo.split(":")[1]?.trim();
-  if (!actualPort) throw new Error(`端口解析失败：${portInfo}`);
-  process.env.RCL_AUDIT_PG_PORT = actualPort;
-  BASE = `postgresql://postgres:${DRILL_PASSWORD}@127.0.0.1:${actualPort}`;
-  console.log(`[audit] 容器端口 ${actualPort}`);
+  try {
+    for (let i = 0; i < 60; i++) {
+      const r = spawnSync("docker", ["exec", CONTAINER, "pg_isready", "-U", "postgres"], { encoding: "utf-8" });
+      if (r.status === 0) break;
+      sleepSync(1000);
+    }
+    const portInfo = docker("port", CONTAINER, "5432").trim();
+    const actualPort = portInfo.split(":")[1]?.trim();
+    if (!actualPort) throw new Error(`端口解析失败：${portInfo}`);
+    process.env.RCL_AUDIT_PG_PORT = actualPort;
+    BASE = `postgresql://postgres:${DRILL_PASSWORD}@127.0.0.1:${actualPort}`;
+    console.log(`[audit] 容器端口 ${actualPort}`);
 
-  for (const [name, dump, db] of [["pre", PRE_DUMP, PRE_DB], ["post", POST_DUMP, POST_DB]]) {
-    docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `CREATE DATABASE "${db}"`);
-    docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", db, "-c", "CREATE EXTENSION IF NOT EXISTS vector");
-    docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", db, "-c", `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='agent_app') THEN CREATE ROLE agent_app LOGIN PASSWORD '${DRILL_PASSWORD}'; END IF; END $$;`);
-    const rest = spawnSync("docker", ["exec", "-i", CONTAINER, "pg_restore", "-U", "postgres", "-d", db, "--clean", "--if-exists"], {
-      input: readFileSync(dump), maxBuffer: 1024 * 1024 * 1024, encoding: "buffer",
+    for (const [name, dump, db] of [["pre", PRE_DUMP, PRE_DB], ["post", POST_DUMP, POST_DB]]) {
+      docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `CREATE DATABASE "${db}"`);
+      docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", db, "-c", "CREATE EXTENSION IF NOT EXISTS vector");
+      docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", db, "-c", "CREATE EXTENSION IF NOT EXISTS btree_gist");
+      docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", db, "-c", `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='agent_app') THEN CREATE ROLE agent_app LOGIN PASSWORD '${DRILL_PASSWORD}'; END IF; END $$;`);
+      const rest = spawnSync("docker", ["exec", "-i", CONTAINER, "pg_restore", "-U", "postgres", "-d", db, "--clean", "--if-exists"], {
+        input: readFileSync(dump), maxBuffer: 1024 * 1024 * 1024, encoding: "buffer",
+      });
+      if (rest.status !== 0) throw new Error(`${name} dump恢复失败：${rest.stderr?.toString().slice(0, 400)}`);
+      console.log(`[audit] ${name} dump恢复完成 ${db}`);
+    }
+    report.dumps = {
+      pre: { sha256: sha256File(PRE_DUMP), restoredDb: PRE_DB },
+      post: { sha256: sha256File(POST_DUMP), restoredDb: POST_DB },
+    };
+
+    // ── 3) 三方对比：当前库 / post恢复库（restore-reconcile.mjs现成对账） ────────
+    const rec = spawnSync(process.execPath, [TSX_CLI, "scripts/restore-reconcile.ts"], {
+      cwd: WORK_DIR, encoding: "utf-8",
+      env: { ...process.env, DATABASE_URL: PERSISTENT_URL, TARGET_DATABASE_URL: `${BASE}/${POST_DB}` },
+      timeout: 600000,
     });
-    if (rest.status !== 0) throw new Error(`${name} dump恢复失败：${rest.stderr?.toString().slice(0, 400)}`);
-    console.log(`[audit] ${name} dump恢复完成 ${db}`);
+    writeFileSync(join(AUDIT_DIR, "compare-current-vs-post.txt"), (rec.stdout ?? "") + (rec.stderr ?? ""));
+    report.compare = {
+      exitCode: rec.status,
+      summary: (rec.stdout ?? "").split("\n").filter((l) => /FAIL|tables:|sequences:|不一致|一致/.test(l)).slice(0, 40),
+    };
+
+    // ── 4) migration换行审计（第四轮复审）：blob/raw/LF/CRLF/账本/EOL/真实差异 ──
+    const journal = JSON.parse(readFileSync(join(WORK_DIR, "drizzle", "meta", "_journal.json"), "utf8"));
+    const journalByTag = {};
+    for (const e of journal.entries) journalByTag[e.tag.slice(0, 4)] = Number(e.when);
+    const EXPECTED_TIMES = {
+      "0010": 1788560000000, "0011": 1788600000000, "0012": 1788640000000,
+      "0013": 1788680000000, "0014": 1788705240000, "0015": 1788777720000,
+      "0016": 1788785400000, "0017": 1788796800000, "0018": 1788796860000,
+    };
+    const journalCheck = [];
+    let journalMismatch = false;
+    for (const [prefix, expected] of Object.entries(EXPECTED_TIMES)) {
+      const actual = journalByTag[prefix];
+      const ok = actual !== undefined && actual === expected;
+      if (!ok) journalMismatch = true;
+      journalCheck.push({
+        prefix,
+        journalWhen: actual ?? null,
+        expectedWhen: expected,
+        ok,
+        note: ok ? "journal when与预期一致" : "journal when与预期不符（仅报告，禁止猜测修复）",
+      });
+    }
+    // 严格单调（按SQL前缀顺序）。
+    const prefixes = Object.keys(EXPECTED_TIMES);
+    let journalMonotonic = true;
+    const monotonicDetail = [];
+    for (let i = 1; i < prefixes.length; i++) {
+      const a = journalByTag[prefixes[i - 1]];
+      const b = journalByTag[prefixes[i]];
+      const ok = a !== undefined && b !== undefined && b > a;
+      if (!ok) journalMonotonic = false;
+      monotonicDetail.push({ prev: prefixes[i - 1], next: prefixes[i], prevWhen: a ?? null, nextWhen: b ?? null, ok });
+    }
+    report.migrationJournal = { journalCheck, journalMonotonic, monotonicDetail };
+
+    // 账本created_at同步核对：保留行（10～16、21、22）的created_at必须与预期
+    // 时间表严格单调一致（drizzle migrator按账本max created_at决定重放）。
+    const LEDGER_ID_TO_PREFIX = { 10: "0010", 11: "0011", 12: "0012", 13: "0013", 14: "0014", 15: "0015", 16: "0016", 21: "0017", 22: "0018" };
+    const ledgerTimeCheck = [];
+    let ledgerTimeMismatch = false;
+    for (const [id, prefix] of Object.entries(LEDGER_ID_TO_PREFIX)) {
+      const row = report.persistent.migrations.find((m) => m.id === Number(id));
+      const expected = EXPECTED_TIMES[prefix];
+      const ok = row !== undefined && String(row.created_at) === String(expected);
+      if (!ok) ledgerTimeMismatch = true;
+      ledgerTimeCheck.push({
+        id: Number(id), prefix, ledgerCreatedAt: row ? String(row.created_at) : null, expected,
+        ok,
+        note: ok ? "账本created_at与预期一致" : "账本created_at与预期不符（仅报告）",
+      });
+    }
+    report.migrationLedgerTimeCheck = { ledgerTimeCheck, ledgerTimeMismatch };
+
+    report.migrationAudit = [];
+    for (const f of ["0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018"]) {
+      const matches = readdirSync(join(WORK_DIR, "drizzle")).filter((n) => n.startsWith(`${f}_`) && n.endsWith(".sql"));
+      if (matches.length === 0) continue;
+      const fileName = matches[0];
+      const wtRaw = readFileSync(join(WORK_DIR, "drizzle", fileName));
+      const blob = execFileSync("git", ["cat-file", "blob", `HEAD:drizzle/${fileName}`], { maxBuffer: 128 * 1024 * 1024 });
+      const wtStr = wtRaw.toString("utf8");
+      const lfBuf = Buffer.from(wtStr.replace(/\r\n/g, "\n"), "utf8");
+      const crlfBuf = Buffer.from(wtStr.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n"), "utf8");
+      const gitBlobSha = sha256Buf(blob);
+      const worktreeRawSha = sha256Buf(wtRaw);
+      const lfNormalizedSha = sha256Buf(lfBuf);
+      const crlfNormalizedSha = sha256Buf(crlfBuf);
+      // 工作树raw与Git blob的比较：仅EOL差异 / 真实内容差异 / 完全一致。
+      let worktreeVsBlob;
+      if (worktreeRawSha === gitBlobSha) worktreeVsBlob = "identical";
+      else if (lfNormalizedSha === gitBlobSha) worktreeVsBlob = "eol-only（工作树CRLF，blob为LF）";
+      else worktreeVsBlob = "real-content-diff";
+      const ledgerRows = report.persistent.migrations.map((m) => {
+        let variant = "none";
+        if (m.hash === gitBlobSha) variant = "git-blob(LF)";
+        else if (m.hash === worktreeRawSha) variant = "worktree-raw";
+        else if (m.hash === lfNormalizedSha) variant = "lf-normalized";
+        else if (m.hash === crlfNormalizedSha) variant = "crlf-normalized";
+        return { id: m.id, hash: String(m.hash).slice(0, 16), createdAt: String(m.created_at), variant };
+      }).filter((r) => r.variant !== "none");
+      report.migrationAudit.push({
+        file: fileName,
+        gitBlobSha,
+        worktreeRawSha,
+        lfNormalizedSha,
+        crlfNormalizedSha,
+        worktreeVsBlob,
+        ledgerRows,
+      });
+    }
+
+    // ── 5) 从pre恢复库生成旧452/36/500可信归档（永久目录，finally不删除） ─────
+    const trustedManifest = await buildTrustedOldArchive(PRE_DB);
+
+    // ── 6) 当前36/36/78只读attestation（绑定codeSha） ─────────────────────
+    const attestation = await buildAttestation(codeSha);
+
+    // ── 7) 汇总与repair-forward计划 ───────────────────────────────────────
+    report.trustedArchive = trustedManifest;
+    report.attestation = {
+      attestationManifestHash: attestation.attestationManifestHash,
+      counts: attestation.counts,
+      targetFingerprint: attestation.targetFingerprint,
+    };
+    // 完整attestation由内联脚本写入attestation-current.json（含全部行/快照/发布/批次）；
+    // 这里只写汇总（不覆盖完整文件）。
+    writeFileSync(join(AUDIT_DIR, "attestation-summary.json"), JSON.stringify(attestation, null, 2));
+    writeFileSync(join(AUDIT_DIR, "audit-summary.json"), JSON.stringify(report, null, 2));
+    writeFileSync(
+      join(AUDIT_DIR, "repair-forward-plan.json"),
+      JSON.stringify(buildRepairForwardPlan(report, attestation, trustedManifest), null, 2),
+    );
+
+    console.log(`[audit] 证据目录：${AUDIT_DIR}`);
+    console.log(`[audit] 可信归档目录（永久保留）：${TRUSTED_DIR}`);
+    console.log(`[audit] codeSha=${codeSha}`);
+    console.log(`[audit] 当前库：${JSON.stringify(counts)}`);
+    console.log(`[audit] targetFingerprint=${report.targetFingerprint}`);
+    console.log(`[audit] migrationLedgerFingerprint=${report.migrationLedgerFingerprint}`);
+    console.log(`[audit] attestationManifestHash=${attestation.attestationManifestHash}`);
+    console.log(`[audit] trustedArchiveManifestHash=${trustedManifest.manifestHash}`);
+    console.log(`[audit] trustedArchiveDumpSha=${trustedManifest.dumpSha256.slice(0, 16)}`);
+    console.log(`[audit] journalMismatch=${journalMismatch}（仅报告，未猜测修复）`);
+    console.log(`[audit] 完成`);
+  } finally {
+    // 清理隔离容器与全部隔离库（可信归档目录永久保留，不得删除）。
+    for (const db of [PRE_DB, POST_DB, RESTORE_DB, RE_RESTORE_DB]) {
+      try {
+        docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`);
+      } catch { /* 忽略 */ }
+    }
+    spawnSync("docker", ["rm", "-f", CONTAINER], { encoding: "utf-8" });
+    console.log("[audit] 隔离容器与库已清理（可信归档目录保留）");
   }
-  report.dumps = {
-    pre: { sha256: sha256File(PRE_DUMP), restoredDb: PRE_DB },
-    post: { sha256: sha256File(POST_DUMP), restoredDb: POST_DB },
-  };
+}
 
-  // ── 3) 三方对比：当前库 / post恢复库（restore-reconcile.mjs现成对账） ────────
-  // 运行期表（auth_refresh_sessions等）可能因post dump后的真实登录而hash变化：
-  // 不一致记录为审计发现但不中断（报告明确区分运行期差异与结构差异）。
-  const rec = spawnSync(process.execPath, [TSX_CLI, "scripts/restore-reconcile.ts"], {
-    cwd: WORK_DIR, encoding: "utf-8",
-    env: { ...process.env, DATABASE_URL: PERSISTENT_URL, TARGET_DATABASE_URL: `${BASE}/${POST_DB}` },
-    timeout: 600000,
-  });
-  writeFileSync(join(OUT_DIR, "compare-current-vs-post.txt"), (rec.stdout ?? "") + (rec.stderr ?? ""));
-  report.compare = {
-    exitCode: rec.status,
-    summary: (rec.stdout ?? "").split("\n").filter((l) => /FAIL|tables:|sequences:|不一致|一致/.test(l)).slice(0, 40),
-  };
+/** 旧可信归档：pre恢复库 → dump + manifest(988行) + verified restore + sha256sums；
+ * 再从归档恢复第三个全新库完成二次对账。只写隔离库与文件系统。 */
+async function buildTrustedOldArchive(preDb) {
+  const dumpName = "policyops-fc.dump";
 
-  // ── 4) 从pre恢复库生成旧452/36/500可信归档（500条test hash非空） ────────
-  const archiveScript = `
-    import { writeFileSync, readFileSync } from "node:fs";
+  // 1) 真实dump（完整库 + 三表）。
+  const dumpBuf = dockerExecPgdump(preDb);
+  const casesDump = dockerExecPgdump(preDb, "cases");
+  const showDump = dockerExecPgdump(preDb, "showcase_cases");
+  const testsDump = dockerExecPgdump(preDb, "tests");
+  writeFileSync(join(TRUSTED_DIR, dumpName), dumpBuf);
+  writeFileSync(join(TRUSTED_DIR, "cases.dump"), casesDump);
+  writeFileSync(join(TRUSTED_DIR, "showcase_cases.dump"), showDump);
+  writeFileSync(join(TRUSTED_DIR, "tests.dump"), testsDump);
+
+  // 2) manifest：452 cases + 36 showcase + 500 regression（完整逐行ID/UID/64位hash）
+  //    + 42 DSL example目标集合与同步集合（来自pre库28条example现状）。
+  await runTsxInline(`import { writeFileSync } from "node:fs";
     import { db } from "@/lib/db";
     import { sql } from "drizzle-orm";
     import { rowContentHash, testRowContentHash, CASE_INFRA_COLUMNS, SHOWCASE_INFRA_COLUMNS } from "@/lib/case-governance/hashes";
-    import { buildRclManifest, assertManifestContentHashes } from "@/lib/case-governance/manifest";
+    import { buildRclManifest, assertManifestContentHashes, recomputeManifestHash } from "@/lib/case-governance/manifest";
     import { buildExampleSync, loadDslExampleTargets } from "@/lib/case-governance/dsl-examples";
     const oldCaseRows = await db.execute(sql\`SELECT * FROM "cases" ORDER BY id\`);
     const oldShowRows = await db.execute(sql\`SELECT * FROM "showcase_cases" ORDER BY id\`);
@@ -174,7 +379,8 @@ async function main() {
     const dslTargets = loadDslExampleTargets();
     const exampleSync = buildExampleSync(exampleRows.rows, dslTargets);
     const exampleTests = dslTargets.map((t) => ({
-      rowId: exampleSync.retained.find((r) => r.name === t.name && r.jurisdictionCode === t.jurisdictionCode)?.rowId ?? 0,
+      rowId: exampleSync.retained.find((r) => r.name === t.name && r.jurisdictionCode === t.jurisdictionCode)?.rowId
+        ?? exampleSync.updated.find((u) => u.name === t.name && u.jurisdictionCode === t.jurisdictionCode)?.rowId ?? 0,
       uid: t.name, contentHash: t.contentHash, jurisdictionCode: t.jurisdictionCode,
     }));
     const manifest = buildRclManifest({
@@ -184,31 +390,141 @@ async function main() {
       snapshot: null,
     });
     assertManifestContentHashes(manifest);
-    const emptyHashes = oldTests.filter((t) => !/^[0-9a-f]{64}$/.test(t.contentHash)).length;
-    writeFileSync(${JSON.stringify(join(OUT_DIR, "old-archive-manifest-pre.json"))}, JSON.stringify({
+    const emptyTestHashes = oldTests.filter((t) => !/^[0-9a-f]{64}$/.test(t.contentHash)).length;
+    if (oldCases.length !== 452) throw new Error("pre归档cases≠452: " + oldCases.length);
+    if (oldShowcase.length !== 36) throw new Error("pre归档showcase≠36: " + oldShowcase.length);
+    if (oldTests.length !== 500) throw new Error("pre归档regression≠500: " + oldTests.length);
+    if (emptyTestHashes !== 0) throw new Error("pre归档存在空test hash: " + emptyTestHashes);
+    writeFileSync(${JSON.stringify(join(TRUSTED_DIR, "manifest.json"))}, JSON.stringify(manifest, null, 2));
+    console.log(JSON.stringify({
       manifestHash: manifest.manifestHash,
-      oldTargets: { cases: oldCases.length, showcase: oldShowcase.length, tests: oldTests.length },
-      emptyTestHashes: emptyHashes,
+      counts: { cases: oldCases.length, showcase: oldShowcase.length, regression: oldTests.length, example: exampleTests.length },
+      emptyTestHashes,
       exampleSync: { retained: exampleSync.retained.length, updated: exampleSync.updated.length, added: exampleSync.added.length, deleted: exampleSync.deleted.length },
-    }, null, 2));
-    console.log("old-archive done", JSON.stringify({ manifestHash: manifest.manifestHash.slice(0, 16), oldTests: oldTests.length, emptyHashes }));
+    }));
     process.exit(0);
-  `;
-  const af = join(WORK_DIR, "scripts", ".tmp-audit-old-archive.mts");
-  writeFileSync(af, archiveScript);
-  try {
-    run(process.execPath, [TSX_CLI, af], { DATABASE_URL: `${BASE}/${PRE_DB}` });
-  } finally {
-    rmSync(af, { force: true });
-  }
+  `, `${BASE}/${preDb}`, AUDIT_DIR);
 
-  // ── 5) 当前36/36/78只读attestation manifest ────────────────────────────
-  const attestScript = `
-    import { writeFileSync } from "node:fs";
+  // 3) selection-report（归档模式：无新showcase，verified空配额报告；violations必须为空）。
+  writeFileSync(
+    join(TRUSTED_DIR, "selection-report.json"),
+    JSON.stringify({ status: "verified", algorithmVersion: "RCL-GEN-1.0", generatedAt: new Date().toISOString(), curatedUids: [], sourceCounts: {}, quotaStats: {}, violations: [] }, null, 2),
+  );
+
+  // 4) 真实恢复演练（第二库RESTORE_DB）+ verified restore-report。
+  await buildVerifiedRestoreReportInto(preDb, RESTORE_DB, join(TRUSTED_DIR, dumpName));
+
+  // 5) sha256sums.txt最后生成（恰好7个必备文件各一次，不自包含）。
+  const finalFiles = [dumpName, "cases.dump", "showcase_cases.dump", "tests.dump", "selection-report.json", "manifest.json", "restore-report.json"];
+  writeFileSync(
+    join(TRUSTED_DIR, "sha256sums.txt"),
+    finalFiles.map((f) => `${sha256File(join(TRUSTED_DIR, f))}  ${f}`).join("\n") + "\n",
+  );
+
+  // 6) 从归档恢复到第三个全新库（RE_RESTORE_DB）并二次对账（全表+全sequence）。
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `DROP DATABASE IF EXISTS "${RE_RESTORE_DB}" WITH (FORCE)`);
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `CREATE DATABASE "${RE_RESTORE_DB}"`);
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", RE_RESTORE_DB, "-c", "CREATE EXTENSION IF NOT EXISTS vector");
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", RE_RESTORE_DB, "-c", "CREATE EXTENSION IF NOT EXISTS btree_gist");
+  const rest2 = spawnSync("docker", ["exec", "-i", CONTAINER, "pg_restore", "-U", "postgres", "-d", RE_RESTORE_DB, "--clean", "--if-exists"], {
+    input: readFileSync(join(TRUSTED_DIR, dumpName)), maxBuffer: 1024 * 1024 * 1024, encoding: "buffer",
+  });
+  if (rest2.status !== 0) throw new Error(`归档二次恢复失败：${rest2.stderr?.toString().slice(0, 400)}`);
+  const reconcile2 = await runTsxInline(`import { writeFileSync } from "node:fs";
+    import { drizzle } from "drizzle-orm/node-postgres";
+    import pg from "pg";
+    import { reconcileDatabases, listSequences, listBaseTables } from "@/lib/case-governance/reconcile";
+    const src = drizzle(new pg.Pool({ connectionString: ${JSON.stringify(`${BASE}/${preDb}`)} }));
+    const dst = drizzle(new pg.Pool({ connectionString: ${JSON.stringify(`${BASE}/${RE_RESTORE_DB}`)} }));
+    const tableMis = (await reconcileDatabases(src, dst)).mismatches;
+    const seqMis = [];
+    const [sSrc, sDst] = [await listSequences(src), await listSequences(dst)];
+    const key = (s) => \`\${s.schema}.\${s.name}\`;
+    const dstKeyed = new Map(sDst.map((s) => [key(s), s]));
+    for (const s of sSrc) {
+      const d = dstKeyed.get(key(s));
+      if (!d) { seqMis.push("sequence " + key(s) + " 恢复库缺失"); continue; }
+      if (d.lastValue !== s.lastValue || d.isCalled !== s.isCalled) seqMis.push("sequence " + key(s) + " 状态不一致");
+    }
+    for (const d of sDst) if (!sSrc.some((s) => key(s) === key(d))) seqMis.push("sequence " + key(d) + " 源库缺失");
+    const mismatches = [...tableMis, ...seqMis];
+    const tSrc = await listBaseTables(src);
+    writeFileSync(${JSON.stringify(join(AUDIT_DIR, "trusted-archive-re-reconcile.json"))}, JSON.stringify({
+      tables: tSrc.length, sequences: sSrc.length, mismatches, ok: mismatches.length === 0,
+      restoredDb: ${JSON.stringify(RE_RESTORE_DB)},
+    }, null, 2));
+    console.log("re-reconcile " + (mismatches.length === 0 ? "OK" : "FAIL: " + mismatches.join(";")));
+    process.exit(mismatches.length === 0 ? 0 : 1);
+  `, `${BASE}/${preDb}`, AUDIT_DIR, { TARGET: `${BASE}/${RE_RESTORE_DB}` });
+
+  const manifest = JSON.parse(readFileSync(join(TRUSTED_DIR, "manifest.json"), "utf8"));
+  return {
+    dir: TRUSTED_DIR,
+    manifestHash: manifest.manifestHash,
+    manifestRowCounts: { cases: manifest.oldTargets.cases.length, showcase: manifest.oldTargets.showcase.length, tests: manifest.oldTargets.tests.length, example: manifest.exampleTests.length },
+    dumpSha256: sha256File(join(TRUSTED_DIR, dumpName)),
+    files: finalFiles.map((f) => ({ fileName: f, sha256: sha256File(join(TRUSTED_DIR, f)) })),
+    reReconcile: reconcile2,
+  };
+}
+
+function dockerExecPgdump(db, table) {
+  const args = ["exec", CONTAINER, "pg_dump", "-U", "postgres", "-Fc"];
+  if (table) args.push("-t", table);
+  args.push(db);
+  return execFileSync("docker", args, { maxBuffer: 512 * 1024 * 1024 });
+}
+
+/** 恢复演练：RESTORE_DB ← dumpFilePath，buildVerifiedRestoreReport写verified报告。 */
+async function buildVerifiedRestoreReportInto(sourceDb, restoreDb, dumpFilePath) {
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `DROP DATABASE IF EXISTS "${restoreDb}" WITH (FORCE)`);
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `CREATE DATABASE "${restoreDb}"`);
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", restoreDb, "-c", "CREATE EXTENSION IF NOT EXISTS vector");
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", restoreDb, "-c", "CREATE EXTENSION IF NOT EXISTS btree_gist");
+  docker("exec", CONTAINER, "psql", "-U", "postgres", "-d", restoreDb, "-c", `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='agent_app') THEN CREATE ROLE agent_app LOGIN PASSWORD '${DRILL_PASSWORD}'; END IF; END $$;`);
+  const rest = spawnSync("docker", ["exec", "-i", CONTAINER, "pg_restore", "-U", "postgres", "-d", restoreDb, "--clean", "--if-exists"], {
+    input: readFileSync(dumpFilePath), maxBuffer: 1024 * 1024 * 1024, encoding: "buffer",
+  });
+  if (rest.status !== 0) throw new Error(`归档恢复演练失败：${rest.stderr?.toString().slice(0, 400)}`);
+  await runTsxInline(`import { writeFileSync } from "node:fs";
+    import { db } from "@/lib/db";
+    import { drizzle } from "drizzle-orm/node-postgres";
+    import pg from "pg";
+    import { buildVerifiedRestoreReport } from "@/lib/case-governance/reconcile";
+    const pool = new pg.Pool({ connectionString: ${JSON.stringify(`${BASE}/${restoreDb}`)} });
+    const restoredDb = drizzle(pool);
+    const report = await buildVerifiedRestoreReport({
+      source: db,
+      restored: restoredDb,
+      dumpFilePath: ${JSON.stringify(dumpFilePath)},
+      restoredDatabaseUrl: ${JSON.stringify(`${BASE}/${restoreDb}`)}.replace(/:[^:@]+@/, ":***@"),
+      archiveDir: ${JSON.stringify(TRUSTED_DIR)},
+    });
+    await pool.end();
+    if (report.reconcile.mismatches.length > 0) throw new Error("恢复对账不一致: " + report.reconcile.mismatches.join("; "));
+    writeFileSync(${JSON.stringify(join(TRUSTED_DIR, "restore-report.json"))}, JSON.stringify(report, null, 2));
+    console.log("restore-report verified", report.reconcile.tableCount, "tables", report.reconcile.sequenceCount, "sequences");
+    process.exit(0);
+  `, `${BASE}/${sourceDb}`, AUDIT_DIR);
+}
+
+/** tsx内联脚本执行（脚本写在scripts/.tmp下，DATABASE_URL指向dbUrl）。 */
+async function runTsxInline(src, dbUrl, outDir, extraEnv = {}) {
+  const f = join(WORK_DIR, "scripts", `.tmp-r4-audit-${randomUUID().slice(0, 6)}.mts`);
+  writeFileSync(f, src);
+  try {
+    return run(process.execPath, [TSX_CLI, f], { DATABASE_URL: dbUrl, ...extraEnv });
+  } finally {
+    rmSync(f, { force: true });
+  }
+}
+
+/** 当前36/36/78 attestation（绑定codeSha；任一数据变化targetFingerprint即变化）。 */
+async function buildAttestation(codeSha) {
+  const out = await runTsxInline(`import { writeFileSync } from "node:fs";
     import { db } from "@/lib/db";
     import { sql } from "drizzle-orm";
-    import { rowContentHash, testRowContentHash, CASE_INFRA_COLUMNS, SHOWCASE_INFRA_COLUMNS } from "@/lib/case-governance/hashes";
-    import { canonicalJson, sha256hex } from "@/lib/case-governance/hashes";
+    import { rowContentHash, testRowContentHash, CASE_INFRA_COLUMNS, SHOWCASE_INFRA_COLUMNS, canonicalJson, sha256hex } from "@/lib/case-governance/hashes";
     const caseRows = (await db.execute(sql\`SELECT * FROM "cases" ORDER BY id\`)).rows;
     const showRows = (await db.execute(sql\`SELECT * FROM "showcase_cases" ORDER BY id\`)).rows;
     const regRows = (await db.execute(sql\`SELECT * FROM "tests" WHERE source = 'regression' ORDER BY id\`)).rows;
@@ -216,10 +532,13 @@ async function main() {
     const snapRows = (await db.execute(sql\`SELECT id, jurisdiction_code, as_of_date, content_hash FROM policy_snapshots ORDER BY created_at, id\`)).rows;
     const relRows = (await db.execute(sql\`SELECT id, jurisdiction_code, status, effective_from, effective_to, active_snapshot_id FROM jurisdiction_planning_releases ORDER BY id\`)).rows;
     const batchRows = (await db.execute(sql\`SELECT id, status, manifest_hash, storage_path FROM case_archive_batches ORDER BY created_at, id\`)).rows;
+    const targetFp = (await db.execute(sql\`SELECT md5(string_agg(to_jsonb(t)::text, '|' ORDER BY to_jsonb(t)::text COLLATE "C")) AS h FROM (SELECT id, case_uid, content_hash, quality_status FROM "cases" UNION ALL SELECT id, case_uid, content_hash, quality_status FROM "showcase_cases") t\`)).rows[0].h;
     const attestation = {
-      algorithmVersion: "RCL-ATTESTATION-1.0",
+      algorithmVersion: "RCL-ATTESTATION-2.0",
       generatedAt: new Date().toISOString(),
+      codeSha: ${JSON.stringify(codeSha)},
       counts: { cases: caseRows.length, showcase: showRows.length, regressionTests: regRows.length, exampleTests: exRows.length },
+      targetFingerprint: String(targetFp),
       cases: caseRows.map((r) => ({ dbId: Number(r.id), uid: r.case_uid, hash: rowContentHash(r, CASE_INFRA_COLUMNS) })),
       showcase: showRows.map((r) => ({ dbId: Number(r.id), uid: r.case_uid, hash: rowContentHash(r, SHOWCASE_INFRA_COLUMNS) })),
       regressionTests: regRows.map((r) => ({ dbId: Number(r.id), uid: r.name, hash: testRowContentHash(r) })),
@@ -228,52 +547,147 @@ async function main() {
       releases: relRows.map((r) => ({ id: String(r.id), jurisdictionCode: r.jurisdiction_code, status: r.status, effectiveFrom: r.effective_from ? String(r.effective_from) : null, effectiveTo: r.effective_to ? String(r.effective_to) : null, activeSnapshotId: r.active_snapshot_id ? String(r.active_snapshot_id) : null })),
       archiveBatches: batchRows.map((r) => ({ id: String(r.id), status: r.status, manifestHash: r.manifest_hash, storagePath: r.storage_path })),
     };
-    const core = { algorithmVersion: attestation.algorithmVersion, counts: attestation.counts, cases: attestation.cases, showcase: attestation.showcase, regressionTests: attestation.regressionTests, exampleTests: attestation.exampleTests, snapshots: attestation.snapshots, releases: attestation.releases, archiveBatches: attestation.archiveBatches };
+    const core = { algorithmVersion: attestation.algorithmVersion, codeSha: attestation.codeSha, targetFingerprint: attestation.targetFingerprint, counts: attestation.counts, cases: attestation.cases, showcase: attestation.showcase, regressionTests: attestation.regressionTests, exampleTests: attestation.exampleTests, snapshots: attestation.snapshots, releases: attestation.releases, archiveBatches: attestation.archiveBatches };
     attestation.attestationManifestHash = sha256hex(canonicalJson(core));
-    writeFileSync(${JSON.stringify(join(OUT_DIR, "attestation-current.json"))}, JSON.stringify(attestation, null, 2));
-    console.log("attestation done", attestation.attestationManifestHash);
+    writeFileSync(${JSON.stringify(join(AUDIT_DIR, "attestation-current.json"))}, JSON.stringify(attestation, null, 2));
+    console.log(JSON.stringify({ attestationManifestHash: attestation.attestationManifestHash, counts: attestation.counts, targetFingerprint: attestation.targetFingerprint, cases: attestation.cases.length, showcase: attestation.showcase.length, regressionTests: attestation.regressionTests.length, exampleTests: attestation.exampleTests.length, snapshots: attestation.snapshots.length, releases: attestation.releases.length, archiveBatches: attestation.archiveBatches.length }));
     process.exit(0);
-  `;
-  const tf = join(WORK_DIR, "scripts", ".tmp-audit-attestation.mts");
-  writeFileSync(tf, attestScript);
-  try {
-    run(process.execPath, [TSX_CLI, tf], { DATABASE_URL: PERSISTENT_URL });
-  } finally {
-    rmSync(tf, { force: true });
-  }
+  `, PERSISTENT_URL, AUDIT_DIR);
+  return JSON.parse(out.trim().split("\n").pop());
+}
 
-  // ── 6) 0010~0018 SQL hash vs 账本 hash ─────────────────────────────────
-  report.migrationAudit = [];
-  for (const f of ["0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018"]) {
-    const matches = readdirSync(join(WORK_DIR, "drizzle")).filter((n) => n.startsWith(`${f}_`) && n.endsWith(".sql"));
-    if (matches.length === 0) continue;
-    const sqlText = readFileSync(join(WORK_DIR, "drizzle", matches[0]), "utf-8");
-    const fileHash = createHash("sha256").update(sqlText).digest("hex");
-    const ledger = report.persistent.migrations.filter((m) => m.hash === fileHash);
-    report.migrationAudit.push({ file: matches[0], fileHash, ledgerMatches: ledger.length, ledgerHashes: report.persistent.migrations.map((m) => m.hash).filter((h) => h === fileHash).length });
-  }
-  // 账本重复登记识别（同hash多次出现=重复执行记录）。
-  const hashCounts = {};
-  for (const m of report.persistent.migrations) hashCounts[m.hash] = (hashCounts[m.hash] ?? 0) + 1;
-  report.migrationLedger = {
-    total: report.persistent.migrations.length,
-    duplicates: Object.entries(hashCounts).filter(([, n]) => n > 1).map(([h, n]) => ({ hash: h.slice(0, 16), count: n })),
-    rows: report.persistent.migrations.map((m) => ({ id: m.id, hash: String(m.hash).slice(0, 16), createdAt: String(m.created_at) })),
+/** repair-forward计划（只读产物；绑定修复后的codeSha；不执行任何写入）。 */
+function buildRepairForwardPlan(report, attestation, trusted) {
+  const migrations = report.persistent.migrations;
+  const dupIds = [18, 19, 20];
+  const dupRows = migrations.filter((m) => dupIds.includes(m.id)).map((m) => ({ id: m.id, hash: m.hash, created_at: String(m.created_at) }));
+  const keptRows = migrations.filter((m) => !dupIds.includes(m.id));
+  const finalLedgerFingerprint = sha256hex(canonicalJson(
+    keptRows.map((m) => ({ id: m.id, hash: m.hash, created_at: String(m.created_at) })),
+  ));
+  const preparedBatch = report.persistent.archiveBatches.find((b) => b.status === "prepared");
+  return {
+    title: "WI-20260907-04 repair-forward计划（任务34第四轮只读审计，2026-09-10）",
+    generatedAt: new Date().toISOString(),
+    status: "只读报告——未执行任何写入；等待用户针对本清单明确授权",
+    codeSha: report.codeSha,
+    sourceBranch: report.sourceBranch,
+    dumps: {
+      pre: { file: report.preDump, sha256: report.dumps.pre.sha256 },
+      post: { file: report.postDump, sha256: report.dumps.post.sha256 },
+    },
+    trustedArchiveManifestHash: trusted.manifestHash,
+    trustedArchiveDumpSha: trusted.dumpSha256,
+    trustedArchiveDir: trusted.dir,
+    attestationManifestHash: attestation.attestationManifestHash,
+    migrationLedgerFingerprint: report.migrationLedgerFingerprint,
+    targetFingerprint: report.targetFingerprint,
+    migrationLedgerAudit: {
+      total: migrations.length,
+      expectedFinalTotal: 18,
+      // 已核对的正确判断（本机新鲜读取，见migrationAudit逐文件SHA）：
+      canonicalRows: { "0010": 10, "0011": 11, "0012": 12, "0013": 13, "0014": 14, "0015": 15, "0016": 16, "0017": 21, "0018": 22 },
+      duplicates: dupRows.map((m) => ({ id: m.id, hash: m.hash.slice(0, 16), created_at: m.created_at, disposition: "删除（0012/0013/0014的CRLF重复登记；原始LF行12/13/14保留）" })),
+      missingId: "id 17缺失（重复登记占用id后跳号；序列不要求连续，不补写、不重排主键）",
+      keepHashes: "ID 10～16、21、22的原hash全部保留；不得更新ID 10/11/15的账本hash（其hash即0010/0011/0015 Git LF内容）",
+    },
+    journalCheck: {
+      ledgerCreatedAtMatchesExpected: !report.migrationLedgerTimeCheck.ledgerTimeMismatch,
+      journalWhenMismatch: !report.migrationJournal.journalMonotonic || report.migrationJournal.journalCheck.some((c) => !c.ok),
+      ledgerDetail: report.migrationLedgerTimeCheck,
+      journalDetail: report.migrationJournal,
+      disposition: "账本created_at与预期时间表一致且严格单调；journal when与预期不符仅报告（禁止猜测修复）；本计划不含journal写入",
+    },
+    writeSet: [
+      {
+        step: 1,
+        sql: `DELETE FROM drizzle.__drizzle_migrations WHERE id IN (18, 19, 20)`,
+        precondition: dupRows.map((m) => ({ id: m.id, hash: m.hash, created_at: m.created_at })),
+        tx: "事务T1（与步骤2同一事务或独立事务均可，本计划按独立事务描述）",
+        note: "每行绑定旧hash与created_at前置条件；任一不符即中止零写入",
+      },
+      {
+        step: 2,
+        sql: "无（保留ID 10～16、21、22原hash；不更新0010/0011/0015 hash；不补ID 17；不重排主键）",
+        precondition: keptRows.map((m) => ({ id: m.id, hash: m.hash, created_at: String(m.created_at) })),
+        tx: "无写入",
+      },
+      {
+        step: 3,
+        sql: `UPDATE case_archive_batches SET status = 'rolled_back' WHERE id = ${preparedBatch ? `'${preparedBatch.id}'` : "<prepared批次id>"} AND status = 'prepared' AND manifest_hash = '${preparedBatch?.manifest_hash ?? "<旧manifestHash>"}'`,
+        precondition: preparedBatch
+          ? { id: preparedBatch.id, status: "prepared", manifestHash: preparedBatch.manifest_hash, storagePath: preparedBatch.storage_path }
+          : "未发现prepared批次（应报错中止）",
+        tx: "事务T2（条件更新；返回0行即中止）",
+        note: "绑定旧状态与manifestHash；不得删除该批次entries（历史记录保留）",
+      },
+      {
+        step: 4,
+        sql: "无（保留两个历史applied批次88dd27ba/94ef0a2c及其entries；不在原地伪造hash）",
+        tx: "无写入",
+      },
+      {
+        step: 5,
+        sql: `INSERT INTO case_archive_batches (id, status, source_counts, retained_counts, deleted_counts, table_hashes, manifest_hash, storage_path, created_by, created_at) VALUES ('<新uuid>', 'restore_verified', '{}', '{}', '{}', '{}', '${trusted.manifestHash}', '${trusted.dir}', 'rcl-audit-task34-r4', now())`,
+        precondition: `id不存在；manifest_hash=${trusted.manifestHash}；storagePath=${trusted.dir}目录存在且sha256sums.txt匹配`,
+        tx: "事务T3（批次+988条entries同一事务）",
+        note: "状态为restore_verified，不标记applied；随后在同一事务插入452+36+500条真实hash entries（来自可信归档manifest逐行hash）",
+      },
+      {
+        step: 6,
+        sql: `INSERT INTO case_archive_entries (archive_batch_id, entity_type, entity_id, case_uid, content_hash, archive_reason) VALUES ... ×988`,
+        precondition: "逐行hash与可信归档manifest一致（manifest自校验通过）",
+        tx: "事务T3",
+      },
+      {
+        step: 7,
+        sql: "无（当前36/36/78、10 snapshots、5 releases与业务政策实体保持零变化）",
+        tx: "无写入",
+      },
+      {
+        step: 8,
+        sql: "无（全部snapshot保留，不删除未引用快照）",
+        tx: "无写入",
+      },
+      {
+        step: 9,
+        sql: "无（repair完成后账本总数必须为18；SELECT count(*) 校验）",
+        tx: "无写入",
+      },
+      {
+        step: 10,
+        sql: "post-repair：pg_dump完整库备份 + 全新PG17+pgvector实例恢复 + 全表/全sequence对账",
+        tx: "备份与恢复对账（只读验证）",
+      },
+    ],
+    expectedFinalState: {
+      migrationsLedger: `${keptRows.length}条（删除3条重复登记；0010/0011/0015账本hash保持原值=Git LF内容）`,
+      migrationsLedgerFingerprint: finalLedgerFingerprint,
+      archiveBatches: "3旧批次（2 applied保留 + 1 prepared→rolled_back）+ 1新增restore_verified可信归档批次",
+      businessData: "36 cases/36 showcase/78 tests（42 example+36 regression）/10 snapshots/5 releases不变",
+      targetFingerprint: report.targetFingerprint,
+      attestationManifestHash: attestation.attestationManifestHash,
+    },
+    transactionBoundaries: [
+      "T1：删除账本重复行18/19/20（前置：每行hash+created_at逐项匹配，0行/多行即中止）",
+      "T2：prepared批次→rolled_back（前置：id+status='prepared'+manifest_hash精确匹配；条件更新0行即中止）",
+      "T3：可信归档批次+988条entries（同一事务；任一entry写入失败整体回滚）",
+    ],
+    rollbackPoints: [
+      { name: "操作前pre dump", file: report.preDump, sha256: report.dumps.pre.sha256 },
+      { name: "操作后post dump", file: report.postDump, sha256: report.dumps.post.sha256 },
+      { name: "执行repair前强制新建完整dump", file: "<repair时新建>", note: "执行repair前必须新建" },
+    ],
+    failureConditions: [
+      "任一目标行hash与attestation/可信归档manifest不符即停止零写入",
+      "账本重复行hash/created_at与前置条件不符即停止",
+      "prepared批次状态或manifestHash与前置条件不符即停止",
+      "0010～0018实际Schema与SQL不符即停止",
+      "pre/post dump SHA与sidecar不一致即停止",
+      "repair过程中任何新登录/写入改变targetFingerprint即停止",
+      "journal when与预期时间表不符（第四轮审计发现）：仅报告，禁止猜测修复；不构成repair前置阻塞，但必须单独记录",
+    ],
   };
-
-  // ── 7) 汇总写入 ────────────────────────────────────────────────────────
-  writeFileSync(join(OUT_DIR, "audit-summary.json"), JSON.stringify(report, null, 2));
-  console.log(`[audit] 证据目录：${OUT_DIR}`);
-  console.log(`[audit] 当前库：${JSON.stringify(counts)}`);
-  console.log(`[audit] 完成`);
-
-  // 清理隔离容器（证据已落盘）。
-  for (const db of [PRE_DB, POST_DB]) {
-    try {
-      docker("exec", CONTAINER, "psql", "-U", "postgres", "-c", `DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`);
-    } catch { /* 忽略 */ }
-  }
-  spawnSync("docker", ["rm", "-f", CONTAINER], { encoding: "utf-8" });
 }
 
 main().catch((err) => {

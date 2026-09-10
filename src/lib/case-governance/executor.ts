@@ -20,9 +20,9 @@
  *   （RCL-AC-008/011，第三轮复审Fix 8）。
  */
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
-import { sql } from "drizzle-orm";
+import { sql, eq, and } from "drizzle-orm";
 import type { DbClient } from "@/lib/db";
 import { caseArchiveBatches, caseArchiveEntries } from "@/lib/db/schema";
 import {
@@ -66,6 +66,28 @@ export class RclExecutorError extends Error {
   }
 }
 
+/**
+ * prepare-archive补偿失败的结构化错误（WI-20260907-03第四轮复审）：
+ * 同时携带原始失败原因与补偿过程错误，禁止把失败伪装成成功。
+ */
+export class RclPrepareError extends RclExecutorError {
+  readonly batchId: string;
+  readonly originalError: Error;
+  readonly compensationErrors: string[];
+
+  constructor(batchId: string, originalError: Error, compensationErrors: string[]) {
+    const suffix =
+      compensationErrors.length > 0
+        ? `；补偿亦失败：${compensationErrors.join("；")}`
+        : "；已精确清理本次批次/entries与本次不完整归档文件";
+    super(`prepare-archive失败（batchId=${batchId}）：${originalError.message}${suffix}`);
+    this.name = "RclPrepareError";
+    this.batchId = batchId;
+    this.originalError = originalError;
+    this.compensationErrors = [...compensationErrors];
+  }
+}
+
 /** 对真实文件字节（Buffer）计算SHA-256：String(buffer)会做有损utf8解码，二进制dump必须直接用Buffer。 */
 export function bufferSha256(buf: Buffer): string {
   return createHash("sha256").update(buf).digest("hex");
@@ -78,6 +100,8 @@ export interface RclStorage {
   write(p: string, content: string | Buffer): void;
   exists(p: string): boolean;
   list(): string[];
+  /** 删除文件（prepare-archive补偿清理本次不完整临时归档用，force语义）。 */
+  remove(p: string): void;
 }
 
 export function nodeFsStorage(root: string): RclStorage {
@@ -87,6 +111,7 @@ export function nodeFsStorage(root: string): RclStorage {
     write: (p, content) => writeFileSync(join(p), content),
     exists: (p) => existsSync(join(p)),
     list: () => readdirSync(root).map((f) => path.join(root, f)),
+    remove: (p) => rmSync(join(p), { force: true }),
   };
 }
 
@@ -158,12 +183,22 @@ export interface PrepareArchiveResult {
 
 const ARCHIVE_FILES = [...SHA_LIST_FILES];
 
+/** 路径归一化（跨平台比较write/list/remove用）。 */
+function normPath(p: string): string {
+  return path.resolve(p).split("\\").join("/");
+}
+
 /**
- * prepare-archive（RCL-FR-002/003/005，第三轮复审）：
+ * prepare-archive（RCL-FR-002/003/005，第三轮复审+第四轮复审补偿）：
  * 1) 先真实pg_dump并写入全部归档文件（dump/selection/manifest/pending restore/
  *    sha256sums.txt最后生成且不自包含）；
- * 2) 全部文件就绪后，在**可回滚事务**中写入prepared批次与归档条目——
- *    pg_dump或文件写入失败时不得留下可推进的prepared批次或不完整entries。
+ * 2) 全部文件就绪后，在**可回滚事务**中写入prepared批次与归档条目；
+ * 3) 批次与entries写入后重新生成完整库dump（自包含归档记录本身）并重算SHA清单。
+ *
+ * 第四轮复审补偿（任何prepare阶段失败均不得留下prepared批次或archive entries）：
+ * - 只精确清理本次新建batchId（`status='prepared'`守卫条件更新，绝不触碰历史批次）；
+ * - 文件失败时只清理本次写入且prepare开始时不存在的新文件（不触碰历史归档）；
+ * - 补偿失败必须把原始错误与补偿错误一起报告（RclPrepareError），不得伪装成功。
  */
 export async function prepareRclArchive(input: PrepareArchiveInput): Promise<PrepareArchiveResult> {
   const storage = input.storage ?? nodeFsStorage(input.storageDir);
@@ -174,79 +209,129 @@ export async function prepareRclArchive(input: PrepareArchiveInput): Promise<Pre
   const batchId = randomUUID();
   const join = (name: string) => path.join(input.storageDir, name);
 
-  // 1) 真实dump（pg_dump失败→无任何批次/entries写入）。
-  const fullDump = await dump();
-  const casesDump = await dump("cases");
-  const showcaseDump = await dump("showcase_cases");
-  const testsDump = await dump("tests");
-  storage.write(join("policyops-fc.dump"), fullDump);
-  storage.write(join("cases.dump"), casesDump);
-  storage.write(join("showcase_cases.dump"), showcaseDump);
-  storage.write(join("tests.dump"), testsDump);
+  // prepare开始时已存在的文件集合：补偿只清理本次新建文件。
+  const preExisting = new Set(storage.list().map(normPath));
+  const written: string[] = [];
+  const writeFile = (name: string, content: string | Buffer): void => {
+    const p = join(name);
+    storage.write(p, content);
+    written.push(normPath(p));
+  };
+  let batchCommitted = false;
 
-  // 2) selection-report（真实计算；violations非空即pending）。
-  storage.write(
-    join("selection-report.json"),
-    JSON.stringify(input.selectionReport, null, 2),
-  );
+  try {
+    // 1) 真实dump（pg_dump失败→无任何批次/entries写入）。
+    const fullDump = await dump();
+    const casesDump = await dump("cases");
+    const showcaseDump = await dump("showcase_cases");
+    const testsDump = await dump("tests");
+    writeFile("policyops-fc.dump", fullDump);
+    writeFile("cases.dump", casesDump);
+    writeFile("showcase_cases.dump", showcaseDump);
+    writeFile("tests.dump", testsDump);
 
-  // 3) manifest.json。
-  storage.write(join("manifest.json"), JSON.stringify(input.manifest, null, 2));
+    // 2) selection-report（真实计算；violations非空即pending）。
+    writeFile(
+      "selection-report.json",
+      JSON.stringify(input.selectionReport, null, 2),
+    );
 
-  // 4) restore-report（pending：恢复对账由独立恢复演练完成后写verified）。
-  storage.write(
-    join("restore-report.json"),
-    JSON.stringify(buildPendingRestoreReport({
-      sourceDumpFileName: "policyops-fc.dump",
-      sourceDumpSha256: bufferSha256(fullDump),
-      nowIso: now().toISOString(),
-    }), null, 2),
-  );
+    // 3) manifest.json。
+    writeFile("manifest.json", JSON.stringify(input.manifest, null, 2));
 
-  // 5) 全部文件就绪后，事务写入批次与归档条目（任一失败整体回滚，不留下
-  //    可推进的prepared批次或不完整entries）。
-  await input.db.transaction(async (tx) => {
-    await tx.insert(caseArchiveBatches).values({
-      id: batchId,
-      status: "prepared",
-      sourceCounts: input.selectionReport.sourceCounts,
-      retainedCounts: {},
-      deletedCounts: {},
-      tableHashes: {},
-      manifestHash: input.manifest.manifestHash,
-      storagePath: input.storageDir,
-      createdBy: input.createdBy,
-    });
-    const entryRows: Array<{ entityType: string; entityId: number; caseUid: string | null; contentHash: string }> = [
-      ...input.manifest.oldTargets.cases.map((c) => ({ entityType: "case", entityId: c.rowId, caseUid: c.uid ?? null, contentHash: c.contentHash })),
-      ...input.manifest.oldTargets.showcase.map((s) => ({ entityType: "showcase_case", entityId: s.rowId, caseUid: s.uid ?? null, contentHash: s.contentHash })),
-      ...input.manifest.oldTargets.tests.map((t) => ({ entityType: "test", entityId: t.rowId, caseUid: t.uid ?? null, contentHash: t.contentHash })),
-    ];
-    for (const e of entryRows) {
-      await tx.insert(caseArchiveEntries).values({
-        archiveBatchId: batchId,
-        entityType: e.entityType,
-        entityId: e.entityId,
-        caseUid: e.caseUid,
-        contentHash: e.contentHash,
-        archiveReason: "RCL全量重建（ADR-0011）",
+    // 4) restore-report（pending：恢复对账由独立恢复演练完成后写verified）。
+    writeFile(
+      "restore-report.json",
+      JSON.stringify(buildPendingRestoreReport({
+        sourceDumpFileName: "policyops-fc.dump",
+        sourceDumpSha256: bufferSha256(fullDump),
+        nowIso: now().toISOString(),
+      }), null, 2),
+    );
+
+    // 5) 全部文件就绪后，事务写入批次与归档条目（任一失败整体回滚，不留下
+    //    可推进的prepared批次或不完整entries）。
+    await input.db.transaction(async (tx) => {
+      await tx.insert(caseArchiveBatches).values({
+        id: batchId,
+        status: "prepared",
+        sourceCounts: input.selectionReport.sourceCounts,
+        retainedCounts: {},
+        deletedCounts: {},
+        tableHashes: {},
+        manifestHash: input.manifest.manifestHash,
+        storagePath: input.storageDir,
+        createdBy: input.createdBy,
       });
+      const entryRows: Array<{ entityType: string; entityId: number; caseUid: string | null; contentHash: string }> = [
+        ...input.manifest.oldTargets.cases.map((c) => ({ entityType: "case", entityId: c.rowId, caseUid: c.uid ?? null, contentHash: c.contentHash })),
+        ...input.manifest.oldTargets.showcase.map((s) => ({ entityType: "showcase_case", entityId: s.rowId, caseUid: s.uid ?? null, contentHash: s.contentHash })),
+        ...input.manifest.oldTargets.tests.map((t) => ({ entityType: "test", entityId: t.rowId, caseUid: t.uid ?? null, contentHash: t.contentHash })),
+      ];
+      for (const e of entryRows) {
+        await tx.insert(caseArchiveEntries).values({
+          archiveBatchId: batchId,
+          entityType: e.entityType,
+          entityId: e.entityId,
+          caseUid: e.caseUid,
+          contentHash: e.contentHash,
+          archiveReason: "RCL全量重建（ADR-0011）",
+        });
+      }
+    });
+    batchCommitted = true;
+
+    // 6) 批次与entries写入后重新生成完整库dump（自包含归档记录本身，
+    //    使恢复对账时归档表与dump一致），随后重算sha256sums.txt（最后生成、
+    //    不自包含，RCL-FR-003）。
+    writeFile("policyops-fc.dump", await dump());
+    const finalEntries = ARCHIVE_FILES.map((fileName) => ({
+      fileName,
+      path: join(fileName),
+      sha256: bufferSha256(storage.read(join(fileName))),
+    }));
+    const sha256sums = buildSha256SumsContent(finalEntries);
+    writeFile("sha256sums.txt", sha256sums);
+
+    return { batchId, files: [...ARCHIVE_FILES, "sha256sums.txt"], sha256sums };
+  } catch (err) {
+    // 第四轮复审补偿：任何prepare阶段失败都不得留下prepared批次/entries，
+    // 文件失败清理本次不完整临时归档；补偿错误与原始错误一起报告。
+    const original = err instanceof Error ? err : new Error(String(err));
+    const compensationErrors: string[] = [];
+
+    // 1) 数据库补偿：只精确删除本次新建batchId（status='prepared'守卫，
+    //    0行或状态漂移即补偿失败，绝不触碰历史批次）。
+    if (batchCommitted) {
+      try {
+        await input.db.transaction(async (tx) => {
+          await tx.delete(caseArchiveEntries).where(eq(caseArchiveEntries.archiveBatchId, batchId));
+          const removed = await tx
+            .delete(caseArchiveBatches)
+            .where(and(eq(caseArchiveBatches.id, batchId), eq(caseArchiveBatches.status, "prepared")))
+            .returning({ id: caseArchiveBatches.id });
+          if (removed.length !== 1) {
+            throw new Error(`批次 ${batchId} 状态非prepared或不存在，拒绝清除（0行）`);
+          }
+        });
+      } catch (ce) {
+        compensationErrors.push(`数据库补偿失败：${ce instanceof Error ? ce.message : String(ce)}`);
+      }
     }
-  });
 
-  // 6) 批次与entries写入后重新生成完整库dump（自包含归档记录本身，
-  //    使恢复对账时归档表与dump一致），随后重算sha256sums.txt（最后生成、
-  //    不自包含，RCL-FR-003）。
-  storage.write(join("policyops-fc.dump"), await dump());
-  const finalEntries = ARCHIVE_FILES.map((fileName) => ({
-    fileName,
-    path: join(fileName),
-    sha256: bufferSha256(storage.read(join(fileName))),
-  }));
-  const sha256sums = buildSha256SumsContent(finalEntries);
-  storage.write(join("sha256sums.txt"), sha256sums);
+    // 2) 文件补偿：只删除本次写入且prepare开始时不存在的新文件（不触碰历史归档）。
+    try {
+      for (const p of written) {
+        if (!preExisting.has(normPath(p))) {
+          storage.remove(p);
+        }
+      }
+    } catch (ce) {
+      compensationErrors.push(`归档文件补偿失败：${ce instanceof Error ? ce.message : String(ce)}`);
+    }
 
-  return { batchId, files: [...ARCHIVE_FILES, "sha256sums.txt"], sha256sums };
+    throw new RclPrepareError(batchId, original, compensationErrors);
+  }
 }
 
 // ─── verify-archive ────────────────────────────────────────────────────────

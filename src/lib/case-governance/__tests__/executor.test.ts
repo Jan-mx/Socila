@@ -26,7 +26,8 @@ import {
   verifyRclReplacement,
   RclExecutorError,
 } from "../executor";
-import { computeSelectionReport } from "../archive";
+import { computeSelectionReport, buildSelectionReport } from "../archive";
+import { caseArchiveBatches, caseArchiveEntries } from "@/lib/db/schema";
 
 function fakeDb(overrides: Record<string, unknown> = {}) {
   const insertChain = {
@@ -62,14 +63,69 @@ function fakeStorage(files: Record<string, string> = {}) {
     }),
     exists: vi.fn((p: string) => store.has(norm(p))),
     list: vi.fn(() => [...store.keys()]),
+    remove: vi.fn((p: string) => {
+      store.delete(norm(p));
+    }),
   };
 }
 
-/** drizzle SQL 对象文本提取（queryChunks → 编译文本，测试mock匹配用）。 */
+/**
+ * 带内存状态的db假实现（第四轮复审prepare补偿测试用）：
+ * - insert/delete 对 case_archive_batches/case_archive_entries 真实增删；
+ * - 支持预置历史批次，验证补偿只精确清理本次batchId；
+ * - failDelete 注入补偿失败（验证原始错误与补偿错误同时报告）。
+ */
+function memoryDb(opts: {
+  preExistingBatches?: Array<{ id: string; status: string }>;
+  failDelete?: boolean;
+} = {}) {
+  const batches = new Map<string, { id: string; status: string }>();
+  for (const b of opts.preExistingBatches ?? []) batches.set(b.id, b);
+  const entries: Array<{ archiveBatchId: string }> = [];
+  const uuidRe = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/;
+  const dbObj = {
+    batches,
+    entries,
+    transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(dbObj)),
+    insert: vi.fn((table: unknown) => ({
+      values: vi.fn((rows: unknown) => {
+        const arr = Array.isArray(rows) ? rows : [rows];
+        if (table === caseArchiveBatches) {
+          for (const r of arr as Array<{ id: string; status: string }>) batches.set(r.id, r);
+        } else if (table === caseArchiveEntries) {
+          entries.push(...(arr as Array<{ archiveBatchId: string }>));
+        }
+        return {};
+      }),
+    })),
+    delete: vi.fn((table: unknown) => ({
+      where: vi.fn((cond: unknown) => {
+        if (opts.failDelete) throw new Error("注入的补偿删除失败");
+        const id = uuidRe.exec(queryText(cond))?.[1] ?? "";
+        if (table === caseArchiveBatches) {
+          batches.delete(id);
+        } else {
+          const keep = entries.filter((e) => e.archiveBatchId !== id);
+          entries.splice(0, entries.length, ...keep);
+        }
+        return { returning: vi.fn(async () => [{ id }]) };
+      }),
+    })),
+  };
+  return dbObj;
+}
+
+/** drizzle SQL 对象文本提取（queryChunks → 编译文本，测试mock匹配用；
+ * 递归展开and()/or()的嵌套queryChunks）。 */
 function queryText(q: unknown): string {
-  const chunks = (q as { queryChunks?: Array<{ value: string | string[] }> }).queryChunks ?? [];
+  const chunks = (q as { queryChunks?: Array<unknown> }).queryChunks ?? [];
   return chunks
-    .map((c) => (Array.isArray(c.value) ? c.value.join("") : String(c.value)))
+    .map((c) => {
+      const chunk = c as { value?: unknown; queryChunks?: Array<unknown> };
+      if (Array.isArray(chunk.value)) return chunk.value.join("");
+      if (chunk.queryChunks) return queryText(chunk);
+      return String(chunk.value ?? "");
+    })
     .join("");
 }
 
@@ -95,12 +151,14 @@ describe("RCL受控执行器（RCL-FR-021）", () => {
   it("prepare-archive：生成必备文件且sha256sums.txt最后生成、不自包含", async () => {
     const storage = fakeStorage();
     const db = fakeDb();
+    const dump = vi.fn(async (table?: string) =>
+      Buffer.from(table ? `DUMP-${table}` : "FULLDUMP"),
+    );
     const result = await prepareRclArchive({
       db: db as never,
       storageDir: "/archive",
       storage,
-      pgDump: async (table?: string) =>
-        Buffer.from(table ? `DUMP-${table}` : "FULLDUMP"),
+      pgDump: dump,
       selectionReport: computeSelectionReport([
         { uid: "RPC-310000-SH-1-V1", jurisdictionCode: "310000", qualityStatus: "selected", input: { a: 1 }, expected: { b: 2 }, assertions: [{ path: "calc.x", operator: "eq", value: 1 }], coverageObligations: ["c"], evidence: [{ documentId: "D", locator: "l" }], multiLabels: ["male", "before_1970", "employed"] },
       ]),
@@ -119,6 +177,12 @@ describe("RCL受控执行器（RCL-FR-021）", () => {
     for (const f of ["policyops-fc.dump", "cases.dump", "selection-report.json", "manifest.json", "restore-report.json"]) {
       expect(sums).toContain(f);
     }
+    // 第四轮复审：正常路径在批次事务提交后重新dump完整库（自包含归档记录本身），
+    // 共5次dump（full, cases, showcase, tests, full），最终policyops-fc.dump为第二次完整dump。
+    expect(dump.mock.calls.map((c) => c[0])).toEqual([undefined, "cases", "showcase_cases", "tests", undefined]);
+    const writtenDump = storage.write.mock.calls.find((c) => String(c[0]).endsWith("policyops-fc.dump"))?.[1];
+    expect(writtenDump).toBeInstanceOf(Buffer);
+    expect((writtenDump as Buffer).toString("utf8")).toBe("FULLDUMP");
   });
 
   it("verify-archive：文件SHA不符或restore报告pending → 失败并返回mismatches", async () => {
@@ -502,5 +566,153 @@ describe("RCL第三轮复审：selection-report与per-row hash（verify）", () 
     expect(report.sourceCounts).toEqual({ "310000": 18, "440000": 18 });
     expect(report.quotaStats["310000_male"]).toBe(9);
     expect(report.quotaStats["440000_unemployed"]).toBe(6);
+  });
+});
+
+// ─── RCL第四轮复审Red：prepare-archive补偿（WI-20260907-03）────────────────
+// 任何prepare阶段失败均不得留下prepared批次或archive entries；只精确清理本次
+// 新建batchId；文件失败时清理本次不完整临时归档；补偿失败必须同时报告原始错误
+// 与补偿错误（不得伪装成功）。
+
+describe("RCL第四轮复审：prepare-archive补偿（RCL-FR-002/003/005）", () => {
+  const verifiedSelection = buildSelectionReport({
+    algorithmVersion: "RCL-GEN-1.0",
+    curatedUids: [],
+    sourceCounts: {},
+    quotaStats: {},
+    violations: [],
+  });
+  const emptyManifest = {
+    manifestHash: "mh",
+    oldTargets: { cases: [], showcase: [], tests: [] },
+  } as never;
+
+  it("第二次完整dump失败：批次事务已提交→补偿删除本次批次/entries，历史批次不受影响（当前不清理→Red）", async () => {
+    const { RclPrepareError } = await import("../executor");
+    const storage = fakeStorage();
+    const db = memoryDb({
+      preExistingBatches: [{ id: "11111111-1111-4111-8111-111111111111", status: "applied" }],
+    });
+    const dump = vi.fn(async (table?: string) => {
+      if (table === undefined && dump.mock.calls.filter((c) => c[0] === undefined).length === 2) {
+        throw new Error("第二次完整dump失败（注入）");
+      }
+      return Buffer.from(table ? `DUMP-${table}` : "FULLDUMP");
+    });
+
+    const err = await prepareRclArchive({
+      db: db as never,
+      storageDir: "/archive",
+      storage,
+      pgDump: dump,
+      selectionReport: verifiedSelection,
+      manifest: emptyManifest,
+      createdBy: "test",
+    }).then(
+      () => null,
+      (e: unknown) => e as InstanceType<typeof RclPrepareError>,
+    );
+    expect(err).toBeInstanceOf(RclPrepareError);
+    expect(err!.originalError.message).toContain("第二次完整dump失败");
+    // 原始错误必须报告；补偿成功时compensationErrors为空（未伪装成功、未吞错）。
+    expect(err!.compensationErrors).toEqual([]);
+    // 不留prepared批次/entries；历史批次保留。
+    expect(db.batches.size).toBe(1);
+    expect(db.batches.has("11111111-1111-4111-8111-111111111111")).toBe(true);
+    expect(db.entries.length).toBe(0);
+    // 本次写入的归档文件被清理（本次不完整临时归档）。
+    expect(storage.remove.mock.calls.length).toBeGreaterThan(0);
+  });
+
+  it("第二次dump写文件失败：无批次/entries落库，清理已写入的临时归档（当前写文件失败留残留→Red）", async () => {
+    const { RclPrepareError } = await import("../executor");
+    const storage = fakeStorage();
+    storage.write.mockImplementation(((p: string) => {
+      if (String(p).endsWith("cases.dump")) throw new Error("写文件失败（注入）：cases.dump");
+      // 其余写入正常（记录内容以便remove断言）。
+    }) as never);
+    const db = memoryDb();
+    const dump = vi.fn(async (table?: string) => Buffer.from(table ? `DUMP-${table}` : "FULLDUMP"));
+
+    const err = await prepareRclArchive({
+      db: db as never,
+      storageDir: "/archive",
+      storage,
+      pgDump: dump,
+      selectionReport: verifiedSelection,
+      manifest: emptyManifest,
+      createdBy: "test",
+    }).then(
+      () => null,
+      (e: unknown) => e as InstanceType<typeof RclPrepareError>,
+    );
+    expect(err).toBeInstanceOf(RclPrepareError);
+    expect(err!.originalError.message).toContain("写文件失败");
+    // 批次事务从未提交：无批次/entries。
+    expect(db.batches.size).toBe(0);
+    expect(db.entries.length).toBe(0);
+    // 已写入的policyops-fc.dump被补偿清理（本次不完整临时归档）。
+    expect(storage.remove).toHaveBeenCalledWith(expect.stringContaining("policyops-fc.dump"));
+  });
+
+  it("最终SHA生成失败：批次已提交→补偿删除批次/entries并清理全部本次文件（当前残留prepared→Red）", async () => {
+    const { RclPrepareError } = await import("../executor");
+    const storage = fakeStorage();
+    storage.read.mockImplementation(((p: string) => {
+      if (String(p).endsWith("cases.dump")) throw new Error("读文件失败（注入）：cases.dump");
+      return Buffer.from("x", "utf8");
+    }) as never);
+    const db = memoryDb();
+    const dump = vi.fn(async (table?: string) => Buffer.from(table ? `DUMP-${table}` : "FULLDUMP"));
+
+    const err = await prepareRclArchive({
+      db: db as never,
+      storageDir: "/archive",
+      storage,
+      pgDump: dump,
+      selectionReport: verifiedSelection,
+      manifest: emptyManifest,
+      createdBy: "test",
+    }).then(
+      () => null,
+      (e: unknown) => e as InstanceType<typeof RclPrepareError>,
+    );
+    expect(err).toBeInstanceOf(RclPrepareError);
+    expect(err!.originalError.message).toContain("读文件失败");
+    expect(err!.compensationErrors).toEqual([]);
+    expect(db.batches.size).toBe(0);
+    expect(db.entries.length).toBe(0);
+  });
+
+  it("补偿失败：错误同时报告原始错误与补偿错误，不得伪装成功（当前无补偿→Red）", async () => {
+    const { RclPrepareError } = await import("../executor");
+    const storage = fakeStorage();
+    const db = memoryDb({ failDelete: true });
+    const dump = vi.fn(async (table?: string) => {
+      if (table === undefined && dump.mock.calls.filter((c) => c[0] === undefined).length === 2) {
+        throw new Error("第二次完整dump失败（注入）");
+      }
+      return Buffer.from(table ? `DUMP-${table}` : "FULLDUMP");
+    });
+
+    const err = await prepareRclArchive({
+      db: db as never,
+      storageDir: "/archive",
+      storage,
+      pgDump: dump,
+      selectionReport: verifiedSelection,
+      manifest: emptyManifest,
+      createdBy: "test",
+    }).then(
+      () => null,
+      (e: unknown) => e as InstanceType<typeof RclPrepareError>,
+    );
+    expect(err).toBeInstanceOf(RclPrepareError);
+    // 原始错误与补偿错误都必须可见。
+    expect(err!.originalError.message).toContain("第二次完整dump失败");
+    expect(err!.compensationErrors.length).toBeGreaterThan(0);
+    expect(err!.compensationErrors.some((m) => m.includes("补偿失败"))).toBe(true);
+    expect(err!.message).toContain("第二次完整dump失败");
+    expect(err!.message).toContain("补偿亦失败");
   });
 });
