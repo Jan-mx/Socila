@@ -25,8 +25,8 @@
 | Socila命名统一与地区DSL分层 | Done | `SOCILA-DSL-1.0`与地区Manifest稳定，粤川示例退出生产Seed，上海黄金结果无漂移 |
 | 任务2：CN/上海/广东权威政策首期交付 | Done | 三地区管理员批准与候选快照重放完成；四川Deferred不阻塞 |
 | 任务3：地区规划时态与真实入口修复 | Accepted | 第二轮修复已覆盖空黄金测试、停用地区绑定和三方snapshot hash |
-| 任务4：上海/广东政策案例库全量重建 | Accepted（代码层，第六轮repair执行器隔离验收，请求独立复审） | 第三～五轮修复保持；第六轮交付可审计/确定性/单事务/幂等repair-forward执行器并在隔离库19场景全过；门禁全过（npm test 75文件/740、test:db 26文件/141零skip、Gitleaks 89提交零发现） |
-| 持久库旧案例替换 | Reopened | 当前36/36/78冻结；repair执行器已隔离验收；绑定`972b453…`的executable-write-set（planHash `932892f2…`、attestation `20ec2622…`、确定性批次`c8a7c104…`+988 entries）等待用户授权后由执行器单事务执行 |
+| 任务4：上海/广东政策案例库全量重建 | Accepted（代码层，第六轮repair执行器隔离验收，请求独立复审） | 第三～五轮修复保持；第六轮交付可审计/确定性/单事务/幂等repair-forward执行器并在隔离库19场景全过；门禁全过（npm test 75文件/740、test:db 26文件/141零skip、Gitleaks 91提交零发现） |
+| 持久库旧案例替换 | Reopened | 当前36/36/78冻结；repair执行器已隔离验收；绑定`8b360c2…`的executable-write-set（planHash `db55e4ab…`、attestation `3b7340c1…`、确定性批次`c8a7c104…`+988 entries）等待用户授权后由执行器单事务执行 |
 | 任务3/4最终分支集成 | Blocked | 任务4和WI-04重新Accepted后，以merge commit合入`refactor/policy-ops-agent-platform` |
 | 远程Personal Demo服务器部署 | Planned | 目标服务器全栈healthy、域名/HTTPS和离机备份验证 |
 | 首批公开政策采集与RAG建库 | Planned | 白名单来源原件、DocumentTree、Chunk和索引形成闭环 |

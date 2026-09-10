@@ -25,7 +25,7 @@
 | `feature-09-05-socila-naming/` | 09-05 Socila命名统一与地区DSL分层Feature验收（协议/地区DSL分层、命名硬切换、服务JWT身份socila-next-core、粤川示例夹具化、0010迁移与持久库精确清理对账） |
 | `stage-09-05-national-baseline-overlays/` | 09-05 国家baseline及粤川权威overlay Stage；任务2首期CN/上海/广东最终Accepted，四川Deferred，历史Reopened与修复证据见验收报告§11～§17 |
 | `feature-09-05-jurisdiction-planning/` | 任务3两轮独立复审；最新2026-09-09报告记录空黄金测试、停用地区绑定、replay hash和DB证据缺口 |
-| `stage-09-05-case-governance/` | 任务4独立复审（2026-09-07第一轮、2026-09-09第二轮/第三轮、2026-09-10第四～六轮）；`acceptance-report.md`代码层Accepted（第六轮repair-forward执行器隔离验收19场景全过，请求独立复审）；绑定`972b453…`的executable-write-set（planHash `932892f2…`）等待WI-20260907-04用户授权（见PROGRESS第六轮小节） |
+| `stage-09-05-case-governance/` | 任务4独立复审（2026-09-07第一轮、2026-09-09第二轮/第三轮、2026-09-10第四～六轮）；`acceptance-report.md`代码层Accepted（第六轮repair-forward执行器隔离验收19场景全过，请求独立复审）；绑定`8b360c2…`的executable-write-set（planHash `db55e4ab…`）等待WI-20260907-04用户授权（见PROGRESS第六轮小节） |
 | `feature-09-03-service-jwt/` | Core与Agent双向服务JWT鉴权Feature验收与复审（4项缺漏已修复闭环并重新验收：文档入口关闭、启动期fail-fast、重放异常503映射、宿主配置补齐） |
 | `documentation/` | 文档体系和补充决策验收 |
 | `traceability.md` | 需求、实现、测试和报告追踪 |

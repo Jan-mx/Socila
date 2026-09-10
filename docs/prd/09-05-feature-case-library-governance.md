@@ -10,7 +10,7 @@
 | --- | --- |
 | PRD文件 | `09-05-feature-case-library-governance.md` |
 | 类型 | Feature；替代原“上海案例库精简为452/36/528”方案 |
-| 状态 | Accepted（代码层，2026-09-10第六轮：第五轮journal严格单调/账本回归/审计阻断/归档目录保护 + 第六轮可审计确定性单事务幂等repair-forward执行器与隔离演练19场景全过）；持久库repair-forward仍由WI-20260907-04在用户对planHash `932892f2…`授权后执行 |
+| 状态 | Accepted（代码层，2026-09-10第六轮：第五轮journal严格单调/账本回归/审计阻断/归档目录保护 + 第六轮可审计确定性单事务幂等repair-forward执行器与隔离演练19场景全过）；持久库repair-forward仍由WI-20260907-04在用户对planHash `db55e4ab…`授权后执行 |
 | 前置依赖 | 任务2首期Accepted；任务3经`WI-20260907-02`修复并重新Accepted；WI-20260907-03第五轮修复完成并恢复Accepted（等待独立复审） |
 | 执行顺序 | 任务3修复 → 本Feature代码与隔离验收 → 持久库替换Work Item |
 | 退出门禁 | 完整旧库可恢复归档、新地区案例确定性生成、沪粤36条展示、精确替换和完整E2E均通过 |
