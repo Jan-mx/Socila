@@ -1,6 +1,6 @@
 # 任务4案例库治理与地区化重建验收报告
 
-> Status: Accepted（代码层）；持久repair-forward已于2026-09-10经用户明确授权执行并12项验证全过（WI-20260907-04等待独立复审）
+> Status: Accepted（2026-09-11独立复审通过；代码、持久repair与恢复证据全部闭环）
 > Branch: `codex/task34-regional-case-rebuild`
 > Scope: WI-20260907-03（地区化政策案例生成与可靠归档重建）
 
@@ -195,3 +195,7 @@ WI-20260907-03 Accepted；任务4 PRD与本报告代码层Accepted；WI-20260907
 | 边界 | 仅授权三项写入；snapshot/release/政策实体/远程库/Secret/部署零变化；未创建PR、未合并分支；证据`F:/Socila/backup/case-library/task34-r8-repair-exec-2026-09-10T15-41-40/` |
 
 WI-20260907-04标记等待复审；WI-20260909-01继续Blocked；请求独立复审。
+
+## 2026-09-11独立复审结论
+
+独立复审通过。复审直接读取当前policyops并使用R8的`executable-write-set.fresh.json`运行只读`verify --plan`，得到`ok=true/state=repaired`；账本18条、ID 1～16/21/22、可信批次及988 entries、36/36/78、42/36、10 snapshots、5 releases均与授权计划一致。repair前后备份实际SHA与sidecar一致，恢复报告均为40表/20 sequence零差异；Node 75文件/740测试、TypeScript和Secret扫描复验通过。WI-20260907-04正式Accepted，WI-20260909-01可转Ready。

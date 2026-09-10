@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-10
+> Updated: 2026-09-11
 
 ## 当前结论
 
@@ -41,9 +41,9 @@
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化、三地区批准和候选快照重放完成；四川无快照 | 保持Accepted，不因任务3/4复审回退 |
 | 任务3：地区感知用户规划 | **Accepted（2026-09-09第二轮修复）**：空黄金测试集fail-closed、停用URL地区绑定、replay三方hash、隔离DB 116/116零skip、E2E 19/19 | 代码验收保持；0017与快照已持久执行，但账本/任务4审计待repair-forward |
-| 任务4：地区化政策案例库 | **Accepted（代码层，2026-09-10第六轮：repair-forward执行器隔离验收）**：第五轮journal严格单调/账本回归/审计阻断/归档目录保护保持；第六轮交付可审计、确定性、单事务、幂等的`scripts/rcl-repair-forward-task34.mjs`（audit/plan/apply/verify；确定性批次`c8a7c104…`；REPEATABLE READ+advisory xact lock；复跑noop/漂移REPAIR_STATE_DRIFT），post dump隔离库19场景全过；`npm test` 75文件/740零skip、随机端口`test:db` 26文件/141零skip | 请求独立复审；持久repair由WI-20260907-04授权后执行 |
-| 持久库案例替换 | **等待复审（2026-09-10 repair-forward已执行）**：用户明确授权后以codeSha `aeb464f`/planHash `179507da…`/targetFingerprint `56c479de…`在本机policyops单事务执行：删除账本18/19/20、批次91d60c5f→rolled_back、新增可信批次c8a7c104+988 entries；12项验证全过（账本18条原值、36/36/78/10/5及业务表hash零变化、migration×2 no-op、复跑noop、verify ok）；pre/post备份均在全新实例恢复对账一致 | 独立复审通过后WI-20260907-04置Accepted；证据`task34-r8-repair-exec-2026-09-10T15-41-40/` |
-| 最终分支集成 | **Blocked**：源`aeb464f`（含repair执行器与本次持久执行文档）尚未合入目标`57f051d` | WI-04独立复审通过并Accepted后执行WI-20260909-01；当前禁止合并 |
+| 任务4：地区化政策案例库 | **Accepted（2026-09-11独立复审）**：代码、隔离演练、持久repair、幂等与恢复证据全部闭环 | 保持Accepted |
+| 持久库案例替换 | **Accepted（2026-09-11独立复审）**：账本18条、可信批次+988 entries、36/36/78零漂移、repair复跑no-op、pre/post恢复40表/20 sequence一致 | 证据`task34-r8-repair-exec-2026-09-10T15-41-40/` |
+| 最终分支集成 | **Ready**：源分支验收收口后合入目标`57f051d` | 执行WI-20260909-01；不写数据库、不合并main |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
 | 四川医保退休年限正式文件（缺口4） | Deferred；仅2025-03征求意见稿，无正式印发 | `WI-20260907-01`：正式印发后采集，不阻塞任务2首期 |
 | 川人社办发〔2023〕18号（缺口5） | Deferred；白名单域未检索到 | `WI-20260907-01`：等待用户提供原件或官方入口恢复 |

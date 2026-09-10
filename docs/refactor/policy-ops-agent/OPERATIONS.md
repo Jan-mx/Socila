@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-09
+> Updated: 2026-09-11
 
 ## 当前Profile
 
@@ -189,7 +189,7 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 7. **执行runbook（仅在用户针对planHash `db55e4ab…`明确授权后由用户执行）**：①新建紧邻操作时间的完整dump并核对SHA（未创建前不得写入）；②`DATABASE_URL=<policyops> node scripts/rcl-repair-forward-task34.mjs audit`确认state=pending、targetFingerprint `56c479de…`、planHash `db55e4ab…`；③`DATABASE_URL=<policyops> RCL_REPAIR_ALLOW_PERSISTENT=1 node scripts/rcl-repair-forward-task34.mjs apply --i-am-authorized --plan-hash db55e4ab990e84289a3e28d45910d455c6e90d5009643fe18eb072fb70c73848 --target-fingerprint 56c479deb89438ff3943b61b73812cc2`（单事务：REPEATABLE READ+advisory xact lock；事务内重算指纹、FOR UPDATE核对账本18/19/20与prepared批次91d60c5f、核对attestation/业务指纹/可信归档；精确删除RETURNING恰好18/19/20、批次→rolled_back恰好1行、新增restore_verified可信批次+988 entries；任一不一致回滚零写入；工作树必须干净、codeSha必须为计划绑定提交）；④`verify --plan <executable-write-set.json>`必须ok:true；⑤复跑apply必须`noop:true`（部分完成/不一致返回`REPAIR_STATE_DRIFT`，禁止补写，立即报告）；⑥新建post-repair完整dump并在全新PG17+pgvector实例恢复对账（40表/20 sequence）；⑦更新WI-20260907-04为Accepted并同步文档。任何差异立即停止，不默认恢复pre dump。
 8. **已执行（2026-09-10，用户明确授权）**：按第7条runbook在本机policyops完成一次repair-forward——pre备份`policyops-rcl-repair-pre-20260910234300.dump`（`b190d1d1…`+sidecar，全新实例恢复对账40表/20 sequence一致）→ fresh audit/plan与授权参数（codeSha `aeb464f`、planHash `179507da…`、targetFingerprint `56c479de…`、attestation `ca4238a5…`）一致 → `RCL_REPAIR_ALLOW_PERSISTENT=1`仅子进程apply单事务成功（删除18/19/20、91d60c5f→rolled_back、新增c8a7c104+988 entries、attempts=1）→ 12项验证全过（账本18条原值、36/36/78/10/5与业务表hash零变化、migration×2 no-op、复跑noop、verify ok）→ post备份`policyops-rcl-repair-post-20260910234716.dump`（`8303a4c3…`+sidecar，第三个全新实例恢复对账40表/20 sequence一致）。当前持久事实：migrations=18（1～16、21、22）、36/36/78、10 snapshots、5 releases、archive batches=2 applied+1 rolled_back+1 restore_verified。证据`F:/Socila/backup/case-library/task34-r8-repair-exec-2026-09-10T15-41-40/`。WI-20260907-04标记等待复审；独立复审通过后置Accepted，随后方可评估WI-20260909-01。
 
-## 任务3/4最终分支集成runbook（WI-20260909-01，当前Blocked）
+## 任务3/4最终分支集成runbook（WI-20260909-01，当前Ready）
 
 只有WI-20260907-02、WI-20260907-03和WI-20260907-04全部Accepted后才能执行。本runbook只操作Git，不授权数据库、快照、Secret、部署、PR或`main`写入。
 

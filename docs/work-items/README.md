@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-09
+> Updated: 2026-09-11
 
 ## 用途
 
@@ -55,10 +55,10 @@ Agent提示词只在对话中交付，禁止写入Work Item正文、验收报告
 
 | Work Item | 状态 | 用途 |
 | --- | --- | --- |
-| `WI-20260909-01-task34-final-integration.md` | Blocked | 等任务4代码和WI-04 repair-forward重新Accepted后，以merge commit合入重构分支 |
+| `WI-20260909-01-task34-final-integration.md` | Ready | WI-02/03/04均Accepted；以merge commit合入重构分支 |
 | `WI-20260907-02-task3-temporal-entry-hardening.md` | Accepted | 空黄金测试、停用地区绑定和replay三方hash已完成第二轮修复验收 |
 | `WI-20260907-03-regional-policy-case-rebuild.md` | Reopened | 旧test hash、restore/SHA/selection验证、42 example原子同步仍有缺口 |
-| `WI-20260907-04-persistent-case-library-replacement.md` | Reopened | 已执行36/36/78替换，但账本、归档manifest和恢复证据待repair-forward闭环 |
+| `WI-20260907-04-persistent-case-library-replacement.md` | Accepted | repair-forward执行、幂等、可信归档及40表/20 sequence恢复已独立复审通过 |
 | `WI-20260907-01-sichuan-policy-followup.md` | Blocked | 四川三项正式权威来源到位后独立开发、物化、审核和候选快照验收 |
 | `WI-20260906-02-stage-e-persistent-repair.md` | Accepted | 已完成本机0014迁移、四包draft快照repair及前后完整恢复对账 |
 | `WI-20260906-01-stage-e-pack-repair-hardening.md` | Accepted | 已加固政策包快照repair的事务、指纹、审计与集成测试；持久库执行见WI-20260906-02 |

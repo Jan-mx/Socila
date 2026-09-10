@@ -1,8 +1,8 @@
 # WI-20260907-04：持久库旧案例全量替换
 
 > Author: Jan
-> Status: 等待复审（2026-09-10用户明确授权后repair-forward已在本机policyops单事务执行并12项验证全过；独立复审通过前不标记Accepted）
-> Updated: 2026-09-10
+> Status: Accepted（2026-09-11独立复审通过）
+> Updated: 2026-09-11
 
 ## Work Item
 
@@ -115,4 +115,8 @@
 | 证据 | `F:/Socila/backup/case-library/task34-r8-repair-exec-2026-09-10T15-41-40/`（pre-audit/pre-plan/executable-write-set.fresh/pre-restore-reconcile/apply-result/post-state/migration-run1&2/apply-rerun/post-verify/post-restore-reconcile/repair-execution-summary.json）；授权计划`task34-r7-fresh-plan-2026-09-10T15-15-11/` |
 | 边界 | 仅执行授权的三项写入；未修改snapshot/release/政策实体/远程库/Secret/部署；未合并分支、未创建PR；临时验证容器已清理；可信归档与pre/post备份未覆盖 |
 
-当前持久事实：migrations=18（1～16、21、22）、36/36/78、10 snapshots、5 releases、archive batches=2 applied+1 rolled_back+1 restore_verified（988 entries）。本Work Item标记**等待复审**，独立复审通过后再置Accepted。
+当前持久事实：migrations=18（1～16、21、22）、36/36/78、10 snapshots、5 releases、archive batches=2 applied+1 rolled_back+1 restore_verified（988 entries）。2026-09-11独立复审通过，本Work Item已Accepted。
+
+## 独立复审（2026-09-11）
+
+独立复审通过：执行器`verify --plan`返回`ok=true/state=repaired`；账本18条及保留行hash/created_at符合计划；遗留批次为rolled_back，可信批次为restore_verified且988 entries精确为452/36/500、hash全合法无重复；36/36/78、42/36、10 snapshots、5 releases及业务指纹零漂移；repair复跑noop；pre/post-repair备份SHA匹配并在全新实例恢复40表/20 sequence零差异。本Work Item正式Accepted。

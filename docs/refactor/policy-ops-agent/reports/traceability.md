@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-09
+> Updated: 2026-09-11
 
 ## 用途
 
@@ -57,9 +57,9 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | Work Item | 规格 | 实现位置 | 测试路径 | 验收证据 | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | WI-20260907-02 | `docs/work-items/WI-20260907-02-task3-temporal-entry-hardening.md` | `src/server/modules/publishing/application/release-gates.ts`（空黄金测试集fail-closed）、`src/server/modules/publishing/application/jurisdiction-release.use-case.ts`（停用地区绑定+`ReleaseJurisdictionMismatchError`）、`src/app/api/admin/jurisdictions/[code]/releases/[releaseId]/route.ts`（URL地区传入用例+409映射）、`src/server/modules/planning/application/replay-plan.use-case.ts`（三方hash+`ReplaySnapshotDriftError`）、`src/app/api/plan/[id]/replay/route.ts`（409 `REPLAY_SNAPSHOT_DRIFT`）、`src/server/modules/planning/application/jurisdiction-compute.use-case.ts`（plan保存snapshotContentHash，JRP-FR-009）、`scripts/e2e-task3-setup.ts`、`src/server/modules/identity/__tests__/identity-container.test.ts`（30秒显式超时稳定化） | `release-gates.test.ts`（空集合反例）、`jurisdiction-release.use-case.test.ts`（广东URL+上海releaseId拒绝且零修改）、`replay-plan.use-case.test.ts`（三方一致/保存hash漂移/重算hash漂移/缺保存hash）、`jurisdiction-compute.use-case.test.ts`（savePlan hash断言）、`jurisdiction-compute.integration.test.ts`（跨地区停用拒绝+2026/2030广东不同快照落库）、`e2e/task3-regional.spec.ts`（JRP-AC-008 replay/JRP-AC-009跨地区停用与停用后unsupported） | `reports/feature-09-05-jurisdiction-planning/acceptance-report.md`（2026-09-09第二轮修复验收） | Accepted（2026-09-09） |
-| WI-20260907-03 | `docs/work-items/WI-20260907-03-regional-policy-case-rebuild.md` | 第二轮实现保留；待补旧test完整hash、restore/SHA/selection、42 example原子同步和manifest自校验 | 待补第三轮专用Red/Green、随机端口隔离DB和真实恢复明细 | `reports/stage-09-05-case-governance/review-report-2026-09-09-r3.md` | Reopened |
-| WI-20260907-04 | `docs/work-items/WI-20260907-04-persistent-case-library-replacement.md` | 历史执行已产生36/36/78；待重建可信旧归档、当前attestation并修复账本/批次审计 | 计划：pre/post/当前三方只读对账、fresh repair目标、幂等及再次恢复；写入需新授权 | 第三轮复审报告；历史执行记录保留 | Reopened |
-| WI-20260909-01 | `docs/work-items/WI-20260909-01-task34-final-integration.md` | 计划：最终集成分支以显式merge commit合入`refactor/policy-ops-agent-platform` | 计划：祖先/父提交、完整差异、全量门禁、远端SHA核对 | 合并后新增`reports/task34-final-integration/acceptance-report.md` | Blocked；等待任务4/WI-04重新Accepted |
+| WI-20260907-03 | `docs/work-items/WI-20260907-03-regional-policy-case-rebuild.md` | 任务4代码、确定性案例、归档门禁及repair执行器 | Node/DB/E2E/Python/安全门禁及隔离repair演练 | 任务4验收报告§9～§11 | Accepted |
+| WI-20260907-04 | `docs/work-items/WI-20260907-04-persistent-case-library-replacement.md` | repair-forward单事务修复账本与可信归档元数据 | 12项持久验证、repair no-op、pre/post恢复40表/20 sequence | R8执行证据及2026-09-11独立复审 | Accepted |
+| WI-20260909-01 | `docs/work-items/WI-20260909-01-task34-final-integration.md` | 最终集成分支以显式merge commit合入`refactor/policy-ops-agent-platform` | 祖先/父提交、完整差异、全量门禁、远端SHA核对 | 合并后新增`reports/task34-final-integration/acceptance-report.md` | Ready |
 | WI-20260907-01 | `docs/work-items/WI-20260907-01-sichuan-policy-followup.md` | 计划：四川三项正式来源到位后的规则、参数、物化、审核和候选快照 | 计划：权威引用、黄金、隔离、物化、快照重放；不得提前填写PASS | ADR-0010；等待解锁后新增独立验收证据 | Blocked；不阻塞任务2首期 |
 | WI-20260906-02 | `docs/work-items/WI-20260906-02-stage-e-persistent-repair.md` | 实际：持久库`socila-postgres/policyops`（0014迁移+`scripts/materialize-policy-regions.ts` repair一次）；证据`audit-policyops-wi-02.json`、`repair-policyops-wi-02.json`、备份`backup/db/policyops-wi-02-{pre,post}-*.dump`（Git忽略） | 无新增代码/测试；复用WI-01既有守卫与集成覆盖；只读验证`restore-reconcile.ts`/`planning-regression.ts` | 任务2验收报告§15/§17 | Accepted；任务2首期最终Accepted |
 | WI-20260906-01 | `docs/work-items/WI-20260906-01-stage-e-pack-repair-hardening.md` | 实际：`src/lib/policy-materialization/target.ts`（PackTargetBinding+loadPackTargets+指纹绑定draft包）、`src/lib/policy-materialization/materialize.ts`（repair重写：事务内FOR UPDATE锁定重校验/REPAIR_TARGET_CHANGED/computeRepairBatchHash确定性repaired批次+新成员/原成员不可变/isJurisdictionBlocked纳入repaired）、`scripts/materialize-policy-regions.ts`（按实际数量输出）、`src/lib/db/index.ts`（池error监听） | 实际：`src/lib/policy-materialization/materializer.integration.test.ts`（+6场景：守卫/目标绑定/正常修复/回滚/并发/幂等零漂移）、`materializer.unit.test.ts`（+2：指纹绑定/CLI源码契约）、`target-guard.test.ts`、`src/lib/engine/__tests__/{guangdong,sichuan}-overlay-golden.test.ts`（既有any→unknown类型修复） | 任务2验收报告§14（Red/Green+全量门禁）；持久库执行见§15/WI-02 | Accepted |
