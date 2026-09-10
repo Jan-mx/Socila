@@ -1,12 +1,12 @@
 # 任务4案例库治理与地区化重建验收报告
 
-> Status: Reopened（2026-09-10第五轮代码与隔离门禁完成，等待独立复审；不得提前写Accepted）
+> Status: Accepted（代码层，2026-09-10第六轮：repair-forward执行器隔离验收19场景全过；持久repair-forward待WI-20260907-04用户授权，请求独立复审）
 > Branch: `codex/task34-regional-case-rebuild`
 > Scope: WI-20260907-03（地区化政策案例生成与可靠归档重建）
 
 ## 当前结论
 
-**第五轮修复完成，本报告保持Reopened（2026-09-10）**：WI-20260907-03已恢复Accepted；第五轮修复journal非单调（0010～0014 when修正为严格单调，SQL零修改）、migration账本回归8项全过、审计journal不符改为阻断、归档目录保护；全部门禁本地新鲜通过（`npm test` 74文件/720零skip、随机端口`npm run test:db` 26文件/141零skip、tsc/eslint/build退出0、scan-secrets 788文件零命中、Gitleaks 8.29.1完整历史86提交零发现、allowlist哨兵全过）；第五轮只读审计绑定新代码提交`1fe702b…`（attestationManifestHash `8941655b…`、targetFingerprint `56c479de…`、journalCheck.journalMonotonic=true、隔离库删除重复行后migration×2 no-op证据）。**独立复审前本报告顶部保持Reopened**；**WI-20260907-04保持Reopened**：repair-forward计划（绑定`1fe702b…`）已生成，等待用户授权。历史代码与持久执行记录保留为审计事实。
+**第六轮：repair-forward执行器隔离验收完成，本报告代码层Accepted（2026-09-10，请求独立复审）**：可审计/确定性/单事务/幂等的`scripts/rcl-repair-forward-task34.mjs`（核心库`src/lib/case-repair/repair-forward.ts`）在post dump隔离库完成19场景演练全过（证据`task34-r6-repair-drill-2026-09-10/repair-executor-test-report.json`），第六轮只读审计绑定代码提交`972b453…`生成attestation（`20ec2622…`）、executable-write-set（planHash `932892f2…`、988条entries、确定性批次`c8a7c104-8b8b-53f5-9bfd-1c8a8a6be141`）与repair-forward计划（`task34-r4-audit-2026-09-10T13-04-04/`）；持久policyops未写入，等待用户授权。第五轮结论保留如下：WI-20260907-03已恢复Accepted；第五轮修复journal非单调（0010～0014 when修正为严格单调，SQL零修改）、migration账本回归8项全过、审计journal不符改为阻断、归档目录保护；全部门禁本地新鲜通过（`npm test` 74文件/720零skip、随机端口`npm run test:db` 26文件/141零skip、tsc/eslint/build退出0、scan-secrets 788文件零命中、Gitleaks 8.29.1完整历史86提交零发现、allowlist哨兵全过）；第五轮只读审计绑定新代码提交`1fe702b…`（attestationManifestHash `8941655b…`、targetFingerprint `56c479de…`、journalCheck.journalMonotonic=true、隔离库删除重复行后migration×2 no-op证据）。**WI-20260907-04保持Reopened**：repair-forward计划已由第六轮更新为绑定`972b453…`的可执行写集合（planHash `932892f2…`），等待用户授权。历史代码与持久执行记录保留为审计事实。
 
 历史背景：`e26a543`实现0016、案例治理与452/36/528路径；复审发现归档SHA用文件名而非文件内容、selection报告缺失、restore报告pending、manifest未绑定内容、81条展示hash为pending、无可比断言仍判match、质量分空、多标签未接入、并发无行锁、地区默认硬编码（[复审报告](./review-report-2026-09-07.md)）。
 
@@ -165,3 +165,20 @@
 | 边界 | 全程持久policyops仅SELECT；未执行repair-forward；未恢复pre dump；未创建PR、未合并分支；可信归档目录未覆盖未删除；隔离容器/库finally清理 |
 
 **独立复审前本报告顶部保持Reopened**；WI-20260907-03已恢复Accepted（代码与隔离门禁层面），WI-20260907-04等待用户对`1fe702b…`计划的repair-forward授权，WI-20260909-01保持Blocked。
+
+## 2026-09-10第六轮：repair-forward执行器隔离验收（代码层Accepted，请求独立复审）
+
+| 项 | 结果 |
+| --- | --- |
+| 执行器 | `scripts/rcl-repair-forward-task34.mjs`（核心`src/lib/case-repair/repair-forward.ts`；未处于tsx运行时时以tsx CLI重载自身，同一进程执行全部数据库操作）：audit/plan/apply/verify；无参数失败（退出2）、apply缺授权/planHash/targetFingerprint拒绝零写入、目标库policyops默认拒绝、工作树未提交拒绝 |
+| 绑定 | codeSha=HEAD（`972b453…`）、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、trustedArchiveDir永久可信归档、fresh attestationManifestHash `20ec2622…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`；planHash `932892f2…`覆盖完整988条写集合、确定性批次ID与codeSha |
+| 确定性批次ID | `sha256("task34-r4-trusted-archive:"+manifestHash)`前16字节设v5版本/变体位=`c8a7c104-8b8b-53f5-9bfd-1c8a8a6be141`（单元测试固定断言；禁止随机UUID） |
+| 单事务 | REPEATABLE READ+事务开始即`pg_advisory_xact_lock`；事务内重算targetFingerprint、重建计划核对planHash、`FOR UPDATE`锁定核对账本18/19/20完整旧值与prepared批次、核对attestation/业务指纹/可信归档；精确条件删除RETURNING恰好18/19/20、批次条件更新RETURNING恰好1行、新批次restore_verified（真实计数与table_hashes）、988条参数化entries累计rowCount恰好988、COMMIT前终态核对；任一不一致回滚 |
+| 幂等/并发 | 复跑`noop:true`；部分完成/不一致→`REPAIR_STATE_DRIFT`；并发第二方经40001重试后noop |
+| 单元 | `src/lib/case-repair/__tests__/repair-forward.test.ts` 20例（Red→Green）：确定性ID、988条entries构建/非法hash/重复/计数、批次行真实字段、planHash覆盖entries与批次ID与codeSha、账本删除语句完整旧值、状态分类pending/repaired/drift、参数守卫 |
+| 隔离演练 | `scripts/rcl-repair-drill-task34.mjs`：19场景全过（见WI-20260907-04第六轮表）；并发场景`c1 noop attempts=2 / c2 applied attempts=1`；5故障点全部回滚；repair后dump第三库恢复40表/20 sequence零mismatch；attestation交叉核对（codeSha=1fe702b）===第五轮审计`8941655b…` |
+| 门禁 | `npm test` 75文件/740零skip；随机端口全新PG17+pgvector `npm run test:db` 26文件/141零skip（agent.migrate --with-roles×2、pytest -m integration 20/20）；tsc/eslint（0 error）/build退出0；scan-secrets 790文件零命中；Gitleaks 8.29.1完整历史89提交零发现；allowlist哨兵全过；RCL-AC-015契约保持（执行器库独立于case-governance目录） |
+| 第六轮只读审计 | `F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T13-04-04/`：attestation-current.json、audit-summary.json、repair-forward-plan.json（单事务写集合、executor节、交叉核对10项全true、隔离演练绑定）、executable-write-set.json、repair-executor-test-report.json；journalCheck.journalMonotonic=true、ledgerRegressionNoopAfterDelete=true、可信归档复验通过 |
+| 边界 | 持久policyops仅SELECT；未执行repair-forward；未恢复pre dump；未创建PR、未合并分支；可信归档与pre/post备份未覆盖；隔离容器/库/临时归档副本finally清理 |
+
+WI-20260907-03 Accepted；任务4 PRD与本报告代码层Accepted；WI-20260907-04继续Reopened等待用户授权；WI-20260909-01继续Blocked。请求独立复审。

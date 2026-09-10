@@ -159,3 +159,18 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 
 - 门禁（2026-09-10本地新鲜）：`npm test` 74文件/720零skip；`npm run test:db` 26文件/141零skip（随机端口全新PG17+pgvector，migration×2/bootstrap×2/seed×2幂等）；tsc/eslint/build退出0；agent.migrate --with-roles×2幂等；pytest -m integration 20/20；scan-secrets 788文件零命中；Gitleaks 8.29.1完整历史86提交零发现；allowlist哨兵3场景全过。
 - 边界：持久policyops仅SELECT；repair未执行；WI-20260909-01保持Blocked；pre dump未恢复；`task34-r4-trusted-old-2026-09-10T06-59-14/`未覆盖未删除（第五轮只读复验通过）；临时容器/库finally清理。
+
+## 任务4第六轮：repair-forward执行器与隔离验收（2026-09-10，代码提交`972b453`；WI-20260907-03 Accepted、任务4 PRD/验收报告代码层Accepted、WI-04 Reopened等待授权、WI-09-01 Blocked）
+
+| 需求 | 实现 | 测试/证据 |
+| --- | --- | --- |
+| RCL-FR-021/NFR-003 受控执行器与精确授权（repair-forward） | `scripts/rcl-repair-forward-task34.mjs`（audit默认只读/plan/apply/verify；无参数失败；apply必须`--i-am-authorized --plan-hash --target-fingerprint`；目标库policyops默认拒绝需`RCL_REPAIR_ALLOW_PERSISTENT=1`；工作树未提交拒绝）、`src/lib/case-repair/repair-forward.ts`（parseRepairArgs） | `repair-forward.test.ts`参数守卫4例；演练#2/#3/#4 |
+| RCL-NFR-002 确定性 | `deriveTrustedBatchId`：sha256("task34-r4-trusted-archive:"+manifestHash)前16字节设v5位===`c8a7c104-8b8b-53f5-9bfd-1c8a8a6be141`；planHash=sha256(canonicalJson(核心))覆盖988 entries+批次ID+codeSha | `repair-forward.test.ts`确定性ID/planHash 5例；审计crossChecks.deterministicBatchId |
+| RCL-NFR-005 原子性（单事务） | `runApply/applyOnce`：REPEATABLE READ+`pg_advisory_xact_lock`；事务内重算targetFingerprint、重建计划核对planHash、FOR UPDATE锁定核对账本18/19/20完整旧值与prepared批次、核对attestation/业务指纹/可信归档；精确条件删除RETURNING恰好18/19/20、批次条件更新恰好1行、新批次+988条参数化entries、COMMIT前终态核对；任一不一致回滚 | 演练#9～#14、#18（5故障点回滚）、#19（第三库恢复40/20/0） |
+| RCL-NFR-006 幂等与并发 | `classifyRepairState`（pending/repaired/drift）；repaired→noop:true；drift→REPAIR_STATE_DRIFT禁止补写；40001重试后并发第二方noop | `repair-forward.test.ts`分类6例；演练#16、#17（c1 noop attempts=2/c2 applied） |
+| RCL-NFR-007 fail-closed | `loadTrustedArchive`（8文件/sha256sums/manifest声明与正文重算/dump SHA/restore 40表20sequence/988条hex与去重）；`buildTrustedEntries`（ENTRY_HASH_INVALID/ENTRY_DUPLICATE/TRUSTED_ARCHIVE_MISMATCH） | `repair-forward.test.ts` entries 4例；演练#5～#8 |
+| RCL-NFR-008 可审计 | `scripts/rcl-audit-task34.mjs`第六轮：调用执行器plan生成`executable-write-set.json`并与审计交叉核对10项；`--executor-test-report`绑定演练报告（19项必须全过）；repair-forward-plan.json改为单事务写集合（无VALUES占位）+executor节（apply命令/隔离级别/事务内检查/防误写/幂等） | `task34-r4-audit-2026-09-10T13-04-04/`五文件（attestation `20ec2622…`、planHash `932892f2…`、targetFingerprint `56c479de…`、migrationLedgerFingerprint `492c5fbe…`） |
+| RCL-AC-015 契约保持 | 执行器库放置于`src/lib/case-repair/`（只读attestation发布记录属于repair工具而非案例治理域） | `task3-isolation.test.ts`保持通过（npm test 75文件/740零skip） |
+
+- 门禁（2026-09-10本地新鲜）：`npm test` 75文件/740零skip；随机端口全新PG17+pgvector `npm run test:db` 26文件/141零skip（migration×2/bootstrap×2/seed×2幂等、agent.migrate --with-roles×2、pytest -m integration 20/20）；tsc/eslint（0 error）/build退出0；scan-secrets 790文件零命中；Gitleaks 8.29.1完整历史89提交零发现；allowlist哨兵全过。
+- 边界：持久policyops仅SELECT；未执行repair-forward；未恢复pre dump；未创建PR、未合并分支；可信归档与pre/post备份未覆盖；隔离容器/库/临时归档副本finally清理。

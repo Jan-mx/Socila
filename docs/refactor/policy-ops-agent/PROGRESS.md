@@ -41,9 +41,9 @@
 | Socila命名与地区DSL | Accepted（2026-09-05） | 后续按09-05第二/三阶段PRD推进 |
 | 任务2：CN/上海/广东首期政策交付 | **Accepted（2026-09-07首期）**：GD增量物化、三地区批准和候选快照重放完成；四川无快照 | 保持Accepted，不因任务3/4复审回退 |
 | 任务3：地区感知用户规划 | **Accepted（2026-09-09第二轮修复）**：空黄金测试集fail-closed、停用URL地区绑定、replay三方hash、隔离DB 116/116零skip、E2E 19/19 | 代码验收保持；0017与快照已持久执行，但账本/任务4审计待repair-forward |
-| 任务4：地区化政策案例库 | **Accepted（2026-09-10第五轮修复完成，等待独立复审）**：第四轮修复保持；第五轮修复journal非单调（0010～0014 when严格单调、SQL零修改）、migration账本回归8项全过（隔离库删除18/19/20后migration×2 no-op等）、审计journal不符改阻断（journalMonotonic/账本Git LF hash/隔离库no-op三门禁）、归档目录保护；随机端口隔离DB 26文件/141零skip、npm test 74文件/720零skip | 任务4验收报告顶部在独立复审前保持Reopened |
-| 持久库案例替换 | **Reopened（等待repair-forward授权）**：数据36/36/78冻结；账本21条（0012～0014的CRLF重复登记id 18/19/20、0010/0011/0015账本hash即Git LF内容、id 17缺失）、3个归档批次（2 applied+1 prepared）、未引用snapshot均已只读定位 | 基于新`repair-forward-plan.json`（绑定代码提交`1fe702b…`，attestation `8941655b…`、targetFingerprint `56c479de…`、可信归档manifestHash `da0ea94d…`、journalCheck.journalMonotonic=true）等待用户明确授权后执行 |
-| 最终分支集成 | **Blocked**：源`1fe702b`（第五轮修复）尚未合入目标`57f051d` | 任务4/WI-04重新Accepted后执行WI-20260909-01；当前禁止合并 |
+| 任务4：地区化政策案例库 | **Accepted（代码层，2026-09-10第六轮：repair-forward执行器隔离验收）**：第五轮journal严格单调/账本回归/审计阻断/归档目录保护保持；第六轮交付可审计、确定性、单事务、幂等的`scripts/rcl-repair-forward-task34.mjs`（audit/plan/apply/verify；确定性批次`c8a7c104…`；REPEATABLE READ+advisory xact lock；复跑noop/漂移REPAIR_STATE_DRIFT），post dump隔离库19场景全过；`npm test` 75文件/740零skip、随机端口`test:db` 26文件/141零skip | 请求独立复审；持久repair由WI-20260907-04授权后执行 |
+| 持久库案例替换 | **Reopened（等待repair-forward授权）**：数据36/36/78冻结；账本21条（0012～0014的CRLF重复登记id 18/19/20、id 17缺失）、3个归档批次（2 applied+1 prepared）均已只读定位；repair执行器已在隔离库完整演练（19/19） | 基于第六轮`executable-write-set.json`（绑定代码提交`972b453…`、planHash `932892f2…`、attestation `20ec2622…`、targetFingerprint `56c479de…`、可信归档manifestHash `da0ea94d…`、确定性批次`c8a7c104…`+988 entries）等待用户明确授权后由执行器单事务执行 |
+| 最终分支集成 | **Blocked**：源`972b453`（第六轮repair执行器）尚未合入目标`57f051d` | 任务4/WI-04重新Accepted后执行WI-20260909-01；当前禁止合并 |
 | 四川2026年度缴费基数（缺口6） | Deferred；截至2026-09-06未发布（2025年度于2025-09-22发布） | `WI-20260907-01`：自2026-09-20起复查，发布后采集编码 |
 | 四川医保退休年限正式文件（缺口4） | Deferred；仅2025-03征求意见稿，无正式印发 | `WI-20260907-01`：正式印发后采集，不阻塞任务2首期 |
 | 川人社办发〔2023〕18号（缺口5） | Deferred；白名单域未检索到 | `WI-20260907-01`：等待用户提供原件或官方入口恢复 |
@@ -443,6 +443,31 @@
 | 当前attestation（第五轮） | `task34-r4-audit-2026-09-10T10-12-35/attestation-current.json`：绑定codeSha `1fe702b…`；36 cases+36 showcase+36 regression+42 example全逐行ID/UID/64位hash；10 snapshots、5 releases、3个archive批次；attestationManifestHash `8941655b…`；targetFingerprint `56c479de…` |
 | repair-forward计划（第五轮） | `F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T10-12-35/repair-forward-plan.json`：codeSha `1fe702b…`、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、attestationManifestHash `8941655b…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`；journalCheck.journalMonotonic=true、ledgerCreatedAtMatchesExpected=true、ledgerGitBlobHashMatch=true、ledgerRegressionNoopAfterDelete=true；写集合只含删除账本ID 18/19/20、prepared批次91d60c5f→rolled_back、新增restore_verified可信归档批次+988条entries（0010/0011/0015 hash零更新）；36/36/78、10 snapshots、5 releases零变化；含隔离库no-op证据；repair前强制新建备份；预期最终账本18条、fingerprint `25d10e62…` |
 | 边界 | 全程未写持久policyops；未执行repair-forward；未恢复pre dump；未执行WI-20260909-01、未创建PR、未合并分支；`task34-r4-trusted-old-2026-09-10T06-59-14/`未覆盖未删除；临时容器/库finally清理 |
+
+## 第六轮：repair-forward执行器隔离验收（任务4/WI-04，2026-09-10，代码提交`972b453`）
+
+| 项 | 实现/证据 |
+| --- | --- |
+| 执行器 | `scripts/rcl-repair-forward-task34.mjs`（核心`src/lib/case-repair/repair-forward.ts`，独立于case-governance以保持RCL-AC-015契约）：audit/plan/apply/verify；无参数失败、apply缺`--i-am-authorized`/`--plan-hash`/`--target-fingerprint`拒绝零写入；目标库policyops默认拒绝（需`RCL_REPAIR_ALLOW_PERSISTENT=1`）；工作树未提交拒绝 |
+| 绑定 | codeSha=HEAD、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、trustedArchiveDir永久目录、fresh attestationManifestHash/migrationLedgerFingerprint/targetFingerprint；planHash覆盖988条写集合+确定性批次ID+codeSha |
+| 确定性批次ID | `sha256("task34-r4-trusted-archive:<manifestHash>")`前16字节设v5版本/变体位=`c8a7c104-8b8b-53f5-9bfd-1c8a8a6be141` |
+| 单事务 | 账本精确条件删除（RETURNING恰好18/19/20）、prepared批次91d60c5f→rolled_back（RETURNING恰好1行）、新restore_verified可信批次（真实计数/table_hashes、created_by=task34-repair-forward）与988条参数化entries在同一REPEATABLE READ事务；开始即`pg_advisory_xact_lock`；事务内重算targetFingerprint、重建计划核对planHash、FOR UPDATE锁定核对账本行与批次、核对attestation/业务指纹/可信归档；COMMIT前终态核对；任一不一致回滚 |
+| 幂等/并发 | 复跑noop:true；部分完成/不一致→REPAIR_STATE_DRIFT；并发第二方经40001重试后noop |
+| 单元 | `src/lib/case-repair/__tests__/repair-forward.test.ts` 20例Red→Green |
+| 隔离演练 | `scripts/rcl-repair-drill-task34.mjs`：19场景全过（缺授权/错planHash/错targetFingerprint/账本旧值漂移/批次漂移/归档漂移/非法hash与重复拒绝零写入；正常apply；账本18条原值；批次rolled_back；可信批次+988 entries逐项；36/36/78/10/5及业务表hash不变；migration×2 no-op；复跑noop；并发一执行一noop；5故障点回滚；repair后dump第三库恢复40表/20 sequence零mismatch）；`task34-r6-repair-drill-2026-09-10/repair-executor-test-report.json` allPassed=true |
+
+## 当前任务验证（任务4第六轮repair执行器，2026-09-10本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | `repair-forward.test.ts`首跑模块不存在（20例失败）→ 实现后20/20 |
+| Node单元（`npm test`） | PASS；75文件/740通过、skip 0（含RCL-AC-015契约：执行器库独立于case-governance） |
+| TypeScript / ESLint / Build | PASS；tsc退出0、eslint 0 error、`npm run build`退出0 |
+| 数据库集成（随机高位端口全新PG17+pgvector） | PASS；migration×2/bootstrap×2/seed×2幂等；`npm run test:db` 26文件/141通过、skip 0；agent.migrate --with-roles×2幂等；`pytest -m integration` 20通过、skip 0 |
+| Secret扫描 / Gitleaks / 哨兵 | PASS；scan-secrets 790文件零命中；Gitleaks 8.29.1完整历史89提交零发现；allowlist哨兵3场景全过 |
+| 隔离演练 | PASS；19/19（并发`c1 noop attempts=2 / c2 applied attempts=1`；attestation交叉核对codeSha=1fe702b时===第五轮`8941655b…`） |
+| 第六轮只读审计（持久库仅SELECT，绑定`972b453…`） | `F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T13-04-04/`：attestation-current.json（`20ec2622…`、targetFingerprint `56c479de…`、36/36/78/42/36、10 snapshots、5 releases、3批次）、audit-summary.json（journalMonotonic=true、账本hash 9/9===Git blob LF、隔离库删除18/19/20后migration×2 no-op、可信归档复验8文件/SHA/452/36/500/restore 40/20/0/第三库一致、执行器交叉核对10项全true）、repair-forward-plan.json（单事务写集合、executor节含apply命令、无VALUES占位）、executable-write-set.json（planHash `932892f2…`、988 entries、确定性批次ID、ledgerDelete三行完整旧值、ledgerKeep 1..16/21/22）、repair-executor-test-report.json（19/19） |
+| 边界 | 持久policyops仅SELECT；未执行repair-forward；未恢复pre dump；未创建PR、未合并分支；可信归档与pre/post备份未覆盖；隔离容器/库/临时归档副本finally清理 |
 
 ## 精确下一步（未来人工动作：未经用户明确授权，不得执行下列外部动作）
 

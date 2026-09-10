@@ -1,7 +1,7 @@
 # WI-20260907-04：持久库旧案例全量替换
 
 > Author: Jan
-> Status: Reopened（等待repair-forward授权）
+> Status: Reopened（repair执行器隔离验收完成，等待用户对planHash `932892f2…`的repair-forward授权）
 > Updated: 2026-09-10
 
 ## Work Item
@@ -77,5 +77,26 @@
 1. 代码层先修复旧test真实hash、manifest自校验、SHA/selection/restore完整验证和42 example原子同步。**已完成（WI-20260907-03第三轮，2026-09-10）**；第四轮再修复prepare-archive补偿（失败不留prepared批次/entries、只精确清理本次batchId、补偿错误与原错误同报）、applied幂等重验（先完整重验manifest正文hash/批次hash/最终N/36/N+42/42 example/逐行hash才noop，漂移稳定错误零写入）、migration换行契约（`.gitattributes` eol=lf，Drizzle读取hash===Git blob LF SHA）、迁移审计语义（blob/raw/LF/CRLF/账本/仅EOL/真实差异+journal与账本时间严格单调核对）。**已完成（第四轮）**；第五轮（代码提交`1fe702b`）修复journal非单调（0010～0014 when改为严格单调：1788560000000/1788600000000/1788640000000/1788680000000/1788705240000，0015～0018不变；SQL零修改）、新增migration账本回归（隔离库删除18/19/20后migration×2 no-op等8项）、审计journal不符由仅报告改为阻断、新增Git blob LF hash匹配与归档目录保护。**已完成（第五轮）**。
 2. 只读恢复pre/post dump，从pre重建旧500 regression可信归档，为当前36/36/78生成attestation manifest。**已完成（第四轮只读）**：可信归档永久保存于`F:/Socila/backup/case-library/task34-r4-trusted-old-2026-09-10T06-59-14/`（manifestHash `da0ea94d…`、dumpSHA `0e3c3d8b…`、452/36/500全逐行ID/UID/64位hash、500 test hash全部非空、verified restore-report 40表+20 sequence、sha256sums恰好7文件、第三库二次对账一致）；**第五轮只读复验（2026-09-10）**：8文件完整、SHA全部匹配、manifest 452/36/500、500 test hash全部非空、restore 40表/20 sequence/零mismatch、第三库再次恢复一致（40表/20 sequence/零mismatch），目录未覆盖未删除。当前36/36/78 attestation绑定代码提交`1fe702b…`（attestationManifestHash `8941655b…`）。
 3. 对照0010～0018 SQL、实际Schema和21条账本，列出重复/不匹配账本行、prepared批次和未引用snapshot。**已完成（第四轮只读）**：迁移换行审计确认ID 10/11/12/13/14/15/21/22账本hash===0010～0018 Git LF内容（0010/0011/0015为原值不得更新）；ID 18/19/20===0012/0013/0014的CRLF重复登记；ID 17缺号不补写；prepared批次`91d60c5f`；未引用snapshot（CN两条重复、310000 `1f0b0e1e`）。**第五轮**：journal已修正为严格单调并与账本created_at一致（journal非单调从此为阻断错误），ID 10～16、21、22账本hash===Git blob LF SHA为阻断门禁。
-4. 输出fresh manifestHash、targetFingerprint、精确拟写集合和回退点后停止。**已完成（第四轮）**：`F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T06-59-14/repair-forward-plan.json`（codeSha `579fed8…`）。**第五轮重新生成（2026-09-10，代码提交`1fe702b`之后）**：`F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T10-12-35/repair-forward-plan.json`（codeSha `1fe702b…`、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、attestationManifestHash `8941655b…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`、journalCheck.journalMonotonic=true、ledgerRegressionNoopAfterDelete=true；精确SQL写集合10步不变：只删除账本ID 18/19/20、prepared批次91d60c5f→rolled_back、新增restore_verified可信归档批次+988条entries、业务数据零变化；前置条件/事务边界T1/T2/T3/回退点/失败条件；预期最终账本18条、fingerprint `25d10e62…`）。
+4. 输出fresh manifestHash、targetFingerprint、精确拟写集合和回退点后停止。**已完成（第四轮）**：`F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T06-59-14/repair-forward-plan.json`（codeSha `579fed8…`）。**第五轮重新生成（2026-09-10，代码提交`1fe702b`之后）**：`F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T10-12-35/repair-forward-plan.json`（codeSha `1fe702b…`、trustedArchiveManifestHash `da0ea94d…`、trustedArchiveDumpSha `0e3c3d8b…`、attestationManifestHash `8941655b…`、migrationLedgerFingerprint `492c5fbe…`、targetFingerprint `56c479de…`、journalCheck.journalMonotonic=true、ledgerRegressionNoopAfterDelete=true；精确SQL写集合10步不变：只删除账本ID 18/19/20、prepared批次91d60c5f→rolled_back、新增restore_verified可信归档批次+988条entries、业务数据零变化；前置条件/事务边界T1/T2/T3/回退点/失败条件；预期最终账本18条、fingerprint `25d10e62…`）。**第六轮已由绑定`972b453…`的单事务可执行写集合取代（executable-write-set.json，planHash `932892f2…`；不再拆分T1/T2/T3，见下文第六轮小节）。**
 5. 只有用户针对该次清单明确授权后才能repair-forward；不得自动恢复pre dump或重跑首次替换。
+
+## 第六轮：repair执行器隔离验收（2026-09-10，代码提交`972b453`，本Work Item继续Reopened等待用户授权）
+
+可审计、确定性、单事务、幂等的repair-forward执行器已实现并在隔离库完整演练；**未对持久policyops执行任何写入**。
+
+| 项 | 结果 |
+| --- | --- |
+| 执行器 | `scripts/rcl-repair-forward-task34.mjs`（核心库`src/lib/case-repair/repair-forward.ts`，20条vitest单元独立于case-governance以符合RCL-AC-015契约）：audit（默认只读）/plan/apply/verify四模式；无参数或未知模式失败（退出2），apply缺`--i-am-authorized`/`--plan-hash`/`--target-fingerprint`任一即拒绝零写入；目标库名为policyops时默认拒绝（需用户授权后显式`RCL_REPAIR_ALLOW_PERSISTENT=1`），工作树未提交时拒绝 |
+| 确定性批次ID | `sha256("task34-r4-trusted-archive:da0ea94d…")`前16字节设v5版本/变体位 → `c8a7c104-8b8b-53f5-9bfd-1c8a8a6be141`（禁止运行时随机UUID） |
+| 单事务 | 账本删除、prepared批次转换、新可信批次与988条entries在同一REPEATABLE READ事务（不拆T1/T2/T3）；事务开始即`pg_advisory_xact_lock`任务专属键；事务内重算targetFingerprint、`FOR UPDATE`锁定并核对账本行18/19/20完整旧值与prepared批次91d60c5f（prepared/c86fcc26…/storage_path与审计一致）、核对attestation（36/36/78/42/36、10 snapshots、5 releases及全部业务表指纹零变化）与可信归档（8文件/sha256sums/manifest正文重算/restore 40表20sequence/dump SHA）；任一不一致立即回滚 |
+| 精确删除 | 带完整旧值条件（id+hash+created_at×18/19/20）`RETURNING id`必须恰好三行；保留ID 1～16、21、22原值；不补ID 17、不重排 |
+| prepared批次转换 | `UPDATE … SET status='rolled_back' WHERE id AND status='prepared' AND manifest_hash AND storage_path RETURNING id`恰好1行；历史entries保留 |
+| 新可信批次 | status=restore_verified、created_by=task34-repair-forward；source_counts 452/36/500/28、retained_counts 36/36/78/42/36、deleted_counts全0、table_hashes含trustedArchiveManifestHash/trustedArchiveDumpSha/attestationManifestHash/migrationLedgerFingerprint（无空对象占位） |
+| 988条entries | 从可信归档manifest逐条构建（452 case+36 showcase_case+500 test），真实archive_batch_id/entity_type/entity_id/case_uid/content_hash/archive_reason；全部64位小写hex；同批次entity_type+entity_id无重复；恰好988行 |
+| 幂等与漂移 | 第二次执行全部已完成→`noop:true`；部分完成/不一致→`REPAIR_STATE_DRIFT`（禁止补写） |
+| 隔离演练 | `scripts/rcl-repair-drill-task34.mjs`（post dump恢复全新PG17+pgvector容器）：19场景全过——初始指纹一致（attestation交叉核对codeSha=1fe702b时===第五轮审计`8941655b…`）、缺授权/错planHash/错targetFingerprint/账本旧值漂移/批次漂移/归档漂移/非法hash与重复全部拒绝且零写入、正常apply单事务成功、账本18条原值、批次rolled_back、988 entries逐项、业务零变化、migration×2 no-op、复跑noop、并发两个apply恰好一个执行另一个经40001重试noop、5个故障注入点均完整回滚、repair后dump第三库恢复40表/20 sequence零mismatch；证据`F:/Socila/backup/case-library/task34-r6-repair-drill-2026-09-10/repair-executor-test-report.json`（allPassed=true） |
+| 第六轮只读审计 | `F:/Socila/backup/case-library/task34-r4-audit-2026-09-10T13-04-04/`：attestation-current.json（codeSha `972b453…`、attestationManifestHash `20ec2622…`、targetFingerprint `56c479de…`）、audit-summary.json、repair-forward-plan.json（executor节含apply命令/单事务/交叉核对全过）、executable-write-set.json（planHash `932892f2…`、988条entries、确定性批次ID、ledgerDelete旧值三行）、repair-executor-test-report.json（19/19） |
+
+**等待用户授权**：授权确认后由用户执行（本机policyops，需显式`RCL_REPAIR_ALLOW_PERSISTENT=1`，repair前强制新建完整dump）：
+`DATABASE_URL=<policyops> RCL_REPAIR_ALLOW_PERSISTENT=1 node scripts/rcl-repair-forward-task34.mjs apply --i-am-authorized --plan-hash 932892f22adc99af5b148c98275a87a9d2236ed0b6dcba358320fe9b2ec72084 --target-fingerprint 56c479deb89438ff3943b61b73812cc2`
+本轮代码与文档提交、历史授权均不构成对该清单的授权；只有用户针对planHash `932892f2…`明确授权后才能执行。

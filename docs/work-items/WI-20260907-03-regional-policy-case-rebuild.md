@@ -1,7 +1,7 @@
 # WI-20260907-03：地区化政策案例生成与可靠归档重建
 
 > Author: Jan
-> Status: Accepted（2026-09-10第五轮修复完成：journal严格单调修复、migration账本回归、审计阻断门禁与归档目录保护；等待独立复审）
+> Status: Accepted（2026-09-10第五轮修复完成：journal严格单调修复、migration账本回归、审计阻断门禁与归档目录保护；第六轮repair执行器隔离验收后任务4代码层Accepted，持久repair-forward由WI-20260907-04另行授权）
 > Updated: 2026-09-10
 
 ## Work Item
@@ -135,6 +135,6 @@
 
 门禁（2026-09-10本地新鲜）：`npm test` 74文件/720零skip；随机端口全新PG17+pgvector容器`npm run test:db` 26文件/141零skip（migration×2/bootstrap×2/seed×2幂等、agent.migrate --with-roles×2幂等、pytest -m integration 20/20）；tsc/eslint/build退出0（eslint 0 error）；scan-secrets 788文件零命中；Gitleaks 8.29.1完整历史86提交零发现；allowlist哨兵全过。修复后journal的迁移幂等与账本不变量已由隔离库回归证明（Red证据：旧journal下0014会被重新应用）。
 
-## 第五轮独立复审（2026-09-10，等待独立复审）
+## 第五轮独立复审（2026-09-10）
 
-第五轮代码与隔离门禁完成后本Work Item恢复Accepted；任务4验收报告顶部在独立复审前保持Reopened，不得提前写Accepted。
+第五轮代码与隔离门禁完成后本Work Item恢复Accepted。第六轮（代码提交`972b453`）交付WI-20260907-04的repair-forward执行器与隔离演练19场景全过（见WI-20260907-04第六轮小节），任务4 PRD与验收报告代码层Accepted；持久库repair-forward仍待用户授权。
