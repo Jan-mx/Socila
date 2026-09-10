@@ -3,7 +3,7 @@
  * repair-forward计划（WI-20260907-04准备，绑定修复后的代码提交SHA）。
  *
  * 用法：
- *   node scripts/rcl-audit-task34.mjs <pre-dump> <post-dump> [--container <name>] [--port <port>] [--trusted-dir <dir>]
+ *   node scripts/rcl-audit-task34.mjs <pre-dump> <post-dump> [--container <name>] [--port <port>] [--trusted-dir <dir>] [--executor-test-report <json>]
  *
  * 全程只读（对持久库）：
  *   - localhost:5432/policyops 仅SELECT（禁止INSERT/UPDATE/DELETE/DDL）；
@@ -24,6 +24,10 @@
  *     （不再仅报告）；ID 10～16、21、22账本hash必须等于Git blob LF SHA否则
  *     阻断；隔离库（post恢复库）删除重复行18/19/20后migration×2必须no-op
  *     否则阻断；只有上述全部通过才允许生成repair-forward计划。
+ *   - 第六轮（repair执行器）：调用scripts/rcl-repair-forward-task34.mjs plan生成
+ *     executable-write-set.json（988条entries+确定性批次ID+planHash），与本审计
+ *     交叉核对targetFingerprint/attestation/账本指纹；--executor-test-report复制
+ *     隔离演练报告（19场景必须全过）并绑定进repair-forward-plan.json。
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, existsSync } from "node:fs";
@@ -38,9 +42,14 @@ const TRUSTED_DIR_ARG = (() => {
   const i = process.argv.indexOf("--trusted-dir");
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : null;
 })();
+/** 执行器隔离演练报告（scripts/rcl-repair-drill-task34.mjs产物），复制进证据目录并绑定到计划。 */
+const TEST_REPORT_ARG = (() => {
+  const i = process.argv.indexOf("--executor-test-report");
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : null;
+})();
 const PERSISTENT_URL = process.env.PERSISTENT_DATABASE_URL ?? "postgresql://postgres@127.0.0.1:5432/policyops";
 if (!PRE_DUMP || !POST_DUMP) {
-  console.error("用法：node scripts/rcl-audit-task34.mjs <pre-dump> <post-dump> [--container <name>] [--port <port>] [--trusted-dir <dir>]");
+  console.error("用法：node scripts/rcl-audit-task34.mjs <pre-dump> <post-dump> [--container <name>] [--port <port>] [--trusted-dir <dir>] [--executor-test-report <json>]");
   process.exit(1);
 }
 
@@ -111,7 +120,7 @@ async function main() {
   mkdirSync(TRUSTED_DIR, { recursive: true });
   const codeSha = run("git", ["rev-parse", "HEAD"]).trim();
   const report = {
-    title: "WI-20260907-04 repair-forward计划与第五轮只读审计证据",
+    title: "WI-20260907-04 repair-forward计划与第六轮只读审计证据（repair执行器）",
     generatedAt: new Date().toISOString(),
     codeSha,
     sourceBranch: run("git", ["rev-parse", "--abbrev-ref", "HEAD"]).trim(),
@@ -366,6 +375,69 @@ async function main() {
     // ── 6) 当前36/36/78只读attestation（绑定codeSha） ─────────────────────
     const attestation = await buildAttestation(codeSha);
 
+    // ── 6.5) repair执行器只读plan：可执行写集合（988条entries+确定性批次ID）
+    //        与本审计交叉核对（targetFingerprint/attestation/账本指纹必须相等） ──
+    const writeSetFile = join(AUDIT_DIR, "executable-write-set.json");
+    const planRun = spawnSync(process.execPath, [join(WORK_DIR, "scripts", "rcl-repair-forward-task34.mjs"), "plan", "--out", writeSetFile], {
+      cwd: WORK_DIR, encoding: "utf-8", timeout: 600000,
+      env: { ...process.env, DATABASE_URL: PERSISTENT_URL },
+    });
+    if (planRun.status !== 0) throw new Error(`repair执行器plan失败（退出${planRun.status}）：${(planRun.stdout || planRun.stderr || "").slice(0, 1500)}`);
+    const executorPlan = JSON.parse(planRun.stdout);
+    const writeSet = JSON.parse(readFileSync(writeSetFile, "utf8"));
+    const crossChecks = {
+      targetFingerprint: executorPlan.targetFingerprint === report.targetFingerprint,
+      attestationManifestHash: executorPlan.attestationManifestHash === attestation.attestationManifestHash,
+      migrationLedgerFingerprint: executorPlan.migrationLedgerFingerprint === report.migrationLedgerFingerprint,
+      codeSha: executorPlan.codeSha === codeSha,
+      trustedArchiveManifestHash: writeSet.trustedArchive.manifestHash === trustedManifest.manifestHash,
+      trustedArchiveDumpSha: writeSet.trustedArchive.dumpSha256 === trustedManifest.dumpSha256,
+      entries988: writeSet.entries.length === 988,
+      deterministicBatchId: writeSet.trustedBatch.id === "c8a7c104-8b8b-53f5-9bfd-1c8a8a6be141",
+      statePending: executorPlan.state?.state === "pending",
+      worktreeClean: executorPlan.worktreeDirty === false,
+    };
+    const failedCross = Object.entries(crossChecks).filter(([, ok]) => !ok).map(([k]) => k);
+    if (failedCross.length > 0) {
+      throw new Error(`repair执行器plan与审计交叉核对不一致（阻断）：${failedCross.join("、")}`);
+    }
+    report.executablePlan = {
+      file: writeSetFile,
+      planHash: writeSet.planHash,
+      algorithmVersion: writeSet.algorithmVersion,
+      codeSha: writeSet.codeSha,
+      trustedBatchId: writeSet.trustedBatch.id,
+      entries: writeSet.entries.length,
+      ledgerDelete: writeSet.ledgerDelete,
+      ledgerKeep: writeSet.ledgerKeep.length,
+      preparedBatch: writeSet.preparedBatch,
+      businessFingerprints: writeSet.businessFingerprints,
+      expectedFinalState: writeSet.expectedFinalState,
+      crossChecks,
+    };
+    console.log(`[audit] executable-write-set planHash=${writeSet.planHash} entries=${writeSet.entries.length} batchId=${writeSet.trustedBatch.id}`);
+
+    // 执行器隔离演练报告（--executor-test-report）：复制进证据目录并绑定。
+    if (TEST_REPORT_ARG) {
+      const testReport = JSON.parse(readFileSync(TEST_REPORT_ARG, "utf8"));
+      writeFileSync(join(AUDIT_DIR, "repair-executor-test-report.json"), JSON.stringify(testReport, null, 2));
+      report.executorTestReport = {
+        file: join(AUDIT_DIR, "repair-executor-test-report.json"),
+        sourceFile: TEST_REPORT_ARG,
+        allPassed: testReport.allPassed === true,
+        total: testReport.total,
+        drillCodeSha: testReport.codeSha,
+        drillPlanHash: testReport.planHash,
+        postDumpSha256: testReport.postDumpSha256,
+        scenarios: (testReport.scenarios ?? []).map((s) => ({ id: s.id, name: s.name, ok: s.ok })),
+      };
+      if (!report.executorTestReport.allPassed || report.executorTestReport.total !== 19) {
+        throw new Error(`repair执行器隔离演练报告未全部通过（阻断）：allPassed=${report.executorTestReport.allPassed} total=${report.executorTestReport.total}`);
+      }
+    } else {
+      report.executorTestReport = null;
+    }
+
     // ── 7) 汇总与repair-forward计划 ───────────────────────────────────────
     report.trustedArchive = trustedManifest;
     report.attestation = {
@@ -392,6 +464,7 @@ async function main() {
     console.log(`[audit] trustedArchiveManifestHash=${trustedManifest.manifestHash}`);
     console.log(`[audit] trustedArchiveDumpSha=${trustedManifest.dumpSha256.slice(0, 16)}`);
     console.log(`[audit] journalMismatch=${journalMismatch}（第五轮起为阻断错误；本次阻断检查通过）`);
+    console.log(`[audit] executablePlanHash=${report.executablePlan.planHash} trustedBatchId=${report.executablePlan.trustedBatchId} executorTestReport=${report.executorTestReport ? report.executorTestReport.allPassed : "未提供"}`);
     console.log(`[audit] 完成`);
   } finally {
     // 清理隔离容器与全部隔离库（可信归档目录永久保留，不得删除）。
@@ -607,7 +680,7 @@ async function reverifyTrustedArchive(dir, sourceDb) {
     input: readFileSync(join(dir, "policyops-fc.dump")), maxBuffer: 1024 * 1024 * 1024, encoding: "buffer",
   });
   if (rest2.status !== 0) throw new Error(`可信归档第三库恢复失败：${rest2.stderr?.toString().slice(0, 400)}`);
-  const reconcile2 = await runTsxInline(`import { writeFileSync } from "node:fs";
+  await runTsxInline(`import { writeFileSync } from "node:fs";
     import { drizzle } from "drizzle-orm/node-postgres";
     import pg from "pg";
     import { reconcileDatabases, listSequences, listBaseTables } from "@/lib/case-governance/reconcile";
@@ -742,7 +815,7 @@ function buildRepairForwardPlan(report, attestation, trusted) {
   ));
   const preparedBatch = report.persistent.archiveBatches.find((b) => b.status === "prepared");
   return {
-    title: "WI-20260907-04 repair-forward计划（任务34第五轮只读审计，2026-09-10）",
+    title: "WI-20260907-04 repair-forward计划（任务34第六轮只读审计：repair执行器可执行写集合，2026-09-10）",
     generatedAt: new Date().toISOString(),
     status: "只读报告——未执行任何写入；等待用户针对本清单明确授权",
     codeSha: report.codeSha,
@@ -784,28 +857,54 @@ function buildRepairForwardPlan(report, attestation, trusted) {
       summary: "隔离库（post dump恢复）删除账本ID 18/19/20后migration×2均no-op，账本持续18条；ID 10～16、21、22的hash与created_at保持不变；ID 17缺号不补写不重排；模拟0019（when=1788797000000>1788796860000）只应用一次",
       detail: report.ledgerRegression,
     },
+    executor: {
+      script: "scripts/rcl-repair-forward-task34.mjs",
+      library: "src/lib/case-repair/repair-forward.ts",
+      executableWriteSetFile: report.executablePlan.file,
+      planHash: report.executablePlan.planHash,
+      algorithmVersion: report.executablePlan.algorithmVersion,
+      trustedBatchId: report.executablePlan.trustedBatchId,
+      trustedBatchIdDerivation: "sha256(\"task34-r4-trusted-archive:\" + trustedArchiveManifestHash)前16字节，设UUID版本位5与RFC4122变体位（确定性，禁止运行时随机UUID）",
+      entries: report.executablePlan.entries,
+      singleTransaction: true,
+      isolation: "REPEATABLE READ + 事务开始即pg_advisory_xact_lock(任务专属键)；并发第二方经40001重试后noop",
+      inTransactionChecks: [
+        "重算targetFingerprint并与授权参数比较",
+        "重建可执行计划（codeSha/可信归档/attestation/988写集合）并与授权planHash比较",
+        "FOR UPDATE锁定并核对账本目标行18/19/20完整旧值",
+        "FOR UPDATE锁定prepared批次91d60c5f（status=prepared、manifest_hash=c86fcc26…、storage_path与审计一致）",
+        "核对cases/showcase/tests/snapshots/releases attestation与业务表指纹（零变化）",
+        "核对可信归档目录8文件/sha256sums/manifest正文重算/restore-report 40表20sequence/dump SHA",
+        "任一不一致立即回滚（零写入）",
+      ],
+      applyCommand: `DATABASE_URL=<目标库> node scripts/rcl-repair-forward-task34.mjs apply --i-am-authorized --plan-hash ${report.executablePlan.planHash} --target-fingerprint ${report.targetFingerprint}`,
+      persistentGuard: "目标库名为policyops时执行器默认拒绝，需用户授权后显式RCL_REPAIR_ALLOW_PERSISTENT=1；工作树有未提交改动时拒绝",
+      idempotency: "第二次执行：全部已完成→noop:true；部分完成或数据不一致→REPAIR_STATE_DRIFT（禁止补写）",
+      crossChecks: report.executablePlan.crossChecks,
+      isolatedDrill: report.executorTestReport,
+    },
     writeSet: [
       {
         step: 1,
-        sql: `DELETE FROM drizzle.__drizzle_migrations WHERE id IN (18, 19, 20)`,
+        sql: "DELETE FROM drizzle.__drizzle_migrations WHERE (id = 18 AND hash = $1 AND created_at = 1788818400000) OR (id = 19 AND hash = $2 AND created_at = 1788904800000) OR (id = 20 AND hash = $3 AND created_at = 1788991200000) RETURNING id",
         precondition: dupRows.map((m) => ({ id: m.id, hash: m.hash, created_at: m.created_at })),
-        tx: "事务T1（与步骤2同一事务或独立事务均可，本计划按独立事务描述）",
-        note: "每行绑定旧hash与created_at前置条件；任一不符即中止零写入",
+        tx: "单事务（与步骤3/5/6同一事务）",
+        note: "参数化完整旧值条件；RETURNING必须恰好18、19、20三行，缺失/增加/旧值不同整体回滚",
       },
       {
         step: 2,
-        sql: "无（保留ID 10～16、21、22原hash；不更新0010/0011/0015 hash；不补ID 17；不重排主键）",
+        sql: "无（保留ID 1～16、21、22原hash与created_at；不更新0010/0011/0015 hash；不补ID 17；不重排主键）",
         precondition: keptRows.map((m) => ({ id: m.id, hash: m.hash, created_at: String(m.created_at) })),
         tx: "无写入",
       },
       {
         step: 3,
-        sql: `UPDATE case_archive_batches SET status = 'rolled_back' WHERE id = ${preparedBatch ? `'${preparedBatch.id}'` : "<prepared批次id>"} AND status = 'prepared' AND manifest_hash = '${preparedBatch?.manifest_hash ?? "<旧manifestHash>"}'`,
+        sql: `UPDATE case_archive_batches SET status = 'rolled_back' WHERE id = '${preparedBatch?.id ?? "<prepared批次id>"}' AND status = 'prepared' AND manifest_hash = '${preparedBatch?.manifest_hash ?? "<旧manifestHash>"}' AND storage_path = $1 RETURNING id`,
         precondition: preparedBatch
           ? { id: preparedBatch.id, status: "prepared", manifestHash: preparedBatch.manifest_hash, storagePath: preparedBatch.storage_path }
           : "未发现prepared批次（应报错中止）",
-        tx: "事务T2（条件更新；返回0行即中止）",
-        note: "绑定旧状态与manifestHash；不得删除该批次entries（历史记录保留）",
+        tx: "单事务",
+        note: "RETURNING必须恰好1行；不删除该批次历史entries",
       },
       {
         step: 4,
@@ -814,20 +913,28 @@ function buildRepairForwardPlan(report, attestation, trusted) {
       },
       {
         step: 5,
-        sql: `INSERT INTO case_archive_batches (id, status, source_counts, retained_counts, deleted_counts, table_hashes, manifest_hash, storage_path, created_by, created_at) VALUES ('<新uuid>', 'restore_verified', '{}', '{}', '{}', '{}', '${trusted.manifestHash}', '${trusted.dir}', 'rcl-audit-task34-r4', now())`,
-        precondition: `id不存在；manifest_hash=${trusted.manifestHash}；storagePath=${trusted.dir}目录存在且sha256sums.txt匹配`,
-        tx: "事务T3（批次+988条entries同一事务）",
-        note: "状态为restore_verified，不标记applied；随后在同一事务插入452+36+500条真实hash entries（来自可信归档manifest逐行hash）",
+        sql: `INSERT INTO case_archive_batches (id, status, source_counts, retained_counts, deleted_counts, table_hashes, manifest_hash, storage_path, created_by) VALUES ('${report.executablePlan.trustedBatchId}', 'restore_verified', $sourceCounts::jsonb, $retainedCounts::jsonb, $deletedCounts::jsonb, $tableHashes::jsonb, '${trusted.manifestHash}', '${trusted.dir}', 'task34-repair-forward') RETURNING id`,
+        precondition: `id ${report.executablePlan.trustedBatchId} 不存在；manifest_hash=${trusted.manifestHash}；storage_path=${trusted.dir}（8文件完整、sha256sums匹配、manifest正文重算一致、restore-report 40表/20 sequence）`,
+        values: {
+          sourceCounts: { cases: 452, showcaseCases: 36, regressionTests: 500, historicalExampleTests: 28 },
+          retainedCounts: { cases: 36, showcaseCases: 36, tests: 78, exampleTests: 42, regressionTests: 36 },
+          deletedCounts: { cases: 0, showcaseCases: 0, tests: 0, exampleTests: 0, regressionTests: 0 },
+          tableHashes: { trustedArchiveManifestHash: trusted.manifestHash, trustedArchiveDumpSha: trusted.dumpSha256, attestationManifestHash: attestation.attestationManifestHash, migrationLedgerFingerprint: report.migrationLedgerFingerprint, targetFingerprint: report.targetFingerprint },
+        },
+        tx: "单事务",
+        note: "状态restore_verified（不标记applied）；字段为真实计数与hash，不得空对象占位",
       },
       {
         step: 6,
-        sql: `INSERT INTO case_archive_entries (archive_batch_id, entity_type, entity_id, case_uid, content_hash, archive_reason) VALUES ... ×988`,
-        precondition: "逐行hash与可信归档manifest一致（manifest自校验通过）",
-        tx: "事务T3",
+        sql: "INSERT INTO case_archive_entries (archive_batch_id, entity_type, entity_id, case_uid, content_hash, archive_reason) — 参数化多行插入，逐条来自executable-write-set.json的entries[]（452 case + 36 showcase_case + 500 test = 988，全部64位小写hex、同批次entity_type+entity_id无重复）",
+        entriesFile: report.executablePlan.file,
+        entriesCount: report.executablePlan.entries,
+        precondition: "逐行hash与可信归档manifest一致（manifest自校验通过）；rowCount累计必须恰好988",
+        tx: "单事务",
       },
       {
         step: 7,
-        sql: "无（当前36/36/78、10 snapshots、5 releases与业务政策实体保持零变化）",
+        sql: "无（当前36/36/78、10 snapshots、5 releases与业务政策实体保持零变化；事务内以业务表指纹核对）",
         tx: "无写入",
       },
       {
@@ -837,27 +944,28 @@ function buildRepairForwardPlan(report, attestation, trusted) {
       },
       {
         step: 9,
-        sql: "无（repair完成后账本总数必须为18；SELECT count(*) 校验）",
-        tx: "无写入",
+        sql: "事务内终态核对：账本18条恰为1..16/21/22且原值不变、批次rolled_back、可信批次+988 entries逐项匹配、业务指纹不变；不满足即回滚",
+        tx: "单事务（COMMIT前）",
       },
       {
         step: 10,
-        sql: "post-repair：pg_dump完整库备份 + 全新PG17+pgvector实例恢复 + 全表/全sequence对账",
+        sql: "post-repair：pg_dump完整库备份 + 全新PG17+pgvector实例恢复 + 全表/全sequence对账（隔离演练#19已证明40表/20 sequence一致）",
         tx: "备份与恢复对账（只读验证）",
       },
     ],
     expectedFinalState: {
       migrationsLedger: `${keptRows.length}条（删除3条重复登记；0010/0011/0015账本hash保持原值=Git LF内容）`,
       migrationsLedgerFingerprint: finalLedgerFingerprint,
-      archiveBatches: "3旧批次（2 applied保留 + 1 prepared→rolled_back）+ 1新增restore_verified可信归档批次",
+      archiveBatches: `3旧批次（2 applied保留 + 1 prepared→rolled_back）+ 1新增restore_verified可信归档批次 ${report.executablePlan.trustedBatchId}（988 entries）`,
       businessData: "36 cases/36 showcase/78 tests（42 example+36 regression）/10 snapshots/5 releases不变",
       targetFingerprint: report.targetFingerprint,
       attestationManifestHash: attestation.attestationManifestHash,
+      executablePlanHash: report.executablePlan.planHash,
     },
     transactionBoundaries: [
-      "T1：删除账本重复行18/19/20（前置：每行hash+created_at逐项匹配，0行/多行即中止）",
-      "T2：prepared批次→rolled_back（前置：id+status='prepared'+manifest_hash精确匹配；条件更新0行即中止）",
-      "T3：可信归档批次+988条entries（同一事务；任一entry写入失败整体回滚）",
+      "单事务：账本删除18/19/20、prepared批次91d60c5f→rolled_back、新增可信批次c8a7c104…与988条entries在同一REPEATABLE READ事务提交（不拆T1/T2/T3）",
+      "事务开始即pg_advisory_xact_lock(任务专属键)；事务内重算targetFingerprint、FOR UPDATE锁定账本目标行与prepared批次、核对attestation/业务指纹/可信归档；任一不一致立即回滚零写入",
+      "第二次执行：全部已完成→noop:true；部分完成或不一致→REPAIR_STATE_DRIFT（禁止补写）；并发两个apply仅一个执行（另一个经40001重试后noop）",
     ],
     rollbackPoints: [
       { name: "操作前pre dump", file: report.preDump, sha256: report.dumps.pre.sha256 },
