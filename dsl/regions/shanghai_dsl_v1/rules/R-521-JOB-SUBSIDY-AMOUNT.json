@@ -8,27 +8,22 @@
   "effective_from": "2024-01-01",
   "effective_to": null,
   "supersedes": [],
-  "notes": "",
+  "notes": "岗位补贴=本市月最低工资标准的50%（沪人社规〔2022〕8号二）。",
   "inputs": [
     {
       "key": "calc.subsidy.job_eligible",
       "type": "boolean",
       "required": true
-    },
-    {
-      "key": "user.social.min_wage_amount_per_month",
-      "type": "number",
-      "required": false
-    },
-    {
-      "key": "params.P-SH-JOB-SUBSIDY-RATE-MINWAGE",
-      "type": "number",
-      "required": true
     }
   ],
   "parameter_refs": [
     {
-      "param_id": "P-SH-JOB-SUBSIDY-RATE-MINWAGE"
+      "param_id": "P-SH-MIN-WAGE",
+      "purpose": "当期月最低工资标准（元/月）"
+    },
+    {
+      "param_id": "P-SH-JOB-SUBSIDY-RATE-MINWAGE",
+      "purpose": "岗位补贴比例（最低工资的50%）"
     }
   ],
   "decision_table": {
@@ -67,7 +62,7 @@
         }
       },
       {
-        "row_id": "row_2_missing_minwage",
+        "row_id": "row_2_params_missing",
         "when": {
           "and": [
             {
@@ -79,11 +74,23 @@
               ]
             },
             {
-              "==": [
+              "or": [
                 {
-                  "var": "user.social.min_wage_amount_per_month"
+                  "==": [
+                    {
+                      "var": "params.P-SH-MIN-WAGE"
+                    },
+                    null
+                  ]
                 },
-                null
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-JOB-SUBSIDY-RATE-MINWAGE"
+                    },
+                    null
+                  ]
+                }
               ]
             }
           ]
@@ -101,11 +108,10 @@
               "value": true
             },
             {
-              "type": "emit_question",
+              "type": "emit_warning",
               "value": {
-                "question_id": "Q-MIN-WAGE",
-                "text": "请提供当期最低工资（月），用于估算岗位补贴金额。",
-                "field": "user.social.min_wage_amount_per_month"
+                "warning_id": "W-JOB-SUBSIDY-PARAM-MISSING",
+                "text": "缺少有效月最低工资或岗位补贴比例参数，无法估算岗位补贴金额。"
               }
             }
           ]
@@ -114,23 +120,11 @@
       {
         "row_id": "row_3_compute",
         "when": {
-          "and": [
+          "==": [
             {
-              "==": [
-                {
-                  "var": "calc.subsidy.job_eligible"
-                },
-                true
-              ]
+              "var": "calc.subsidy.job_eligible"
             },
-            {
-              "!=": [
-                {
-                  "var": "user.social.min_wage_amount_per_month"
-                },
-                null
-              ]
-            }
+            true
           ]
         },
         "then": {
@@ -139,13 +133,32 @@
               "type": "set",
               "path": "calc.subsidy.job_amount_est",
               "value": {
-                "*": [
+                "/": [
                   {
-                    "var": "user.social.min_wage_amount_per_month"
+                    "floor": [
+                      {
+                        "+": [
+                          {
+                            "*": [
+                              {
+                                "*": [
+                                  {
+                                    "var": "params.P-SH-MIN-WAGE"
+                                  },
+                                  {
+                                    "var": "params.P-SH-JOB-SUBSIDY-RATE-MINWAGE"
+                                  }
+                                ]
+                              },
+                              100
+                            ]
+                          },
+                          0.5
+                        ]
+                      }
+                    ]
                   },
-                  {
-                    "var": "params.P-SH-JOB-SUBSIDY-RATE-MINWAGE"
-                  }
+                  100
                 ]
               }
             }
@@ -164,37 +177,66 @@
       "type": "boolean"
     },
     {
-      "key": "calc.agent_questions",
+      "key": "calc.warnings",
       "type": "array"
     }
   ],
   "examples": [
     {
-      "name": "最低工资2690，比例50% -> 1345",
+      "name": "最低工资2740、比例50% -> 1370",
       "input": {
         "calc": {
           "subsidy": {
             "job_eligible": true
           }
         },
-        "user": {
-          "social": {
-            "min_wage_amount_per_month": 2690
-          }
-        },
         "params": {
+          "P-SH-MIN-WAGE": 2740,
           "P-SH-JOB-SUBSIDY-RATE-MINWAGE": 0.5
         }
       },
       "expected": {
         "calc": {
           "subsidy": {
-            "job_amount_est": 1345
+            "job_amount_est": 1370
           }
         }
       }
     }
   ],
-  "evidence": [],
+  "evidence": [
+    {
+      "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "jurisdiction_code": "310000",
+      "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+      "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+      "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+      "fetched_at": "2026-09-11T04:01:44.294Z",
+      "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "paragraph",
+        "reference": "二"
+      },
+      "excerpt": "岗位补贴的标准为本市月最低工资标准的50%，社会保险补贴标准为以缴费当月职工社会保险缴费基数的下限作为基数计算的养老、医疗和失业保险缴费额中用人单位承担部分的50%。"
+    },
+    {
+      "document_id": "DOC-SH-MIN-WAGE-2025",
+      "jurisdiction_code": "310000",
+      "title": "上海市人力资源和社会保障局关于调整本市最低工资标准的通知（沪人社规〔2025〕10号）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tgzfl_17732/20250714/t0035_1434097.html",
+      "fetched_at": "2026-09-11T03:39:54.218Z",
+      "content_sha256": "e158ad6970069a6cff47f7f5384770fc966132e6b6c0d11c719abb19422e6fcd",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MIN-WAGE-2025/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "paragraph",
+        "reference": "一"
+      },
+      "excerpt": "一、月最低工资标准从2690元调整到2740元。"
+    }
+  ],
   "operation": "add"
 }

@@ -2,7 +2,7 @@
  * RCL-FR-006/015、RCL-AC-003/011 精确manifest测试：
  * - 绑定旧目标行（删除集合）行ID与内容hash；任一漂移→manifest失效（RCL-AC-003）；
  * - 绑定新行hash、快照、评分与来源映射（RCL-FR-006）；
- * - 计数 N/36/N+42，N 来自覆盖manifest，禁止硬编码452/500（RCL-FR-015/AC-011）；
+ * - 计数 N/36/N+44，N 来自覆盖manifest，禁止硬编码452/500（RCL-FR-015/AC-011）；
  * - 相同输入 manifestHash 确定性（RCL-NFR-002）。
  */
 import { describe, it, expect } from "vitest";
@@ -51,15 +51,15 @@ function sampleInput(overrides: Partial<RclManifestInput> = {}): RclManifestInpu
       { rowId: 21, uid: "RPCT-310000-SH-A-V1", contentHash: H("test-1"), jurisdictionCode: "310000", sourceCaseUid: "RPC-310000-SH-A-V1", input: { user: { basic: { gender: "male" } } }, expected: { retirement: {} } },
       { rowId: 22, uid: "RPCT-440000-GD-A-V1", contentHash: H("test-2"), jurisdictionCode: "440000", sourceCaseUid: "RPC-440000-GD-A-V1", input: { user: { basic: { gender: "female" } } }, expected: { retirement: {} } },
     ],
-    exampleTests: Array.from({ length: 42 }, (_, i) => ({
+    exampleTests: Array.from({ length: 44 }, (_, i) => ({
       rowId: 2000 + i,
       uid: `示例${i}`,
       contentHash: H(`ex-${i}`),
       jurisdictionCode: i % 2 === 0 ? "CN" : "310000",
     })),
-    // RCL-FR-018/AC-011（第三轮复审）：42条DSL example的保留/更新/新增/删除集合。
+    // RCL-FR-018/AC-011（第三轮复审）：44条DSL example的保留/更新/新增/删除集合。
     exampleSync: {
-      retained: Array.from({ length: 42 }, (_, i) => ({
+      retained: Array.from({ length: 44 }, (_, i) => ({
         rowId: 2000 + i,
         name: `示例${i}`,
         jurisdictionCode: i % 2 === 0 ? "CN" : "310000",
@@ -138,36 +138,38 @@ describe("RCL-FR-006 精确manifest绑定", () => {
   });
 });
 
-describe("RCL-FR-015/AC-011 计数 N/36/N+42", () => {
+describe("RCL-FR-015/AC-011 计数 N/36/N+44", () => {
   it("N = 覆盖manifest唯一case数；不硬编码452/500", () => {
     const manifest = buildRclManifest(sampleInput());
     expect(manifest.caseCount).toBe(2);
-    expect(manifest.counts).toEqual({ cases: 2, showcase: 36, tests: 44 });
+    expect(manifest.counts).toEqual({ cases: 2, showcase: 36, tests: 46 });
     expect(() => assertRclCounts(manifest)).not.toThrow();
   });
 
-  it("showcase≠36 或 tests≠N+42 → 断言失败（RCL-AC-011）", () => {
+  it("showcase≠36 或 tests≠N+44 → 断言失败（RCL-AC-011）", () => {
     const bad = buildRclManifest(sampleInput());
     bad.counts.showcase = 35;
     expect(() => assertRclCounts(bad)).toThrow(/36/);
 
     const bad2 = buildRclManifest(sampleInput());
     bad2.counts.tests = 999;
-    expect(() => assertRclCounts(bad2)).toThrow(/N\+42/);
+    expect(() => assertRclCounts(bad2)).toThrow(/N\+44/);
   });
 
   it("manifest不含452/500硬编码计数", () => {
     const manifest = buildRclManifest(sampleInput());
-    expect(JSON.stringify(manifest)).not.toContain("452");
-    expect(JSON.stringify(manifest)).not.toContain("500");
+    // 剔除64位hash噪声后检查（hash可能偶然包含数字串，与硬编码计数无关）。
+    const withoutHashes = JSON.stringify(manifest).replace(/[0-9a-f]{64}/g, "<hash>");
+    expect(withoutHashes).not.toContain("452");
+    expect(withoutHashes).not.toContain("500");
   });
 
-  it("exampleTestCount≠42（28/49等）→ assertRclCounts拒绝（RCL-AC-011，第三轮复审）", () => {
-    for (const bad of [28, 49, 41, 43, 0]) {
+  it("exampleTestCount≠44（28/42/49等）→ assertRclCounts拒绝（RCL-AC-011，第三轮复审）", () => {
+    for (const bad of [28, 49, 42, 43, 0]) {
       const m = buildRclManifest(
         sampleInput({ exampleTests: Array.from({ length: bad }, (_, i) => ({ rowId: 2000 + i, uid: `示例${i}`, contentHash: H(`ex-${i}`), jurisdictionCode: "CN" })) }),
       );
-      expect(() => assertRclCounts(m)).toThrow(/42/);
+      expect(() => assertRclCounts(m)).toThrow(/44/);
     }
     const ok = buildRclManifest(sampleInput());
     expect(() => assertRclCounts(ok)).not.toThrow();

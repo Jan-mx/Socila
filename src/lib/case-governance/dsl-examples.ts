@@ -1,16 +1,22 @@
 /**
- * RCL-FR-018/AC-011（第三轮复审P0修复）：42条DSL example确定性加载。
+ * RCL-FR-018/AC-011（第三轮复审P0修复；SHV2 WI-20260911-01更新）：44条DSL example确定性加载。
  *
- * 从CN19、上海9、广东10、四川4的地区DSL tests文件（规则Manifest发现，
- * SDL-FR-004）确定性加载精确42条目标example，供plan-replacement计算
+ * 从CN19、上海11、广东10、四川4的地区DSL tests文件（规则Manifest发现，
+ * SDL-FR-004）确定性加载精确44条目标example，供plan-replacement计算
  * 保留/更新/新增/删除集合与每条目标example的规范化内容hash。任何数量的
- * 28/49等不得自动成为合法目标（assertRclCounts显式要求42）。
+ * 28/49等不得自动成为合法目标（assertRclCounts显式要求44）。
  */
 import { readFileSync } from "node:fs";
 import { discoverRegionDsl } from "@/lib/dsl/region-manifest";
 import { testRowContentHash } from "./hashes";
 import { exampleDbRowHash } from "./row-projections";
 import type { ExampleSyncSets } from "./manifest";
+
+/**
+ * 全地区DSL黄金示例精确计数（SHV2-FR-007/§7.3：CN19+上海11+广东10+四川4）。
+ * 上海新增R-SH-UI-AMOUNT与R-SH-FLEX-CONTRIBUTION黄金示例后由42增至44。
+ */
+export const DSL_EXAMPLE_COUNT = 44;
 
 export interface DslExampleTarget {
   /** 数据库tests.name（seed命名：`${rule_id}: ${example_name}`）。 */

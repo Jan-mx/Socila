@@ -48,6 +48,8 @@ describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
     expect(text).toMatch(/drizzle\/\*\.sql\s+text\s+eol=lf/);
   });
 
+  // 全新checkout经真实git子进程写临时目录：并行单元负载下可能超过默认5秒（2026-09-11 SHV2复现5075ms），
+  // 与identity-container重载用例同策略显式30秒；断言本身仍是确定性LF/hash契约。
   it("全新checkout（显式 core.autocrlf=true）中migration SQL均为LF且hash等于Git blob", () => {
     const tmp = mkdtempSync(path.join(tmpdir(), "rcl-lf-contract-"));
     try {
@@ -65,7 +67,7 @@ describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("当前工作树migration SQL无CRLF且Drizzle读取hash与Git blob LF SHA一致", () => {
     for (const f of sqlFiles()) {

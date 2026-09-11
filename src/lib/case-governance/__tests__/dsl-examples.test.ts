@@ -14,14 +14,14 @@ import { loadDslExampleTargets } from "../dsl-examples";
 import { testRowContentHash } from "../hashes";
 import { discoverRegionDsl } from "@/lib/dsl/region-manifest";
 
-describe("RCL-FR-018/AC-011 42条DSL example确定性加载", () => {
-  it("从CN/上海/广东/四川DSL文件加载精确42条（CN19+沪9+粤10+川4）", () => {
+describe("RCL-FR-018/AC-011 44条DSL example确定性加载（SHV2起44）", () => {
+  it("从CN/上海/广东/四川DSL文件加载精确44条（CN19+沪11+粤10+川4）", () => {
     const targets = loadDslExampleTargets();
-    expect(targets).toHaveLength(42);
+    expect(targets).toHaveLength(44);
     const byRegion = new Map<string, number>();
     for (const t of targets) byRegion.set(t.jurisdictionCode, (byRegion.get(t.jurisdictionCode) ?? 0) + 1);
     expect(byRegion.get("CN")).toBe(19);
-    expect(byRegion.get("310000")).toBe(9);
+    expect(byRegion.get("310000")).toBe(11);
     expect(byRegion.get("440000")).toBe(10);
     expect(byRegion.get("510000")).toBe(4);
   });

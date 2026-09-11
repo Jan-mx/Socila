@@ -1,48 +1,157 @@
 {
   "policy_pack_id": "SHANGHAI_BASE",
-  "description": "上海社保规划基础参数包 — 2025年政策数据",
-  "as_of": "2026-02-26",
+  "description": "上海社保规划基础参数包 — SHV2纠偏（2026-09-01时点，全部事实附官方原文证据）",
+  "as_of": "2026-09-01",
   "params": [
     {
       "param_id": "P-SH-CONTRIB-BASE-LOWER",
       "type": "number",
-      "value": 7460,
+      "value": 7546,
       "unit": "yuan/month",
-      "effective_from": "2025-07-01",
-      "source": "policy:上海市人社局沪人社规〔2025〕",
-      "note": "2025年度社保缴费基数下限",
+      "effective_from": "2026-07-01",
+      "effective_to": null,
+      "source": "doc:DOC-SH-CONTRIB-BASE-2026",
+      "note": "2026年7月1日起本市社保缴费基数下限7546元/月（上海市人社局2026-08-24发布）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-CONTRIB-BASE-2026",
+          "jurisdiction_code": "310000",
+          "title": "单位职工缴纳城镇养老保险的基数是多少？（上海市人力资源和社会保障局）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tdjjf_17554/20260824/t0035_1443297.html",
+          "fetched_at": "2026-09-11T03:39:20.456Z",
+          "content_sha256": "dc4c73495e55611f69792b21385bc1098ec98a853857b99fe138f79e8119936d",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-CONTRIB-BASE-2026/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答末段"
+          },
+          "excerpt": "2026年7月1日起，本市社保缴费基数的上限调整为37731元/月,下限调整为7546元/月。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-CONTRIB-BASE-UPPER",
       "type": "number",
-      "value": 37302,
+      "value": 37731,
       "unit": "yuan/month",
-      "effective_from": "2025-07-01",
-      "source": "policy:上海市人社局",
+      "effective_from": "2026-07-01",
+      "effective_to": null,
+      "source": "doc:DOC-SH-CONTRIB-BASE-2026",
+      "note": "2026年7月1日起本市社保缴费基数上限37731元/月",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-CONTRIB-BASE-2026",
+          "jurisdiction_code": "310000",
+          "title": "单位职工缴纳城镇养老保险的基数是多少？（上海市人力资源和社会保障局）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tdjjf_17554/20260824/t0035_1443297.html",
+          "fetched_at": "2026-09-11T03:39:20.456Z",
+          "content_sha256": "dc4c73495e55611f69792b21385bc1098ec98a853857b99fe138f79e8119936d",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-CONTRIB-BASE-2026/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答末段"
+          },
+          "excerpt": "2026年7月1日起，本市社保缴费基数的上限调整为37731元/月,下限调整为7546元/月。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-PENSION-RATE-EMPLOYER",
       "type": "number",
       "value": 0.16,
       "unit": "ratio",
-      "effective_from": "2025-01-01",
-      "source": "policy",
+      "effective_from": "2025-01-20",
+      "effective_to": null,
+      "source": "doc:DOC-SH-CONTRIB-RATES-2025",
+      "note": "单位缴纳职保养老保险费比例16%（本参数页发布日期为2025-01-20，为该比例的权威陈述页）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-CONTRIB-RATES-2025",
+          "jurisdiction_code": "310000",
+          "title": "单位缴纳社会保险费的比例是多少？（上海市人力资源和社会保障局，2025-01-20）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tdjjf_17554/20250120/t0035_1430072.html",
+          "fetched_at": "2026-09-11T03:46:47.719Z",
+          "content_sha256": "6bfbdd7ffa894fb0c574205de1e9f644f29e18a5cecc001c00c311ff4cd9277c",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-CONTRIB-RATES-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答"
+          },
+          "excerpt": "单位缴纳职保的比例为：养老保险费16%；医疗保险费9%（含生育保险）；失业保险费0.5%；工伤保险费基础费率0.2%-1.9%。"
+        }
+      ]
     },
     {
-      "param_id": "P-SH-PENSION-RATE-EMPLOYEE",
+      "param_id": "P-SH-MEDICAL-RATE-EMPLOYER",
       "type": "number",
-      "value": 0.08,
+      "value": 0.09,
       "unit": "ratio",
-      "effective_from": "2025-01-01",
-      "source": "policy",
+      "effective_from": "2025-01-20",
+      "effective_to": null,
+      "source": "doc:DOC-SH-CONTRIB-RATES-2025",
+      "note": "单位缴纳职保医疗保险费比例9%（含生育保险）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-CONTRIB-RATES-2025",
+          "jurisdiction_code": "310000",
+          "title": "单位缴纳社会保险费的比例是多少？（上海市人力资源和社会保障局，2025-01-20）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tdjjf_17554/20250120/t0035_1430072.html",
+          "fetched_at": "2026-09-11T03:46:47.719Z",
+          "content_sha256": "6bfbdd7ffa894fb0c574205de1e9f644f29e18a5cecc001c00c311ff4cd9277c",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-CONTRIB-RATES-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答"
+          },
+          "excerpt": "单位缴纳职保的比例为：养老保险费16%；医疗保险费9%（含生育保险）；失业保险费0.5%；工伤保险费基础费率0.2%-1.9%。"
+        }
+      ]
+    },
+    {
+      "param_id": "P-SH-UNEMPLOYMENT-RATE-EMPLOYER",
+      "type": "number",
+      "value": 0.005,
+      "unit": "ratio",
+      "effective_from": "2025-01-20",
+      "effective_to": null,
+      "source": "doc:DOC-SH-CONTRIB-RATES-2025",
+      "note": "单位缴纳职保失业保险费比例0.5%",
+      "operation": "add",
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-CONTRIB-RATES-2025",
+          "jurisdiction_code": "310000",
+          "title": "单位缴纳社会保险费的比例是多少？（上海市人力资源和社会保障局，2025-01-20）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tdjjf_17554/20250120/t0035_1430072.html",
+          "fetched_at": "2026-09-11T03:46:47.719Z",
+          "content_sha256": "6bfbdd7ffa894fb0c574205de1e9f644f29e18a5cecc001c00c311ff4cd9277c",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-CONTRIB-RATES-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答"
+          },
+          "excerpt": "单位缴纳职保的比例为：养老保险费16%；医疗保险费9%（含生育保险）；失业保险费0.5%；工伤保险费基础费率0.2%-1.9%。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-PENSION-RATE-FLEX",
@@ -50,30 +159,29 @@
       "value": 0.2,
       "unit": "ratio",
       "effective_from": "2024-03-01",
-      "source": "policy:灵活就业养老保险费率（从24%降至20%）",
+      "effective_to": null,
+      "source": "doc:DOC-SH-FLEX-RATES",
+      "note": "2024年3月1日起灵活就业人员缴纳职工基本养老保险费比例20%",
       "operation": "add",
-      "target_business_key": null
-    },
-    {
-      "param_id": "P-SH-MEDICAL-RATE-EMPLOYER",
-      "type": "number",
-      "value": 0.09,
-      "unit": "ratio",
-      "effective_from": "2025-03-01",
-      "source": "policy:阶段性降费延续至2026-02，含基本8.5%+地方附加0.5%",
-      "note": "原10%，2024-03起阶段性降至9%，延续至2026-02-28",
-      "operation": "add",
-      "target_business_key": null
-    },
-    {
-      "param_id": "P-SH-MEDICAL-RATE-EMPLOYEE",
-      "type": "number",
-      "value": 0.02,
-      "unit": "ratio",
-      "effective_from": "2025-01-01",
-      "source": "policy",
-      "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-FLEX-RATES",
+          "jurisdiction_code": "310000",
+          "title": "灵活就业人员按什么标准缴费？（上海市人力资源和社会保障局，2024-03-07）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tdjjf_17554/20200918/t0035_1393992.html",
+          "fetched_at": "2026-09-11T03:40:01.131Z",
+          "content_sha256": "297352d22d52e1a9babf4218abc751dd363177dfa7ad947124f6e7363bc39e8a",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-FLEX-RATES/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答"
+          },
+          "excerpt": "月缴费标准为本人缴费基数乘以相应的费率，2024年3月1日起，本市灵活就业人员缴纳职工基本养老保险费的比例为20%，职工基本医疗保险费的比例为10%。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-MEDICAL-RATE-FLEX",
@@ -81,93 +189,317 @@
       "value": 0.1,
       "unit": "ratio",
       "effective_from": "2024-03-01",
-      "source": "policy:灵活就业医保费率（从11%降至10%）",
+      "effective_to": null,
+      "source": "doc:DOC-SH-FLEX-RATES",
+      "note": "2024年3月1日起灵活就业人员缴纳职工基本医疗保险费比例10%",
       "operation": "add",
-      "target_business_key": null
-    },
-    {
-      "param_id": "P-SH-UNEMPLOYMENT-RATE-EMPLOYER",
-      "type": "number",
-      "value": 0.005,
-      "unit": "ratio",
-      "effective_from": "2025-01-01",
-      "source": "policy:阶段性减费至2025-12-31",
-      "note": "法定2%总费率，阶段性降至1%（单位0.5%+个人0.5%）",
-      "operation": "add",
-      "target_business_key": null
-    },
-    {
-      "param_id": "P-SH-UNEMPLOYMENT-RATE-EMPLOYEE",
-      "type": "number",
-      "value": 0.005,
-      "unit": "ratio",
-      "effective_from": "2025-01-01",
-      "source": "policy",
-      "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-FLEX-RATES",
+          "jurisdiction_code": "310000",
+          "title": "灵活就业人员按什么标准缴费？（上海市人力资源和社会保障局，2024-03-07）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tdjjf_17554/20200918/t0035_1393992.html",
+          "fetched_at": "2026-09-11T03:40:01.131Z",
+          "content_sha256": "297352d22d52e1a9babf4218abc751dd363177dfa7ad947124f6e7363bc39e8a",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-FLEX-RATES/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答"
+          },
+          "excerpt": "月缴费标准为本人缴费基数乘以相应的费率，2024年3月1日起，本市灵活就业人员缴纳职工基本养老保险费的比例为20%，职工基本医疗保险费的比例为10%。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-MI-WAITING-PERIOD-MONTHS",
       "type": "number",
-      "value": 2,
+      "value": 6,
       "unit": "months",
-      "effective_from": "2025-01-01",
-      "source": "policy:职工医保断缴超3个月重新参保等待期2个月",
-      "note": "断缴3个月内补缴可视为连续；超3个月重新参保有2个月等待期",
+      "effective_from": "2025-09-10",
+      "effective_to": "2030-09-09",
+      "source": "doc:DOC-SH-MI-FLEX-WAITING-2025",
+      "note": "灵活就业人员享受职工医保待遇等待期6个月（沪医保规〔2025〕7号，自2025-09-10施行，原沪人社医发〔2012〕45号同时废止）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-MI-FLEX-WAITING-2025",
+          "jurisdiction_code": "310000",
+          "title": "上海市职工基本医疗保险办法实施细则（沪医保规〔2025〕7号）",
+          "authority": "上海市医疗保障局",
+          "official_url": "https://ybj.sh.gov.cn/gfxwj/20250905/6173c838284f43c3b4d8c8d4513364ed.html",
+          "fetched_at": "2026-09-11T03:40:06.660Z",
+          "content_sha256": "549493856745e71c69843e87abceaa722583f9829c630ae616fda6d28260e587",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MI-FLEX-WAITING-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "三（四）"
+          },
+          "excerpt": "参加本市职工医保的灵活就业人员，享受医疗保险待遇的等待期为6个月。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-MI-GAP-WAIVER-MONTHS",
       "type": "number",
       "value": 3,
       "unit": "months",
-      "effective_from": "2025-01-01",
-      "source": "policy:3个月内补缴视为连续参保",
+      "effective_from": "2025-09-10",
+      "effective_to": "2030-09-09",
+      "source": "doc:DOC-SH-MI-FLEX-WAITING-2025",
+      "note": "中断职工医保待遇后3个月内以灵活就业身份参保缴费的，不受等待期限制",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-MI-FLEX-WAITING-2025",
+          "jurisdiction_code": "310000",
+          "title": "上海市职工基本医疗保险办法实施细则（沪医保规〔2025〕7号）",
+          "authority": "上海市医疗保障局",
+          "official_url": "https://ybj.sh.gov.cn/gfxwj/20250905/6173c838284f43c3b4d8c8d4513364ed.html",
+          "fetched_at": "2026-09-11T03:40:06.660Z",
+          "content_sha256": "549493856745e71c69843e87abceaa722583f9829c630ae616fda6d28260e587",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MI-FLEX-WAITING-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "三（四）末段"
+          },
+          "excerpt": "在中断享受职工医保待遇或城乡居民医保待遇后的3个月内以灵活就业人员身份参加职工医保并按规定缴费的，不受待遇等待期规定限制。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-4050-SUBSIDY-RATE",
       "type": "number",
       "value": 0.5,
       "unit": "ratio",
-      "effective_from": "2025-01-01",
-      "source": "policy:灵活就业社保补贴=最低基数缴费的50%",
+      "effective_from": "2022-01-01",
+      "effective_to": "2026-12-31",
+      "source": "doc:DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "note": "灵活就业社保补贴=按下限基数计算的应缴社会保险费的50%（沪人社规〔2022〕8号，有效期至2026-12-31）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+          "jurisdiction_code": "310000",
+          "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+          "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+          "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+          "fetched_at": "2026-09-11T04:01:44.294Z",
+          "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "三"
+          },
+          "excerpt": "补贴标准为按照以缴费当月职工社会保险缴费基数的下限作为缴费基数计算的应缴社会保险费的50%，补贴期限除对距法定退休年龄不足5年的可延长至退休外，同一名“就业困难人员”累计最长不超过3年。"
+        },
+        {
+          "document_id": "DOC-SH-FLEX-SUBSIDY-STANDARD-2022",
+          "jurisdiction_code": "310000",
+          "title": "申请就业困难人员灵活就业社会保险费补贴的补贴标准是多少？（上海市人力资源和社会保障局）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tcjjyyhzc_17545/20220705/t0035_1408073.html",
+          "fetched_at": "2026-09-11T03:47:00.726Z",
+          "content_sha256": "2a9320b5a463ecac6891b0ba295b5e4ef10c160ac391483c8ac8f1aa26b88aba",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-FLEX-SUBSIDY-STANDARD-2022/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答"
+          },
+          "excerpt": "补贴标准为按照以缴费当月职工社会保险缴费基数的下限作为缴费基数计算的应缴社会保险费的50%。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-4050-MAX-YEARS-GENERAL",
       "type": "number",
       "value": 3,
       "unit": "years",
-      "effective_from": "2025-01-01",
-      "source": "policy:累计享受不超过3年",
-      "note": "一般就业困难人员最长享受3年",
+      "effective_from": "2022-01-01",
+      "effective_to": "2026-12-31",
+      "source": "doc:DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "note": "同一名就业困难人员累计最长不超过3年",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+          "jurisdiction_code": "310000",
+          "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+          "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+          "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+          "fetched_at": "2026-09-11T04:01:44.294Z",
+          "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "三"
+          },
+          "excerpt": "补贴期限除对距法定退休年龄不足5年的可延长至退休外，同一名“就业困难人员”累计最长不超过3年。"
+        },
+        {
+          "document_id": "DOC-SH-SUBSIDY-DURATION-2023",
+          "jurisdiction_code": "310000",
+          "title": "申请就业困难人员灵活就业社会保险费补贴的期限有没有具体规定？（上海市人力资源和社会保障局）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tcjjyyhzc_17545/20231221/t0035_1420221.html",
+          "fetched_at": "2026-09-11T03:40:18.619Z",
+          "content_sha256": "effcb1dbb93ac9470eea75f5b3b489e75db49afc0bba9d63e4a43804848b9471",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-SUBSIDY-DURATION-2023/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答"
+          },
+          "excerpt": "补贴期限除对距法定退休年龄不足5年的可延长至退休外，同一名“就业困难人员”累计最长不超过3年。"
+        }
+      ]
     },
     {
-      "param_id": "P-SH-4050-MAX-YEARS-NEAR-RETIRE",
+      "param_id": "P-SH-4050-NEAR-RETIRE-THRESHOLD-YEARS",
       "type": "number",
-      "value": 8,
+      "value": 5,
       "unit": "years",
-      "effective_from": "2025-01-01",
-      "source": "policy:距法定退休年龄不足5年的可延长至退休",
-      "note": "距退休5年内可延长，最长约8年",
+      "effective_from": "2022-01-01",
+      "effective_to": "2026-12-31",
+      "source": "doc:DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "note": "距法定退休年龄不足5年的可延长至退休（替代原“固定最长8年”推断）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+          "jurisdiction_code": "310000",
+          "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+          "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+          "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+          "fetched_at": "2026-09-11T04:01:44.294Z",
+          "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "三"
+          },
+          "excerpt": "补贴期限除对距法定退休年龄不足5年的可延长至退休外，同一名“就业困难人员”累计最长不超过3年。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-JOB-SUBSIDY-RATE-MINWAGE",
       "type": "number",
       "value": 0.5,
       "unit": "ratio",
-      "effective_from": "2025-01-01",
-      "source": "policy:就业岗位补贴=最低工资的50%",
+      "effective_from": "2022-01-01",
+      "effective_to": "2026-12-31",
+      "source": "doc:DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "note": "用人单位吸纳就业困难人员岗位补贴=本市月最低工资标准的50%",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+          "jurisdiction_code": "310000",
+          "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+          "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+          "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+          "fetched_at": "2026-09-11T04:01:44.294Z",
+          "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "二"
+          },
+          "excerpt": "岗位补贴的标准为本市月最低工资标准的50%，社会保险补贴标准为以缴费当月职工社会保险缴费基数的下限作为基数计算的养老、医疗和失业保险缴费额中用人单位承担部分的50%。"
+        },
+        {
+          "document_id": "DOC-SH-EMPLOYER-SUBSIDY-STANDARD-2022",
+          "jurisdiction_code": "310000",
+          "title": "用人单位享受吸纳就业困难人员岗位补贴和社会保险费的补贴标准是什么？（上海市人力资源和社会保障局）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tcjjyyhzc_17545/20220704/t0035_1408028.html",
+          "fetched_at": "2026-09-11T03:47:07.079Z",
+          "content_sha256": "00dfad742c727e66c0f5dc7bc21f0143755310fe2c7b1d4a9764bf40e6ad320d",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYER-SUBSIDY-STANDARD-2022/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答"
+          },
+          "excerpt": "岗位补贴的标准为本市月最低工资标准的50%，社会保险补贴标准为以缴费当月职工社会保险缴费基数的下限作为基数计算的养老、医疗和失业保险缴费额中用人单位承担部分的50%。"
+        }
+      ]
+    },
+    {
+      "param_id": "P-SH-JOB-SUBSIDY-MAX-YEARS-GENERAL",
+      "type": "number",
+      "value": 3,
+      "unit": "years",
+      "effective_from": "2022-01-01",
+      "effective_to": "2026-12-31",
+      "source": "doc:DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "note": "用人单位吸纳补贴期限累计一般不超过3年",
+      "operation": "add",
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+          "jurisdiction_code": "310000",
+          "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+          "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+          "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+          "fetched_at": "2026-09-11T04:01:44.294Z",
+          "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "二"
+          },
+          "excerpt": "对于同一名“就业困难人员”，上述补贴与本意见出台前用人单位享受的一次性补贴的期限累计一般不超过3年，补贴期满且该“就业困难人员”距法定退休年龄不足2年的，补贴期限最长可延长至该“就业困难人员”到达法定退休年龄。"
+        }
+      ]
+    },
+    {
+      "param_id": "P-SH-JOB-SUBSIDY-NEAR-RETIRE-THRESHOLD-YEARS",
+      "type": "number",
+      "value": 2,
+      "unit": "years",
+      "effective_from": "2022-01-01",
+      "effective_to": "2026-12-31",
+      "source": "doc:DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "note": "补贴期满且距法定退休年龄不足2年的，最长可延长至到达法定退休年龄",
+      "operation": "add",
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+          "jurisdiction_code": "310000",
+          "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+          "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+          "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+          "fetched_at": "2026-09-11T04:01:44.294Z",
+          "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "二"
+          },
+          "excerpt": "对于同一名“就业困难人员”，上述补贴与本意见出台前用人单位享受的一次性补贴的期限累计一般不超过3年，补贴期满且该“就业困难人员”距法定退休年龄不足2年的，补贴期限最长可延长至该“就业困难人员”到达法定退休年龄。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER1",
@@ -175,10 +507,105 @@
       "value": 2255,
       "unit": "yuan/month",
       "effective_from": "2024-07-01",
-      "source": "policy:沪人社规〔2024〕",
-      "note": "第1-12个月失业金标准（2024.07-2025.06）",
+      "effective_to": "2025-06-30",
+      "source": "doc:DOC-SH-UI-BENEFIT-2024",
+      "note": "第1-12个月失业金标准（沪人社规〔2024〕13号，2024-07-01起执行；2025-07-01起被沪人社规〔2025〕9号替代）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-BENEFIT-2024",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2024〕13号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20240628/t0035_1425027.html",
+          "fetched_at": "2026-09-11T04:04:10.346Z",
+          "content_sha256": "272f8d280432d87cb3e7c3f1d67bc7215112679b4a7bc2b59720799b77ef5507",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2024/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一（一）"
+          },
+          "excerpt": "第1-12个月领取失业保险金的失业人员，失业保险金发放标准为2255元/月；"
+        }
+      ]
+    },
+    {
+      "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER1",
+      "type": "number",
+      "value": 2305,
+      "unit": "yuan/month",
+      "effective_from": "2025-07-01",
+      "effective_to": "2026-06-30",
+      "source": "doc:DOC-SH-UI-BENEFIT-2025",
+      "note": "第1-12个月失业金标准（沪人社规〔2025〕9号，2025-07-01起执行；2026-07-01起被沪人社规〔2026〕7号替代）",
+      "operation": "add",
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-BENEFIT-2025",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2025〕9号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20250704/t0035_1433841.html",
+          "fetched_at": "2026-09-11T03:49:56.977Z",
+          "content_sha256": "36b8ec96b66d0c886d69512cea2454469d6a8472d3cc9e5cba75bc7797dfc71d",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一（一）"
+          },
+          "excerpt": "第1-12个月领取失业保险金的失业人员，失业保险金发放标准为2305元/月；"
+        }
+      ]
+    },
+    {
+      "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER1",
+      "type": "number",
+      "value": 2340,
+      "unit": "yuan/month",
+      "effective_from": "2026-07-01",
+      "effective_to": "2028-06-30",
+      "source": "doc:DOC-SH-UI-BENEFIT-2026",
+      "note": "第1-12个月失业金标准（沪人社规〔2026〕7号，2026-07-01起执行，有效期至2028-06-30）",
+      "operation": "add",
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-BENEFIT-2026",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2026〕7号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20260702/t0035_1442080.html",
+          "fetched_at": "2026-09-11T03:39:47.468Z",
+          "content_sha256": "47ea8304b41063734aaa1321a5d78b88f983ae488ceb1e83701e736c80a96d09",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2026/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一（一）"
+          },
+          "excerpt": "第1-12个月领取失业保险金的失业人员，失业保险金发放标准为2340元/月；"
+        },
+        {
+          "document_id": "DOC-SH-UI-BENEFIT-2026",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2026〕7号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20260702/t0035_1442080.html",
+          "fetched_at": "2026-09-11T03:39:47.468Z",
+          "content_sha256": "47ea8304b41063734aaa1321a5d78b88f983ae488ceb1e83701e736c80a96d09",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2026/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "二"
+          },
+          "excerpt": "上述失业保险金支付标准自2026年7月1日起执行。本通知有效期至2028年6月30日。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER2",
@@ -186,10 +613,89 @@
       "value": 1804,
       "unit": "yuan/month",
       "effective_from": "2024-07-01",
-      "source": "policy",
-      "note": "第13-24个月失业金标准",
+      "effective_to": "2025-06-30",
+      "source": "doc:DOC-SH-UI-BENEFIT-2024",
+      "note": "第13-24个月失业金标准（沪人社规〔2024〕13号）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-BENEFIT-2024",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2024〕13号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20240628/t0035_1425027.html",
+          "fetched_at": "2026-09-11T04:04:10.346Z",
+          "content_sha256": "272f8d280432d87cb3e7c3f1d67bc7215112679b4a7bc2b59720799b77ef5507",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2024/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一（二）"
+          },
+          "excerpt": "第13-24个月领取失业保险金的失业人员，失业保险金发放标准为1804元/月；"
+        }
+      ]
+    },
+    {
+      "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER2",
+      "type": "number",
+      "value": 1844,
+      "unit": "yuan/month",
+      "effective_from": "2025-07-01",
+      "effective_to": "2026-06-30",
+      "source": "doc:DOC-SH-UI-BENEFIT-2025",
+      "note": "第13-24个月失业金标准（沪人社规〔2025〕9号）",
+      "operation": "add",
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-BENEFIT-2025",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2025〕9号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20250704/t0035_1433841.html",
+          "fetched_at": "2026-09-11T03:49:56.977Z",
+          "content_sha256": "36b8ec96b66d0c886d69512cea2454469d6a8472d3cc9e5cba75bc7797dfc71d",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一（二）"
+          },
+          "excerpt": "第13-24个月领取失业保险金的失业人员，失业保险金发放标准为1844元/月；"
+        }
+      ]
+    },
+    {
+      "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER2",
+      "type": "number",
+      "value": 1872,
+      "unit": "yuan/month",
+      "effective_from": "2026-07-01",
+      "effective_to": "2028-06-30",
+      "source": "doc:DOC-SH-UI-BENEFIT-2026",
+      "note": "第13-24个月失业金标准（沪人社规〔2026〕7号）",
+      "operation": "add",
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-BENEFIT-2026",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2026〕7号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20260702/t0035_1442080.html",
+          "fetched_at": "2026-09-11T03:39:47.468Z",
+          "content_sha256": "47ea8304b41063734aaa1321a5d78b88f983ae488ceb1e83701e736c80a96d09",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2026/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一（二）"
+          },
+          "excerpt": "第13-24个月领取失业保险金的失业人员，失业保险金发放标准为1872元/月；"
+        }
+      ]
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED",
@@ -197,32 +703,105 @@
       "value": 1595,
       "unit": "yuan/month",
       "effective_from": "2024-07-01",
-      "source": "policy",
-      "note": "延长领取期间标准",
+      "effective_to": "2025-06-30",
+      "source": "doc:DOC-SH-UI-BENEFIT-2024",
+      "note": "延长领取期间标准（沪人社规〔2024〕13号）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-BENEFIT-2024",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2024〕13号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20240628/t0035_1425027.html",
+          "fetched_at": "2026-09-11T04:04:10.346Z",
+          "content_sha256": "272f8d280432d87cb3e7c3f1d67bc7215112679b4a7bc2b59720799b77ef5507",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2024/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一（三）"
+          },
+          "excerpt": "延长领取失业保险金的失业人员，失业保险金发放标准为1595元/月。"
+        }
+      ]
     },
     {
-      "param_id": "P-SH-PAY-GAP-AFFECTS-NEXT-MONTH",
-      "type": "boolean",
-      "value": true,
-      "effective_from": "2024-01-01",
-      "source": "transcript",
+      "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED",
+      "type": "number",
+      "value": 1650,
+      "unit": "yuan/month",
+      "effective_from": "2025-07-01",
+      "effective_to": "2026-06-30",
+      "source": "doc:DOC-SH-UI-BENEFIT-2025",
+      "note": "延长领取期间标准（沪人社规〔2025〕9号）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-BENEFIT-2025",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2025〕9号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20250704/t0035_1433841.html",
+          "fetched_at": "2026-09-11T03:49:56.977Z",
+          "content_sha256": "36b8ec96b66d0c886d69512cea2454469d6a8472d3cc9e5cba75bc7797dfc71d",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一（三）"
+          },
+          "excerpt": "延长领取失业保险金的失业人员，失业保险金发放标准为1650元/月。"
+        }
+      ]
     },
     {
-      "param_id": "T-SH-PAY-GAP-MONTHS",
-      "type": "array",
-      "value": [
-        7,
-        8
-      ],
-      "unit": "month_list",
-      "effective_from": "2024-01-01",
-      "source": "transcript",
+      "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED",
+      "type": "number",
+      "value": 1690,
+      "unit": "yuan/month",
+      "effective_from": "2026-07-01",
+      "effective_to": "2028-06-30",
+      "source": "doc:DOC-SH-UI-BENEFIT-2026",
+      "note": "延长领取期间标准1690元（高于第13-24个月标准80%的原因：不得低于本市最低生活保障标准，官方问答有专门说明）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-BENEFIT-2026",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2026〕7号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20260702/t0035_1442080.html",
+          "fetched_at": "2026-09-11T03:39:47.468Z",
+          "content_sha256": "47ea8304b41063734aaa1321a5d78b88f983ae488ceb1e83701e736c80a96d09",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2026/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一（三）"
+          },
+          "excerpt": "延长领取失业保险金的失业人员，失业保险金发放标准为1690元/月。"
+        },
+        {
+          "document_id": "DOC-SH-UI-STANDARD-EXPLAIN-2026",
+          "jurisdiction_code": "310000",
+          "title": "延长领取失业保险金标准高于第13-24个月标准80%的原因说明（上海市人力资源和社会保障局，2026-07-06）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tlqbz_17564/20260706/t0035_1442140.html",
+          "fetched_at": "2026-09-11T03:56:35.076Z",
+          "content_sha256": "3b31a97ef37ec0abf554f20107b180087adf05119c6d78dcc1a638ba23359cd1",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-STANDARD-EXPLAIN-2026/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "正文"
+          },
+          "excerpt": "因此根据本市失业保险相关规定，2026年本市延长领取失业保险金的标准为1690元。"
+        }
+      ]
     },
     {
       "param_id": "P-SH-MIN-WAGE",
@@ -230,32 +809,75 @@
       "value": 2690,
       "unit": "yuan/month",
       "effective_from": "2024-07-01",
-      "source": "policy:上海市最低工资标准",
-      "note": "2024年7月1日起执行",
+      "effective_to": "2025-06-30",
+      "source": "doc:DOC-SH-MIN-WAGE-2025",
+      "note": "调整前标准2690元/月（沪人社规〔2025〕10号载明“从2690元调整到2740元”，自2025-07-01起被2740替代）",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-MIN-WAGE-2025",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市最低工资标准的通知（沪人社规〔2025〕10号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tgzfl_17732/20250714/t0035_1434097.html",
+          "fetched_at": "2026-09-11T03:39:54.218Z",
+          "content_sha256": "e158ad6970069a6cff47f7f5384770fc966132e6b6c0d11c719abb19422e6fcd",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MIN-WAGE-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一"
+          },
+          "excerpt": "一、月最低工资标准从2690元调整到2740元。"
+        }
+      ]
     },
     {
-      "param_id": "P-MI-LIFETIME-MALE-YEARS",
+      "param_id": "P-SH-MIN-WAGE",
       "type": "number",
-      "value": 25,
-      "unit": "years",
-      "effective_from": "2025-01-01",
-      "source": "policy:男性退休医保最低缴费年限25年（含视同缴费）",
-      "note": "含视同缴费年限：1992年底前连续工龄+1993年至医保制度启动前的养老保险缴费年限。原P-SH-MEDICAL-LIFETIME-MALE-YEARS改名（值不变）",
+      "value": 2740,
+      "unit": "yuan/month",
+      "effective_from": "2025-07-01",
+      "effective_to": null,
+      "source": "doc:DOC-SH-MIN-WAGE-2025",
+      "note": "沪人社规〔2025〕10号：从2025年7月1日起月最低工资标准2740元",
       "operation": "add",
-      "target_business_key": null
-    },
-    {
-      "param_id": "P-MI-LIFETIME-FEMALE-YEARS",
-      "type": "number",
-      "value": 20,
-      "unit": "years",
-      "effective_from": "2025-01-01",
-      "source": "policy:女性退休医保最低缴费年限20年（含视同缴费）",
-      "note": "原P-SH-MEDICAL-LIFETIME-FEMALE-YEARS改名（值不变）",
-      "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-MIN-WAGE-2025",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市最低工资标准的通知（沪人社规〔2025〕10号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tgzfl_17732/20250714/t0035_1434097.html",
+          "fetched_at": "2026-09-11T03:39:54.218Z",
+          "content_sha256": "e158ad6970069a6cff47f7f5384770fc966132e6b6c0d11c719abb19422e6fcd",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MIN-WAGE-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "一"
+          },
+          "excerpt": "一、月最低工资标准从2690元调整到2740元。"
+        },
+        {
+          "document_id": "DOC-SH-MIN-WAGE-2025",
+          "jurisdiction_code": "310000",
+          "title": "上海市人力资源和社会保障局关于调整本市最低工资标准的通知（沪人社规〔2025〕10号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tgzfl_17732/20250714/t0035_1434097.html",
+          "fetched_at": "2026-09-11T03:39:54.218Z",
+          "content_sha256": "e158ad6970069a6cff47f7f5384770fc966132e6b6c0d11c719abb19422e6fcd",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MIN-WAGE-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "正文首段"
+          },
+          "excerpt": "经市政府同意，从2025年7月1日起，本市调整最低工资标准。"
+        }
+      ]
     },
     {
       "param_id": "P-MI-LIFETIME-REQUIRED-YEARS",
@@ -263,73 +885,143 @@
       "value": 15,
       "unit": "years",
       "effective_from": "2010-01-01",
-      "source": "policy:上海医保最低缴费年限15年（全国最低）",
-      "note": "已弃用，请使用性别区分的参数。保留用于向后兼容。原P-SH-MEDICAL-LIFETIME-REQUIRED-YEARS改名（值不变）",
+      "effective_to": null,
+      "source": "doc:DOC-SH-MI-RETIREE-CONDITIONS",
+      "note": "上海退休职工医保待遇条件：缴费年限（含视同）累计超过15年",
       "operation": "add",
-      "target_business_key": null
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-MI-RETIREE-CONDITIONS",
+          "jurisdiction_code": "310000",
+          "title": "职工享受医保待遇的条件是什么？（上海市医疗保障局，2026-06-29）",
+          "authority": "上海市医疗保障局",
+          "official_url": "https://ybj.sh.gov.cn/cb_jbdyl/20260629/3318d1479e9146c6bbafdac988f5737d.html",
+          "fetched_at": "2026-09-11T03:40:11.838Z",
+          "content_sha256": "bfbd79a9b338d8a781cea6290369be22e2b5fa0c1c8e279938da14497cd7a612",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MI-RETIREE-CONDITIONS/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "正文第三段"
+          },
+          "excerpt": "用人单位及其职工缴纳医疗保险费的年限（含视作缴费年限）累计超过15年的，职工退休后可以享受基本医疗保险待遇。"
+        }
+      ]
+    },
+    {
+      "param_id": "P-MI-LIFETIME-MALE-YEARS",
+      "type": "number",
+      "value": 15,
+      "unit": "years",
+      "effective_from": "2010-01-01",
+      "effective_to": null,
+      "source": "doc:DOC-SH-MI-RETIREE-CONDITIONS",
+      "note": "上海官方来源不按性别区分（累计超过15年）；男性25年为无依据口径，已按正式来源纠正为15",
+      "operation": "add",
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-MI-RETIREE-CONDITIONS",
+          "jurisdiction_code": "310000",
+          "title": "职工享受医保待遇的条件是什么？（上海市医疗保障局，2026-06-29）",
+          "authority": "上海市医疗保障局",
+          "official_url": "https://ybj.sh.gov.cn/cb_jbdyl/20260629/3318d1479e9146c6bbafdac988f5737d.html",
+          "fetched_at": "2026-09-11T03:40:11.838Z",
+          "content_sha256": "bfbd79a9b338d8a781cea6290369be22e2b5fa0c1c8e279938da14497cd7a612",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MI-RETIREE-CONDITIONS/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "正文第三段"
+          },
+          "excerpt": "用人单位及其职工缴纳医疗保险费的年限（含视作缴费年限）累计超过15年的，职工退休后可以享受基本医疗保险待遇。"
+        }
+      ]
+    },
+    {
+      "param_id": "P-MI-LIFETIME-FEMALE-YEARS",
+      "type": "number",
+      "value": 15,
+      "unit": "years",
+      "effective_from": "2010-01-01",
+      "effective_to": null,
+      "source": "doc:DOC-SH-MI-RETIREE-CONDITIONS",
+      "note": "上海官方来源不按性别区分（累计超过15年）；女性20年为无依据口径，已按正式来源纠正为15",
+      "operation": "add",
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-MI-RETIREE-CONDITIONS",
+          "jurisdiction_code": "310000",
+          "title": "职工享受医保待遇的条件是什么？（上海市医疗保障局，2026-06-29）",
+          "authority": "上海市医疗保障局",
+          "official_url": "https://ybj.sh.gov.cn/cb_jbdyl/20260629/3318d1479e9146c6bbafdac988f5737d.html",
+          "fetched_at": "2026-09-11T03:40:11.838Z",
+          "content_sha256": "bfbd79a9b338d8a781cea6290369be22e2b5fa0c1c8e279938da14497cd7a612",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MI-RETIREE-CONDITIONS/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "正文第三段"
+          },
+          "excerpt": "用人单位及其职工缴纳医疗保险费的年限（含视作缴费年限）累计超过15年的，职工退休后可以享受基本医疗保险待遇。"
+        }
+      ]
+    },
+    {
+      "param_id": "P-SH-UI-OLDER-PENSION-FUND-WINDOW-MONTHS",
+      "type": "number",
+      "value": 12,
+      "unit": "months",
+      "effective_from": "2025-01-20",
+      "effective_to": null,
+      "source": "doc:DOC-SH-UI-OLDER-PENSION-APPLY-2025",
+      "note": "大龄领金人员养老费由失业基金承担的窗口：距法定退休年龄不足1年内实际缴纳月数，退休后一次性支付",
+      "operation": "add",
+      "target_business_key": null,
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-OLDER-PENSION-APPLY-2025",
+          "jurisdiction_code": "310000",
+          "title": "大龄领取失业保险金人员如何申领由失业保险基金承担的养老保险费用？（上海市人力资源和社会保障局）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tlqtj_17563/20250120/t0035_1430067.html",
+          "fetched_at": "2026-09-11T03:58:20.289Z",
+          "content_sha256": "4c95b372865d91ceb1bcf494a9cc67f8d4e48f953a254488f1b85ef9fbcd282a",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-OLDER-PENSION-APPLY-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答"
+          },
+          "excerpt": "经办机构审核后按照个人距离法定退休年龄不足1年内实际缴纳月数一次性支付。"
+        },
+        {
+          "document_id": "DOC-SH-UI-OLDER-PENSION-STANDARD-2025",
+          "jurisdiction_code": "310000",
+          "title": "大龄领取失业保险金人员参加企业职工基本养老保险的补贴标准是什么？（上海市人力资源和社会保障局）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tlqtj_17563/20250120/t0035_1430066.html",
+          "fetched_at": "2026-09-11T03:58:15.406Z",
+          "content_sha256": "14c31397b23efc63acec377d6503bd95ddaea226c6a6bfa620a0435f9c3bf1ba",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-OLDER-PENSION-STANDARD-2025/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "body",
+            "reference": "答"
+          },
+          "excerpt": "大龄领取失业保险金人员在本市以个人身份参加企业职工基本养老保险并缴费，其中按本市灵活就业人员最低缴费标准的部分由失业保险基金支付。"
+        }
+      ]
     }
   ],
   "tables": [
     {
-      "param_id": "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS",
-      "type": "table",
-      "effective_from": "2010-01-01",
-      "key_fields": [
-        "insured_years"
-      ],
-      "value_fields": [
-        "months"
-      ],
-      "rows": [
-        {
-          "insured_years_min": 1,
-          "insured_years_max": 2,
-          "months": 3
-        },
-        {
-          "insured_years_min": 2,
-          "insured_years_max": 3,
-          "months": 6
-        },
-        {
-          "insured_years_min": 3,
-          "insured_years_max": 4,
-          "months": 9
-        },
-        {
-          "insured_years_min": 4,
-          "insured_years_max": 5,
-          "months": 12
-        },
-        {
-          "insured_years_min": 5,
-          "insured_years_max": 6,
-          "months": 15
-        },
-        {
-          "insured_years_min": 6,
-          "insured_years_max": 7,
-          "months": 18
-        },
-        {
-          "insured_years_min": 7,
-          "insured_years_max": 8,
-          "months": 21
-        },
-        {
-          "insured_years_min": 8,
-          "insured_years_max": 99,
-          "months": 24
-        }
-      ],
-      "source": "policy",
-      "operation": "add",
-      "target_business_key": null
-    },
-    {
       "param_id": "T-UNEMPLOYMENT-DURATION-BY-YEARS",
       "type": "table",
-      "effective_from": "2010-01-01",
+      "effective_from": "2026-08-16",
+      "effective_to": "2031-08-15",
       "key_fields": [
         "insured_years"
       ],
@@ -340,48 +1032,86 @@
         {
           "insured_years_min": 1,
           "insured_years_max": 2,
-          "months": 3
+          "months": 2
         },
         {
           "insured_years_min": 2,
           "insured_years_max": 3,
-          "months": 6
+          "months": 4
         },
         {
           "insured_years_min": 3,
           "insured_years_max": 4,
-          "months": 9
+          "months": 6
         },
         {
           "insured_years_min": 4,
           "insured_years_max": 5,
-          "months": 12
+          "months": 8
         },
         {
           "insured_years_min": 5,
           "insured_years_max": 6,
-          "months": 15
+          "months": 10
         },
         {
           "insured_years_min": 6,
           "insured_years_max": 7,
-          "months": 18
+          "months": 12
         },
         {
           "insured_years_min": 7,
           "insured_years_max": 8,
-          "months": 21
+          "months": 14
         },
         {
           "insured_years_min": 8,
+          "insured_years_max": 9,
+          "months": 16
+        },
+        {
+          "insured_years_min": 9,
+          "insured_years_max": 10,
+          "months": 18
+        },
+        {
+          "insured_years_min": 10,
+          "insured_years_max": 11,
+          "months": 20
+        },
+        {
+          "insured_years_min": 11,
+          "insured_years_max": 12,
+          "months": 22
+        },
+        {
+          "insured_years_min": 12,
           "insured_years_max": 99,
           "months": 24
         }
       ],
-      "note": "上海执行标准：按累计缴费年限细分的实际领取月数（replace国家基线表；原T-SH-UNEMPLOYMENT-DURATION-BY-YEARS，行内容不变）",
-      "source": "policy",
+      "note": "上海执行标准：满1年不满2年领2个月，以后每增加1年增加2个月，最长24个月（沪人社规〔2026〕18号，自2026-08-16施行；原参数包3/6/9…表无正式原文依据，已按正式文件纠正）",
+      "source": "doc:DOC-SH-UI-CLAIM-RULES-2026",
       "operation": "replace",
-      "target_business_key": "T-UNEMPLOYMENT-DURATION-BY-YEARS"
+      "target_business_key": "T-UNEMPLOYMENT-DURATION-BY-YEARS",
+      "evidence": [
+        {
+          "document_id": "DOC-SH-UI-CLAIM-RULES-2026",
+          "jurisdiction_code": "310000",
+          "title": "上海市失业保险金申领发放实施办法（沪人社规〔2026〕18号）",
+          "authority": "上海市人力资源和社会保障局",
+          "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20260812/t0035_1443067.html",
+          "fetched_at": "2026-09-11T03:49:50.770Z",
+          "content_sha256": "c53260044ae652bb6024c6d20de2fa0354c0d21adb64676df1e35c957499ec9e",
+          "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-CLAIM-RULES-2026/original.html",
+          "parse_version": "extracted-text-v1",
+          "locator": {
+            "type": "paragraph",
+            "reference": "五"
+          },
+          "excerpt": "缴费年限累计满1年不满2年的，领取失业保险金期限为2个月；以后缴费年限每增加1年，期限增加2个月，依此类推，一次核定领取的期限最长不超过24个月。"
+        }
+      ]
     }
   ]
 }

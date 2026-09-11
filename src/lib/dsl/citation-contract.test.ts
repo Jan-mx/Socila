@@ -26,8 +26,9 @@ interface EvidenceEntry {
 }
 
 const REPO_ROOT = process.cwd();
-const REGION_DIRS = ["cn_dsl_v1", "guangdong_dsl_v1", "sichuan_dsl_v1"].map((d) =>
-  path.join(REPO_ROOT, "dsl/regions", d),
+/** SHV2-FR-003：上海正式纳入引用契约扫描范围（与CN/广东/四川同等要求）。 */
+const REGION_DIRS = ["cn_dsl_v1", "guangdong_dsl_v1", "sichuan_dsl_v1", "shanghai_dsl_v1"].map(
+  (d) => path.join(REPO_ROOT, "dsl/regions", d),
 );
 
 /** 计算框架/归一化规则不断言政策事实（见验收报告分类表），不要求政策引用。 */

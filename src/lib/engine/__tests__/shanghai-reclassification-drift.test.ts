@@ -1,17 +1,18 @@
 /**
- * NRP-AC-002 上海重分类零漂移对账（里程碑B核心交付）：
- * 重分类前捕获的44例冻结基线（evidence/shanghai-reclassification/pre-reclass-baseline.json，
- * 在任何DSL改动前由 tmp 捕获脚本从原上海DSL内存执行产出）与重分类后链式装载
- * （CN baseline + 上海overlay）的执行结果逐案对账——plan/calc/user必须逐字节一致；
- * trace仅允许"已解释的参数键改名"差异（R-220/R-410参数中性化映射见下）。
+ * 上海政策冻结基线对账（NRP-AC-002 → SHV2 WI-20260911-01 延续）。
  *
- * 已解释差异（全部记录于 stage-09-05 验收报告§上海重分类）：
- * 1. R-220/R-410 的上海前缀参数键改为中性国家键（值不变，由地区包提供）；
- * 2. R-220 新增"地区年限参数缺失→needs_agent"守卫行（参数存在时永不触发；
- *    上海包恒提供该参数，对上海解析无行为影响）；
- * 3. 上海失业金期限表由 T-SH-* 改为对国家基线表的显式replace（行内容不变）。
+ * 历史：2026-09-05 重分类零漂移对账使用 `evidence/shanghai-reclassification/
+ * pre-reclass-baseline.json`（44例）证明参数改名不改变行为；该文件作为验收证据
+ * 永久保留、不再改写。SHV2 按官方原文有意纠正上海政策事实并新增两条规则，
+ * 上海规划输出合法变化，因此本测试改为冻结 SHV2 状态：
+ * `evidence/shanghai-policy-v2/shv2-frozen-baseline.json`（46例 = 30示例
+ * + 10延迟退休 + 6全编排）。任何后续 DSL 改动导致 user/calc/plan 或 trace
+ * 漂移都会在此失败，必须经人工复核后以 `WRITE_SHV2_DRIFT_BASELINE=1` 重新冻结
+ * 并在验收报告记录原因。
+ *
+ * 全编排 6 例的输入沿用 pre-reclass 基线（输入不变，输出按 SHV2 重算）。
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import {
@@ -23,27 +24,17 @@ import type { RuleDefinition } from "@/types/engine";
 const REPO = process.cwd();
 const CN_DIR = path.join(REPO, "dsl/regions/cn_dsl_v1");
 const SH_DIR = path.join(REPO, "dsl/regions/shanghai_dsl_v1");
-const BASELINE_PATH = path.join(
+const EVIDENCE_ROOT = path.join(
   REPO,
-  "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/shanghai-reclassification/pre-reclass-baseline.json",
+  "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence",
 );
-
-/** 已解释的参数键改名映射（NRP-FR-007 重分类；值不变）。 */
-const PARAM_RENAMES: Record<string, string> = {
-  "P-SH-MEDICAL-LIFETIME-MALE-YEARS": "P-MI-LIFETIME-MALE-YEARS",
-  "P-SH-MEDICAL-LIFETIME-FEMALE-YEARS": "P-MI-LIFETIME-FEMALE-YEARS",
-  "P-SH-MEDICAL-LIFETIME-REQUIRED-YEARS": "P-MI-LIFETIME-REQUIRED-YEARS",
-  "P-SH-UNEMPLOYMENT-MAX-MONTHS": "P-UNEMPLOYMENT-MAX-MONTHS",
-  "T-SH-UNEMPLOYMENT-DURATION-BY-YEARS": "T-UNEMPLOYMENT-DURATION-BY-YEARS",
-};
-
-function renameKeys(value: unknown): unknown {
-  let json = JSON.stringify(value);
-  for (const [from, to] of Object.entries(PARAM_RENAMES)) {
-    json = json.split(from).join(to);
-  }
-  return JSON.parse(json);
-}
+const LEGACY_BASELINE_PATH = path.join(
+  EVIDENCE_ROOT,
+  "shanghai-reclassification/pre-reclass-baseline.json",
+);
+const BASELINE_PATH = path.join(EVIDENCE_ROOT, "shanghai-policy-v2/shv2-frozen-baseline.json");
+const FULL_PLAN_AS_OF = "2026-01-01";
+const EXPECTED_COUNTS = { example: 30, delayed: 10, fullPlan: 6, total: 46 };
 
 interface FrozenCase {
   kind: "example" | "delayed-retirement" | "full-plan";
@@ -59,21 +50,18 @@ interface FrozenCase {
 function loadChainRules(): RuleDefinition[] {
   const rules: RuleDefinition[] = [];
   for (const dir of [CN_DIR, SH_DIR]) {
-    for (const f of readdirSync(path.join(dir, "rules"))
-      .filter((f) => f.endsWith(".json"))
-      .sort()) {
+    const manifest = JSON.parse(
+      readFileSync(path.join(dir, "rules_manifest.json"), "utf8"),
+    ) as { rules: Array<{ file: string }> };
+    for (const r of manifest.rules) {
       rules.push(
-        JSON.parse(readFileSync(path.join(dir, "rules", f), "utf8")) as RuleDefinition,
+        JSON.parse(readFileSync(path.join(dir, "rules", r.file), "utf8")) as RuleDefinition,
       );
     }
   }
-  // 全编排场景的执行顺序必须与冻结基线一致：按上海规则集声明顺序排序
-  // （与 loadEffectiveEngine 相同的排序规则；规则输出喂给后续规则，顺序有意义）。
+  // 全编排场景按上海规则集声明顺序执行（与 loadEffectiveEngine 相同）。
   const ruleSet = JSON.parse(
-    readFileSync(
-      path.join(SH_DIR, "rule_sets/rule_set_shanghai_plan_v1.json"),
-      "utf8",
-    ),
+    readFileSync(path.join(SH_DIR, "rule_sets/rule_set_shanghai_plan_v1.json"), "utf8"),
   ) as { rules: string[] };
   const pos = new Map(ruleSet.rules.map((id, i) => [id, i] as const));
   return [...rules].sort(
@@ -83,6 +71,7 @@ function loadChainRules(): RuleDefinition[] {
   );
 }
 
+/** 参数包扁平化：多窗口条目按文件顺序 last-write-wins（当前窗口列在最后）。 */
 function loadChainParams(): Record<string, unknown> {
   const base: Record<string, unknown> = {};
   for (const dir of [CN_DIR, SH_DIR]) {
@@ -102,132 +91,153 @@ function loadChainParams(): Record<string, unknown> {
   return base;
 }
 
-describe("上海重分类零漂移对账（NRP-AC-002）", () => {
-  const frozen = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as FrozenCase[];
+function stripTimestamps(trace: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  return trace.map((e) => {
+    const { timestamp, ...rest } = e;
+    void timestamp;
+    return rest;
+  });
+}
+
+function execute(
+  fc: Pick<FrozenCase, "kind" | "rule_id" | "input" | "params_override">,
+  rulesTemplate: RuleDefinition[],
+  paramsTemplate: Record<string, unknown>,
+): { actual: Record<string, unknown>; trace: Array<Record<string, unknown>> } | { error: string } {
+  const chainRules = structuredClone(rulesTemplate);
+  const params = structuredClone(paramsTemplate);
+  const input = structuredClone(fc.input ?? {}) as Record<string, unknown>;
+  if (input.params && typeof input.params === "object") {
+    Object.assign(params, input.params as Record<string, unknown>);
+  }
+  if (fc.params_override && typeof fc.params_override === "object") {
+    Object.assign(params, fc.params_override);
+  }
+  if (fc.kind === "full-plan") {
+    const result = orchestrateInMemory(
+      chainRules,
+      params,
+      (input.user ?? {}) as Record<string, unknown>,
+      FULL_PLAN_AS_OF,
+    );
+    return {
+      actual: { user: result.user ?? {}, calc: result.calc ?? {}, plan: result.plan ?? {} },
+      trace: stripTimestamps(result.trace as unknown as Array<Record<string, unknown>>),
+    };
+  }
+  const rule = chainRules.find((r) => r.rule_id === fc.rule_id);
+  if (!rule) return { error: `${fc.rule_id}: 规则不在链上` };
+  const ctx: Record<string, unknown> = {
+    user: (input.user as Record<string, unknown>) ?? {},
+    params,
+    calc: (input.calc as Record<string, unknown>) ?? {},
+    plan: (input.plan as Record<string, unknown>) ?? {},
+  };
+  const result = executeSingleRuleInMemory(rule, ctx);
+  return {
+    actual: { user: result.ctx.user ?? {}, calc: result.ctx.calc ?? {}, plan: result.ctx.plan ?? {} },
+    trace: stripTimestamps(result.trace as unknown as Array<Record<string, unknown>>),
+  };
+}
+
+/** 重新冻结：示例来自 CN+SH tests 文件、延迟退休来自上海专项文件、全编排输入沿用旧基线。 */
+function buildFrozenCases(
+  rulesTemplate: RuleDefinition[],
+  paramsTemplate: Record<string, unknown>,
+): FrozenCase[] {
+  const out: FrozenCase[] = [];
+  for (const dir of [CN_DIR, SH_DIR]) {
+    const tests = JSON.parse(
+      readFileSync(path.join(dir, "tests/rule_examples_as_tests.json"), "utf8"),
+    ) as { tests: Array<{ rule_id: string; example_name: string; input: Record<string, unknown>; params_override?: Record<string, unknown> | null }> };
+    for (const t of tests.tests) {
+      const spec = { kind: "example" as const, rule_id: t.rule_id, input: t.input, params_override: t.params_override ?? null };
+      const r = execute(spec, rulesTemplate, paramsTemplate);
+      if ("error" in r) throw new Error(r.error);
+      out.push({ ...spec, name: t.example_name, actual: r.actual, trace: r.trace });
+    }
+  }
+  const legacy = JSON.parse(readFileSync(LEGACY_BASELINE_PATH, "utf8")) as FrozenCase[];
+  // 延迟退休用例为单规则执行（rule_id与输入沿用旧基线映射）。
+  for (const dr of legacy.filter((c) => c.kind === "delayed-retirement")) {
+    const spec = { kind: "example" as const, rule_id: dr.rule_id, input: dr.input, params_override: dr.params_override ?? null };
+    const r = execute(spec, rulesTemplate, paramsTemplate);
+    if ("error" in r) throw new Error(r.error);
+    out.push({ kind: "delayed-retirement", rule_id: dr.rule_id, test_id: dr.test_id, name: dr.name, input: dr.input, params_override: dr.params_override ?? null, actual: r.actual, trace: r.trace });
+  }
+  for (const fp of legacy.filter((c) => c.kind === "full-plan")) {
+    const spec = { kind: "full-plan" as const, input: fp.input, params_override: fp.params_override ?? null };
+    const r = execute(spec, rulesTemplate, paramsTemplate);
+    if ("error" in r) throw new Error(r.error);
+    out.push({ kind: "full-plan", name: fp.name, input: fp.input, params_override: fp.params_override ?? null, actual: r.actual, trace: r.trace });
+  }
+  return out;
+}
+
+describe("上海政策SHV2冻结基线对账（NRP-AC-002延续，WI-20260911-01）", () => {
   const chainRulesTemplate = loadChainRules();
   const chainParamsTemplate = loadChainParams();
 
-  it("冻结基线包含44例（28示例+10延迟退休+6全编排）", () => {
-    expect(frozen).toHaveLength(44);
-    expect(frozen.filter((c) => c.kind === "example")).toHaveLength(28);
-    expect(frozen.filter((c) => c.kind === "delayed-retirement")).toHaveLength(10);
-    expect(frozen.filter((c) => c.kind === "full-plan")).toHaveLength(6);
+  if (process.env.WRITE_SHV2_DRIFT_BASELINE === "1") {
+    mkdirSync(path.dirname(BASELINE_PATH), { recursive: true });
+    writeFileSync(
+      BASELINE_PATH,
+      JSON.stringify(buildFrozenCases(chainRulesTemplate, chainParamsTemplate), null, 2) + "\n",
+      "utf8",
+    );
+  }
+
+  it("历史pre-reclass基线文件保留且未被改写（44例）", () => {
+    expect(existsSync(LEGACY_BASELINE_PATH)).toBe(true);
+    const legacy = JSON.parse(readFileSync(LEGACY_BASELINE_PATH, "utf8")) as FrozenCase[];
+    expect(legacy).toHaveLength(44);
   });
 
-  it("重分类后逐案执行：user/calc/plan逐字节一致，trace仅含已解释参数改名", () => {
+  it("SHV2冻结基线包含46例（30示例+10延迟退休+6全编排）", () => {
+    const frozen = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as FrozenCase[];
+    expect(frozen).toHaveLength(EXPECTED_COUNTS.total);
+    expect(frozen.filter((c) => c.kind === "example")).toHaveLength(EXPECTED_COUNTS.example);
+    expect(frozen.filter((c) => c.kind === "delayed-retirement")).toHaveLength(EXPECTED_COUNTS.delayed);
+    expect(frozen.filter((c) => c.kind === "full-plan")).toHaveLength(EXPECTED_COUNTS.fullPlan);
+  });
+
+  it("逐案执行：user/calc/plan与trace（去时间戳）逐字节一致", () => {
+    const frozen = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as FrozenCase[];
     const mismatch: string[] = [];
-    let traceRenameOnly = 0;
     let byteIdentical = 0;
-
     for (const fc of frozen) {
-      // 每例全新克隆（等价生产每次从磁盘/DB全新装载）——引擎对复用对象存在就地修改，
-      // 共享对象会让逐案结果依赖执行顺序（见golden.test.ts注释）。
-      const chainRules = structuredClone(chainRulesTemplate);
-      const params = structuredClone(chainParamsTemplate);
-      const input = structuredClone(fc.input ?? {});
-      // 用例内联参数同样按改名映射归一（重分类的已解释差异）。
-      const renamedInput = renameKeys(input) as Record<string, unknown>;
-      if (
-        renamedInput.params &&
-        typeof renamedInput.params === "object"
-      ) {
-        Object.assign(params, renamedInput.params);
-      }
-      if (
-        fc.params_override &&
-        typeof fc.params_override === "object"
-      ) {
-        Object.assign(
-          params,
-          renameKeys(fc.params_override) as Record<string, unknown>,
-        );
-      }
-
-      let actual: Record<string, unknown>;
-      let trace: Array<Record<string, unknown>>;
-      if (fc.kind === "full-plan") {
-        const result = orchestrateInMemory(
-          chainRules,
-          params,
-          (renamedInput.user ?? {}) as Record<string, unknown>,
-          "2026-01-01",
-        );
-        actual = { user: result.user ?? {}, calc: result.calc ?? {}, plan: result.plan ?? {} };
-        trace = result.trace as unknown as Array<Record<string, unknown>>;
-      } else {
-        const rule = chainRules.find((r) => r.rule_id === fc.rule_id);
-        if (!rule) {
-          mismatch.push(`${fc.rule_id}: 规则不在链上`);
-          continue;
-        }
-        const ctx: Record<string, unknown> = {
-          user: (renamedInput.user as Record<string, unknown>) ?? {},
-          params,
-          calc: (renamedInput.calc as Record<string, unknown>) ?? {},
-          plan: (renamedInput.plan as Record<string, unknown>) ?? {},
-        };
-        const result = executeSingleRuleInMemory(rule, ctx);
-        actual = {
-          user: result.ctx.user ?? {},
-          calc: result.ctx.calc ?? {},
-          plan: result.ctx.plan ?? {},
-        };
-        trace = result.trace as unknown as Array<Record<string, unknown>>;
-      }
-
-      const actualStr = JSON.stringify(actual);
-      const frozenStr = JSON.stringify(fc.actual);
-      const traceStr = JSON.stringify(
-        renameKeys(
-          (trace as Array<Record<string, unknown>>).map((e) => {
-            const { timestamp, ...rest } = e;
-            void timestamp;
-            return rest;
-          }),
-        ),
-      );
-      const frozenTraceStr = JSON.stringify(
-        renameKeys(
-          (fc.trace as Array<Record<string, unknown>>).map((e) => {
-            const { timestamp, ...rest } = e;
-            void timestamp;
-            return rest;
-          }),
-        ),
-      );
-
-      if (actualStr !== frozenStr) {
-        mismatch.push(
-          `${fc.kind}:${fc.rule_id ?? ""}:${fc.name} — plan/calc/user漂移`,
-        );
+      const specKind = fc.kind === "full-plan" ? "full-plan" : "example";
+      const r = execute({ kind: specKind, rule_id: fc.rule_id, input: fc.input, params_override: fc.params_override }, chainRulesTemplate, chainParamsTemplate);
+      if ("error" in r) {
+        mismatch.push(r.error);
         continue;
       }
-      if (traceStr !== frozenTraceStr) {
-        // trace差异必须能被参数改名映射完全解释。
-        mismatch.push(`${fc.kind}:${fc.rule_id ?? ""}:${fc.name} — trace存在改名以外差异`);
+      if (JSON.stringify(r.actual) !== JSON.stringify(fc.actual)) {
+        mismatch.push(`${fc.kind}:${fc.rule_id ?? fc.test_id ?? ""}:${fc.name} — plan/calc/user漂移`);
         continue;
       }
-      if (
-        JSON.stringify(
-          renameKeys(
-            (trace as Array<Record<string, unknown>>).map((e) => {
-              const { timestamp, ...rest } = e;
-              void timestamp;
-              return rest;
-            }),
-          ),
-        ) === frozenTraceStr
-      ) {
-        byteIdentical++;
-      } else {
-        traceRenameOnly++;
+      if (JSON.stringify(r.trace) !== JSON.stringify(stripTimestamps(fc.trace))) {
+        mismatch.push(`${fc.kind}:${fc.rule_id ?? fc.test_id ?? ""}:${fc.name} — trace漂移`);
+        continue;
+      }
+      byteIdentical++;
+    }
+    expect(mismatch, mismatch.join("\n")).toEqual([]);
+    expect(byteIdentical).toBe(EXPECTED_COUNTS.total);
+  });
+
+  it("上海SHV2关键结论冻结：医保年限15年、失业期限2个月起步、灵活缴费与失业金额可算", () => {
+    const frozen = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as FrozenCase[];
+    const flex = frozen.find((c) => c.rule_id === "R-SH-FLEX-CONTRIBUTION");
+    expect((flex?.actual.calc as { flex: { total_monthly: number } }).flex.total_monthly).toBe(2263.8);
+    const ui = frozen.find((c) => c.rule_id === "R-SH-UI-AMOUNT");
+    expect((ui?.actual.calc as { unemployment: { monthly_amount_est: number } }).unemployment.monthly_amount_est).toBe(2340);
+    const fullPlans = frozen.filter((c) => c.kind === "full-plan");
+    for (const fp of fullPlans) {
+      const mi = (fp.actual.calc as { mi?: { lifetime_required_months?: number } }).mi;
+      if (mi?.lifetime_required_months !== undefined && mi.lifetime_required_months !== null) {
+        expect(mi.lifetime_required_months).toBe(180);
       }
     }
-
-    expect(mismatch, mismatch.join("\n")).toEqual([]);
-    // 全部44例中：byteIdentical + traceRenameOnly === 44（对账完整性）。
-    expect(byteIdentical + traceRenameOnly).toBe(44);
-    // traceRenameOnly > 0 证明对账确实逐字节执行过（而非空转相等）。
-    expect(byteIdentical).toBeGreaterThan(0);
   });
 });

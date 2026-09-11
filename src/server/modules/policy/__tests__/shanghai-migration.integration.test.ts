@@ -70,7 +70,9 @@ describe("Shanghai migration reconciliation (drill DB)", () => {
 
     const created = await service.createPolicySnapshot({
       jurisdictionCode: "310000",
-      asOfDate: "2026-01-01",
+      // SHV2（WI-20260911-01）：新规则与窗口化参数自2026-07/08起生效，
+      // 对账基准日统一为规划基准日2026-09-01（全部当前窗口均有效）。
+      asOfDate: "2026-09-01",
       actor: "migration-reconciliation",
     });
 
@@ -88,7 +90,7 @@ describe("Shanghai migration reconciliation (drill DB)", () => {
 
     // POL-AC-005：历史日期解析——快照按 (jurisdiction, asOfDate) 精确命中。
     const bridge2 = createLegacyBridge({ resolveChain: async () => [] });
-    const hit = await bridge2.resolveLegacyContext({ asOfDate: "2026-01-01" });
+    const hit = await bridge2.resolveLegacyContext({ asOfDate: "2026-09-01" });
     expect(hit?.id).toBe(created.snapshotId);
     const miss = await bridge2.resolveLegacyContext({ asOfDate: "2024-01-01" });
     expect(miss).toBeNull();

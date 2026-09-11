@@ -1,13 +1,13 @@
 /**
  * NRP-AC-011/013/014/015（阶段E物化落库面，含ADR-0010任务2增量语义）：
  * 在演练容器中创建独立数据库（nrp_e_mat），安装"持久库镜像"——
- * 模拟当前持久库49/70/5/4：旧上海运行基线（24条published规则、29个published
+ * 模拟当前持久库51/74/5/4（SHV2后镜像；原49/70）：旧上海运行基线（24条published规则、29个published
  * 参数、1个published规则集）+ git派生行（CN/沪/川全部内容 + 广东旧内容：
  * 1规则/5参数/旧规则集v1/旧快照包v1）+ 528/851/117案例测试计数，然后验证：
  * - AC-011：缺授权/错manifest哈希/错指纹 → 拒绝且零写入；
  * - AC-013增量（ADR-0010任务2）：fresh audit只规划广东delta
  *   （1规则+5参数+1规则集版本+1政策包版本），CN/沪/川零新增；
- * - AC-015：apply后固定计数50/75/6/5且528/851/117/0不变；GD awaiting_approval、
+ * - AC-015：apply后固定计数52/79/6/5且528/851/117/0不变；GD awaiting_approval、
  *   SC blocked、SC规则0；
  * - AC-014：同manifest重复apply → no-op；计数不符 → 单事务回滚。
  */
@@ -254,7 +254,7 @@ async function insertEntitySql(
 }
 
 /** 安装持久库镜像：legacy沪基线 + git派生行（CN/沪/川全部 + 广东旧内容）。
- * 返回镜像计数（49/70/5/4）。 */
+ * 返回镜像计数（51/74/5/4）。 */
 async function seedPersistentMirror(c: Client): Promise<void> {
   // 1) 旧上海运行基线（published）。
   for (const key of LEGACY_RULE_KEYS) {
@@ -335,7 +335,7 @@ async function seedPersistentMirror(c: Client): Promise<void> {
     params: gdRegion.params.filter((p) => !isGdNewParam(p.payload)),
   };
 
-  // 每地区批量审计成员（镜像持久库74成员：CN24+沪37+粤8+川5）。
+  // 每地区批量审计成员（镜像持久库80成员：CN24+沪43+粤8+川5；SHV2后沪=10规则+31参数+1规则集+1包）。
   const membersByJur = new Map<string, Array<Record<string, unknown>>>();
   for (const region of fullPlan.regions) {
     const isGd = region.jurisdictionCode === "440000";
@@ -478,8 +478,8 @@ async function seedPersistentMirror(c: Client): Promise<void> {
        (select count(*)::int from policy_snapshots) as snapshots`,
   );
   expect(counts.rows[0]).toEqual({
-    rules: 49,
-    params: 70,
+    rules: 51,
+    params: 74,
     rule_sets: 5,
     packs: 4,
     tests: 528,
@@ -682,7 +682,7 @@ async function setupDatabase(): Promise<void> {
     stdio: "pipe",
   });
 
-  // 安装"持久库镜像"（49/70/5/4：旧沪基线 + git派生行 + 广东旧内容）。
+  // 安装"持久库镜像"（51/74/5/4：旧沪基线 + git派生行 + 广东旧内容）。
   const c = await matClient();
   try {
     await seedPersistentMirror(c);
@@ -837,7 +837,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     expect(countsAfter.rows[0]).toEqual(countsBefore.rows[0]);
   });
 
-  it("AC-013/015（增量，ADR-0010任务2）：audit只规划广东delta；apply后50/75/6/5；CN/沪/川零新增；复跑no-op", async () => {
+  it("AC-013/015（增量，ADR-0010任务2）：audit只规划广东delta；apply后52/79/6/5；CN/沪/川零新增；复跑no-op", async () => {
     const { buildManifest, manifestHash } = await import(
       "@/lib/policy-materialization/manifest"
     );
@@ -885,10 +885,10 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     // 包快照漂移只含GD（CN/沪/川快照与git一致）。
     expect(audit.packSnapshotDrift).toHaveLength(1);
     expect(audit.packSnapshotDrift[0]!.jurisdictionCode).toBe("440000");
-    // 目标计数 = 当前状态 + delta（49/70/5/4 → 50/75/6/5）。
+    // 目标计数 = 当前状态 + delta（51/74/5/4 → 52/79/6/5；SHV2后上海10规则/31参数已在镜像中）。
     expect(audit.expectedPostCounts).toEqual({
-      rules: 50,
-      params: 75,
+      rules: 52,
+      params: 79,
       rule_sets: 6,
       policy_pack_versions: 5,
       tests: 528,
@@ -906,6 +906,17 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
         manifest,
         worktreeClean: true,
         actor: "stage-e-test",
+        // SHV2（WI-20260911-01）：镜像已含当前上海资产（51/74），本场景目标=镜像+GD delta。
+        expectedTotalCounts: {
+          rules: 52,
+          params: 79,
+          rule_sets: 6,
+          policy_pack_versions: 5,
+          tests: 528,
+          cases: 851,
+          showcase_cases: 117,
+          policy_snapshots: 0,
+        },
       },
       { allowedDatabases: [MAT_DB], allowedPorts: [DRILL_PORT] },
     );
@@ -913,10 +924,10 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     expect(result.publishedRowsHashBefore).toBe(oldRowsHashBefore);
     expect(result.publishedRowsHashAfter).toBe(oldRowsHashBefore);
 
-    // 固定计数（NRP-AC-015）：候选快照前目标50/75/6/5。
+    // 固定计数（NRP-AC-015）：候选快照前目标52/79/6/5（SHV2镜像基线51/74）。
     expect(result.counts).toEqual({
-      rules: 50,
-      params: 75,
+      rules: 52,
+      params: 79,
       rule_sets: 6,
       policy_pack_versions: 5,
       tests: 528,
@@ -976,7 +987,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
          order by jurisdiction_code`,
       )).rows;
       expect(afterCounts).toEqual([
-        { jurisdiction_code: "310000", rules: 32, params: 56, rule_sets: 2 },
+        { jurisdiction_code: "310000", rules: 34, params: 60, rule_sets: 2 },
         { jurisdiction_code: "440000", rules: 2, params: 10, rule_sets: 2 },
         { jurisdiction_code: "510000", rules: 0, params: 3, rule_sets: 1 },
         { jurisdiction_code: "CN", rules: 16, params: 6, rule_sets: 1 },
@@ -1083,7 +1094,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
          (select count(*)::int from policy_import_batches) as batches,
          (select count(*)::int from policy_import_batch_members) as members`,
     );
-    expect(afterNoop.rows[0]).toEqual({ rules: 50, params: 75, batches: 8, members: 82 });
+    expect(afterNoop.rows[0]).toEqual({ rules: 52, params: 79, batches: 8, members: 88 });
   });
 
   it("AC-014：同manifest重复apply → no-op；计数不符 → 单事务回滚", async () => {
@@ -1401,8 +1412,8 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
     // 夹具复位后GD v2行已收敛，故packs=4是修复时点的事实状态）。
     expect(after.counts).toEqual(before.counts);
     expect(after.counts).toEqual({
-      rules: 50,
-      params: 75,
+      rules: 52,
+      params: 79,
       rule_sets: 6,
       policy_pack_versions: 4,
       tests: 528,

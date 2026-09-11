@@ -1,7 +1,7 @@
 # 上海政策纠偏与36条案例V2全量重建PRD
 
 > Author: Jan
-> Status: Active（需求已确认，尚未实施）
+> Status: Updating（实施中：WI-20260911-01 → WI-20260911-02 → WI-20260911-03）
 > Updated: 2026-09-11
 
 ## 1. 文档元数据

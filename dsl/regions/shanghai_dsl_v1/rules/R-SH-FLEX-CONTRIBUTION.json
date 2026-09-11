@@ -1,0 +1,613 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-SH-FLEX-CONTRIBUTION",
+  "name": "上海灵活就业养老/医保月缴费（基数×费率）",
+  "module": "contribution",
+  "status": "published",
+  "priority": 440,
+  "effective_from": "2026-07-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "基数在本市上年度全口径平均工资60%-300%之间由本人选择；低于下限或高于上限不得静默截断，必须警告并needs_agent；缺少基数或费率参数时needs_agent。非灵活就业不适用。",
+  "inputs": [
+    {
+      "key": "user.status.employment_status",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "user.social.flex_contrib_base",
+      "type": "number",
+      "required": false,
+      "desc": "本人选择的月缴费基数（元/月），案例可使用当期下限作为明确示例"
+    }
+  ],
+  "parameter_refs": [
+    {
+      "param_id": "P-SH-CONTRIB-BASE-LOWER",
+      "purpose": "当期缴费基数下限（元/月）"
+    },
+    {
+      "param_id": "P-SH-CONTRIB-BASE-UPPER",
+      "purpose": "当期缴费基数上限（元/月）"
+    },
+    {
+      "param_id": "P-SH-PENSION-RATE-FLEX",
+      "purpose": "灵活就业养老保险费率"
+    },
+    {
+      "param_id": "P-SH-MEDICAL-RATE-FLEX",
+      "purpose": "灵活就业医疗保险费率"
+    }
+  ],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_not_flexible",
+        "when": {
+          "!=": [
+            {
+              "var": "user.status.employment_status"
+            },
+            "flexible"
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.flex.applicable",
+              "value": false
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_params_missing",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "flexible"
+              ]
+            },
+            {
+              "or": [
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-CONTRIB-BASE-LOWER"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-CONTRIB-BASE-UPPER"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-PENSION-RATE-FLEX"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-MEDICAL-RATE-FLEX"
+                    },
+                    null
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.flex.applicable",
+              "value": true
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.contrib_base",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.pension_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.medical_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.total_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-FLEX-PARAM-MISSING",
+                "text": "当前日期缺少有效缴费基数上下限或灵活就业费率参数，无法计算月缴费。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_base_missing",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "flexible"
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.flex_contrib_base"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.flex.applicable",
+              "value": true
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.contrib_base",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.pension_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.medical_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.total_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-FLEX-BASE",
+                "text": "请确认本人选择的月缴费基数（可在当期下限至上限区间内选择，也可按当期下限缴费）。",
+                "field": "user.social.flex_contrib_base"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_4_base_below_lower",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "flexible"
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.flex_contrib_base"
+                },
+                null
+              ]
+            },
+            {
+              "<": [
+                {
+                  "var": "user.social.flex_contrib_base"
+                },
+                {
+                  "var": "params.P-SH-CONTRIB-BASE-LOWER"
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.flex.applicable",
+              "value": true
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.contrib_base",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.pension_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.medical_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.total_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-FLEX-BASE-BELOW-LOWER",
+                "text": "所填缴费基数低于当期下限，不做静默截断；请确认实际申报基数。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_5_base_above_upper",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "flexible"
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.flex_contrib_base"
+                },
+                null
+              ]
+            },
+            {
+              ">": [
+                {
+                  "var": "user.social.flex_contrib_base"
+                },
+                {
+                  "var": "params.P-SH-CONTRIB-BASE-UPPER"
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.flex.applicable",
+              "value": true
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.contrib_base",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.pension_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.medical_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.total_monthly",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-FLEX-BASE-ABOVE-UPPER",
+                "text": "所填缴费基数高于当期上限，不做静默截断；请确认实际申报基数。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_6_compute",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "flexible"
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.flex_contrib_base"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.flex.applicable",
+              "value": true
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.contrib_base",
+              "value": {
+                "var": "user.social.flex_contrib_base"
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.pension_monthly",
+              "value": {
+                "/": [
+                  {
+                    "floor": [
+                      {
+                        "+": [
+                          {
+                            "*": [
+                              {
+                                "*": [
+                                  {
+                                    "var": "user.social.flex_contrib_base"
+                                  },
+                                  {
+                                    "var": "params.P-SH-PENSION-RATE-FLEX"
+                                  }
+                                ]
+                              },
+                              100
+                            ]
+                          },
+                          0.5
+                        ]
+                      }
+                    ]
+                  },
+                  100
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.medical_monthly",
+              "value": {
+                "/": [
+                  {
+                    "floor": [
+                      {
+                        "+": [
+                          {
+                            "*": [
+                              {
+                                "*": [
+                                  {
+                                    "var": "user.social.flex_contrib_base"
+                                  },
+                                  {
+                                    "var": "params.P-SH-MEDICAL-RATE-FLEX"
+                                  }
+                                ]
+                              },
+                              100
+                            ]
+                          },
+                          0.5
+                        ]
+                      }
+                    ]
+                  },
+                  100
+                ]
+              }
+            },
+            {
+              "type": "set",
+              "path": "calc.flex.total_monthly",
+              "value": {
+                "/": [
+                  {
+                    "floor": [
+                      {
+                        "+": [
+                          {
+                            "*": [
+                              {
+                                "+": [
+                                  {
+                                    "var": "calc.flex.pension_monthly"
+                                  },
+                                  {
+                                    "var": "calc.flex.medical_monthly"
+                                  }
+                                ]
+                              },
+                              100
+                            ]
+                          },
+                          0.5
+                        ]
+                      }
+                    ]
+                  },
+                  100
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.flex.applicable",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.flex.contrib_base",
+      "type": "number"
+    },
+    {
+      "key": "calc.flex.pension_monthly",
+      "type": "number"
+    },
+    {
+      "key": "calc.flex.medical_monthly",
+      "type": "number"
+    },
+    {
+      "key": "calc.flex.total_monthly",
+      "type": "number"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.warnings",
+      "type": "array"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "按下限基数7546缴费 -> 养老1509.2/医保754.6/合计2263.8",
+      "input": {
+        "user": {
+          "status": {
+            "employment_status": "flexible"
+          },
+          "social": {
+            "flex_contrib_base": 7546
+          }
+        },
+        "params": {
+          "P-SH-CONTRIB-BASE-LOWER": 7546,
+          "P-SH-CONTRIB-BASE-UPPER": 37731,
+          "P-SH-PENSION-RATE-FLEX": 0.2,
+          "P-SH-MEDICAL-RATE-FLEX": 0.1
+        }
+      },
+      "expected": {
+        "calc": {
+          "flex": {
+            "applicable": true,
+            "contrib_base": 7546,
+            "pension_monthly": 1509.2,
+            "medical_monthly": 754.6,
+            "total_monthly": 2263.8
+          }
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "document_id": "DOC-SH-FLEX-RATES",
+      "jurisdiction_code": "310000",
+      "title": "灵活就业人员按什么标准缴费？（上海市人力资源和社会保障局，2024-03-07）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tdjjf_17554/20200918/t0035_1393992.html",
+      "fetched_at": "2026-09-11T03:40:01.131Z",
+      "content_sha256": "297352d22d52e1a9babf4218abc751dd363177dfa7ad947124f6e7363bc39e8a",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-FLEX-RATES/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答"
+      },
+      "excerpt": "灵活就业人员缴纳基本养老、医疗保险费的基数在本市上年度全口径城镇单位就业人员月平均工资的60%至300%之间，由本人自行选择。"
+    },
+    {
+      "document_id": "DOC-SH-CONTRIB-BASE-2026",
+      "jurisdiction_code": "310000",
+      "title": "单位职工缴纳城镇养老保险的基数是多少？（上海市人力资源和社会保障局）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tdjjf_17554/20260824/t0035_1443297.html",
+      "fetched_at": "2026-09-11T03:39:20.456Z",
+      "content_sha256": "dc4c73495e55611f69792b21385bc1098ec98a853857b99fe138f79e8119936d",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-CONTRIB-BASE-2026/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答末段"
+      },
+      "excerpt": "2026年7月1日起，本市社保缴费基数的上限调整为37731元/月,下限调整为7546元/月。"
+    }
+  ],
+  "operation": "add",
+  "target_business_key": null
+}

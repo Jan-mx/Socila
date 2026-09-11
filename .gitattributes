@@ -8,3 +8,7 @@
 #
 # 固定为LF后，Drizzle实际读取的hash恒等于Git blob的LF SHA-256。
 drizzle/*.sql text eol=lf
+
+# 官方政策原件（evidence integrity）：content_sha256 === sha256(original.html 原始字节)。
+# 禁止换行规范化，保证任意平台检出字节与meta.json记录一致（WI-20260911-01）。
+docs/refactor/policy-ops-agent/reports/**/evidence/**/original.html -text

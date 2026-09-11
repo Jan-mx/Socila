@@ -13,6 +13,7 @@
  * - assertManifestContentHashes：每条旧test/example/新行的contentHash必须为
  *   64位非空SHA-256（RCL-FR-002）。
  */
+import { DSL_EXAMPLE_COUNT } from "./dsl-examples";
 import { canonicalJson, sha256hex } from "./hashes";
 import type { GeneratedScenario } from "./generator";
 import type { ScenarioAssertion } from "./replay";
@@ -339,8 +340,8 @@ export function buildRclManifest(input: RclManifestInput): RclManifest {
   };
 }
 
-/** 断言最终计数 N/36/N+42（RCL-AC-011）。exampleTestCount必须显式===42：
- * 当前28、49或其他数量不得自动成为合法目标（第三轮复审）。 */
+/** 断言最终计数 N/36/N+44（RCL-AC-011；SHV2起example=44）。exampleTestCount必须
+ * 显式===DSL_EXAMPLE_COUNT：当前28、49或其他数量不得自动成为合法目标（第三轮复审）。 */
 export function assertRclCounts(
   manifest: Pick<RclManifest, "counts" | "caseCount" | "exampleTestCount">,
 ): void {
@@ -351,14 +352,14 @@ export function assertRclCounts(
   if (counts.showcase !== 36) {
     throw new Error(`showcase计数 ${counts.showcase} ≠ 36（RCL-AC-008）`);
   }
-  if (exampleTestCount !== 42) {
+  if (exampleTestCount !== DSL_EXAMPLE_COUNT) {
     throw new Error(
-      `exampleTestCount ${exampleTestCount} ≠ 42（RCL-AC-011：必须为地区DSL精确42条）`,
+      `exampleTestCount ${exampleTestCount} ≠ ${DSL_EXAMPLE_COUNT}（RCL-AC-011：必须为地区DSL精确${DSL_EXAMPLE_COUNT}条）`,
     );
   }
   if (counts.tests !== caseCount + exampleTestCount) {
     throw new Error(
-      `tests计数 ${counts.tests} ≠ N+42=${caseCount + exampleTestCount}（RCL-AC-011）`,
+      `tests计数 ${counts.tests} ≠ N+${DSL_EXAMPLE_COUNT}=${caseCount + exampleTestCount}（RCL-AC-011）`,
     );
   }
 }

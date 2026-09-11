@@ -1,0 +1,13 @@
+connection: keep-alive
+content-encoding: gzip
+content-type: text/html; charset=utf-8
+date: Fri, 11 Sep 2026 03:56:14 GMT
+etag: W/"678dddfd-2805"
+last-modified: Mon, 20 Jan 2025 05:24:13 GMT
+referrer-policy: strict-origin-when-cross-origin
+transfer-encoding: chunked
+vary: Accept-Encoding
+x-content-type-options: nosniff
+x-download-options: noopen
+x-permitted-cross-domain-policies: master-only
+x-xss-protection: 1; mode=block;
