@@ -187,3 +187,25 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | RCL-NFR-008 可审计 | 执行后12项验证（账本18条=1～16/21/22原值、批次状态、988 entries hex无重复452/36/500、36/36/78、42/36、10/5、业务表规范化hash与计划一致、verify --plan ok） | `post-state.txt`、`post-verify.json`、`repair-execution-summary.json` |
 
 - 边界：仅授权三项写入；snapshot/release/政策实体/远程库/Secret/部署零变化；未创建PR、未合并分支；临时验证容器清理；可信归档与pre/post备份未覆盖。
+
+## WI-20260911-02 RCL-GEN-2.0案例、Markdown案例库、API与UI（2026-09-11，SHV2-FR-008～016/AC-006～013）
+
+| 需求 | 实现 | 测试/证据 |
+| --- | --- | --- |
+| SHV2-FR-008 生成器版本/V2 UID | `src/lib/case-governance/generator-v2.ts`（`GENERATOR_VERSION_V2="RCL-GEN-2.0"`；`RPC/RPCT-<地区>-<场景键>-V2`；与V1并存） | `generator-v2.test.ts`（版本/UID 2例） |
+| SHV2-FR-009/AC-006 策展配额 | 上海§8.2固定轮转矩阵（能力×状态，年龄段=(能力+状态)%3、性别=(能力+状态)%2）+广东既有组合；性别×年龄×就业18个唯一组合 | `generator-v2.test.ts`配额4例（36/18/18、9/9、6/6/6、唯一组合、出生年与band一致） |
+| SHV2-FR-010/AC-007 能力一致 | 每能力显式assertionSpecs（退休3路径、养老3+1、医保4、失业4/2、灵活5/1、补贴3×3）；`eq`断言路径在引擎输出缺失→抛错；生成后断言自洽重放（`compareReplayWithAssertions`）fail-closed | `generator-v2.test.ts`能力矩阵/专属断言12例（含不适用输出、三档失业金、灵活缴费、补贴三场景、医保等待期） |
+| SHV2-FR-011/AC-008 完整生日与人物契约 | `buildInput`：36条全部birth_year/month/day/birth_date一致；女性强制female_retire_type（worker50/cadre55）；失业带年限+阶段/已领月数+on_unemployment_benefit；灵活带基数；补贴带认定+距退休月数（与引擎退休日期推导一致校验） | `generator-v2.test.ts`人物契约5例+字段缺失needs_agent反例2例 |
+| SHV2-FR-012/AC-009 可读文档 | `case-content-v2.ts`：case_text（≥200字，含合成声明/as-of/人物条件）、36条独立标题/问题/回答；能力不适用→"规则不适用"，needs_agent→"需补充字段"清单 | `generator-v2.test.ts`可读内容3例（互异、非占位、结构段） |
+| SHV2-FR-013/AC-010 合成披露 | `src/lib/showcase/labels.ts`（SYNTHETIC_CASE_LABEL/DISCLAIMER/V1占位识别/PENDING_V2_DOC_LABEL）；公开页/首页/导航/工具卡文案替换；后台"合成案例文档" | `synthetic-copy.test.ts`源码契约5例；E2E `shv2-case-copy.spec.ts` 4例 |
+| SHV2-FR-014 结构化来源 | `dsl-evidence-index.ts`（规则/参数→evidence索引；按as-of窗口+断言路径解析依赖来源，地区覆盖CN，去重排序）；`case-nature.ts` `toPolicySources`（12字段+64位hex+https校验，不完整丢弃） | `generator-v2.test.ts`来源5例（白名单、meta.json SHA/URL一致、来源-结论对应、无DOC-GD-POLICY-2026） |
+| SHV2-FR-015/AC-011 数值单源 | `case-content-v2.ts`禁算术派生、无政策常量；expected只承载引擎输出（needs_agent/conclusion_level/warnings+details/agent_questions+7命名空间剔除`_`键） | `generator-v2.test.ts`数值单源2例（36条数字全溯源、expected逐命名空间=引擎） |
+| SHV2-FR-016/AC-013 Markdown案例库 | `case-library-doc.ts`（manifest无时间戳、manifestHash正文重算；render确定性；check=manifestHash+逐案例contentHash+36/18/18+Markdown逐字节）；`scripts/rcl-case-library-v2-doc.ts`（render/--check，退出码0/2）；`scripts/rcl-case-library.ts generate-v2`（真实快照生成）；文档`docs/refactor/policy-ops-agent/case-library/shanghai-guangdong-v2.md`+`.manifest.json`（.gitattributes eol=lf） | `case-library-doc.test.ts` 10例（渲染/确定性/check漂移4反例/已提交文档通过+与内存生成逐条一致）；CLI隔离库生成后`--check`通过、篡改副本退出2 |
+| SHV2-NFR-005 API兼容 | `src/lib/showcase/case-nature.ts` `decorateShowcaseCase`（RCL-GEN-*→synthetic；其余human_curated不改写）；`/api/showcase-cases`与`/api/admin/cases`附加caseNature/policySources，既有字段原样 | `synthetic-copy.test.ts` API装饰6例（mock仓储路由2例） |
+| §8.4 广东保持 | 五类能力+as-of（2030场景2030-01-01）+广州440100+缺地市不估算+缺参needs_agent | `generator-v2.test.ts`广东5例 |
+| 确定性/快照/quality | 重复生成逐字节一致；snapshot绑定（真实库=快照ID+contentHash）；quality=scoreCase真实分解；contentHash规范化SHA-256 | `generator-v2.test.ts`标签/绑定/确定性5例 |
+
+- 门禁（2026-09-11本地新鲜）：`npm test` 80文件/829零skip；tsc退出0；eslint 0 error（既有10 warning未新增）；`npm run build`退出0；全新PG17+pgvector `test:db`（项目标准参数`--dangerouslyIgnoreUnhandledErrors`屏蔽Windows vitest worker teardown RPC竞态，测试失败仍非零退出）27文件/144零skip；agent.migrate --with-roles×2幂等；pytest -m integration 20/20零skip（补`SOCILA_TEST_DATABASE_URL`后RAG 3例不再skip）、非集成94、ruff/mypy 0问题；Chromium E2E 23/23（auth10+shv2 4+task3 5+task4 4）；scan-secrets --all 899文件零命中；Gitleaks 8.29.1完整历史96提交零发现（worktree经临时独立克隆扫描）；allowlist哨兵3场景全过；SHV2 delta集成3例（任务1）保持通过（重物化用例显式30秒超时，断言不变）。
+- 隔离环境：任务专属容器`shv2-task2-pg`（pgvector/pgvector:pg17，随机端口54955）；`shv2_e2e`库（migration+bootstrap+seed+e2e-rcl-setup快照激活与V1替换演练后generate-v2）；`shv2_drill`库（test:db/migrate/pytest）；持久policyops全程未连接未写入。
+- 已知环境事实：E2E管理员口令哈希与`scripts/db-gate-task34.mjs`内置哈希不匹配（bcrypt同盐重算确认），隔离库内将Jan口令哈希更新为与spec口令匹配的本地计算值（不写入仓库文件）。
+- 边界：无持久库写入；无快照/release持久变更；非RCL人工案例未被改写；`transcript_text`不生成（V2改写时保持NULL属WI-03）。

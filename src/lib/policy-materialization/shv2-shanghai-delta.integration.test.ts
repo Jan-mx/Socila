@@ -121,7 +121,9 @@ afterAll(async () => {
 });
 
 describe("SHV2-AC-004：上海delta隔离（基线d7fd63a镜像 → 当前仓库audit）", () => {
-  it("基线四地区物化：26规则/46参数/4规则集/4包", async () => {
+  // 基线物化含 git show 子进程 + 四地区全量apply，全量套件并行负载下可能超过5秒默认值
+  // （identity-container 30秒显式放宽同策略；断言不变，不以超时掩盖失败）。
+  it("基线四地区物化：26规则/46参数/4规则集/4包", { timeout: 30_000 }, async () => {
     const { buildManifest, manifestHash } = await import("./manifest");
     const { applyMaterialization, auditMaterialization } = await import("./materialize");
     const manifest = buildManifest(gitReaderAt(BASELINE_COMMIT));

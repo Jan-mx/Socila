@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { planningReads } from "@/server/modules/planning/application";
+import { decorateShowcaseCase } from "@/lib/showcase/case-nature";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * 管理案例列表（RCL-FR-020 `active AND filters`；SHV2-AC-012）：
+ * 分页与既有字段保持不变，每行附加 caseNature 与结构化 policySources。
+ */
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl;
@@ -22,7 +27,7 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({
-      cases: rows,
+      cases: rows.map((row) => decorateShowcaseCase(row as unknown as Record<string, unknown>)),
       total,
       page,
       pageSize,

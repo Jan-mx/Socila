@@ -12,3 +12,8 @@ drizzle/*.sql text eol=lf
 # 官方政策原件（evidence integrity）：content_sha256 === sha256(original.html 原始字节)。
 # 禁止换行规范化，保证任意平台检出字节与meta.json记录一致（WI-20260911-01）。
 docs/refactor/policy-ops-agent/reports/**/evidence/**/original.html -text
+
+# 合成政策案例库V2（WI-20260911-02）：Markdown与manifest由脚本确定性渲染并以 --check
+# 逐字节对账；固定LF避免宿主autocrlf改变检出字节导致check误报。
+docs/refactor/policy-ops-agent/case-library/*.md text eol=lf
+docs/refactor/policy-ops-agent/case-library/*.json text eol=lf

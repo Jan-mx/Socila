@@ -94,3 +94,42 @@
 - 上海基数调整（2026年度）的规范性文件正式文本未在白名单域名发布，当前以人社局官网问答为来源；如后续发布正式通知，应采集并作为该参数窗口的更高级别证据。
 - 个人缴费费率（养老8%/医保2%/失业0.5%）未纳入上海参数包（无规则消费且未取得原文）；如未来规则需要，须先立项采集。
 - 上海政策delta的持久物化、管理员批准、快照创建与release切换均不在本Work Item授权内（PRD §18三个授权点）。
+
+## 2. WI-20260911-02 RCL-GEN-2.0案例、Markdown案例库、API与UI（2026-09-11本地新鲜执行）
+
+### 2.1 交付内容
+
+- `src/lib/case-governance/generator-v2.ts`：`RCL-GEN-2.0`（SHV2-FR-008）；UID `RPC/RPCT-<地区>-<场景键>-V2`；上海18条按PRD §8.2固定轮转矩阵（年龄段=(能力+状态) mod 3、性别=(能力+状态) mod 2），六能力各3条且每能力employed/flexible/unemployed各1（SHV2-AC-007）；广东18条保持五类既有能力与as-of（2030医保场景2030-01-01，其余2026-09-01，§8.4）；`eq`断言路径在引擎输出中不存在即抛错，生成后断言自洽重放fail-closed（SHV2-FR-010）。
+- `case-content-v2.ts`：36条非空case_text（≥200字、含合成声明/as-of/人物条件/结论边界/风险提示）、独立标题、自然语言问题、结构化回答（结论/关键测算/个人条件/政策依据/缺失事项/合成声明，SHV2-FR-012、§9.4）；数值单源——文案数字只来自input/expected/asOfDate/policySources，模块内无算术派生与政策常量（SHV2-FR-015）。
+- 人物输入契约（§8.5，SHV2-FR-011）：36条完整生日（birth_year/month/day/birth_date一致）；女性显式female_retire_type（worker50/cadre55）；失业场景带失业保险年限、领取阶段或已领月数、on_unemployment_benefit；灵活就业带缴费基数；补贴带就业困难认定与距退休月数（与引擎退休日期推导一致）；字段缺失场景以needs_agent反例验证不默认填充。
+- `dsl-evidence-index.ts`+`case-nature.ts`：每条案例的policySources按"as-of有效链上规则输出∩断言路径 + 参数refs + 显式补充"解析，12字段完整（documentId/title/authority/officialUrl/locator/excerpt/contentSha256=64位hex），SHA/URL与仓库meta.json逐条一致（SHV2-FR-014）；上海来源全部落在白名单域名；广东不再使用泛化占位DOC-GD-POLICY-2026。
+- API：`/api/showcase-cases`与`/api/admin/cases`既有字段兼容，新增`caseNature`（RCL-GEN-*=synthetic，其余=human_curated，人工案例不被强制改写）与`policySources`（SHV2-FR-013/AC-012、NFR-005）。
+- 页面：公开案例页改为"合成政策案例"，删除"真实咨询记录/真实社保规划案例/真实咨询样本/真实案例"（首页/导航/工具卡同步）；卡片显示地区、能力、人物条件与问题；详情含完整问答、计算日期、风险提示、政策依据（安全外链rel=noopener noreferrer）；不展示V1统一占位问答，不可读记录显示"待生成V2案例文档"，页面层不虚构正文（SHV2-AC-010/§10.2）。管理后台"案例原文"→"合成案例文档"，展示输入/期望/断言/生成器版本/快照hash/政策来源（SHV2-AC-012/§10.3）。
+- Markdown案例库：`docs/refactor/policy-ops-agent/case-library/shanghai-guangdong-v2.md`（36条完整明细：UID/地区/能力/as-of/画像/问题/结论/input/expected/assertions/snapshot ID与hash/政策标题/发布机关/官方URL/条款定位/原文摘录）+`shanghai-guangdong-v2.manifest.json`（无时间戳、manifestHash正文确定性重算）；`scripts/rcl-case-library-v2-doc.ts`支持`render`与`--check`（manifestHash/逐案例contentHash/36-18-18/Markdown逐字节，漂移退出2）；`scripts/rcl-case-library.ts`新增`generate-v2`模式经真实活动快照生成；`.gitattributes`固定案例库eol=lf（SHV2-FR-016/AC-013）。
+
+### 2.2 TDD Red→Green
+
+- Red：`generator-v2.test.ts`、`case-library-doc.test.ts`、`synthetic-copy.test.ts`首跑全部因模块不存在加载失败（3 files failed）。
+- Green：58/58通过（generator-v2 40、case-library-doc 10、synthetic-copy 8）；case-library-doc含"已提交manifest与内存生成器逐条一致"交叉校验（快照绑定与contentHash除外），证明数据库快照路径与内存链路同构。
+
+### 2.3 门禁结果（2026-09-11本地新鲜执行）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm test` | PASS：80文件/829通过、skip 0 |
+| `npx tsc --noEmit` / `npx eslint src scripts` | PASS：退出0；0 error（既有10 warning未新增） |
+| `npm run build` | PASS：退出0（standalone产物） |
+| `test:db`（隔离PG17+pgvector，项目标准参数） | PASS：27文件/144通过、skip 0（含SHV2 delta 3例；重物化用例显式30秒超时——全量并行负载下超5秒默认值，断言不变，与identity-container先例同策略） |
+| agent.migrate --with-roles ×2 | PASS：幂等 |
+| pytest -m integration / "not integration" | PASS：20/20（补`SOCILA_TEST_DATABASE_URL`后RAG 3例恢复，零skip）、94通过；ruff 0问题、mypy 33文件0错误 |
+| Chromium E2E | PASS：23/23（auth 10+SHV2 4+task3 5+task4 4） |
+| Markdown `--check` | PASS：已提交文档ok=true；篡改副本（2340→2350）退出2并报"逐字节不一致" |
+| scan-secrets --all | PASS：899候选文件零命中 |
+| Gitleaks 8.29.1完整历史 | PASS：96 commits no leaks（worktree经临时独立克隆扫描后删除） |
+| allowlist哨兵 | PASS：3场景全过 |
+
+### 2.4 环境与边界
+
+- 隔离环境：任务专属容器`shv2-task2-pg`（pgvector/pgvector:pg17，宿主随机端口54955）；`shv2_e2e`库完成migration+bootstrap+seed+`e2e-rcl-setup`（沪粤快照激活+V1替换演练36/36/80）后运行`generate-v2`与全套E2E；`shv2_drill`全新库承载`test:db`/agent.migrate/pytest。
+- 已知环境事实：E2E管理员口令哈希与`scripts/db-gate-task34.mjs`内置哈希不匹配（bcrypt同盐重算确认），历史E2E的哈希来自先前会话本地值；本轮在隔离库内将Jan口令哈希更新为与spec口令匹配的本地计算值，未写入任何仓库文件。
+- 边界：持久`policyops`全程未连接未写入；未创建持久快照或release；`shv2_e2e`库内快照/替换均为隔离演练；`transcript_text`不在生成器输出中（V2改写保持NULL属WI-20260911-03）；非RCL人工案例路径保持human_curated且零改写。

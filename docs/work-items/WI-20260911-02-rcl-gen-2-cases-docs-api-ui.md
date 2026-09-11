@@ -1,7 +1,7 @@
 # WI-20260911-02：RCL-GEN-2.0案例、Markdown案例库、API与UI
 
 > Author: Jan
-> Status: Draft（等待WI-20260911-01 Accepted）
+> Status: Accepted（2026-09-11，代码+测试+生成资产；隔离库验收；无持久库写入）
 > Updated: 2026-09-11
 
 ## Work Item
@@ -53,3 +53,11 @@
 ## 文档同步
 
 - traceability、ARCHITECTURE（生成器与API契约）、TESTING、PROGRESS、案例库Markdown。
+
+## 验收记录（2026-09-11，隔离库本地新鲜执行）
+
+- 实现：`src/lib/case-governance/generator-v2.ts`（RCL-GEN-2.0、§8.2矩阵、断言fail-closed）、`case-content-v2.ts`（数值单源文案）、`dsl-evidence-index.ts`（依赖来源解析）、`case-library-doc.ts`（manifest确定性+render+check）、`src/lib/showcase/{labels,case-nature}.ts`（披露与API装饰）、`scripts/rcl-case-library.ts generate-v2`、`scripts/rcl-case-library-v2-doc.ts`、公开页/管理页/两个API路由改造、`e2e/shv2-case-copy.spec.ts`、`.gitattributes`案例库eol=lf。
+- 生成资产：`docs/refactor/policy-ops-agent/case-library/shanghai-guangdong-v2.md`（346KB）+`.manifest.json`（36/18/18、3个真实快照绑定、无时间戳）。
+- TDD：RED=3个新测试文件模块缺失失败；GREEN=58/58（generator-v2 40、case-library-doc 10、synthetic-copy 8）。
+- 门禁：`npm test` 80文件/829零skip；tsc 0；eslint 0 error；build 0；隔离PG17+pgvector `test:db` 27文件/144零skip（项目标准参数，见traceability）；agent.migrate×2幂等；pytest integration 20/20零skip+非集成94；Chromium E2E 23/23（含SHV2新增4例：公开页合成文案/首页导航/公开API字段/后台文档与字段）；scan-secrets --all 899文件零命中；Gitleaks完整历史96提交零发现；allowlist哨兵全过；案例库`--check`通过且篡改副本退出2。
+- 环境与边界：任务专属容器`shv2-task2-pg`（随机端口54955）+`shv2_e2e`/`shv2_drill`两库；持久policyops未连接未写入；未创建持久快照/release；非RCL人工案例未被改写；`transcript_text`未生成。

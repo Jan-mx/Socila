@@ -6,6 +6,8 @@
 
 ## 当前结论
 
+> SHV2进展（2026-09-11）：功能分支`codex/shanghai-case-v2`（基线`0885613`）上WI-20260911-01（上海证据与政策纠偏）与WI-20260911-02（RCL-GEN-2.0案例/Markdown案例库/API/UI）均已Accepted；WI-20260911-03（0019审计迁移与受控原位改写）待实施。全程仅隔离库演练，持久policyops未连接未写入。
+
 - 七阶段重构Goal：**Accepted**，七份阶段验收报告全部PASS。
 - 当前开发分支：`refactor/policy-ops-agent-platform`；任务3/4最终集成分支已完成显式merge commit集成。
 - 当前运行事实源：单机Docker Compose中的PostgreSQL、MinIO和Agent存储；Neon不再承接运行时读写。
@@ -497,3 +499,20 @@
 4. 建立首批官方政策采集和RAG索引。
 
 历史逐步执行日志已归档至[archive/memory-bank/progress.md](./archive/memory-bank/progress.md)，阶段证据见[reports](./reports/README.md)。
+
+## 当前任务验证（WI-20260911-02 RCL-GEN-2.0案例/文档/API/UI，2026-09-11本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| 基线核对 | 分支`codex/shanghai-case-v2`；任务2残留清理后工作树干净，HEAD保持任务1提交`caa6344` |
+| TDD Red | 3个新测试文件（generator-v2/case-library-doc/synthetic-copy）首跑模块缺失失败已记录 |
+| Node单元（`npm test`） | PASS；80文件/829通过、skip 0（含SHV2新增58例） |
+| TypeScript / ESLint / Build | PASS；tsc退出0；eslint 0 error（既有10 warning未新增）；build退出0 |
+| 数据库集成（隔离PG17+pgvector `shv2_drill`） | PASS；`test:db` 27文件/144零skip（项目标准参数运行，见traceability）；agent.migrate×2幂等；pytest -m integration 20/20零skip、非集成94、ruff/mypy 0问题 |
+| 生成器V2隔离库生成 | PASS；`generate-v2`经真实活动快照输出36条（沪18/粤18、3个快照绑定），coverageManifestHash与libraryManifestHash确定性 |
+| Markdown案例库 | PASS；`render`+`--check`通过（36/18/18）；篡改副本退出2；已提交manifest与内存生成器逐条一致 |
+| Chromium E2E | PASS；23/23（auth 10+SHV2 4+task3 5+task4 4；SHV2 4例覆盖公开页合成文案/首页导航/公开API字段/后台文档与结构字段） |
+| Secret扫描 / Gitleaks / 哨兵 | PASS；scan-secrets --all 899文件零命中；Gitleaks 8.29.1完整历史96提交零发现（worktree临时独立克隆扫描）；allowlist哨兵3场景全过 |
+| 边界 | 持久policyops全程未连接未写入；未创建持久快照/release；非RCL人工案例零改写；E2E管理员哈希与脚本内置哈希不匹配为既有环境事实（隔离库内本地更新，见验收报告§2.4） |
+
+下一步：WI-20260911-03（0019审计迁移+受控原位改写CLI+隔离验收）。目标集成分支`refactor/policy-ops-agent-platform`保持不动；等待用户测试后另行授权合并。
