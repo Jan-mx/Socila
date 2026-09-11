@@ -43,3 +43,14 @@ paths = [
   '''^dsl/regions/shanghai_dsl_v1/rules/R-540-SUBSIDY-MUTUAL-EXCLUSION\.json$''',
 ]
 condition = "AND"
+
+# generic-api-key规则：合成政策案例manifest的scenarioKey/token状字段值（RCL-GEN-2.0
+# 确定性场景键如"SH-female-from_1980-unemployed-UNEMPLOYMENT"，非凭据；WI-20260911-02
+# 人工核实为误报）。按"规则×路径"精确收窄，哨兵回归保证该路径上其他规则照常检测。
+[[allowlists]]
+description = "合成案例manifest场景键（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^docs/refactor/policy-ops-agent/case-library/shanghai-guangdong-v2\.manifest\.json$''',
+]
+condition = "AND"

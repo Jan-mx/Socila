@@ -1,0 +1,76 @@
+{
+  "drill": "rcl-case-rewrite-v2",
+  "container": "shv2-task2-pg",
+  "port": "54955",
+  "database": "shv2_rewrite_drill_9a785a",
+  "restoreDatabase": "shv2_rewrite_drill_9a785a_restore",
+  "finishedAt": "2026-09-11T19:01:07.250Z",
+  "failed": false,
+  "results": [
+    {
+      "name": "创建全新演练库并启用vector/btree_gist",
+      "ok": true,
+      "ms": 2279,
+      "detail": null
+    },
+    {
+      "name": "migration×2 + bootstrap + seed",
+      "ok": true,
+      "ms": 12394,
+      "detail": null
+    },
+    {
+      "name": "e2e-rcl-setup：沪粤快照激活+V1替换演练（36/36/80）",
+      "ok": true,
+      "ms": 225177,
+      "detail": null
+    },
+    {
+      "name": "generate-v2 + rewrite audit/plan",
+      "ok": true,
+      "ms": 37291,
+      "detail": null
+    },
+    {
+      "name": "守卫反例：缺授权/错planHash/错targetFingerprint → 零写入拒绝",
+      "ok": true,
+      "ms": 4555,
+      "detail": null
+    },
+    {
+      "name": "apply：108行原位升级（单事务）",
+      "ok": true,
+      "ms": 2342,
+      "detail": null
+    },
+    {
+      "name": "verify + 复跑noop",
+      "ok": true,
+      "ms": 3283,
+      "detail": null
+    },
+    {
+      "name": "0019重复执行幂等（migration×2）",
+      "ok": true,
+      "ms": 2271,
+      "detail": null
+    },
+    {
+      "name": "post dump → 第三实例恢复 → 全表+sequence对账",
+      "ok": true,
+      "ms": 4457,
+      "detail": null
+    },
+    {
+      "name": "最终计数与审计核对（36/36/80、1批次、108entries）",
+      "ok": true,
+      "ms": 604,
+      "detail": {
+        "counts": "36/36/80",
+        "batches": "1",
+        "entries": "108",
+        "v2clean": "36"
+      }
+    }
+  ]
+}

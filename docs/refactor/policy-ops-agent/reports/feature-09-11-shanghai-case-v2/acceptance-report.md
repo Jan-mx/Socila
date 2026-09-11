@@ -133,3 +133,36 @@
 - 隔离环境：任务专属容器`shv2-task2-pg`（pgvector/pgvector:pg17，宿主随机端口54955）；`shv2_e2e`库完成migration+bootstrap+seed+`e2e-rcl-setup`（沪粤快照激活+V1替换演练36/36/80）后运行`generate-v2`与全套E2E；`shv2_drill`全新库承载`test:db`/agent.migrate/pytest。
 - 已知环境事实：E2E管理员口令哈希与`scripts/db-gate-task34.mjs`内置哈希不匹配（bcrypt同盐重算确认），历史E2E的哈希来自先前会话本地值；本轮在隔离库内将Jan口令哈希更新为与spec口令匹配的本地计算值，未写入任何仓库文件。
 - 边界：持久`policyops`全程未连接未写入；未创建持久快照或release；`shv2_e2e`库内快照/替换均为隔离演练；`transcript_text`不在生成器输出中（V2改写保持NULL属WI-20260911-03）；非RCL人工案例路径保持human_curated且零改写。
+
+## 3. WI-20260911-03 0019审计迁移与受控原位改写（2026-09-11本地新鲜执行）
+
+### 3.1 交付内容
+
+- `drizzle/0019_case_rewrite_audit.sql`：只创建`case_rewrite_batches`（id/plan_hash唯一/code_sha/来源与目标指纹/finalFingerprint/新旧生成器版本/source manifest与attestation/快照绑定/行计数/status CHECK/操作者与时间）与`case_rewrite_entries`（batch+实体类型+整数ID唯一；新旧UID/新旧内容hash/新旧快照hash/evidence hash均为64位hex CHECK；完整before/after JSON；外键RESTRICT不级联删除历史审计）。journal追加0019（when=1788797000000，严格单调）；migration-lf契约更新为"0010～0018不高于持久账本max、0019为唯一新迁移"（SHV2-FR-017、AC-014）。
+- `src/lib/case-rewrite/rewrite-v2.ts` + `scripts/rcl-case-rewrite-v2.mjs`（audit/plan/apply/verify）：匹配身份为人物槽位（地区×性别×年龄段×就业状态——V2按§8.2矩阵重新分配能力属改写内容）；计划绑定codeSha/来源工件指纹与attestation/前置指纹/finalFingerprint/3快照绑定/108条entries；apply单事务（REPEATABLE READ+任务专属advisory xact lock+FOR UPDATE锁定108行，逐行旧hash核对→原位UPDATE→新hash与行体核对，清空回归test运行结果，写1个applied批次+恰好108条entries，COMMIT前finalFingerprint核对）；复跑noop、部分完成/不一致`REWRITE_STATE_DRIFT`禁止补写；防误写：policyops库名在任何连接前拒绝（SHV2-FR-018～023、AC-015～018）。
+- `scripts/rcl-rewrite-drill-v2.mjs`：全新库隔离演练编排（baseline→generate-v2→audit/plan→守卫反例→apply→verify/noop→0019×2幂等→post dump第三实例恢复对账→计数/审计核对），输出证据JSON。
+
+### 3.2 TDD Red→Green
+
+- Red：单元14例模块缺失失败；迁移集成（无0019表）与CLI集成失败。
+- Green：单元14/14；迁移集成4/4；CLI集成8/8（守卫三反例/行漂移/apply全量断言/verify/noop/篡改drift/并发/故障注入回滚/policyops拒绝）。
+
+### 3.3 门禁结果（2026-09-11本地新鲜执行）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm test`（提交态复跑migration-lf契约） | PASS：契约7/7；全量见§4提交态记录 |
+| `test:db`（全新库shv2_drill3） | PASS：29文件/156通过、skip 0 |
+| `npx tsc --noEmit` / `npx eslint src scripts` / `npm run build` | PASS：全部退出0；0 error |
+| agent.migrate --with-roles ×2 | PASS：幂等 |
+| pytest integration / not integration | PASS：20/20零skip、94通过；ruff 0、mypy 0 |
+| Chromium E2E（V2终态库） | PASS：23/23——shv2_e2e经受控改写（planHash `fe92d7d8…`、verify ok）后，公开页36条可读问答/政策依据安全外链、管理后台结构化字段且无"待生成V2"提示全部生效 |
+| 隔离演练 | PASS：9步全ok（证据`rewrite-drill-evidence-2026-09-11T19-01-07-253Z.json`）：最终36/36/80、1批次、108entries、36条V2干净case、post dump第三实例恢复对账一致 |
+| scan-secrets --all | PASS：914文件零命中 |
+| Gitleaks 8.29.1完整历史 | PASS：98提交——manifest场景键19条generic-api-key误报经人工核实（合成场景键非凭据），按ADR-0009"规则×路径"精确allowlist登记+哨兵回归3场景全过后复扫no leaks |
+| 提交 | `f69dc39`（含.gitleaks.toml精确allowlist与.gitignore排除E2E状态文件） |
+
+### 3.4 边界与移交
+
+- 持久`policyops`全程未连接未写入（守卫在任何连接前拒绝）；0019仅交付SQL，对持久库的执行与V1→V2改写为PRD §18授权点，须另行fresh授权包（含备份/回退点）。
+- 隔离环境：容器`shv2-task2-pg`（端口54955）；`shv2_e2e`（V2终态，供用户在浏览器直接核验合成案例展示）；`shv2_drill`/`shv2_drill3`（集成门禁）；演练库已清理。

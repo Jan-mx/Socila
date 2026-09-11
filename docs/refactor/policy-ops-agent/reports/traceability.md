@@ -209,3 +209,19 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 - 隔离环境：任务专属容器`shv2-task2-pg`（pgvector/pgvector:pg17，随机端口54955）；`shv2_e2e`库（migration+bootstrap+seed+e2e-rcl-setup快照激活与V1替换演练后generate-v2）；`shv2_drill`库（test:db/migrate/pytest）；持久policyops全程未连接未写入。
 - 已知环境事实：E2E管理员口令哈希与`scripts/db-gate-task34.mjs`内置哈希不匹配（bcrypt同盐重算确认），隔离库内将Jan口令哈希更新为与spec口令匹配的本地计算值（不写入仓库文件）。
 - 边界：无持久库写入；无快照/release持久变更；非RCL人工案例未被改写；`transcript_text`不生成（V2改写时保持NULL属WI-03）。
+
+## WI-20260911-03 0019审计迁移与受控原位改写（2026-09-11，SHV2-FR-017～025/AC-014～021）
+
+| 需求 | 实现 | 测试/证据 |
+| --- | --- | --- |
+| SHV2-FR-017 纯Schema迁移 | `drizzle/0019_case_rewrite_audit.sql`（只建审计表；journal 0019=1788797000000严格单调） | `rcl-0019-migration.integration.test.ts`幂等/列全集/CHECK/唯一/RESTRICT 4例；migration-lf契约7/7 |
+| SHV2-FR-018 精确计划 | `rewrite-v2.ts buildRewritePlan`：codeSha/来源工件指纹+attestation/前置指纹/finalFingerprint（含44 example行集与id序对齐）/3快照绑定/108条entries（整数ID、新旧UID、新旧内容hash、新旧快照hash、evidenceHash、完整before/after，日期归一化保证落盘复跑hash一致） | 单元5例（确定性/敏感性/verifyPlanBody）；CLI集成plan断言108 |
+| SHV2-FR-019 原位改写 | 人物槽位匹配（V2按§8.2矩阵重新分配能力）；`projectRewritten*Row`保留整数ID、V2 UID、case_text、真实标题/问答/来源；test last_run清空 | 单元投影3例+匹配2例；集成apply断言ID集合不变/36条V2干净case/计数36/36/80 |
+| SHV2-FR-020 完整审计 | `case_rewrite_entries` 108条before/after+hash链；批次1条applied绑定全部计划字段 | 集成断言1批次/108entries/before-after完整；演练第8步 |
+| SHV2-FR-021 原子与并发 | REPEATABLE READ+advisory xact lock+FOR UPDATE锁定108行；逐行旧hash核对→UPDATE→新hash与行体核对；COMMIT前finalFingerprint；40001重试 | 集成并发（一执行一noop）+故障注入（after_lock/after_updates/after_entries整体回滚） |
+| SHV2-FR-022 幂等 | applied+finalFingerprint+108条→noop:true；其余→`REWRITE_STATE_DRIFT`禁止补写 | 集成复跑noop/篡改drift/after恢复后noop；单元分类4例 |
+| SHV2-FR-023 持久默认拒绝 | CLI在任何连接前拒绝policyops库名（需`RCL_REWRITE_ALLOW_PERSISTENT=1`）；DIRTY/注入变量仅隔离演练 | 集成policyops反例（退出2）；单元参数守卫 |
+| SHV2-AC-020 恢复对账 | 演练post dump→第三实例pg_restore→`restore-reconcile`全表+sequence | 演练第7步OK（证据JSON） |
+
+- 门禁（2026-09-11本地新鲜）：`test:db`（全新库）29文件/156零skip；tsc/eslint/build退出0；pytest integration 20/20零skip+非集成94；Chromium E2E 23/23（V2终态分支：shv2_e2e改写planHash `fe92d7d8…` verify ok）；scan-secrets 914零命中；gitleaks全历史98提交经ADR-0009精确allowlist（哨兵通过）复扫no leaks；隔离演练9步全ok。
+- 边界：持久policyops未连接未写入；0019持久执行须另行fresh授权。

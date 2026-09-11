@@ -273,3 +273,11 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - API与文案契约（`src/lib/showcase/synthetic-copy.test.ts` 8例）：`decorateShowcaseCase`（synthetic/human_curated、不完整evidence不升格）、两个路由新增字段向后兼容（mock仓储）、公开页/首页/导航/卡片禁用"真实咨询"表述、后台"合成案例文档"与"待生成V2案例文档"。
 - Chromium E2E（`e2e/shv2-case-copy.spec.ts` 4例）：公开页合成披露与卡片结构、首页/导航、公开API 36条caseNature/policySources、管理后台文档字段与权限内联（匿名/普通用户契约由task4 spec覆盖）；V1数据状态断言"待生成V2案例文档"且不展示占位问答。
 - test:db标准参数：本机Windows长时串行运行以`--dangerouslyIgnoreUnhandledErrors`屏蔽vitest 3.2.6 worker teardown RPC竞态（`scripts/db-gate-task34.mjs`既有约定，测试失败仍非零退出）；集成测试必须显式`SOCILA_TEST_DATABASE_URL`与`RCL_DRILL_PG_CONTAINER`。
+
+## V1→V2受控原位改写（09-11 WI-20260911-03）
+
+- 0019migration行为（`src/lib/case-rewrite/__tests__/rcl-0019-migration.integration.test.ts` 4例）：审计表列全集、plan_hash唯一、(batch,entity_type,entity_id)唯一、hash列CHECK拒绝非法值、外键RESTRICT不级联删除历史审计、SQL重复执行幂等、journal 0019严格单调（when=1788797000000）。
+- 核心单元（`src/lib/case-rewrite/__tests__/rewrite-v2.test.ts` 14例）：批次ID v5确定性派生、planHash正文重算与敏感性、来源工件指纹/attestation、人物槽位匹配（V2按§8.2矩阵重新分配能力→槽位而非scenario_key为匹配身份）、投影（整数ID保留/V2 UID/case_text/transcript不虚构/last_run清空）、108条entries完整绑定、状态分类（pending/applied/drift）、参数守卫、业务行+快照+release指纹敏感性。
+- CLI集成演练（`rcl-rewrite-cli.integration.test.ts` 8例）：重建V1基线（seed→激活3区间→V1 CLI七模式）→generate-v2→audit→守卫反例（缺授权/错planHash/错targetFingerprint零写入）→行漂移拒绝→apply（108行原位、ID不变、1批次+108entries、case_text非空/transcript NULL、计数36/36/80）→verify→复跑noop→applied后篡改drift（从entries.after恢复后复跑noop）→并发两apply一执行一noop→故障点注入整体回滚→policyops库名默认拒绝。
+- 隔离验收演练（`scripts/rcl-rewrite-drill-v2.mjs`）：全新库上baseline→generate-v2→audit/plan→守卫→apply→verify/noop→0019×2幂等→post dump第三实例pg_restore+`restore-reconcile`全表+sequence对账→最终计数/审计核对，证据JSON入reports。
+- migration journal契约更新：0010～0018保持≤持久账本max（不重应用），0019=1788797000000为唯一高于账本max的新迁移（持久执行须另行fresh授权）。

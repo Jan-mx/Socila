@@ -1,7 +1,7 @@
 # 上海政策纠偏与36条案例V2全量重建PRD
 
 > Author: Jan
-> Status: Updating（实施中：WI-20260911-01 Accepted → WI-20260911-02 Accepted → WI-20260911-03待实施）
+> Status: Updating（WI-20260911-01/02/03代码层均已Accepted；功能分支已推送，等待用户测试；未合并目标分支）
 > Updated: 2026-09-11
 
 ## 1. 文档元数据

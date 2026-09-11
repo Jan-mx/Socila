@@ -202,3 +202,17 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 7. 核对本地HEAD、upstream和远端SHA一致；三个`codex/*`分支全部保留，不删除、不合并`main`。
 
 执行结果（2026-09-11）：源`39f0e2a2d6bf694091d97341041e93558ac6ded6`、目标合并前与merge-base均为`57f051da7ffb4ce4862d44845a4a1e595f9f1eaf`；自动合并无冲突。隔离DB、Chromium 19/19、Node、TypeScript、ESLint、Build、Python及安全门禁完成，任务专属容器已清理；持久库只读计数未变化。最终merge commit由提交后本地/upstream/远端三方SHA核对，未合并`main`或创建tag。
+
+## V1→V2受控原位改写runbook（WI-20260911-03，SHV2 §12/§18）
+
+> 开发阶段只在隔离PG17+pgvector容器/库演练（已执行，证据`reports/feature-09-11-shanghai-case-v2/rewrite-drill-evidence-*.json`）。对持久`policyops`的执行属PRD §18第三个授权点，必须另行生成fresh授权包并取得用户对当次哈希与目标的明确授权；本runbook本身、历史授权与本Feature PRD均不构成授权。
+
+1. 前置：持久库已完成0019（账本19条）；SH/GD快照与release为V2生成所绑定的现状；工作树干净且HEAD==计划codeSha。
+2. 备份：紧邻操作时间的完整`pg_dump -Fc`+SHA-256清单，并在全新PG17+pgvector实例恢复对账（40表+20 sequence）。
+3. 只读：`DATABASE_URL=<policyops> RCL_REWRITE_ALLOW_PERSISTENT=1 node scripts/rcl-case-rewrite-v2.mjs audit --generated <generated-scenarios-v2.json>`——状态必须pending、allV1=true、mismatches为空。
+4. 计划：`plan --generated <gen.json> --out <dir>`——输出planHash/targetFingerprint/finalFingerprint与108条entries（36 cases+36 showcase+36 regression；整数ID保留；新旧UID/hash/快照hash/evidence hash/完整before/after）。
+5. 授权apply：`RCL_REWRITE_ALLOW_PERSISTENT=1 node scripts/rcl-case-rewrite-v2.mjs apply --generated <gen.json> --plan-file <rewrite-plan-v2.json> --i-am-authorized --plan-hash <planHash> --target-fingerprint <fp>`——单事务REPEATABLE READ+advisory xact lock+FOR UPDATE锁定108行；逐行旧hash核对→原位UPDATE→新hash核对；1个applied批次+恰好108条entries；COMMIT前finalFingerprint核对；任一漂移整体回滚。
+6. 验证：`verify --generated <gen.json> --plan-file <plan>`必须ok:true（终态指纹、批次/entries审计、逐行hash、36/36/80、沪粤18/18、case_text非空、transcript NULL）；复跑apply必须`noop:true`；部分完成/不一致返回`REWRITE_STATE_DRIFT`（禁止补写，立即报告）。
+7. 操作后备份：完整dump+SHA，并在全新实例恢复对账。
+8. 防误写：数据库名为`policyops`时apply在任何连接前拒绝（需`RCL_REWRITE_ALLOW_PERSISTENT=1`）；持久执行禁止`RCL_REWRITE_ALLOW_DIRTY`与`RCL_REWRITE_INJECT_FAILURE_AT`（仅隔离演练使用）。
+9. 隔离演练重放：`RCL_REWRITE_DRILL_CONTAINER=<容器> RCL_REWRITE_DRILL_PORT=<端口> node scripts/rcl-rewrite-drill-v2.mjs`——全新库上完整走baseline→generate-v2→audit/plan/守卫反例→apply→verify/noop→0019×2幂等→post dump第三实例恢复对账→计数/审计核对，并输出证据JSON。

@@ -516,3 +516,17 @@
 | 边界 | 持久policyops全程未连接未写入；未创建持久快照/release；非RCL人工案例零改写；E2E管理员哈希与脚本内置哈希不匹配为既有环境事实（隔离库内本地更新，见验收报告§2.4） |
 
 下一步：WI-20260911-03（0019审计迁移+受控原位改写CLI+隔离验收）。目标集成分支`refactor/policy-ops-agent-platform`保持不动；等待用户测试后另行授权合并。
+
+## 当前任务验证（WI-20260911-03 0019审计迁移+受控原位改写，2026-09-11本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 单元14例模块缺失失败；迁移集成（无0019）与CLI集成失败已记录 |
+| Node单元（提交态） | PASS；migration-lf契约7/7（含0019 journal单调与持久账本max关系）；全量见§4 |
+| 数据库集成（全新库shv2_drill3） | PASS；`test:db` 29文件/156零skip（含0019迁移4例+CLI集成8例）；agent.migrate×2幂等；pytest integration 20/20零skip、非集成94、ruff/mypy 0 |
+| 隔离演练（`rcl-rewrite-drill-v2.mjs`） | PASS；9步全ok（全新库baseline→generate-v2→audit/plan→守卫三反例→apply 108行→verify/复跑noop→0019×2幂等→post dump第三实例恢复对账→最终36/36/80+1批次+108entries+36条V2干净case）；证据`rewrite-drill-evidence-2026-09-11T19-01-07-253Z.json` |
+| Chromium E2E（V2终态） | PASS；23/23——shv2_e2e经受控改写（planHash `fe92d7d8…`）后V2分支断言全部生效 |
+| Secret / Gitleaks / 哨兵 | PASS；scan-secrets 914文件零命中；gitleaks全历史98提交——manifest场景键19条误报经人工核实按ADR-0009精确allowlist+哨兵通过后复扫no leaks；migration-lf契约提交态7/7 |
+| 边界 | 持久policyops全程未连接未写入（守卫连接前拒绝）；0019仅交付SQL；改写持久执行须另行fresh授权 |
+
+至此09-11 Feature三个Work Item（01证据纠偏/02案例V2/03受控改写）代码层全部Accepted；功能分支待用户测试；`refactor/policy-ops-agent-platform`未修改未合并。

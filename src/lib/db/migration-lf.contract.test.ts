@@ -101,11 +101,13 @@ describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
 
 describe("migration journal严格单调契约（WI-20260907-03第四轮复审修复）", () => {
   const JOURNAL_PATH = path.join(ROOT, "drizzle/meta/_journal.json");
-  /** 0010～0018预期when（必须与持久账本ID 10～16、21、22的created_at一致）。 */
+  /** 0010～0019预期when（0010～0018必须与持久账本ID 10～16、21、22的created_at一致；
+   * 0019为WI-20260911-03新增审计迁移，其持久执行须另行fresh授权）。 */
   const EXPECTED_TIMES: Record<string, number> = {
     "0010": 1788560000000, "0011": 1788600000000, "0012": 1788640000000,
     "0013": 1788680000000, "0014": 1788705240000, "0015": 1788777720000,
     "0016": 1788785400000, "0017": 1788796800000, "0018": 1788796860000,
+    "0019": 1788797000000,
   };
 
   it("journal全部entry按idx严格递增（0000～0018）", () => {
@@ -131,14 +133,18 @@ describe("migration journal严格单调契约（WI-20260907-03第四轮复审修
     }
   });
 
-  it("journal单调性保证迁移在账本max=0018时整体no-op（0014不得高于0015/0016/0017）", () => {
+  it("0010～0018在持久账本（max=0018）上不重应用；journal max恰为0019", () => {
     const journal = JSON.parse(readFileSync(JOURNAL_PATH, "utf8")) as {
       entries: Array<{ tag: string; when: number }>;
     };
     const byTag: Record<string, number> = {};
     for (const e of journal.entries) byTag[e.tag.slice(0, 4)] = Number(e.when);
-    // 持久账本max created_at=0018的when（1788796860000）；任一journal when
-    // 大于它都会让migrator重新应用该迁移（旧journal的0014=1788991200000即Re-apply）。
-    expect(Math.max(...Object.values(byTag))).toBe(1788796860000);
+    // 持久账本max created_at=0018的when（1788796860000）：0010～0018的when都不得高于它
+    //（旧journal的0014=1788991200000即Re-apply事故）；0019=1788797000000是唯一高于账本
+    // max的新迁移（WI-20260911-03审计结构），对持久policyops的执行必须另行fresh授权。
+    for (const prefix of ["0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018"]) {
+      expect(byTag[prefix], `${prefix} 不得高于持久账本max`).toBeLessThanOrEqual(1788796860000);
+    }
+    expect(Math.max(...Object.values(byTag))).toBe(1788797000000);
   });
 });
