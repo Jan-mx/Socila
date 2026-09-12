@@ -1,7 +1,7 @@
 # 09-11 Feature：上海政策纠偏与36条案例V2全量重建 — 验收报告
 
 > Author: Jan
-> Status: Reopened（任务1/2/3已有代码与隔离证据；独立审查问题待闭环）
+> Status: Ready for independent review（2026-09-12修复交付；独立复审确认前不标记最终Accepted）
 > Updated: 2026-09-12
 
 ## 1. WI-20260911-01 上海官方原文采集与政策纠偏
@@ -181,3 +181,60 @@
 | 持久边界 | 未执行持久政策物化、审批、快照/release、0019或V2改写 | 继续保持待fresh授权，不在修复任务中执行 |
 
 当前状态为“代码已交付、独立审查问题待闭环、用户测试前待修复”，不是最终验收完成。修复Agent必须先TDD复现上述三项问题，再修改代码并重跑完整门禁；不得把本报告或历史执行结果当作持久写入授权。
+
+## 5. 2026-09-12修复交付（三问题闭环，全量门禁本地新鲜执行）
+
+起点`d47dedf`（独立审查缺口记录），分支`codex/shanghai-case-v2`，目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并。严格TDD：每项先记录RED再实现转GREEN；未删除断言、未降低引用规则、未跳过测试。
+
+### 5.1 问题一：MinIO政策原件链路（SHV2-NFR-002/007）
+
+- RED：`services/agent/tests/test_rag_evidence_sync.py`收集期`ModuleNotFoundError: agent.rag.evidence_sync`（15例）。
+- 实现：`services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify；bucket固定`policy-originals`、对象键`originals/<sha256>`；错bucket/远程endpoint/policyops库名连接前拒绝；冲突对象拒绝覆盖；清单与错误路径凭据redact）；CLI `python -m agent.rag.evidence_sync`；`scripts/rag-evidence-drill.mjs`；`config/runtime.env.example`默认bucket改`policy-originals`。
+- GREEN：18/18（守卫7例+隔离DB集成10例+真实MinIO备份恢复1例）。
+- 真实23件原件演练10步全ok（证据`rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）：audit预态23缺失→plan 23 uploads零写入→apply 23上传+rag.sources(3域名)/fetches/document_versions登记→verify→幂等uploaded=0/noop=23→守卫反例exit2×3→OBJECT_CONFLICT拒绝且对象字节不变→pg_dump+23对象逐字节备份→全新PG库pg_restore+全新MinIO回填→恢复副本四方对账verify ok→证据零密钥。22/23份有DSL evidence引用且SHA全部一致；`DOC-SH-EMPLOYER-SUBSIDY-BASIS-2024`为政策依据辅助页无DSL引用（清单dslRefs:0如实报告）。
+
+### 5.2 问题二：V2业务content_hash（SHV2-FR-019/020）
+
+- RED：单元2例失败（`after.content_hash`≠`newContentHash`；verifyPlanBody不校验业务hash）；防循环例通过（目标hash与列旧值无关，证明hash计算已排除该列）。
+- 实现：`rewrite-v2.ts`先按排除`content_hash`的投影计算目标hash再写入after投影（防循环）；apply同事务UPDATE业务`content_hash`（tests表无该列不写）并单独核对列值；verify显式读取业务`content_hash`逐条核对；verifyPlanBody校验before/after携带业务hash。
+- GREEN：单元17/17；CLI集成10/10（新增业务hash逐行对账36+36、tests无content_hash列schema契约、篡改case/showcase业务hash→verify退出5、注入回滚后业务hash逐行不变）；隔离演练10步全ok（业务hash漂移0/0、36/36全写入；post dump恢复副本verify ok）。
+
+### 5.3 问题三：完整Node套件超时（SHV2-NFR-008）
+
+- RED：完整`npm test` 842/843；`migration-lf.contract.test.ts`"当前工作树"用例5243ms超默认5秒（81文件复现）。
+- 根因：该用例（及同文件另外两用例）对20个SQL文件逐个spawn `git cat-file`，文件内合计60次git子进程，完整套件并行负载下超5秒。
+- 修复：单次`git cat-file --batch`批量读取全部blob并缓存（1次子进程）+两个扫描用例显式30秒超时（同文件既有策略）；断言零改动。
+- GREEN：单文件7/7（469ms）；标准完整`npm test`连续两次零失败零skip（§5.4）。
+
+### 5.4 门禁汇总（2026-09-12，隔离环境）
+
+| 门禁 | 结果 |
+| --- | --- |
+| 新增目标单元测试 | rewrite 17/17；evidence_sync守卫/枚举7/7 |
+| MinIO同步集成测试 | `test_rag_evidence_sync.py` 18/18（含真实隔离MinIO备份恢复） |
+| V2 rewrite数据库集成 | `rcl-rewrite-cli.integration.test.ts` 10/10；`rcl-0019-migration.integration.test.ts` 4/4 |
+| 完整`npm test`×2 | 连续两次零失败零skip（81文件，第二次运行数见§5.5） |
+| `npm run test:db`（全新库shv2_fix_testdb，PG17+pgvector:54956） | 全部通过零skip（文件/用例数见§5.5） |
+| tsc --noEmit / eslint src scripts / build | 全部退出0（eslint 0 error） |
+| pytest integration / not integration | 31/31与101/101，均零skip（`services/agent`目录下运行，`AGENT_DATABASE_URL`+`AGENT_DB_PASSWORD`提供角色用例） |
+| ruff / mypy | 0问题（evidence_sync.py与测试文件） |
+| Chromium E2E | 23/23（shv2_e2e重建为满足新content_hash契约的V2终态；AC-010首轮失败为状态文件未更新到V2，更新后全过） |
+| citation verifier组 | citation-contract+citation-verifier+shanghai-policy-v2 32/32 |
+| 案例库`--check` | ok=true、36条、manifestHash一致 |
+| scan-secrets --all | 921文件零命中 |
+| allowlist哨兵 | 3场景全过 |
+| PostgreSQL+MinIO完整备份恢复对账 | 演练step9-10：pg_dump+逐对象备份→全新库pg_restore+全新MinIO回填→恢复副本verify ok |
+| Gitleaks完整历史 | 8.29.1扫描100提交零发现（`.gitleaksignore`7条基线+ADR-0009新增"规则×路径"allowlist：`test_rag_evidence_sync.py`脱敏哨兵口令，2026-09-12人工核实；哨兵回归3场景全过） |
+| 隔离演练 | rewrite 10步+evidence 10步全ok（两份证据JSON） |
+
+### 5.5 最终数字（2026-09-12新鲜执行）
+
+- 完整`npm test`×2：81文件/846用例，两次均零失败零skip（846=843+新增3例单元契约）。
+- `npm run test:db`（全新库`shv2_fix_testdb`，PG17+pgvector容器:54956）：29文件/158用例全过零skip（158=156+新增2例CLI集成；`--dangerouslyIgnoreUnhandledErrors`为项目标准参数，Windows worker teardown RPC竞态不掩盖任何测试失败）。
+- Gitleaks完整历史：8.29.1对含本修复的100提交扫描零发现；本轮唯一新增命中为`test_rag_evidence_sync.py`中的合成脱敏哨兵口令（`generic-api-key`误报），经人工核实按ADR-0009登记"规则×路径"allowlist（`targetRules`×精确路径，哨兵回归3场景全过后复扫no leaks）。
+
+### 5.6 边界
+
+- 持久`policyops`全程未连接未写入（rewrite与evidence_sync守卫均在连接前拒绝）；生产MinIO（socila-minio:9000）未连接；0019与V2改写仅存在于隔离库。
+- 隔离环境：PG容器`shv2-fix-pg`:54956（含agent schema+roles的`shv2_fix_rag`、双schema`shv2_fix_rw`、全新test:db库`shv2_fix_testdb`）、`shv2-task2-pg`:54955（`shv2_e2e`重建为V2终态供用户核验）、MinIO容器`shv2-fix-minio-a/b`:54960/54961（演练用，bucket在演练内创建与清空）。
+- 持久执行（生产MinIO同步、持久RAG登记、持久0019/改写、政策物化、快照/release）须另行fresh授权。

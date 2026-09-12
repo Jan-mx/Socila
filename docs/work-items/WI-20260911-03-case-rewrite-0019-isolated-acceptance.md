@@ -1,7 +1,7 @@
 # WI-20260911-03：0019审计迁移、受控原位改写CLI与隔离验收
 
 > Author: Jan
-> Status: Reopened（代码与隔离演练已交付；业务hash字段和完整Node门禁待闭环）
+> Status: Ready for independent review（2026-09-12业务hash字段契约与完整Node套件修复交付：单元17/17+集成10/10+演练10步全ok+完整套件零失败零skip；独立复审确认前不标记Accepted）
 > Updated: 2026-09-12
 
 ## Work Item
@@ -58,3 +58,9 @@
 - `case_rewrite_entries.new_content_hash`是审计链字段，不能自动证明业务表`content_hash`列已更新；必须在apply、verify和数据库测试中逐项核对两者一致。
 - 标准完整Node套件曾在`migration-lf.contract.test.ts`当前工作树用例处发生5秒超时；单独运行7/7通过不等于完整`npm test`通过。
 - 只有业务hash字段契约和完整套件稳定通过后，WI才能恢复Accepted。
+
+## 修复交付记录（2026-09-12，业务hash契约+完整套件闭环）
+
+- 业务hash契约：见WI-20260911-02修复交付记录（同一`rewrite-v2.ts`实现与同一批测试/演练证据：单元17/17、CLI集成10/10、演练10步全ok含恢复副本verify）。
+- 完整套件：RED复现=完整`npm test` 842/843、`migration-lf.contract.test.ts`当前工作树用例5243ms超默认5秒（81文件）；根因=该用例对20个SQL文件逐个spawn `git cat-file`（文件内3用例共60次git子进程），完整套件并行负载下超5秒。修复=单次`git cat-file --batch`批量读取全部blob并缓存（1次子进程）+两个扫描用例显式30秒超时（同文件既有策略）；断言零改动。修复后单文件7/7（469ms）；标准完整`npm test`连续两次零失败零skip（见验收报告§5）。
+- 边界：全程隔离库；持久policyops与持久改写仍须另行fresh授权。

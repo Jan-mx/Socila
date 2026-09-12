@@ -428,7 +428,10 @@ export function buildRewritePlan(input: {
   const push = (entityType: RewriteEntityType, m: { row: Row; scenario: GeneratedScenarioV2 }, cols: string[], project: (row: Row, s: GeneratedScenarioV2) => Row, uidColumn: string): void => {
     const afterProj = project(m.row, m.scenario);
     const oldHash = hashProjection(m.row, cols);
+    // 先基于排除content_hash基础设施列的业务投影计算目标hash（防循环），再把该hash
+    // 写入after投影的content_hash列（cases/showcase_cases；tests表无该列不写）。
     const newHash = hashProjection(afterProj, cols);
+    if (entityType !== "test") afterProj.content_hash = newHash;
     // before/after统一经canonicalJson归一化（Date→YYYY-MM-DD字符串）：计划落盘复跑、
     // apply事务内重算与verify三方hash/正文一致（JSON.round-trip不改变hash）。
     const before = JSON.parse(canonicalJson(m.row)) as Row;
@@ -526,6 +529,20 @@ export function verifyPlanBody(plan: RewritePlan): string[] {
     if (!SHA256_HEX.test(e.newSnapshotHash)) problems.push(`entry ${e.entityType}/${e.entityId} newSnapshotHash非法`);
     if (e.oldUid === e.newUid || !String(e.newUid).endsWith("-V2")) problems.push(`entry ${e.entityType}/${e.entityId} UID不成对升级：${e.oldUid}→${e.newUid}`);
     if (!e.before || !e.after || Object.keys(e.after).length === 0) problems.push(`entry ${e.entityType}/${e.entityId} before/after缺失`);
+    // 业务content_hash契约（2026-09-12独立审查）：case/showcase条目before/after必须
+    // 携带业务content_hash且after等于newContentHash；tests表无该列，出现即计划非法。
+    if (e.entityType === "test") {
+      if ("content_hash" in e.after || "content_hash" in e.before) {
+        problems.push(`entry ${e.entityType}/${e.entityId} test行不应携带content_hash键`);
+      }
+    } else {
+      if (e.after.content_hash !== e.newContentHash) {
+        problems.push(`entry ${e.entityType}/${e.entityId} after业务content_hash与newContentHash不一致`);
+      }
+      if (!("content_hash" in e.before) || !("content_hash" in e.after)) {
+        problems.push(`entry ${e.entityType}/${e.entityId} before/after缺业务content_hash字段`);
+      }
+    }
   }
   if (byType.case !== 36 || byType.showcase_case !== 36 || byType.test !== 36) {
     problems.push(`entries类型计数 ${JSON.stringify(byType)} ≠ 36/36/36`);
@@ -651,7 +668,10 @@ const REWRITE_COLUMNS: Record<RewriteEntityType, { table: string; cols: string[]
 };
 
 function updatableColumns(entityType: RewriteEntityType, after: Row): string[] {
-  const exclude = new Set<string>(["id", "content_hash", ...REWRITE_COLUMNS[entityType].hashCols]);
+  const exclude = new Set<string>(["id", ...REWRITE_COLUMNS[entityType].hashCols]);
+  // cases/showcase_cases的业务content_hash列必须随同一事务写入V2目标hash（after投影
+  // 已携带）；tests表无content_hash列，after无此键即天然不更新。
+  exclude.delete("content_hash");
   return Object.keys(after).filter((k) => !exclude.has(k));
 }
 
@@ -761,6 +781,8 @@ async function applyOnce(input: { client: DbClient; source: GeneratedSource; pla
         throw new CaseRewriteError("ROW_DRIFT", `${e.entityType}/${e.entityId} 旧内容hash漂移：库${liveHash} ≠ 计划${e.oldContentHash}`);
       }
       const after = e.entityType === "case" ? projectRewrittenCaseRow(live, scenarioOf(input.source, e)) : e.entityType === "showcase_case" ? projectRewrittenShowcaseRow(live, scenarioOf(input.source, e)) : projectRewrittenTestRow(live, scenarioOf(input.source, e));
+      // 业务content_hash列以计划目标hash为准随同一事务写入（cases/showcase_cases）。
+      if (e.entityType !== "test") after.content_hash = e.newContentHash;
       const cols = updatableColumns(e.entityType, after);
       const assignments = cols.map((c, i) => `"${c}" = $${i + 2}`).join(", ");
       // jsonb列（对象/数组）必须显式JSON字符串：node-pg默认把JS数组序列化为PG数组字面量（非JSON）。
@@ -773,6 +795,10 @@ async function applyOnce(input: { client: DbClient; source: GeneratedSource; pla
       const newHash = rowContentHash(reread, meta.hashCols);
       if (newHash !== e.newContentHash) {
         throw new CaseRewriteError("POST_UPDATE_HASH_MISMATCH", `${e.entityType}/${e.entityId} 更新后hash不一致：库${newHash} ≠ 计划${e.newContentHash}`);
+      }
+      // 单独核对数据库content_hash字段等于newContentHash（业务hash列同步写入的显式契约）。
+      if (e.entityType !== "test" && reread.content_hash !== e.newContentHash) {
+        throw new CaseRewriteError("POST_UPDATE_HASH_MISMATCH", `${e.entityType}/${e.entityId} 业务content_hash列不一致：库${String(reread.content_hash)} ≠ 计划${e.newContentHash}`);
       }
       if (canonicalJson(reread) !== canonicalJson(after)) {
         throw new CaseRewriteError("POST_UPDATE_ROW_MISMATCH", `${e.entityType}/${e.entityId} 更新后行与投影不一致`);
@@ -867,6 +893,11 @@ export async function verifyRewrite(input: { client: DbClient; source: Generated
       const liveHashOk = await rowHashMatches(client, e.entityType, e.entityId, e.newContentHash);
       if (!liveHashOk) problems.push(`entry ${e.entityType}/${e.entityId} 落库行hash与计划不一致`);
       const live = await readRow(client, e.entityType, e.entityId);
+      // 显式核对业务content_hash列：该列不在基础设施排除hash内，被篡改时指纹与行hash
+      // 均不受影响，只有逐条核对能发现（2026-09-12独立审查契约）。
+      if (e.entityType !== "test" && live.content_hash !== e.newContentHash) {
+        problems.push(`entry ${e.entityType}/${e.entityId} 业务content_hash列与审计new_content_hash不一致：库${String(live.content_hash)} ≠ 审计${e.newContentHash}`);
+      }
       if (String(live[REWRITE_COLUMNS[e.entityType].uidColumn]) !== String(found.new_uid)) {
         problems.push(`entry ${e.entityType}/${e.entityId} UID不一致`);
       }

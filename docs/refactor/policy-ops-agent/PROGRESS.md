@@ -6,7 +6,7 @@
 
 ## 当前结论
 
-> SHV2进展（2026-09-12）：功能分支`codex/shanghai-case-v2@f583adc`已包含任务1/2/3代码与隔离证据；独立审查后因MinIO原件链路、业务`content_hash`同步和完整Node套件超时三项未闭环而Reopened。目标分支`0885613`未修改未合并，持久policyops未写入。
+> SHV2进展（2026-09-12）：功能分支`codex/shanghai-case-v2`三个独立审查问题已修复交付并过全量门禁，状态Ready for independent review（待独立复审确认，不自行标记Accepted）。目标分支`0885613`未修改未合并，持久policyops与生产MinIO未连接未写入。
 
 - 七阶段重构Goal：**Accepted**，七份阶段验收报告全部PASS。
 - 当前开发分支：`refactor/policy-ops-agent-platform`；任务3/4最终集成分支已完成显式merge commit集成。
@@ -541,3 +541,17 @@
 | 完整Node套件不稳定 | 独立复跑目标测试101/101、tsc通过；完整`npm test`为842/843，migration当前工作树用例5秒超时；单文件7/7通过 | 修复超时后重跑标准完整套件，零失败零skip才可恢复Accepted |
 
 当前精确下一步：由修复Agent从`f583adc`开始，只修上述问题并在隔离数据库/MinIO验证；不得执行持久政策物化、管理员批准、快照/release切换、0019或V2案例回填。修复通过独立复审并推送后，才交给用户测试；用户测试完成前不得合并目标分支。
+
+## 修复交付（2026-09-12）：三个审查问题闭环，Ready for independent review
+
+从`d47dedf`开始严格TDD修复（RED记录→实现→GREEN→全量门禁），全程仅隔离PostgreSQL（`shv2-fix-pg`:54956、`shv2-task2-pg`:54955）与隔离MinIO（`shv2-fix-minio-a/b`:54960/54961）：
+
+| 问题 | 修复 | RED→GREEN证据 |
+| --- | --- | --- |
+| MinIO原件链路 | `services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify；`policy-originals/originals/<sha256>`；桶/endpoint/库名守卫；凭据redact）+CLI+`scripts/rag-evidence-drill.mjs`+配置模板bucket统一 | RED=ModuleNotFoundError（15例）→GREEN 18/18；真实23件原件演练10步全ok（含pg_dump+逐对象备份→全新库+全新MinIO恢复→恢复副本四方对账；证据`rag-evidence-drill-2026-09-12T04-14-59-793Z.json`） |
+| V2业务`content_hash` | `rewrite-v2.ts`：先按排除`content_hash`的投影算目标hash再写after投影（防循环）；apply同事务UPDATE业务列并单独核对；verify逐条显式核对；verifyPlanBody校验 | RED=单元2例失败→GREEN 17/17+集成10/10（业务hash逐行对账36+36、tests无该列、篡改verify失败、注入回滚）；演练10步全ok（漂移0/0、恢复副本verify ok；证据`rewrite-drill-evidence-2026-09-12T04-56-15-244Z.json`） |
+| 完整Node套件超时 | `migration-lf.contract.test.ts`单次`git cat-file --batch`批量读取（60次子进程→1次）+两用例显式30秒超时；断言零改动 | RED=842/843（目标用例5243ms超5s）→单文件7/7（469ms）→标准完整`npm test`连续两次零失败零skip |
+
+门禁（全部本地新鲜）：pytest integration 31/31+非集成101/101零skip；citation组32/32；tsc/eslint(0 error)/build退出0；ruff/mypy 0问题；Chromium E2E 23/23（`shv2_e2e`重建为满足新content_hash契约的V2终态）；案例库`--check`通过；scan-secrets 921文件零命中；allowlist哨兵3场景全过；test:db全新库（29文件/158）零skip；Gitleaks 8.29.1完整历史100提交零发现（新增`test_rag_evidence_sync.py`脱敏哨兵误报经人工核实按ADR-0009登记精确allowlist，哨兵3场景全过）。
+
+下一步：用户/独立复审确认后，由用户决定持久执行（生产MinIO同步、持久RAG登记、持久0019与V2改写）并另行fresh授权；目标集成分支合并仍需用户明确指令。

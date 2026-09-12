@@ -288,3 +288,9 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - **V2业务hash字段**：隔离库apply和verify必须逐行断言`cases.content_hash`、`showcase_cases.content_hash`等于V2目标规范化内容hash，并与`case_rewrite_entries.new_content_hash`一致；只验证排除`content_hash`后的动态重算不足以通过。
 - **完整套件稳定性**：标准完整`npm test`必须零失败、零skip；`migration-lf.contract.test.ts`在完整套件中的5秒超时必须通过设置与真实最坏耗时匹配的显式超时或优化扫描消除。单文件7/7通过不能替代完整套件。
 - Docker或MinIO不可用时只能报告环境阻塞，不得把未执行的对象上传、恢复或对账记录为PASS。
+
+### 修复交付门禁证据（2026-09-12本地新鲜执行）
+
+- **MinIO同步**：`services/agent/tests/test_rag_evidence_sync.py` 18/18（守卫/枚举7例零依赖；隔离DB集成10例覆盖新对象上传、一致no-op、冲突拒绝、meta/DSL SHA不符、缺rag记录、DB content_hash漂移、错object_key、对象下载SHA漂移、plan零写入、apply后verify ok；真实隔离MinIO备份→全新实例恢复四方对账1例）。运行前提：`SOCILA_TEST_DATABASE_URL`（agent迁移+角色库）与`RAG_SYNC_TEST_MINIO_ENDPOINT`/`_RESTORE_ENDPOINT`（隔离MinIO）。真实23件原件编排演练`node scripts/rag-evidence-drill.mjs`（需`RAG_DRILL_PG_CONTAINER`/`RAG_DRILL_PG_PORT`/`RAG_DRILL_MINIO_*`环境）覆盖audit预态→plan→apply→verify→幂等→守卫反例→冲突拒绝→pg_dump+逐对象备份→全新库+全新MinIO恢复→恢复副本verify；证据JSON入reports。pytest整体门禁：integration 31/31、非集成101/101，均零skip（在`services/agent`目录下运行，且需`AGENT_DATABASE_URL`+`AGENT_DB_PASSWORD`以启用角色隔离与JWT重放用例）。
+- **V2业务hash**：单元`rewrite-v2.test.ts` 17/17（业务hash条目契约、防循环、verifyPlanBody三反例）；数据库`rcl-rewrite-cli.integration.test.ts` 10/10（业务hash逐行对账、tests无content_hash列、篡改verify失败、注入回滚）；演练最终核对业务hash漂移0/0且36/36全写入，恢复副本verify ok。
+- **完整套件**：`migration-lf.contract.test.ts`改为单次`git cat-file --batch`批量读取（1次子进程替代60次）+两用例显式30秒超时；断言零改动。修复前完整套件842/843（5243ms超时复现），修复后标准完整`npm test`连续两次零失败零skip。

@@ -54,3 +54,14 @@ paths = [
   '''^docs/refactor/policy-ops-agent/case-library/shanghai-guangdong-v2\.manifest\.json$''',
 ]
 condition = "AND"
+
+# generic-api-key规则：RAG证据同步测试的脱敏哨兵口令（"topsecret-*-9137"合成占位值，
+# 仅用于断言CLI输出不含凭据，非真实凭据；2026-09-12人工核实为误报）。按"规则×路径"
+# 精确收窄，哨兵回归保证该路径上其他规则照常检测。
+[[allowlists]]
+description = "证据同步测试脱敏哨兵口令（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^services/agent/tests/test_rag_evidence_sync\.py$''',
+]
+condition = "AND"

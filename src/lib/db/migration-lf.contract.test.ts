@@ -32,12 +32,37 @@ const sqlFiles = (): string[] =>
 
 const sha256 = (buf: Buffer): string => createHash("sha256").update(buf).digest("hex");
 
-/** Git blob原始字节（不经任何EOL转换）。 */
+/**
+ * Git blob原始字节（不经任何EOL转换）。
+ * 单次`git cat-file --batch`批量读取全部migration blob并缓存：完整套件并行负载下
+ * 每文件一次spawn（3个用例×20文件=60次git子进程）曾使工作树用例超过默认5秒
+ * （2026-09-12独立审查复现5243ms）；批量一次spawn消除重复扫描耗时，断言不变。
+ */
+let blobCache: Map<string, Buffer> | null = null;
 function blobBytes(file: string): Buffer {
-  return execFileSync("git", ["cat-file", "blob", `HEAD:drizzle/${file}`], {
-    cwd: ROOT,
-    maxBuffer: 128 * 1024 * 1024,
-  });
+  if (!blobCache) {
+    const files = sqlFiles();
+    const input = files.map((f) => `HEAD:drizzle/${f}\n`).join("");
+    const out = execFileSync("git", ["cat-file", "--batch"], {
+      cwd: ROOT,
+      input,
+      maxBuffer: 128 * 1024 * 1024,
+    });
+    blobCache = new Map();
+    let off = 0;
+    for (const f of files) {
+      const nl = out.indexOf(0x0a, off);
+      const header = out.subarray(off, nl).toString("utf8");
+      if (header.endsWith(" missing")) throw new Error(`git blob missing: drizzle/${f}`);
+      const size = Number(header.split(" ")[2]);
+      if (!Number.isInteger(size) || size < 0) throw new Error(`cat-file --batch头部异常：${header}`);
+      blobCache.set(f, Buffer.from(out.subarray(nl + 1, nl + 1 + size)));
+      off = nl + 1 + size + 1; // 正文后紧跟一个换行分隔符。
+    }
+  }
+  const cached = blobCache.get(file);
+  if (!cached) throw new Error(`blob未批量加载：drizzle/${file}`);
+  return cached;
 }
 
 describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
@@ -75,7 +100,7 @@ describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
       expect(content.includes(Buffer.from("\r\n")), `${f} 工作树含CRLF`).toBe(false);
       expect(sha256(content), `${f} 工作树hash != Git blob SHA`).toBe(sha256(blobBytes(f)));
     }
-  });
+  }, 30_000);
 
   it("Git blob内容本身保持LF（.gitattributes未改写0010～0018 blob）", () => {
     const files = sqlFiles();
@@ -96,7 +121,7 @@ describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
       const blob = blobBytes(f);
       expect(blob.includes(Buffer.from("\r\n")), `${f} blob含CRLF`).toBe(false);
     }
-  });
+  }, 30_000);
 });
 
 describe("migration journal严格单调契约（WI-20260907-03第四轮复审修复）", () => {

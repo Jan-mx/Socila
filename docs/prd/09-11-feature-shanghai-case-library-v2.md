@@ -1,7 +1,7 @@
 # 上海政策纠偏与36条案例V2全量重建PRD
 
 > Author: Jan
-> Status: Updating（代码已交付；独立审查问题待闭环；用户测试前待修复；未合并目标分支）
+> Status: Updating（三个独立审查问题已修复交付并过全量门禁；Ready for independent review，独立复审确认前不标记Accepted；未合并目标分支）
 > Updated: 2026-09-12
 
 ## 1. 文档元数据
@@ -541,11 +541,11 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 
 ## 22. 当前PRD交付边界
 
-截至2026-09-12，代码和隔离演练已交付，但以下审查问题仍未闭环：
+2026-09-12修复交付后，三个独立审查问题已闭环（证据见验收报告§5与traceability修复映射），状态为Ready for independent review：
 
-- 政策原件目前仅存在Git证据目录，尚未证明已同步到MinIO运行时存储；
-- V1→V2原位改写的审计`new_content_hash`已生成，但业务表`cases.content_hash`和`showcase_cases.content_hash`同步策略尚未通过独立验证；
-- 标准`npm test`在完整套件中有1项migration contract用例超时，单文件运行才通过；
+- 政策原件MinIO链路：`services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify，bucket固定`policy-originals`、键`originals/<sha256>`）+`scripts/rag-evidence-drill.mjs`；真实23件原件在隔离MinIO/隔离PostgreSQL完成上传、RAG登记、幂等、守卫、冲突拒绝与pg_dump+全新实例恢复四方对账（18/18测试+10步演练全ok）；
+- V2业务`content_hash`：apply同事务写入`cases.content_hash`/`showcase_cases.content_hash`（先按排除`content_hash`的投影计算目标hash再写列，防循环），verify逐条显式核对业务列与审计`new_content_hash`；36+36逐行一致、篡改verify失败、故障回滚、复跑noop、post dump恢复副本hash一致（单元17/17+集成10/10+演练10步全ok）；
+- 完整`npm test`：`migration-lf.contract.test.ts`改单次`git cat-file --batch`批量读取+显式30秒超时（断言零改动）；标准完整套件连续两次零失败零skip；
 - 本PRD的历史“仅完成PRD”表述已过期，后续文档必须以功能分支实际提交和验收证据为准。
 
 以下持久事项仍未执行：

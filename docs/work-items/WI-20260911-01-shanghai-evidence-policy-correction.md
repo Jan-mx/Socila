@@ -1,7 +1,7 @@
 # WI-20260911-01：上海官方原文采集与政策纠偏
 
 > Author: Jan
-> Status: Reopened（代码与隔离证据已交付；MinIO运行时原件同步及独立复审待闭环）
+> Status: Ready for independent review（2026-09-12 MinIO原件链路修复交付：18/18测试+真实23件演练10步全ok；独立复审确认前不标记Accepted）
 > Updated: 2026-09-12
 
 ## Work Item
@@ -69,3 +69,10 @@
 - Git证据目录中的23份上海原件不能替代架构规定的MinIO运行时原件；当前采集脚本只写本地`docs/.../evidence`，尚未完成`policy-originals/originals/<sha256>`上传和RAG `object_key`对账。
 - 任务验收不得把“证据文件已提交”表述为“MinIO原件已入库”。
 - 闭环条件：每份原件在MinIO存在同字节对象，bucket/key、对象SHA、`meta.json`和RAG数据库记录一致，并有恢复演练证据。
+
+## 修复交付记录（2026-09-12，MinIO原件链路闭环）
+
+- 实现：`services/agent/agent/rag/evidence_sync.py`（`PolicyEvidenceSync`，audit/plan/apply/verify四模式；复用`agent/rag/storage.py`的MinIO/内存ObjectStore、`migrations/0003_rag_schema.sql`的rag.sources/fetches/document_versions、`capture-official-page.mjs`产出目录布局；bucket固定`policy-originals`、对象键固定`originals/<sha256>`；错bucket/远程endpoint/policyops库名连接前拒绝；对象冲突拒绝覆盖；输出清单与错误路径统一凭据redact）；CLI入口`python -m agent.rag.evidence_sync`；编排`scripts/rag-evidence-drill.mjs`；配置模板`config/runtime.env.example`默认bucket改为`policy-originals`（与`storage.py`一致，Compose不覆盖）。
+- TDD：RED=`test_rag_evidence_sync.py`整体ModuleNotFoundError（15例）；GREEN=18/18（守卫与枚举7例零依赖；隔离DB集成10例：上传+RAG登记/幂等no-op/冲突拒绝/缺记录/DB content_hash漂移/错object_key/对象下载SHA漂移/plan零写入/verify ok；真实MinIO备份→全新实例恢复四方对账1例）。
+- 真实23件原件隔离演练（`scripts/rag-evidence-drill.mjs`，10步全ok，证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）：audit预态23缺失（exit4）→plan 23 uploads零写入→apply 23上传+rag.sources(3域名)/fetches/document_versions登记+verify→幂等复跑uploaded=0/noop=23→守卫反例（错bucket/远程endpoint/policyops库名均exit2）→OBJECT_CONFLICT拒绝且对象字节不变→pg_dump+23对象逐字节备份（SHA清单）→全新数据库pg_restore+全新MinIO回填→恢复副本四方对账verify ok→证据文件零密钥。22/23份原件有DSL evidence引用且SHA全部一致；DOC-SH-EMPLOYER-SUBSIDY-BASIS-2024为政策依据辅助页，无DSL引用（清单`dslRefs:0`如实报告，不作为阻断）。
+- 边界：全程仅隔离MinIO（`shv2-fix-minio-a/b`:54960/54961）与隔离PostgreSQL（`shv2-fix-pg`:54956）；生产MinIO（socila-minio）与持久policyops未连接未写入；持久对象同步/恢复对账须另行fresh授权。

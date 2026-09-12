@@ -217,9 +217,9 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 8. 防误写：数据库名为`policyops`时apply在任何连接前拒绝（需`RCL_REWRITE_ALLOW_PERSISTENT=1`）；持久执行禁止`RCL_REWRITE_ALLOW_DIRTY`与`RCL_REWRITE_INJECT_FAILURE_AT`（仅隔离演练使用）。
 9. 隔离演练重放：`RCL_REWRITE_DRILL_CONTAINER=<容器> RCL_REWRITE_DRILL_PORT=<端口> node scripts/rcl-rewrite-drill-v2.mjs`——全新库上完整走baseline→generate-v2→audit/plan/守卫反例→apply→verify/noop→0019×2幂等→post dump第三实例恢复对账→计数/审计核对，并输出证据JSON。
 
-## SHV2政策原件MinIO同步与恢复runbook（待实现、待授权）
+## SHV2政策原件MinIO同步与恢复runbook（隔离流程已实现并演练；持久执行待授权）
 
-> Git中的`docs/refactor/policy-ops-agent/reports/**/evidence/`是审计夹具，不是运行时对象存储。MinIO同步、生产bucket写入和恢复验证属于独立持久操作；必须先由修复任务在隔离MinIO证明流程，再针对fresh对象清单取得用户明确授权。
+> Git中的`docs/refactor/policy-ops-agent/reports/**/evidence/`是审计夹具，不是运行时对象存储。同步入口已实现（`services/agent/agent/rag/evidence_sync.py`，CLI `python -m agent.rag.evidence_sync`），2026-09-12在隔离MinIO+隔离PostgreSQL完成真实23件原件的10步演练（含pg_dump+逐对象备份、全新库+全新MinIO恢复、恢复副本四方对账；证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）。对生产MinIO/持久policyops的同步仍属独立持久操作，须针对fresh对象清单取得用户明确授权。
 
 1. 以证据目录中每个`meta.json.sha256`为内容地址，目标bucket固定`policy-originals`，对象键固定`originals/<sha256>`；禁止使用文件名或可变URL作为唯一键。
 2. 上传前核对原件文件存在、字节SHA等于`meta.json`和DSL evidence；任一不符停止。
@@ -229,3 +229,26 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 6. 备份前同时记录PostgreSQL表/sequence清单和MinIO对象清单；执行既有PostgreSQL dump及MinIO mirror，禁止只备份其中一侧。
 7. 在全新PG17+pgvector和全新MinIO实例恢复；逐对象比较字节SHA，并验证DocumentTree、Markdown、Chunk和引用仍能由`object_key`回溯到原件。
 8. 持久MinIO同步未获授权时，只允许生成只读audit/plan和隔离演练证据；不得连接生产MinIO执行put、覆盖或删除。
+
+## SHV2政策原件同步命令（隔离环境实测）
+
+```bash
+# audit（只读对账；--database-url可省略则只对账对象层）
+uv run --project services/agent python -m agent.rag.evidence_sync audit   --evidence-dir docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000   --dsl-root dsl/regions --database-url "$DRILL_URL"
+
+# plan（输出待上传清单，零写入）
+uv run --project services/agent python -m agent.rag.evidence_sync plan ... --out rag-plan.json
+
+# apply（幂等上传+rag.sources/fetches/document_versions登记+apply后verify）
+uv run --project services/agent python -m agent.rag.evidence_sync apply ...
+
+# verify（逐对象下载重算SHA+数据库记录核对；恢复副本上重跑即"恢复后四方对账"）
+uv run --project services/agent python -m agent.rag.evidence_sync verify ...
+
+# 备份恢复编排（隔离PG容器+两个隔离MinIO endpoint）
+RAG_DRILL_PG_CONTAINER=<容器> RAG_DRILL_PG_PORT=<端口> RAG_DRILL_MINIO_ENDPOINT=<隔离MinIO> RAG_DRILL_MINIO_RESTORE_ENDPOINT=<全新MinIO> RAG_DRILL_MINIO_ACCESS_KEY=... RAG_DRILL_MINIO_SECRET_KEY=... node scripts/rag-evidence-drill.mjs
+```
+
+- 对象存储凭据从`AGENT_MINIO_ENDPOINT/ACCESS_KEY/SECRET_KEY(/SECURE)`读取；`AGENT_MINIO_BUCKET`默认即`policy-originals`（固定值，其他bucket在连接前拒绝）。
+- 守卫：非本机endpoint默认拒绝（`RAG_EVIDENCE_ALLOW_REMOTE=1`仅限隔离演练显式放行）；目标库名`policyops`默认拒绝（`RAG_EVIDENCE_ALLOW_PERSISTENT=1`仅限fresh授权）；对象已存在且SHA不一致→`OBJECT_CONFLICT`拒绝覆盖。
+- 输出（stdout与`--out`文件）只含docId/bucket/objectKey/size/contentType/sha256/dslRefs/记录ID，连接串口令在错误路径统一redact。

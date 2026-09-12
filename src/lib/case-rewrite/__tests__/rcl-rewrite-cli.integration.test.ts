@@ -353,6 +353,23 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     const byType = { case: 0, showcase_case: 0, test: 0 };
     for (const e of entries) byType[e.entityType as keyof typeof byType] += 1;
     expect(byType).toEqual({ case: 36, showcase_case: 36, test: 36 });
+
+    // 业务content_hash列（2026-09-12独立审查契约）：36 case+36 showcase逐行等于
+    // 对应entry的new_content_hash（tests表无该列）。
+    const entryHash = new Map(entries.map((e) => [`${e.entityType}/${e.entityId}`, e.newContentHash]));
+    const caseHashRows = await db.execute(sql`SELECT id, content_hash FROM cases ORDER BY id`);
+    for (const r of caseHashRows.rows as Array<{ id: number; content_hash: string | null }>) {
+      expect(r.content_hash, `case ${r.id} content_hash应为V2目标hash`).toBe(entryHash.get(`case/${r.id}`));
+    }
+    const showcaseHashRows = await db.execute(sql`SELECT id, content_hash FROM showcase_cases ORDER BY id`);
+    for (const r of showcaseHashRows.rows as Array<{ id: number; content_hash: string | null }>) {
+      expect(r.content_hash, `showcase ${r.id} content_hash应为V2目标hash`).toBe(entryHash.get(`showcase_case/${r.id}`));
+    }
+  });
+
+  it("tests表无content_hash列（schema契约：不新增该列）", async () => {
+    const cols = await db.execute(sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'tests' AND column_name = 'content_hash'`);
+    expect(cols.rows).toHaveLength(0);
   });
 
   it("verify：最终状态、批次与entries审计一致 → ok", () => {
@@ -375,7 +392,27 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     expect(after.entries).toBe(before.entries);
   });
 
-  it("applied状态下行被篡改 → 复跑返回稳定state drift（零写入）；从entries.after恢复后复跑noop", async () => {
+  it("业务content_hash被篡改 → verify失败；恢复审计hash后verify通过（case与showcase各一）", { timeout: 600_000 }, async () => {
+    const caseEntry = (await db.select().from(caseRewriteEntries).where(eq(caseRewriteEntries.entityType, "case")).limit(1))[0];
+    const scEntry = (await db.select().from(caseRewriteEntries).where(eq(caseRewriteEntries.entityType, "showcase_case")).limit(1))[0];
+    // 篡改case业务hash（该列不在指纹与排除hash内，仅verify逐条核对可发现）。
+    await db.execute(sql`UPDATE cases SET content_hash = ${"f".repeat(64)} WHERE id = ${caseEntry.entityId}`);
+    const badCase = runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
+    expect(badCase.code, badCase.stdout.slice(0, 400)).toBe(5);
+    expect(parseOut<{ ok: boolean; problems: string[] }>(badCase, "verify-bad-case").problems.some((p) => /content_hash/i.test(p))).toBe(true);
+    await db.execute(sql`UPDATE cases SET content_hash = ${caseEntry.newContentHash} WHERE id = ${caseEntry.entityId}`);
+    // 篡改showcase业务hash。
+    await db.execute(sql`UPDATE showcase_cases SET content_hash = ${"e".repeat(64)} WHERE id = ${scEntry.entityId}`);
+    const badSc = runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
+    expect(badSc.code).toBe(5);
+    expect(parseOut<{ ok: boolean; problems: string[] }>(badSc, "verify-bad-sc").problems.some((p) => /content_hash/i.test(p))).toBe(true);
+    await db.execute(sql`UPDATE showcase_cases SET content_hash = ${scEntry.newContentHash} WHERE id = ${scEntry.entityId}`);
+    const ok = runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
+    expect(ok.code, ok.stderr.slice(0, 400)).toBe(0);
+    expect(parseOut<{ ok: boolean }>(ok, "verify-restored").ok).toBe(true);
+  });
+
+  it("applied状态下行被篡改 → 复跑返回稳定state drift（零写入）；从entries.after恢复后复跑noop", { timeout: 600_000 }, async () => {
     const victim = (await db.select().from(caseRewriteEntries).where(eq(caseRewriteEntries.entityType, "case")).limit(1))[0];
     const after = victim.after as Record<string, unknown>;
     const originalCaseText = String(after.case_text);
@@ -419,8 +456,9 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     expect(noop).toHaveLength(1);
   });
 
-  it("故障点注入：事务内失败整体回滚（无批次、业务行保持V1、指纹不变）", { timeout: 600_000 }, async () => {
+  it("故障点注入：事务内失败整体回滚（无批次、业务行保持V1、指纹与业务content_hash不变）", { timeout: 600_000 }, async () => {
     await resetToV1FromEntries(planFile);
+    const hashBefore = await db.execute(sql`SELECT id, content_hash FROM cases ORDER BY id`);
     const inject = runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), {
       ...DIRTY_ENV,
       RCL_REWRITE_INJECT_FAILURE_AT: "after_updates",
@@ -429,6 +467,9 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     expect(await countBatches()).toBe(0);
     const v1Left = (await db.select({ n: sql<number>`count(*)` }).from(cases).where(eq(cases.generatorVersion, "RCL-GEN-1.0")))[0].n;
     expect(Number(v1Left)).toBe(36);
+    // 业务content_hash随事务整体回滚：与注入前逐行一致。
+    const hashAfter = await db.execute(sql`SELECT id, content_hash FROM cases ORDER BY id`);
+    expect(JSON.stringify(hashAfter.rows)).toBe(JSON.stringify(hashBefore.rows));
     const audit = parseOut<{ sourceFingerprint: string }>(
       runCli(REWRITE_CLI, ["audit", "--generated", generated], DIRTY_ENV),
       "audit-3",

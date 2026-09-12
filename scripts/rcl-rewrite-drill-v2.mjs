@@ -188,19 +188,31 @@ try {
     if (!/0 mismatches|一致|"ok": true|exit 0/.test(reconcile) && !reconcile.includes("MATCH")) {
       // restore-reconcile不一致时退出码非0（run已抛错）；此处仅记录摘要。
     }
+    // 完整dump恢复后业务content_hash仍一致：在恢复副本上重跑rewrite verify
+    // （含业务content_hash列逐条核对——2026-09-12独立审查契约）。
+    const restoredVerify = run(process.execPath, [TSX_CLI, path.join(ROOT, "scripts", "rcl-case-rewrite-v2.mjs"), "verify", "--generated", path.join(STORAGE, "generated-scenarios-v2.json"), "--plan-file", planFile], { DATABASE_URL: RESTORE_URL }, "restored-verify");
+    const rv = parseJsonOut(restoredVerify, "restored-verify");
+    if (!rv.ok) throw new Error(`恢复副本verify失败：${(rv.problems ?? []).join("；")}`);
+    return { restoredVerify: "ok" };
   });
 
-  step("最终计数与审计核对（36/36/80、1批次、108entries）", () => {
+  step("最终计数与审计核对（36/36/80、1批次、108entries、业务hash一致）", () => {
     const out = docker(["psql", "-U", "postgres", "-d", DB, "-tAc",
       `SELECT (SELECT count(*) FROM cases)||'/'||(SELECT count(*) FROM showcase_cases)||'/'||(SELECT count(*) FROM tests)||'/'||
        (SELECT count(*) FROM case_rewrite_batches)||'/'||(SELECT count(*) FROM case_rewrite_entries)||'/'||
-       (SELECT count(*) FROM cases WHERE generator_version='RCL-GEN-2.0' AND case_text IS NOT NULL AND transcript_text IS NULL)`]);
-    const [casesN, showcasesN, testsN, batches, entries, v2clean] = out.trim().split("/");
+       (SELECT count(*) FROM cases WHERE generator_version='RCL-GEN-2.0' AND case_text IS NOT NULL AND transcript_text IS NULL)||'/'||
+       (SELECT count(*) FROM cases c JOIN case_rewrite_entries e ON e.entity_type='case' AND e.entity_id=c.id WHERE c.content_hash IS DISTINCT FROM e.new_content_hash)||'/'||
+       (SELECT count(*) FROM showcase_cases s JOIN case_rewrite_entries e ON e.entity_type='showcase_case' AND e.entity_id=s.id WHERE s.content_hash IS DISTINCT FROM e.new_content_hash)||'/'||
+       (SELECT count(*) FROM cases WHERE content_hash IS NOT NULL)||'/'||
+       (SELECT count(*) FROM showcase_cases WHERE content_hash IS NOT NULL)`]);
+    const [casesN, showcasesN, testsN, batches, entries, v2clean, caseHashDrift, scHashDrift, caseHashSet, scHashSet] = out.trim().split("/");
     const counts = `${casesN}/${showcasesN}/${testsN}`;
     if (counts !== "36/36/80") throw new Error(`最终计数 ${counts} ≠ 36/36/80`);
     if (batches !== "1" || entries !== "108") throw new Error(`审计 ${batches}批次/${entries}entries ≠ 1/108`);
     if (v2clean !== "36") throw new Error(`V2干净case ${v2clean} ≠ 36`);
-    return { counts, batches, entries, v2clean };
+    if (caseHashDrift !== "0" || scHashDrift !== "0") throw new Error(`业务content_hash与审计不一致：case漂移${caseHashDrift}/showcase漂移${scHashDrift}`);
+    if (caseHashSet !== "36" || scHashSet !== "36") throw new Error(`业务content_hash未全部写入：case ${caseHashSet}/showcase ${scHashSet} ≠ 36/36`);
+    return { counts, batches, entries, v2clean, businessHashDrift: `${caseHashDrift}/${scHashDrift}`, businessHashSet: `${caseHashSet}/${scHashSet}` };
   });
 } catch {
   // failed=true已记录

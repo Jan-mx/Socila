@@ -1,0 +1,127 @@
+{
+  "drill": "rag-evidence-sync",
+  "container": "shv2-fix-pg",
+  "port": "54956",
+  "primaryMinio": "127.0.0.1:54960",
+  "restoreMinio": "127.0.0.1:54961",
+  "database": "rag_drill_c7f571",
+  "restoreDatabase": "rag_drill_c7f571_restore",
+  "finishedAt": "2026-09-12T04:14:59.791Z",
+  "failed": false,
+  "results": [
+    {
+      "name": "全新演练库（agent.migrate含rag schema）+ 清空隔离bucket",
+      "ok": true,
+      "ms": 4193,
+      "detail": {
+        "database": "rag_drill_c7f571",
+        "primaryEndpoint": "127.0.0.1:54960",
+        "restoreEndpoint": "127.0.0.1:54961"
+      }
+    },
+    {
+      "name": "audit预态：23对象缺失+rag记录缺失 → exit 4",
+      "ok": true,
+      "ms": 1392,
+      "detail": {
+        "docs": 23,
+        "missingObjects": 23,
+        "problems": 69
+      }
+    },
+    {
+      "name": "plan：23 uploads且零冲突、零写入",
+      "ok": true,
+      "ms": 2436,
+      "detail": {
+        "plannedUploads": 23,
+        "bucketObjectsAfterPlan": 0
+      }
+    },
+    {
+      "name": "apply：23对象上传+rag登记+verify通过",
+      "ok": true,
+      "ms": 2242,
+      "detail": {
+        "uploaded": 23,
+        "fetches": 23,
+        "versions": 23,
+        "manifestEntries": 23
+      }
+    },
+    {
+      "name": "verify：23对象SHA与rag记录对账通过",
+      "ok": true,
+      "ms": 1697,
+      "detail": {
+        "ok": true,
+        "objects": 23
+      }
+    },
+    {
+      "name": "幂等：复跑apply uploaded=0/noop=23",
+      "ok": true,
+      "ms": 2155,
+      "detail": {
+        "uploaded": 0,
+        "noopObjects": 23
+      }
+    },
+    {
+      "name": "守卫反例：错bucket/远程endpoint/policyops库名 → 拒绝",
+      "ok": true,
+      "ms": 1927,
+      "detail": {
+        "wrongBucket": 2,
+        "remoteEndpoint": 2,
+        "persistentDb": 2
+      }
+    },
+    {
+      "name": "冲突对象拒绝覆盖（OBJECT_CONFLICT且零写入）",
+      "ok": true,
+      "ms": 5659,
+      "detail": {
+        "conflictRefused": true,
+        "objectPreserved": true,
+        "repaired": true
+      }
+    },
+    {
+      "name": "备份：pg_dump + 逐对象下载（sha256清单）",
+      "ok": true,
+      "ms": 1503,
+      "detail": {
+        "dumpBytes": 34249,
+        "backupObjects": 23
+      }
+    },
+    {
+      "name": "恢复：全新数据库pg_restore + 全新MinIO回填",
+      "ok": true,
+      "ms": 23064,
+      "detail": {
+        "restoreDb": "rag_drill_c7f571_restore",
+        "restoredObjects": 23
+      }
+    },
+    {
+      "name": "恢复副本四方对账：verify（恢复DB+恢复MinIO）ok",
+      "ok": true,
+      "ms": 1847,
+      "detail": {
+        "ok": true,
+        "objects": 23,
+        "database": "rag_drill_c7f571_restore"
+      }
+    },
+    {
+      "name": "残留敏感扫描：证据文件与演练输出零密钥",
+      "ok": true,
+      "ms": 12,
+      "detail": {
+        "filesScanned": 3
+      }
+    }
+  ]
+}

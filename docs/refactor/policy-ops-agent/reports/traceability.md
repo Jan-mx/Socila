@@ -226,14 +226,14 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 - 门禁（2026-09-11本地新鲜）：`test:db`（全新库）29文件/156零skip；tsc/eslint/build退出0；pytest integration 20/20零skip+非集成94；Chromium E2E 23/23（V2终态分支：shv2_e2e改写planHash `fe92d7d8…` verify ok）；scan-secrets 914零命中；gitleaks全历史98提交经ADR-0009精确allowlist（哨兵通过）复扫no leaks；隔离演练9步全ok。
 - 边界：持久policyops未连接未写入；0019持久执行须另行fresh授权。
 
-## SHV2独立审查修复映射（2026-09-12，Reopened）
+## SHV2独立审查修复映射（2026-09-12，Reopened→修复交付待独立复审）
 
-| 审查需求 | 当前缺口 | 计划实现 | 必须新增/更新的测试 | 状态 |
+| 审查需求 | 当前缺口 | 实际实现 | 测试/证据（2026-09-12本地新鲜执行） | 状态 |
 | --- | --- | --- | --- | --- |
-| SHV2-NFR-002/007 MinIO运行时原件 | Git evidence已提交，但未上传运行时MinIO，未登记/核对RAG `object_key` | 幂等同步器：`policy-originals/originals/<sha256>`；对象清单；Git/MinIO/evidence/RAG四方对账；全新MinIO恢复 | 对象不存在、已有一致对象no-op、已有冲突对象拒绝、SHA/size/content-type/object_key漂移、恢复后对象与DocumentTree回溯 | Reopened |
-| SHV2-FR-019/020 业务hash一致性 | rewrite计划/审计有`new_content_hash`，但业务表`cases.content_hash`和`showcase_cases.content_hash`未证明同步 | 原位apply写入V2业务hash；verify读取业务列并与规范化行hash、rewrite entry逐项比较 | 36 cases+36 showcases业务列一致；篡改任一业务hash后verify失败；故障回滚与复跑noop保持 | Reopened |
-| SHV2-NFR-008 完整Node门禁 | 完整`npm test`842/843，migration当前工作树用例默认5秒超时；单文件7/7通过 | 为真实文件/Git扫描设置稳定显式超时或降低扫描耗时，不改变断言 | 标准完整`npm test`连续新鲜运行零失败、零skip；保留单文件契约 | Reopened |
-| 文档事实一致性 | PRD仍含“仅完成PRD”，WI/验收报告误标最终Accepted | 同步PRD、三个WI、验收报告、架构、测试、运维和PROGRESS | 文档状态/分支/SHA/阻塞项一致性检查与相对链接检查 | 本次docs更新 |
+| SHV2-NFR-002/007 MinIO运行时原件 | Git evidence已提交，但未上传运行时MinIO，未登记/核对RAG `object_key` | `services/agent/agent/rag/evidence_sync.py`（`PolicyEvidenceSync` audit/plan/apply/verify；bucket固定`policy-originals`、键`originals/<sha256>`、桶/远程endpoint/policyops库名守卫、凭据redact）；CLI `python -m agent.rag.evidence_sync`；`scripts/rag-evidence-drill.mjs`（备份恢复对账编排） | `services/agent/tests/test_rag_evidence_sync.py` 18/18（零DB守卫7例+隔离DB集成10例+真实MinIO备份恢复1例；RED=ModuleNotFoundError）；真实23件原件演练10步全ok（audit预态23缺失→plan零写入→apply 23上传+RAG登记→verify→幂等noop→守卫反例→OBJECT_CONFLICT拒绝覆盖→pg_dump+逐对象备份→全新PG+全新MinIO恢复→恢复副本四方对账verify ok→输出零密钥；证据`rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）；配置模板`runtime.env.example`默认bucket改`policy-originals` | 修复交付（待独立复审） |
+| SHV2-FR-019/020 业务hash一致性 | rewrite计划/审计有`new_content_hash`，但业务表`cases.content_hash`和`showcase_cases.content_hash`未证明同步 | `rewrite-v2.ts`：buildRewritePlan先按排除`content_hash`的投影算目标hash再写入after投影（防循环）；apply同事务UPDATE业务`content_hash`并单独核对列值；verify逐条显式读取业务`content_hash`核对；verifyPlanBody校验before/after携带业务hash且test条目无该键 | 单元RED 2例失败→GREEN 17/17（after=目标hash/防循环列值无关/verifyPlanBody三反例）；CLI集成10/10（新增：36+36业务列逐行=entry.new_content_hash、tests无content_hash列schema契约、篡改case/showcase业务hash→verify退出5、注入回滚业务hash逐行不变）；隔离演练10步全ok（最终核对业务hash漂移0/0、36/36全写入；post dump恢复副本verify ok；证据`rewrite-drill-evidence-2026-09-12T04-56-15-244Z.json`） | 修复交付（待独立复审） |
+| SHV2-NFR-008 完整Node门禁 | 完整`npm test`842/843，migration当前工作树用例默认5秒超时；单文件7/7通过 | `migration-lf.contract.test.ts`：blobBytes改为单次`git cat-file --batch`批量读取+缓存（60次git子进程→1次）；两个扫描用例加显式30秒超时（同文件既有策略）；断言零改动 | RED复现：完整套件842/843、目标用例5243ms超5s默认值；修复后单文件7/7（469ms）；标准完整`npm test`连续两次零失败零skip（见验收报告§5） | 修复交付（待独立复审） |
+| 文档事实一致性 | PRD仍含“仅完成PRD”，WI/验收报告误标最终Accepted | 本轮同步PRD、三个WI、验收报告、架构、测试、运维和PROGRESS；状态统一为“Ready for independent review”，不自行标记最终Accepted | 文档状态/分支/SHA/阻塞项一致性检查与相对链接检查 | 本次docs更新 |
 
-- 当前分支/远端：`codex/shanghai-case-v2@f583adc`；目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并。
-- 持久边界：修复任务只允许隔离数据库和隔离MinIO；生产MinIO、持久policyops、政策物化、快照/release及案例回填均需未来fresh授权。
+- 当前分支/远端：`codex/shanghai-case-v2`（修复提交`fix: 闭环案例V2原件与哈希审查问题`，SHA以推送为准）；目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并。完整历史Gitleaks 100提交零发现（新增`test_rag_evidence_sync.py`脱敏哨兵`generic-api-key`误报经人工核实按ADR-0009登记精确allowlist，哨兵回归3场景全过）。
+- 持久边界：修复全程仅隔离数据库（容器`shv2-fix-pg`:54956、`shv2-task2-pg`:54955）与隔离MinIO（`shv2-fix-minio-a/b`:54960/54961）；生产MinIO、持久policyops、政策物化、快照/release及案例回填均需未来fresh授权。

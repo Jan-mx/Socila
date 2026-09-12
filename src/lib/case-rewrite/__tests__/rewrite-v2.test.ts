@@ -33,7 +33,7 @@ import {
   type RewritePlan,
 } from "../rewrite-v2";
 import { generateShowcaseScenariosV2 } from "@/lib/case-governance/generator-v2";
-import { rowContentHash, CASE_INFRA_COLUMNS } from "@/lib/case-governance/hashes";
+import { rowContentHash, CASE_INFRA_COLUMNS, SHOWCASE_INFRA_COLUMNS } from "@/lib/case-governance/hashes";
 import { computeExpectedInMemory } from "@/lib/case-governance/__tests__/engine-chain-v2";
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -76,6 +76,8 @@ function v1Fixtures(source: GeneratedSource) {
       input: s.input,
       expected: {},
       assertions: s.assertions.map((a) => ({ ...a, value: null })),
+      // DB行形状：cases.content_hash列（V1基线值可为任意旧值/NULL；hash计算排除该列）。
+      content_hash: `7${String(i).padStart(3, "0")}`.padEnd(64, "0"),
     });
     showcaseRows.push({
       id: 200 + i,
@@ -105,6 +107,8 @@ function v1Fixtures(source: GeneratedSource) {
       quality_breakdown: {},
       multi_labels: s.tags,
       assertions: s.assertions.map((a) => ({ ...a, value: null })),
+      // DB行形状：showcase_cases.content_hash列（V1基线旧值）。
+      content_hash: `8${String(i).padStart(3, "0")}`.padEnd(64, "0"),
     });
     testRows.push({
       id: 300 + i,
@@ -440,5 +444,67 @@ describe("SHV2-FR-023 参数与指纹守卫（单元层）", () => {
     const changedRel = structuredClone(RELEASES) as Array<Record<string, unknown>>;
     changedRel[0] = { ...changedRel[0], status: "inactive" };
     expect(rowsFingerprint({ cases: caseRows, showcases: showcaseRows, tests: testRows, snapshots: SNAPSHOTS, releases: changedRel })).not.toBe(f1);
+  });
+});
+
+describe("SHV2-FR-020 业务content_hash同步（2026-09-12独立审查闭环）", () => {
+  it("case/showcase条目：after.content_hash=newContentHash、before保留旧业务hash；test条目无content_hash键", async () => {
+    const { plan } = await buildTestPlan();
+    for (const e of plan.entries) {
+      if (e.entityType === "test") {
+        expect("content_hash" in e.after, `test ${e.entityId} 不应有content_hash键`).toBe(false);
+        expect("content_hash" in e.before).toBe(false);
+        continue;
+      }
+      expect(e.after.content_hash, `${e.entityType}/${e.entityId} after应携带V2业务hash`).toBe(e.newContentHash);
+      expect(e.before.content_hash, `${e.entityType}/${e.entityId} before应保留旧业务hash`).toBe(
+        e.entityType === "case" ? `7${String(e.entityId - 100).padStart(3, "0")}`.padEnd(64, "0") : `8${String(e.entityId - 200).padStart(3, "0")}`.padEnd(64, "0"),
+      );
+      // 防循环：newContentHash = 排除content_hash列后的规范化业务行SHA（用after行重算仍一致）。
+      const cols = e.entityType === "case" ? CASE_INFRA_COLUMNS : SHOWCASE_INFRA_COLUMNS;
+      expect(rowContentHash(e.after, cols), `${e.entityType}/${e.entityId} 目标hash必须等于排除content_hash后的业务行SHA`).toBe(e.newContentHash);
+    }
+  });
+
+  it("newContentHash排除content_hash列（防循环）：夹具列值不同不改变目标hash与行重算", async () => {
+    const a = await buildTestPlan();
+    // 第二份夹具仅content_hash列取值不同（业务字段完全一致）。
+    const source = a.source;
+    const { caseRows, showcaseRows, testRows } = v1Fixtures(source);
+    for (const r of caseRows) r.content_hash = "a".repeat(64);
+    for (const r of showcaseRows) r.content_hash = "b".repeat(64);
+    const matched = matchRowsToScenarios({ caseRows, showcaseRows, testRows, scenarios: source.scenarios });
+    expect(matched.mismatches).toEqual([]);
+    const b = buildRewritePlan({
+      codeSha: "1".repeat(40),
+      source,
+      targetFingerprint: "f".repeat(64),
+      matched,
+      snapshotRows: SNAPSHOTS,
+      releaseRows: RELEASES,
+      exampleTestRows: [{ id: 900, name: "EX-1", source: "example", jurisdiction_code: "310000", input: {}, expected: {} }],
+    });
+    for (let i = 0; i < a.plan.entries.length; i++) {
+      expect(b.entries[i].newContentHash, `entry ${i} 目标hash不应依赖content_hash列旧值`).toBe(a.plan.entries[i].newContentHash);
+    }
+  });
+
+  it("verifyPlanBody：case/showcase条目业务hash缺失或与newContentHash不一致即报问题；test条目带content_hash键报问题", async () => {
+    const { plan } = await buildTestPlan();
+    expect(verifyPlanBody(plan)).toEqual([]);
+    const staleAfter = structuredClone(plan);
+    const caseEntry = staleAfter.entries.find((e) => e.entityType === "case")!;
+    caseEntry.after = { ...caseEntry.after, content_hash: "0".repeat(64) };
+    expect(verifyPlanBody(staleAfter).some((p) => /content_hash/i.test(p))).toBe(true);
+    const dropped = structuredClone(plan);
+    const scEntry = dropped.entries.find((e) => e.entityType === "showcase_case")!;
+    const { content_hash: _dropped, ...afterNoHash } = scEntry.after;
+    void _dropped;
+    scEntry.after = afterNoHash;
+    expect(verifyPlanBody(dropped).some((p) => /content_hash/i.test(p))).toBe(true);
+    const testWithHash = structuredClone(plan);
+    const tEntry = testWithHash.entries.find((e) => e.entityType === "test")!;
+    tEntry.after = { ...tEntry.after, content_hash: "0".repeat(64) };
+    expect(verifyPlanBody(testWithHash).some((p) => /content_hash/i.test(p))).toBe(true);
   });
 });

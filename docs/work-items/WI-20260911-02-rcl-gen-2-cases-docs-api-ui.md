@@ -1,7 +1,7 @@
 # WI-20260911-02：RCL-GEN-2.0案例、Markdown案例库、API与UI
 
 > Author: Jan
-> Status: Reopened（代码、测试与隔离资产已交付；业务content_hash一致性待独立复审）
+> Status: Ready for independent review（2026-09-12业务content_hash数据库字段契约修复交付：单元17/17+CLI集成10/10+演练10步全ok；独立复审确认前不标记Accepted）
 > Updated: 2026-09-12
 
 ## Work Item
@@ -66,3 +66,10 @@
 
 - V2生成器和case/showcase审计hash已存在，但必须额外验证原位改写后业务列`cases.content_hash`和`showcase_cases.content_hash`与V2目标内容hash一致；当前实现/测试没有形成该数据库字段契约。
 - 在该契约闭环前，不能将“new_content_hash审计字段正确”作为“业务表content_hash正确”的替代证据。
+
+## 修复交付记录（2026-09-12，业务content_hash数据库字段契约闭环）
+
+- 实现（`src/lib/case-rewrite/rewrite-v2.ts`）：`buildRewritePlan`先基于排除`content_hash`基础设施列的业务投影计算V2目标hash（防循环），再把该hash写入case/showcase条目after投影与`content_hash`列（before保留旧业务hash；tests表无该列不写）；`verifyPlanBody`校验case/showcase条目after业务hash=`newContentHash`且test条目无`content_hash`键；apply同事务UPDATE业务`content_hash`并逐条单独核对列值等于计划目标hash；`verifyRewrite`显式读取业务`content_hash`逐条与审计`new_content_hash`核对（篡改即失败）。
+- TDD：RED=单元2例失败（after未携带业务hash、verifyPlanBody不校验）+防循环证明例通过（目标hash与列旧值无关）；GREEN=单元17/17；CLI集成10/10（新增业务hash逐行对账36+36、tests无content_hash列schema契约、篡改case/showcase业务hash→verify退出5并报content_hash问题、恢复审计hash后verify通过、故障注入后业务hash与审计整体回滚）。
+- 隔离演练（`scripts/rcl-rewrite-drill-v2.mjs`10步全ok，证据`rewrite-drill-evidence-2026-09-12T04-56-15-244Z.json`）：最终核对业务hash漂移0/0、36/36全写入；post dump第三实例恢复后在恢复副本上重跑verify（含业务hash核对）通过——“完整dump恢复后hash仍一致”。
+- 边界：仅隔离库（`shv2-fix-pg`:54956的`shv2_fix_rw`/演练库）；持久改写仍须另行fresh授权。

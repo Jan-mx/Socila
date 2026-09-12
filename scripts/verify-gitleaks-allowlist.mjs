@@ -26,6 +26,7 @@ const SCAN_ROOT_IN_CONTAINER = "/scan";
 const ALLOWED_FILES = [
   "testdata/service-jwt-vectors.json",
   "services/agent/tests/test_service_jwt_replay_integration.py",
+  "services/agent/tests/test_rag_evidence_sync.py",
   "src/server/modules/agent-integration/__tests__/draft-imports-route.integration.test.ts",
   "src/server/modules/agent-integration/__tests__/service-jwt-replay.integration.test.ts",
   "dsl/regions/shanghai_dsl_v1/rules/R-500-4050-ELIGIBILITY.json",
