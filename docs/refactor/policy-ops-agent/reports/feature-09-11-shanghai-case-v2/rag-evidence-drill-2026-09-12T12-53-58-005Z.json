@@ -1,0 +1,186 @@
+{
+  "drill": "rag-evidence-sync",
+  "container": "shv2-ctrl-pg",
+  "port": "54957",
+  "primaryMinio": "127.0.0.1:54962",
+  "restoreMinio": "127.0.0.1:54963",
+  "database": "rag_drill_41837b",
+  "restoreDatabase": "rag_drill_41837b_restore",
+  "finishedAt": "2026-09-12T12:53:57.997Z",
+  "failed": false,
+  "results": [
+    {
+      "name": "全新演练库（agent.migrate含rag schema与角色）+ 删除隔离bucket（缺桶起点）",
+      "ok": true,
+      "ms": 3476,
+      "detail": {
+        "database": "rag_drill_41837b",
+        "primaryEndpoint": "127.0.0.1:54962",
+        "restoreEndpoint": "127.0.0.1:54963",
+        "primaryBucketExists": false,
+        "restoreBucketExists": false
+      }
+    },
+    {
+      "name": "audit缺桶预态：BUCKET_MISSING → exit 4零建桶零写入",
+      "ok": true,
+      "ms": 1445,
+      "detail": {
+        "docs": 23,
+        "bucketMissing": true,
+        "zeroBucketCreate": true
+      }
+    },
+    {
+      "name": "plan（缺桶）：确定性输出、bucketExists=false/plannedBucketCreate=true、23 uploads、bucket仍不存在",
+      "ok": true,
+      "ms": 3277,
+      "detail": {
+        "plannedUploads": 23,
+        "deterministic": true,
+        "plannedBucketCreate": true,
+        "bucketStillAbsent": true,
+        "planHash": "5364210b7f0c2676…"
+      }
+    },
+    {
+      "name": "守卫反例A：apply缺--i-am-authorized → exit 2零写入零建桶",
+      "ok": true,
+      "ms": 880,
+      "detail": {
+        "exit": 2,
+        "zeroWrite": true,
+        "bucketStillAbsent": true
+      }
+    },
+    {
+      "name": "守卫反例B：错planHash → exit 4零写入零建桶",
+      "ok": true,
+      "ms": 1396,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true,
+        "bucketStillAbsent": true
+      }
+    },
+    {
+      "name": "守卫反例C：错targetFingerprint → exit 4零写入零建桶",
+      "ok": true,
+      "ms": 1428,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true,
+        "bucketStillAbsent": true
+      }
+    },
+    {
+      "name": "守卫反例D：plan后外部建桶漂移 → exit 4零写入（清除后恢复前置态）",
+      "ok": true,
+      "ms": 2855,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true,
+        "externalDriftRefused": true,
+        "cleaned": true
+      }
+    },
+    {
+      "name": "守卫反例E：audit缺数据库连接 → exit 2",
+      "ok": true,
+      "ms": 286,
+      "detail": {
+        "exit": 2
+      }
+    },
+    {
+      "name": "apply：显式建桶+23对象上传+rag登记（单持锁事务）",
+      "ok": true,
+      "ms": 2930,
+      "detail": {
+        "bucketCreated": true,
+        "uploaded": 23,
+        "objectsInBucket": 23,
+        "fetches": 23,
+        "versions": 23,
+        "manifestEntries": 23
+      }
+    },
+    {
+      "name": "verify：四方对账通过（Git/meta/DSL已在collect固化+对象SHA+rag记录）",
+      "ok": true,
+      "ms": 1214,
+      "detail": {
+        "ok": true,
+        "objects": 23,
+        "scope": "four-way",
+        "bucketExists": true
+      }
+    },
+    {
+      "name": "幂等：复跑同一计划 → noop:true（bucket与对象数不变）",
+      "ok": true,
+      "ms": 2216,
+      "detail": {
+        "noop": true,
+        "uploaded": 0,
+        "objectsStill": 23
+      }
+    },
+    {
+      "name": "object-only verify：显式降级标记（scope/degraded/dbChecked）",
+      "ok": true,
+      "ms": 848,
+      "detail": {
+        "scope": "object-only",
+        "degraded": true
+      }
+    },
+    {
+      "name": "冲突对象拒绝覆盖（对象字节不变；清除后复跑恢复）",
+      "ok": true,
+      "ms": 7312,
+      "detail": {
+        "conflictRefused": true,
+        "objectPreserved": true,
+        "repairedViaReplan": true
+      }
+    },
+    {
+      "name": "备份：pg_dump + 逐对象下载（sha256清单）",
+      "ok": true,
+      "ms": 869,
+      "detail": {
+        "dumpBytes": 36223,
+        "backupObjects": 23
+      }
+    },
+    {
+      "name": "恢复：全新数据库pg_restore + 全新MinIO受控回填（恢复程序显式建桶）",
+      "ok": true,
+      "ms": 17350,
+      "detail": {
+        "restoreDb": "rag_drill_41837b_restore",
+        "restoredObjects": 23
+      }
+    },
+    {
+      "name": "恢复副本四方对账：verify ok + 同计划apply noop",
+      "ok": true,
+      "ms": 2949,
+      "detail": {
+        "ok": true,
+        "objects": 23,
+        "database": "rag_drill_41837b_restore",
+        "restoredNoop": true
+      }
+    },
+    {
+      "name": "残留敏感扫描：证据文件与演练输出零密钥",
+      "ok": true,
+      "ms": 2,
+      "detail": {
+        "filesScanned": 4
+      }
+    }
+  ]
+}

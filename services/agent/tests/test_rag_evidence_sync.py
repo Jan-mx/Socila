@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -30,7 +31,7 @@ from agent.rag.evidence_sync import (
     parse_sync_args,
     plan_hash_of,
 )
-from agent.rag.storage import InMemoryObjectStore
+from agent.rag.storage import InMemoryObjectStore, MinioObjectStore
 
 DRILL = os.environ.get("SOCILA_TEST_DATABASE_URL")
 
@@ -520,19 +521,27 @@ class TestMinioBackupRestore:
     def test_backup_restore_fresh_minio_four_way(self, evidence_env, monkeypatch):
         monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
         from minio import Minio
+        from psycopg import connect
 
         def client(ep: str) -> Minio:
             return Minio(ep, access_key=MINIO_AK, secret_key=MINIO_SK, secure=False)
 
+        def wipe(raw: Minio) -> None:
+            if raw.bucket_exists(EVIDENCE_BUCKET):
+                for obj in raw.list_objects(EVIDENCE_BUCKET, recursive=True):
+                    raw.remove_object(EVIDENCE_BUCKET, obj.object_name)
+                raw.remove_bucket(EVIDENCE_BUCKET)
+
         primary = client(MINIO_EP)
-        if not primary.bucket_exists(EVIDENCE_BUCKET):
-            primary.make_bucket(EVIDENCE_BUCKET)
-        store = _MinioStoreAdapter(primary, EVIDENCE_BUCKET)
+        wipe(primary)  # 演练从“MinIO可达、bucket不存在”开始：零隐式建桶
+        store = MinioObjectStore(MINIO_EP, MINIO_AK, MINIO_SK, EVIDENCE_BUCKET)
         sync = PolicyEvidenceSync(
             evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=DRILL
         )
         plan = sync.build_plan()
-        sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert plan["plannedBucketCreate"] is True
+        result = sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert result["applied"] is True and result["bucketCreated"] is True
         assert sync.verify()["ok"] is True
 
         # 备份：逐对象下载到本地目录（含SHA清单）。
@@ -544,18 +553,13 @@ class TestMinioBackupRestore:
             data = store.get(obj.object_name)
             (backup_dir / obj.object_name.replace("/", "_")).write_bytes(data)
 
-        # 全新MinIO实例：空bucket恢复后四方对账。
+        # 全新MinIO实例：受控恢复（显式建桶+按备份回填，恢复程序自身负责，不属于evidence_sync副作用）。
         fresh = client(RESTORE_EP)
-        if fresh.bucket_exists(EVIDENCE_BUCKET):
-            for obj in fresh.list_objects(EVIDENCE_BUCKET, recursive=True):
-                fresh.remove_object(EVIDENCE_BUCKET, obj.object_name)
-        else:
-            fresh.make_bucket(EVIDENCE_BUCKET)
-        fresh_store = _MinioStoreAdapter(fresh, EVIDENCE_BUCKET)
+        wipe(fresh)
+        fresh_store = MinioObjectStore(RESTORE_EP, MINIO_AK, MINIO_SK, EVIDENCE_BUCKET)
+        fresh.make_bucket(EVIDENCE_BUCKET)
         for obj in objects:
             fresh_store.put(obj.object_name, store.get(obj.object_name), "text/html")
-
-        from psycopg import connect
 
         with connect(DRILL, autocommit=True) as conn:
             conn.execute("TRUNCATE rag.chunks, rag.embeddings, rag.document_trees, rag.document_versions, rag.fetches, rag.sources CASCADE")
@@ -564,6 +568,7 @@ class TestMinioBackupRestore:
         )
         assert restored_sync.verify()["ok"] is False  # 空库：缺rag记录必须失败
         restored_plan = restored_sync.build_plan()
+        assert restored_plan["bucketExists"] is True and restored_plan["plannedBucketCreate"] is False
         restored_sync.apply(
             restored_plan,
             plan_hash=restored_plan["planHash"],
@@ -572,37 +577,198 @@ class TestMinioBackupRestore:
         )
         report = restored_sync.verify()
         assert report["ok"] is True, report["problems"]
+        wipe(primary)
+        wipe(fresh)
+
+# ── MinIO缺桶生命周期（只读命令与拒绝路径零建桶；建桶仅属于授权apply写入段）──
 
 
-class _MinioStoreAdapter:
-    """把Minio客户端适配成ObjectStore协议（测试专用）。"""
+def _wipe_bucket(raw) -> None:
+    if raw.bucket_exists(EVIDENCE_BUCKET):
+        for obj in raw.list_objects(EVIDENCE_BUCKET, recursive=True):
+            raw.remove_object(EVIDENCE_BUCKET, obj.object_name)
+        raw.remove_bucket(EVIDENCE_BUCKET)
 
-    def __init__(self, client, bucket: str) -> None:
-        self._client = client
-        self._bucket = bucket
 
-    def put(self, key: str, content: bytes, content_type: str = "application/octet-stream") -> str:
-        import io
+@pytest.fixture()
+def fresh_minio():
+    """隔离MinIO且policy-originals不存在：每个测试前后清空bucket（自我准备/恢复现场）。"""
+    from minio import Minio
 
-        self._client.put_object(self._bucket, key, io.BytesIO(content), length=len(content), content_type=content_type)
-        return key
+    raw = Minio(MINIO_EP, access_key=MINIO_AK, secret_key=MINIO_SK, secure=False)
+    _wipe_bucket(raw)
+    yield raw
+    _wipe_bucket(raw)
 
-    def get(self, key: str) -> bytes:
-        resp = self._client.get_object(self._bucket, key)
-        try:
-            return resp.read()
-        finally:
-            resp.close()
-            resp.release_conn()
 
-    def exists(self, key: str) -> bool:
-        from minio.error import S3Error
+def _fresh_sync(fresh_minio, evidence_env, monkeypatch):
+    """bucket缺失的隔离同步实例（每个测试先清RAG表，互不污染）。"""
+    from psycopg import connect
 
-        try:
-            self._client.stat_object(self._bucket, key)
-            return True
-        except S3Error:
-            return False
+    monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+    with connect(DRILL, autocommit=True) as conn:
+        conn.execute("TRUNCATE rag.chunks, rag.embeddings, rag.document_trees, rag.document_versions, rag.fetches, rag.sources CASCADE")
+    store = MinioObjectStore(MINIO_EP, MINIO_AK, MINIO_SK, EVIDENCE_BUCKET)
+    return PolicyEvidenceSync(
+        evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=DRILL
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not (DRILL and MINIO_EP),
+    reason="requires SOCILA_TEST_DATABASE_URL + RAG_SYNC_TEST_MINIO_ENDPOINT",
+)
+class TestBucketLifecycle:
+    """SHV2-FR-023/SHV2-NFR-006：构造/audit/plan/verify/拒绝路径零建桶；bucket创建是授权apply的显式写入步骤（plannedBucketCreate进入计划与指纹）。"""
+
+    def test_store_constructor_does_not_create_bucket(self, fresh_minio):
+        store = MinioObjectStore(MINIO_EP, MINIO_AK, MINIO_SK, EVIDENCE_BUCKET)
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is False  # 旧实现在此失败：构造期隐式make_bucket
+        assert store.bucket_exists() is False
+        assert store.ensure_bucket() is True
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is True
+        assert store.ensure_bucket() is False  # 已存在：幂等返回False，不报错
+
+    def test_ensure_bucket_concurrent_exactly_one_creator(self, fresh_minio):
+        from concurrent.futures import ThreadPoolExecutor
+
+        store = MinioObjectStore(MINIO_EP, MINIO_AK, MINIO_SK, EVIDENCE_BUCKET)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            created = list(pool.map(lambda _: store.ensure_bucket(), range(4)))
+        assert created.count(True) == 1, created  # 并发创建恰好一次成功，其余按“已存在”幂等
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is True
+
+    def test_audit_fresh_minio_bucket_missing_zero_write(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        report = sync.audit()
+        assert report["ok"] is False
+        assert any("BUCKET_MISSING" in p for p in report["problems"])
+        assert report["bucketExists"] is False
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is False  # 旧实现：audit构造store时已建桶
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            assert conn.execute("SELECT count(*) FROM rag.fetches").fetchone()[0] == 0
+            assert conn.execute("SELECT count(*) FROM rag.document_versions").fetchone()[0] == 0
+
+    def test_plan_fresh_minio_deterministic_planned_bucket_create_zero_write(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        assert plan["bucketExists"] is False
+        assert plan["plannedBucketCreate"] is True
+        plan2 = sync.build_plan()
+        assert json.dumps(plan, sort_keys=True) == json.dumps(plan2, sort_keys=True)  # 逐字节一致
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is False  # 两次plan后bucket仍不存在
+        assert len(plan["objects"]) == 1 and plan["objects"][0]["objectExists"] is False
+
+    def test_apply_refusals_never_create_bucket(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        with pytest.raises(EvidenceSyncError, match=r"AUTH|授权"):
+            sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=False)
+        with pytest.raises(EvidenceSyncError, match=r"PLAN_HASH|planHash"):
+            sync.apply(plan, plan_hash="0" * 64, target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        with pytest.raises(EvidenceSyncError, match=r"FINGERPRINT|fingerprint"):
+            sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint="0" * 64, i_am_authorized=True)
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is False  # bucket缺失则对象必然不存在
+
+    def test_apply_refuses_evidence_drift_without_creating_bucket(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        (evidence_env["evidence"] / "original.html").write_bytes(HTML + b"drift")
+        with pytest.raises(EvidenceSyncError, match=r"drift|漂移|META_SHA"):
+            sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is False
+
+    def test_apply_refuses_db_state_drift_without_creating_bucket(self, fresh_minio, evidence_env, monkeypatch):
+        from psycopg import connect
+
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        with connect(DRILL, autocommit=True) as conn:
+            conn.execute(
+                "INSERT INTO rag.sources (jurisdiction_code, name, entry_url, domain) VALUES ('310000','x','https://rsj.sh.gov.cn/x','rsj.sh.gov.cn')"
+            )
+            source_id = conn.execute("SELECT id FROM rag.sources WHERE domain='rsj.sh.gov.cn' LIMIT 1").fetchone()[0]
+            conn.execute(
+                "INSERT INTO rag.fetches (source_id, url, status, content_hash, object_key, mime) VALUES (%s,'https://rsj.sh.gov.cn/x',200,%s,%s,'text/html')",
+                (source_id, SHA, f"originals/{SHA}"),
+            )
+        with pytest.raises(EvidenceSyncError, match=r"drift|漂移|状态"):
+            sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is False
+
+    def test_authorized_apply_creates_bucket_uploads_and_verifies(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        result = sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert result["applied"] is True and result["bucketCreated"] is True
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is True
+        objects = list(fresh_minio.list_objects(EVIDENCE_BUCKET, recursive=True))
+        assert [o.object_name for o in objects] == [f"originals/{SHA}"]
+        report = sync.verify()
+        assert report["ok"] is True and report["bucketExists"] is True
+        assert report["verificationScope"] == "four-way" and report["dbChecked"] is True
+
+    def test_reapply_same_plan_noop_after_bucket_created(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        again = sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert again["noop"] is True and again["applied"] is False
+        assert len(list(fresh_minio.list_objects(EVIDENCE_BUCKET, recursive=True))) == 1
+
+    def test_concurrent_apply_single_bucket_single_records(self, fresh_minio, evidence_env, monkeypatch):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from psycopg import connect
+
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        kwargs = {"plan_hash": plan["planHash"], "target_fingerprint": plan["targetFingerprint"], "i_am_authorized": True}
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: sync.apply(plan, **kwargs), range(2)))
+        assert any(r["applied"] for r in results)
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is True
+        with connect(DRILL, autocommit=True) as conn:
+            fetches = conn.execute("SELECT count(*) FROM rag.fetches WHERE object_key=%s", (f"originals/{SHA}",)).fetchone()[0]
+            versions = conn.execute("SELECT count(*) FROM rag.document_versions WHERE content_hash=%s", (SHA,)).fetchone()[0]
+        assert fetches == 1 and versions == 1
+
+    def test_preexisting_bucket_plan_compatible_no_recreate(self, fresh_minio, evidence_env, monkeypatch):
+        fresh_minio.make_bucket(EVIDENCE_BUCKET)  # 模拟bucket已存在（不经受控apply）
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        assert plan["bucketExists"] is True and plan["plannedBucketCreate"] is False
+        result = sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert result["applied"] is True and result["bucketCreated"] is False
+        assert sync.verify()["ok"] is True
+
+    def test_conflicting_object_refused_with_bucket_present(self, fresh_minio, evidence_env, monkeypatch):
+        fresh_minio.make_bucket(EVIDENCE_BUCKET)
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        result = sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert result["applied"] is True
+        key = f"originals/{SHA}"
+        fresh_minio.put_object(EVIDENCE_BUCKET, key, io.BytesIO(OTHER_BYTES), length=len(OTHER_BYTES), content_type="text/html")
+        with pytest.raises(EvidenceSyncError, match=r"CONFLICT|冲突|DRIFT|漂移"):
+            sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert fresh_minio.get_object(EVIDENCE_BUCKET, key).read() == OTHER_BYTES  # 拒绝覆盖
+
+    def test_verify_missing_bucket_fails_without_creating(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        for kwargs, scope, degraded, dbchecked in (
+            ({}, "four-way", False, True),
+            ({"object_only": True}, "object-only", True, False),
+        ):
+            report = sync.verify(**kwargs)
+            assert report["ok"] is False
+            assert any("BUCKET_MISSING" in p for p in report["problems"])
+            assert report["verificationScope"] == scope
+            assert report["degraded"] is degraded and report["dbChecked"] is dbchecked
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is False
 
 
 # ── CLI与凭据不泄露 ──────────────────────────────────────────────────────────

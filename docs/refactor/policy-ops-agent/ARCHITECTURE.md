@@ -136,6 +136,7 @@ flowchart LR
 MinIO对象、RAG元数据与Git审计夹具共同形成来源链，但职责不同：MinIO承载运行时原件，PostgreSQL保存对象定位、版本、解析树和索引，Git夹具为确定性引用测试提供冻结副本。备份恢复必须同时证明PostgreSQL记录、MinIO对象、DocumentTree及其SHA关系一致。
 
 两侧由受控同步入口`services/agent/agent/rag/evidence_sync.py`（CLI `python -m agent.rag.evidence_sync`，audit/plan/apply/verify四模式）连接：枚举指定evidence目录→核对原件字节SHA/meta.json/DSL evidence→按`policy-originals/originals/<sha256>`幂等上传（同SHA no-op、异SHA拒绝覆盖）→登记并核对`rag.sources`/`rag.fetches`/`rag.document_versions`（`object_key`两处一致，`content_hash`=对象SHA）→verify逐对象下载重算SHA。生产endpoint与`policyops`库名默认拒绝；`scripts/rag-evidence-drill.mjs`编排PostgreSQL+MinIO双侧备份到全新实例的恢复对账。
+- **缺桶生命周期（09-12缺桶复审）**：`MinioObjectStore`构造零副作用——不隐式建桶，服务启动/健康检查/模块import/只读命令（audit/plan/verify）均零建桶（SHV2-FR-023/SHV2-NFR-006）。显式接口：`bucket_exists()`只读；`ensure_bucket()`仅在apply通过全部fresh授权校验并取得advisory锁后的写入段调用（返回本次创建/已存在，并发创建幂等，权限与连接错误原样抛出）。audit/verify在bucket缺失时报`BUCKET_MISSING`+ok=false零写入；plan缺桶仍只读生成确定性计划并表达`bucketExists=false`/`plannedBucketCreate=true`（进入planHash与targetFingerprint/finalFingerprint）；不采用Compose无条件初始化建桶——bucket创建与23件原件同步一同进入fresh授权apply。
 
 ## 部署
 

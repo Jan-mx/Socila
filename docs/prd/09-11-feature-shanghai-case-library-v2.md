@@ -541,19 +541,21 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 
 ## 22. 当前PRD交付边界
 
-2026-09-12修复交付后，三个独立审查问题已闭环（证据见验收报告§5与traceability修复映射），状态为Ready for independent review：
+2026-09-12修复交付后，三个独立审查问题已闭环（证据见验收报告§5与traceability修复映射）；同日独立复审再次发现MinIO缺桶生命周期控制缺口并重新打开WI-20260911-01，控制修复完成（证据见验收报告§6/§7与traceability修复映射），状态为Ready for independent review：
 
 - 政策原件MinIO链路：`services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify，bucket固定`policy-originals`、键`originals/<sha256>`）+`scripts/rag-evidence-drill.mjs`；真实23件原件在隔离MinIO/隔离PostgreSQL完成上传、RAG登记、幂等、守卫、冲突拒绝与pg_dump+全新实例恢复四方对账（18/18测试+12项演练全ok；历史审查记录，控制契约复审后见下）；
 - V2业务`content_hash`：apply同事务写入`cases.content_hash`/`showcase_cases.content_hash`（先按排除`content_hash`的投影计算目标hash再写列，防循环），verify逐条显式核对业务列与审计`new_content_hash`；36+36逐行一致、篡改verify失败、故障回滚、复跑noop、post dump恢复副本hash一致（单元17/17+集成10/10+演练10步全ok）；
 - 完整`npm test`：`migration-lf.contract.test.ts`改单次`git cat-file --batch`批量读取+显式30秒超时（断言零改动）；标准完整套件连续两次零失败零skip；
 - 本PRD的历史“仅完成PRD”表述已过期，后续文档必须以功能分支实际提交和验收证据为准；
 - 控制契约复审修复（起点`b5a8d13`，本修复提交HEAD）：evidence_sync apply改为fresh授权计划契约——确定性`build_plan`（schema/version、codeSha、jurisdiction、固定bucket、evidenceManifestHash、MinIO+RAG状态指纹与终态指纹、完整对象清单、计划上传/登记/noop集合、规范化planHash）+apply显式`--i-am-authorized/--plan-hash/--target-fingerprint`并在写入前校验计划结构、HEAD==codeSha、工作树、evidence未漂移与目标状态指纹；完整audit/plan/apply/verify必须连数据库，缺库verify不得ok:true，仅对象层走显式`--object-only`（verificationScope/degraded/dbChecked标记）；文档事实同步（f583adc=历史任务2/3交付SHA、b5a8d13=本次控制修复起点、最终SHA=本修复提交HEAD、演练步骤数按证据JSON如实）。35/35测试+17项演练全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`）。
+- 缺桶生命周期控制修复（起点`82c905b`，本修复提交HEAD）：2026-09-12只读核对生产容器socila-minio为bucketCount=0——生产MinIO同步尚未获得授权、尚未执行，**原件未进入生产MinIO**，任何文档不得表述为已入库；`MinioObjectStore.__init__`在bucket缺失时隐式`make_bucket`使audit/plan/verify等只读命令可能建桶，违反SHV2-FR-023/SHV2-NFR-006与plan/audit零写入契约。修复：构造零副作用，新增显式`bucket_exists()`/`ensure_bucket()`（只读与授权apply写入段边界）；audit/verify缺桶→`BUCKET_MISSING`+ok=false零写入；plan缺桶仍只读确定并表达`bucketExists=false`/`plannedBucketCreate=true`（进入planHash与target/finalFingerprint，schema升级1.1）；建桶仅发生在apply全部fresh授权校验通过并持锁后的写入段；不采用Compose无条件初始化建桶。48/48测试（13缺桶生命周期测试）+17项缺桶起点演练全ok（证据`rag-evidence-drill-2026-09-12T12-53-58-005Z.json`）。
 
 以下持久事项仍未执行：
 
+- 未创建生产MinIO的`policy-originals` bucket（生产bucket必须在独立复审与用户测试通过后，基于生产环境fresh planHash、targetFingerprint与对象清单取得用户单独明确授权，才能由受控apply创建）；
 - 未将政策原件同步到生产MinIO或完成对象恢复对账；
 - 未运行本机持久政策物化、管理员审批、快照/release切换或案例回填；
 - 未在持久`policyops`执行0019迁移或V1→V2原位改写；
 - 未合并`refactor/policy-ops-agent-platform`，未修改`main`，未创建PR、tag或Release。
 
-后续修复必须以本PRD为唯一新增需求入口；三个审查问题闭环并完成独立复审后，才能将Feature改为Accepted。
+后续修复必须以本PRD为唯一新增需求入口；审查问题闭环并完成独立复审后，才能将Feature改为Accepted。

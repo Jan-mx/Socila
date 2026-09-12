@@ -569,3 +569,18 @@
 门禁（本修复提交HEAD代码状态）：35/35 evidence_sync测试、演练17项、pytest 43+106零skip、npm test×2 81文件/846零失败零skip、test:db 29文件/158零skip、tsc/eslint/build 0、Chromium E2E 23/23（含ChatPageClient修复）、citation 32、--check、scan-secrets 926零命中、哨兵、Gitleaks 101提交零发现、git diff --check干净。
 
 状态：**Ready for independent review**（不自行标记Accepted）。目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并；持久policyops与生产MinIO未连接未写入（全程仅隔离`shv2-ctrl-pg`:54957与`shv2-ctrl-minio-a/b`:54962/54963，演练后清理）。
+
+## 2026-09-12缺桶生命周期复审修复（第三轮；起点82c905b，本修复提交HEAD）
+
+独立复审在82c905b基础上发现MinIO缺桶生命周期控制缺口：2026-09-12只读核对生产容器socila-minio为bucketCount=0（与生产同步尚未授权、尚未执行一致，原件未进入生产MinIO），而`storage.py`的`MinioObjectStore.__init__`在bucket缺失时隐式`make_bucket`——audit/plan/verify等只读命令构造store即可能创建`policy-originals`，违反SHV2-FR-023持久默认拒绝、SHV2-NFR-006失败关闭、plan/audit零写入契约与fresh授权覆盖全部持久变化。82c905b已完成的fresh授权计划、四方verify、content_hash、Node超时与E2E修复保留不推翻。
+
+| 缺口 | 修复 | RED→GREEN证据 |
+| --- | --- | --- |
+| 构造期隐式建桶 | `MinioObjectStore.__init__`只建立连接信息；`object_store_from_env`与全部调用方核查（服务启动/健康检查/模块import/只读请求零建桶）；新增显式`bucket_exists()`（只读）与`ensure_bucket()`（仅授权apply持锁写入段；返回本次创建/已存在，并发创建幂等，权限/连接错误原样抛出）；`InMemoryObjectStore`同语义（`with_bucket=False`、缺桶put拒绝）；不新增Compose初始化建桶 | RED=新增`TestBucketLifecycle`13测试，旧实现10失败（构造即建桶`assert True is False`、audit/plan/verify无BUCKET_MISSING/plannedBucketCreate、ensure_bucket缺方法）→GREEN=48/48零skip |
+| audit/verify缺桶误通过/隐式写入 | bucket缺失→`BUCKET_MISSING`问题+ok=false+`bucketExists=false`，零建桶零上传零RAG写入；object-only同样对象层失败且scope/degraded/dbChecked标记准确 | 集成`test_audit_fresh_minio_bucket_missing_zero_write`/`test_verify_missing_bucket_fails_without_creating`（full+object-only） |
+| plan未表达缺桶状态 | 计划新增`bucketExists`/`plannedBucketCreate`（进入planHash与target/finalFingerprint——`_state_fingerprint`纳入bucket存在性）；缺桶时plannedBucketCreate=true、前置指纹含"bucket不存在"、终态指纹含"bucket存在且登记完整"、23件对象清单不变；同状态两次逐字节一致且bucket仍不存在；schema/算法版本升级1.1（旧计划结构校验拒绝） | `test_plan_fresh_minio_deterministic_planned_bucket_create_zero_write`；演练plan步断言两次一致+bucket仍不存在+对象0 |
+| apply建桶时机未授权化 | 建桶仅发生在`--i-am-authorized`+计划结构+planHash+targetFingerprint+HEAD==codeSha+工作树契约+evidenceManifestHash未漂移+当前MinIO/RAG状态==计划前置指纹+endpoint/库名守卫全部通过后的持锁事务内（`ensure_bucket`）；缺授权/错hash/错指纹/漂移→bucket仍不存在、对象0、RAG零变化；apply结果新增`bucketCreated` | 演练守卫反例A-D（未授权/错planHash/错指纹/plan后外部建桶漂移）后bucket仍不存在且对象0；授权apply后bucket存在+恰好23对象 |
+
+门禁（本修复提交HEAD代码状态）：48/48 evidence_sync测试零skip（13缺桶生命周期+35既有）、演练17项缺桶起点全ok（证据`rag-evidence-drill-2026-09-12T12-53-58-005Z.json`）、pytest integration 56/56+非集成106/106零skip、npm test×2 81文件/846零失败零skip、test:db零skip、tsc/eslint/build 0、ruff/mypy 0、Chromium E2E 23/23、citation 32、--check、scan-secrets零命中、哨兵、Gitleaks完整历史零发现、git diff --check干净。
+
+状态：**Ready for independent review**（不自行标记Accepted）。目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并；持久policyops未连接未写入；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；全程仅隔离`shv2-ctrl-pg`:54957与`shv2-ctrl-minio-a/b`:54962/54963，演练后清理。

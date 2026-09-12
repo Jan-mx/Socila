@@ -18,6 +18,12 @@ Git审计夹具中的政策原件（original.html/附件 + meta.json + DSL evide
 - **verify范围契约（控制复审）**：完整audit/plan/apply/verify必须连数据库；缺少数据库时
   完整verify不得返回ok:true；仅对象层检查必须显式`--object-only`（结果带
   verificationScope="object-only"/degraded=true/dbChecked=false标记，不作为四方验收通过）；
+- **缺桶生命周期契约（缺桶复审）**：MinioObjectStore构造与audit/plan/verify/拒绝路径
+  零建桶（SHV2-FR-023持久默认拒绝、SHV2-NFR-006失败关闭）；MinIO可达但bucket缺失时
+  audit/verify返回ok=false+BUCKET_MISSING，plan仍生成确定性只读计划并表达
+  `bucketExists=false/plannedBucketCreate=true`（进入planHash与targetFingerprint/
+  finalFingerprint）；bucket创建只发生在apply通过全部fresh授权校验并取得advisory锁后的
+  显式`ensure_bucket()`写入段；不采用Compose无条件初始化建桶；
 - 幂等：对象已存在且SHA一致→no-op；内容不一致→拒绝覆盖（OBJECT_CONFLICT）；
   并发apply经advisory xact锁串行化并在锁内复查，不产生重复rag记录；
 - 防误写：bucket非`policy-originals`拒绝；非本机MinIO endpoint默认拒绝（需
@@ -46,8 +52,8 @@ from typing import Any
 EVIDENCE_BUCKET = "policy-originals"
 OBJECT_PREFIX = "originals/"
 PIPELINE_VERSION = "rag-evidence-sync-1.0"
-EVIDENCE_SYNC_ALGORITHM_VERSION = "RAG-EVIDENCE-SYNC-1.0"
-PLAN_SCHEMA = "rag-evidence-sync-plan/1.0"
+EVIDENCE_SYNC_ALGORITHM_VERSION = "RAG-EVIDENCE-SYNC-1.1"
+PLAN_SCHEMA = "rag-evidence-sync-plan/1.1"
 _PERSISTENT_DB = "policyops"
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
 _MODES = ("audit", "plan", "apply", "verify")
@@ -241,6 +247,10 @@ def verify_plan_structure(plan: dict[str, Any]) -> list[str]:
     for key in ("plannedUploads", "plannedFetches", "plannedVersions", "noopObjects", "conflicts"):
         if not isinstance(plan.get(key), list):
             problems.append(f"{key}缺失（需列表）")
+    # 缺桶生命周期：计划必须显式表达bucket状态与建桶意图（进入planHash与指纹）。
+    for key in ("bucketExists", "plannedBucketCreate"):
+        if not isinstance(plan.get(key), bool):
+            problems.append(f"{key}缺失（需布尔）")
     return problems
 
 
@@ -352,11 +362,18 @@ class PolicyEvidenceSync:
 
     # ── 对象/数据库状态（指纹数据源）──────────────────────────────────────────
 
-    def _object_states(self, docs: list[SyncDoc]) -> list[dict[str, Any]]:
+    def _object_states(self, docs: list[SyncDoc], *, bucket_exists: bool | None = None) -> list[dict[str, Any]]:
+        """对象层状态枚举（只读）。bucket缺失时短路：不逐件stat（零建桶、零上传），
+        全部对象记为缺失。"""
+        if bucket_exists is None:
+            bucket_exists = self.store.bucket_exists()
         states = []
         for doc in docs:
-            exists = self.store.exists(doc.object_key)
-            object_sha = sha256_bytes(self.store.get(doc.object_key)) if exists else None
+            if bucket_exists:
+                exists = self.store.exists(doc.object_key)
+                object_sha = sha256_bytes(self.store.get(doc.object_key)) if exists else None
+            else:
+                exists, object_sha = False, None
             states.append(
                 {
                     "docId": doc.doc_id,
@@ -397,12 +414,16 @@ class PolicyEvidenceSync:
             }
         return state
 
-    def _state_fingerprint(self, docs: list[SyncDoc], *, assume_applied: bool, conn: Any = None) -> str:
-        """目标状态指纹：对象层+RAG登记层的规范化状态hash。
+    def _state_fingerprint(
+        self, docs: list[SyncDoc], *, assume_applied: bool, conn: Any = None, bucket_exists: bool | None = None
+    ) -> str:
+        """目标状态指纹：bucket存在性+对象层+RAG登记层的规范化状态hash。
         assume_applied=False→当前真实状态（计划targetFingerprint）；
-        assume_applied=True→计划执行后的期望终态（计划finalFingerprint）。
+        assume_applied=True→计划执行后的期望终态（计划finalFingerprint，bucket必存在）。
         conn可传入持锁事务连接（apply锁内重分类），避免并发中间态误判。"""
         db_state = {} if assume_applied else self._db_state(docs, conn=conn)
+        # 终态bucket必存在；前置态取真实bucket存在性。
+        bucket_flag = True if assume_applied else (self.store.bucket_exists() if bucket_exists is None else bucket_exists)
         entries = []
         for doc in sorted(docs, key=lambda d: d.doc_id):
             if assume_applied:
@@ -410,7 +431,7 @@ class PolicyEvidenceSync:
                 fetch_rec, version_rec = True, True
                 version_key: str | None = doc.object_key
             else:
-                obj_exists = self.store.exists(doc.object_key)
+                obj_exists = self.store.exists(doc.object_key) if bucket_flag else False
                 obj_match = obj_exists and sha256_bytes(self.store.get(doc.object_key)) == doc.sha256
                 st = db_state.get(doc.doc_id, {})
                 fetch_rec = bool(st.get("fetchRecorded"))
@@ -428,12 +449,20 @@ class PolicyEvidenceSync:
                     "versionObjectKey": version_key,
                 }
             )
-        return _canonical_sha256({"bucket": self.bucket, "jurisdiction": self.jurisdiction, "docs": entries})
+        return _canonical_sha256(
+            {"bucket": self.bucket, "bucketExists": bucket_flag, "jurisdiction": self.jurisdiction, "docs": entries}
+        )
 
     def audit(self) -> dict[str, Any]:
         docs = self.collect()
         problems: list[str] = []
-        objects = self._object_states(docs)
+        bucket_exists = self.store.bucket_exists()
+        if not bucket_exists:
+            # 缺桶生命周期：audit零写入——不创建bucket、不上传对象、不修改RAG数据库。
+            problems.append(
+                f"BUCKET_MISSING: bucket {self.bucket}不存在（audit零写入，不创建bucket；bucket创建属于授权apply的ensure_bucket写入段）"
+            )
+        objects = self._object_states(docs, bucket_exists=bucket_exists)
         for o in objects:
             if not o["objectExists"]:
                 problems.append(f"{o['docId']}: MinIO对象缺失 {o['objectKey']}")
@@ -453,6 +482,7 @@ class PolicyEvidenceSync:
         return {
             "mode": "audit",
             "bucket": self.bucket,
+            "bucketExists": bucket_exists,
             "jurisdiction": self.jurisdiction,
             "ok": not problems,
             "problems": problems,
@@ -462,14 +492,16 @@ class PolicyEvidenceSync:
     # ── 确定性计划（fresh授权apply的不可变输入）──────────────────────────────
 
     def build_plan(self) -> dict[str, Any]:
-        """确定性计划：schema/version、codeSha、jurisdiction、bucket、evidence/manifest hash、
-        当前MinIO+RAG目标状态指纹与期望终态指纹、完整对象清单、计划上传/登记/noop集合、
-        规范化planHash。同状态重复生成逐字节一致。"""
+        """确定性计划：schema/version、codeSha、jurisdiction、bucket、bucket状态与建桶意图、
+        evidence/manifest hash、当前MinIO+RAG目标状态指纹与期望终态指纹、完整对象清单、
+        计划上传/登记/noop集合、规范化planHash。同状态重复生成逐字节一致；
+        bucket缺失时仍只读生成计划（plannedBucketCreate=true，plan后bucket仍不存在）。"""
         if not self.database_url:
             raise EvidenceSyncError("USAGE", "build_plan需要数据库连接：完整plan必须绑定RAG目标状态指纹")
         docs = self.collect()
         head = git_head()
-        objects = self._object_states(docs)
+        bucket_exists = self.store.bucket_exists()
+        objects = self._object_states(docs, bucket_exists=bucket_exists)
         db_state = self._db_state(docs)
         planned_uploads = [o["docId"] for o in objects if not o["objectExists"]]
         conflicts = [o["docId"] for o in objects if o["objectExists"] and o["objectShaMatches"] is not True]
@@ -482,8 +514,10 @@ class PolicyEvidenceSync:
             "codeSha": head["sha"],
             "jurisdiction": self.jurisdiction,
             "bucket": self.bucket,
+            "bucketExists": bucket_exists,
+            "plannedBucketCreate": not bucket_exists,
             "evidenceManifestHash": evidence_manifest_hash(docs),
-            "targetFingerprint": self._state_fingerprint(docs, assume_applied=False),
+            "targetFingerprint": self._state_fingerprint(docs, assume_applied=False, bucket_exists=bucket_exists),
             "finalFingerprint": self._state_fingerprint(docs, assume_applied=True),
             "objectCount": len(docs),
             "objects": objects,
@@ -547,6 +581,7 @@ class PolicyEvidenceSync:
                 "applied": False,
                 "noop": True,
                 "planHash": plan["planHash"],
+                "bucketCreated": False,
                 "uploaded": 0,
                 "noopObjects": len(docs),
                 "fetches": 0,
@@ -576,6 +611,7 @@ class PolicyEvidenceSync:
                     "applied": False,
                     "noop": True,
                     "planHash": plan["planHash"],
+                    "bucketCreated": False,
                     "uploaded": 0,
                     "noopObjects": len(docs),
                     "fetches": 0,
@@ -583,13 +619,24 @@ class PolicyEvidenceSync:
                     "manifest": [],
                     "verified": True,
                 }
-            # pending：冲突对象先拒绝（禁止覆盖），再幂等上传+登记。
+            # pending：冲突对象先拒绝（禁止覆盖），再显式建桶（仅授权写入段）+幂等上传+登记。
             conflicts = [o for o in self._object_states(docs) if o["objectExists"] and o["objectShaMatches"] is not True]
             if conflicts:
                 raise EvidenceSyncError(
                     "OBJECT_CONFLICT",
                     "MinIO已存在同键不同内容对象，禁止覆盖：" + "；".join(f"{o['docId']}:{o['objectKey']}" for o in conflicts),
                 )
+            # 缺桶生命周期：bucket创建发生在全部fresh授权校验通过并取得advisory锁之后的
+            # 显式ensure_bucket写入段；计划未声明plannedBucketCreate而bucket缺失属状态漂移。
+            bucket_created = False
+            if not self.store.bucket_exists():
+                if not plan.get("plannedBucketCreate"):
+                    raise EvidenceSyncError(
+                        "TARGET_STATE_DRIFT",
+                        f"bucket {self.bucket}缺失但计划未声明plannedBucketCreate：计划与MinIO状态不一致（重新plan）",
+                    )
+                self.store.ensure_bucket()
+                bucket_created = True
             uploaded = 0
             noop = 0
             for doc in docs:
@@ -609,6 +656,7 @@ class PolicyEvidenceSync:
             "applied": True,
             "noop": False,
             "planHash": plan["planHash"],
+            "bucketCreated": bucket_created,
             "uploaded": uploaded,
             "noopObjects": noop,
             "fetches": new_fetches,
@@ -711,18 +759,25 @@ class PolicyEvidenceSync:
         """object_only=False（默认）：完整四方verify——Git原件/meta/DSL已在collect固化，
         此处核对MinIO对象下载SHA与rag.fetches/rag.document_versions记录；缺少数据库时
         必须失败（不得返回ok:true）。object_only=True：显式降级为仅对象层，
-        结果带verificationScope="object-only"/degraded=True/dbChecked=False标记。"""
+        结果带verificationScope="object-only"/degraded=True/dbChecked=False标记。
+        bucket缺失：对象层报BUCKET_MISSING且ok=false（零建桶），不隐式创建bucket。"""
         docs = self.collect()
         problems: list[str] = []
         manifest: list[dict[str, Any]] = []
+        bucket_exists = self.store.bucket_exists()
+        if not bucket_exists:
+            problems.append(
+                f"BUCKET_MISSING: bucket {self.bucket}不存在（verify零写入，不创建bucket；bucket创建属于授权apply的ensure_bucket写入段）"
+            )
         for doc in docs:
             key = doc.object_key
-            if not self.store.exists(key):
-                problems.append(f"{doc.doc_id}: MinIO对象缺失 {key}")
-            else:
-                actual = sha256_bytes(self.store.get(key))
-                if actual != doc.sha256:
-                    problems.append(f"{doc.doc_id}: MinIO对象下载后SHA漂移：{actual} ≠ {doc.sha256}")
+            if bucket_exists:
+                if not self.store.exists(key):
+                    problems.append(f"{doc.doc_id}: MinIO对象缺失 {key}")
+                else:
+                    actual = sha256_bytes(self.store.get(key))
+                    if actual != doc.sha256:
+                        problems.append(f"{doc.doc_id}: MinIO对象下载后SHA漂移：{actual} ≠ {doc.sha256}")
             if not object_only:
                 if self.database_url is None:
                     problems.append(
@@ -774,6 +829,7 @@ class PolicyEvidenceSync:
             "degraded": bool(object_only),
             "dbChecked": bool(self.database_url) and not object_only,
             "bucket": self.bucket,
+            "bucketExists": bucket_exists,
             "jurisdiction": self.jurisdiction,
             "ok": not problems,
             "problems": problems,

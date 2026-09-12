@@ -219,7 +219,9 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 
 ## SHV2政策原件MinIO同步与恢复runbook（隔离流程已实现并演练；持久执行待授权）
 
-> Git中的`docs/refactor/policy-ops-agent/reports/**/evidence/`是审计夹具，不是运行时对象存储。同步入口已实现（`services/agent/agent/rag/evidence_sync.py`，CLI `python -m agent.rag.evidence_sync`）。2026-09-12在隔离MinIO+隔离PostgreSQL完成真实23件原件的12项演练（历史审查记录，证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）；同日控制契约复审修复（apply绑定fresh授权计划+verify范围契约）后以17项演练为准（证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T08-43-47-471Z.json`，含守卫反例A-E、plan确定性、幂等noop、object-only降级、冲突拒绝+re-plan恢复、pg_dump+逐对象备份、全新库+全新MinIO恢复对账）。对生产MinIO/持久policyops的同步仍属独立持久操作，须针对fresh对象清单取得用户明确授权。
+> Git中的`docs/refactor/policy-ops-agent/reports/**/evidence/`是审计夹具，不是运行时对象存储。同步入口已实现（`services/agent/agent/rag/evidence_sync.py`，CLI `python -m agent.rag.evidence_sync`）。2026-09-12在隔离MinIO+隔离PostgreSQL完成真实23件原件的12项演练（历史审查记录，证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）；同日控制契约复审修复（apply绑定fresh授权计划+verify范围契约）后以17项演练为准（证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T08-43-47-471Z.json`，含守卫反例A-E、plan确定性、幂等noop、object-only降级、冲突拒绝+re-plan恢复、pg_dump+逐对象备份、全新库+全新MinIO恢复对账）。同日缺桶生命周期复审修复后演练改为缺桶起点（证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T12-53-58-005Z.json`：开始前删除隔离bucket；audit缺桶`BUCKET_MISSING` exit4零建桶；两次plan后bucket仍不存在；未授权/错hash/错指纹/外部建桶漂移全部零建桶；授权apply后bucket存在且恰好23对象；其余守卫反例、幂等noop、object-only降级、冲突拒绝+re-plan恢复、pg_dump+逐对象备份、全新库+全新MinIO恢复对账保持）。对生产MinIO/持久policyops的同步仍属独立持久操作，须针对fresh对象清单取得用户明确授权。
+
+> **bucket生命周期（09-12缺桶复审）**：`MinioObjectStore`构造与audit/plan/verify/服务启动零建桶；bucket创建只经授权apply写入段的显式`ensure_bucket()`（计划`plannedBucketCreate=true`时），并**不采用Compose无条件初始化建桶**（不新增mc mb、init container或启动脚本）——部署或重启不得绕过授权创建持久资源。生产容器socila-minio当前bucketCount=0（2026-09-12只读核对）：生产同步尚未授权执行，政策原件未进入生产MinIO；生产bucket必须在独立复审与用户测试通过后，基于生产环境fresh planHash、targetFingerprint与对象清单取得用户单独明确授权，才能由受控apply创建。
 
 1. 以证据目录中每个`meta.json.sha256`为内容地址，目标bucket固定`policy-originals`，对象键固定`originals/<sha256>`；禁止使用文件名或可变URL作为唯一键。
 2. 上传前核对原件文件存在、字节SHA等于`meta.json`和DSL evidence；任一不符停止。

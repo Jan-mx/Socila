@@ -268,3 +268,33 @@
 - `test_rag_evidence_sync.py` 35/35零skip（12零DB单元+23集成）；ruff/mypy 0问题。
 - 演练`scripts/rag-evidence-drill.mjs` 17项全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`）：全新演练库→audit预态→plan（确定性两次一致）→守卫反例A缺授权exit2/B错planHash exit4/C错指纹exit4/D plan后对象漂移exit4/E audit缺库exit2（全部零写入）→apply→四方verify→复跑同一计划noop→object-only降级标记→冲突拒绝+re-plan恢复→pg_dump+逐对象备份→全新库pg_restore+全新MinIO回填→恢复副本四方对账verify ok+同计划apply noop→输出零密钥。
 - 其余门禁（全部在本修复提交HEAD代码状态新鲜执行）：rewrite-v2单元（npm test内）+CLI集成10/10+隔离演练10步全ok（证据`rewrite-drill-evidence-2026-09-12T08-57-53-721Z.json`）；标准完整`npm test`连续两次81文件/846用例零失败零skip；`test:db`全新库29文件/158用例零skip；tsc 0/eslint 0 error/build 0；pytest integration 43/43+非集成106/106零skip；Chromium E2E 23/23（含6.4修复）；citation组32/32；案例库`--check` ok；scan-secrets 926文件零命中；allowlist哨兵3场景全过；Gitleaks 8.29.1完整历史101提交零发现；`git diff --check`干净。
+## 7. 2026-09-12缺桶生命周期复审修复（本修复提交HEAD，起点82c905b）
+
+### 7.1 根因与生产事实
+
+- 2026-09-12只读核对生产容器`socila-minio`：**bucketCount=0、bucketNames为空**——生产MinIO同步尚未获得授权、尚未执行，**政策原件未进入生产MinIO**，任何文档不得表述为已入库。
+- `services/agent/agent/rag/storage.py`的`MinioObjectStore.__init__`在bucket缺失时调用`make_bucket`：audit/plan/verify等服务启动或只读命令构造store即可能隐式创建`policy-originals`，违反SHV2-FR-023（持久默认拒绝）、SHV2-NFR-006（失败关闭）、plan/audit零写入契约与fresh授权覆盖全部持久变化的要求；既有隔离演练预先建桶，未覆盖"MinIO可达、bucket不存在"路径。
+
+### 7.2 修复内容（起点82c905b，本修复提交HEAD）
+
+- **构造零建桶**：`MinioObjectStore.__init__`只建立连接信息；核查`object_store_from_env`与全部调用方——服务启动、健康检查、模块import、只读请求零建桶；不新增Compose无条件初始化建桶（mc mb/init container/启动脚本均不加）。
+- **显式bucket生命周期接口**：`bucket_exists()`只读；`ensure_bucket()`仅在apply通过全部fresh授权校验并取得advisory锁后的写入段调用（返回本次创建True/已存在False；并发创建`BucketAlreadyOwnedByYou`/`BucketAlreadyExists`幂等复查；权限/连接错误原样抛出）；`InMemoryObjectStore`同语义（`with_bucket=False`、缺桶put拒绝）。
+- **audit/verify失败关闭**：bucket缺失→`BUCKET_MISSING`+ok=false+`bucketExists=false`，零建桶零上传零RAG写入；object-only同样对象层失败且scope/degraded/dbChecked标记准确。
+- **plan缺桶确定性**：计划新增`bucketExists`/`plannedBucketCreate`（进入planHash与targetFingerprint/finalFingerprint——`_state_fingerprint`纳入bucket存在性）；缺桶时`plannedBucketCreate=true`、前置指纹含"bucket不存在"、终态指纹含"bucket存在且对象/RAG登记完整"、完整23件对象清单不变；schema/算法版本升级`rag-evidence-sync-plan/1.1`/`RAG-EVIDENCE-SYNC-1.1`。
+- **apply授权建桶**：建桶仅发生在全部校验通过并持锁后的写入段；缺授权/错hash/错指纹/漂移→bucket仍不存在、对象0、RAG零变化；结果新增`bucketCreated`。
+
+### 7.3 TDD证据（RED→GREEN）
+
+- RED：新增`TestBucketLifecycle`13测试，在82c905b旧实现上10失败——`test_store_constructor_does_not_create_bucket`实锤只读构造即建桶（`assert fresh_minio.bucket_exists(...) is False`得到`assert True is False`）；audit/plan/verify无`BUCKET_MISSING`/`bucketExists`/`plannedBucketCreate`；`ensure_bucket`方法缺失。
+- GREEN：实现后48/48零skip（13缺桶生命周期+35既有），覆盖目标16场景：构造不建桶、fresh audit零写入、fresh plan确定性+plannedBucketCreate、两次plan逐字节一致且bucket仍不存在、未授权/错planHash/错指纹/evidence漂移/DB漂移零建桶、授权apply建桶+上传+四方verify、复跑noop、并发apply单bucket单记录、既有bucket兼容、冲突拒绝、object-only不建桶、凭据不泄露（既有`test_cli_outputs_do_not_leak_credentials`保持）。
+
+### 7.4 演练（缺桶起点17项全ok）
+
+证据`rag-evidence-drill-2026-09-12T12-53-58-005Z.json`（failed=false）：全新演练库+删除隔离bucket（起点bucket不存在）→audit缺桶预态（BUCKET_MISSING、exit4、零建桶）→plan（bucketExists=false/plannedBucketCreate=true、两次逐字节一致、23 uploads、bucket仍不存在、对象0）→守卫反例A缺授权exit2/B错planHash exit4/C错指纹exit4/D plan后外部建桶漂移exit4（全部零建桶零上传）→E audit缺库exit2→apply（bucketCreated、bucket存在、恰好23对象、rag登记）→四方verify（bucketExists=true）→复跑同一计划noop（对象数不变23）→object-only降级标记→冲突拒绝+re-plan恢复→pg_dump+23对象逐字节备份→全新库pg_restore+全新MinIO受控回填（恢复程序显式建桶）→恢复副本四方对账verify ok+同计划noop→输出零密钥。
+
+### 7.5 门禁与边界（本修复提交HEAD，数字回填于交付报告）
+
+- `test_rag_evidence_sync.py` 48/48零skip；ruff/mypy 0问题；pytest integration 56/56+非集成106/106零skip。
+- 标准完整`npm test`连续两次81文件/846用例零失败零skip；`test:db`全新PG17+pgvector零skip；tsc/eslint/build 0；Chromium E2E 23/23；citation组32/32；案例库`--check` ok；scan-secrets零命中；allowlist哨兵全过；Gitleaks完整历史零发现；`git diff --check`干净。
+- 边界：全程仅隔离PostgreSQL（`shv2-ctrl-pg`:54957）与隔离MinIO（`shv2-ctrl-minio-a/b`:54962/54963，演练后清理）；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；持久policyops未连接未写入；`refactor/policy-ops-agent-platform@0885613`未修改未合并；未创建PR、未合并main、未创建tag/Release。
+- 状态：**Ready for independent review**。生产bucket创建须在独立复审与用户测试通过后，基于生产环境fresh planHash、targetFingerprint与对象清单取得用户单独明确授权，由受控apply执行。

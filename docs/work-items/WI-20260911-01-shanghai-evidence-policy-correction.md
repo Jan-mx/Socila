@@ -1,7 +1,7 @@
 # WI-20260911-01：上海官方原文采集与政策纠偏
 
 > Author: Jan
-> Status: Ready for independent review（2026-09-12 MinIO原件链路修复交付：18/18测试+真实23件演练12项全ok；同日控制契约复审修复：35/35测试+17项演练全ok。独立复审确认前不标记Accepted）
+> Status: Ready for independent review（2026-09-12第三次重新打开：MinIO缺桶生命周期控制修复交付后待独立复审；独立复审确认前不标记Accepted）
 > Updated: 2026-09-12
 
 ## Work Item
@@ -86,3 +86,15 @@
 - **TDD与证据**：RED=新增契约测试集合期ImportError（21测试）→GREEN=35/35零skip（12零DB单元+23集成，含授权缺失/错planHash/错指纹/codeSha不符/dirty工作树/证据漂移/对象漂移/DB漂移零写入、幂等noop、冲突不覆盖、注入后re-plan恢复、并发无重复、计划与输出零凭据）；演练17项全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`）。
 - **Chromium E2E阻塞项修复**：E2E门禁路径发现既有产品竞态——AUTH-US-002 reload后URL会话恢复被ChatPanel预创建会话踩掉（独立playwright网络取证：恢复GET 200后`onConversationCreated`把面板/URL改写为新空会话）。最小修复`ChatPageClient`将URL会话ID作为ChatPanel外部会话ID（URL带会话ID时不预创建，恢复失败重置路径不变）。修复后完整Chromium E2E 23/23（58.6s）。
 - 边界：全程仅隔离PostgreSQL（`shv2-ctrl-pg`:54957）与隔离MinIO（`shv2-ctrl-minio-a/b`:54962/54963，演练后清理）；持久policyops与生产MinIO未连接未写入；状态保持Ready for independent review。
+
+## 缺桶生命周期复审修复交付（2026-09-12第三轮；起点82c905b，本修复提交HEAD）
+
+独立复审在82c905b基础上发现MinIO缺桶生命周期控制缺口：2026-09-12只读核对生产容器socila-minio为bucketCount=0（与生产同步尚未授权、尚未执行一致），而`storage.py`的`MinioObjectStore.__init__`在bucket缺失时调用`make_bucket`——audit/plan/verify等服务启动或只读命令构造store即可能隐式创建`policy-originals`，违反SHV2-FR-023持久默认拒绝、SHV2-NFR-006失败关闭、plan/audit零写入契约与"fresh授权覆盖全部持久变化"。修复如下：
+
+- **构造零建桶**：`MinioObjectStore.__init__`只建立连接信息，移除`bucket_exists`+`make_bucket`副作用；`object_store_from_env`与全部调用方核查——服务启动、健康检查、模块import、只读请求均零建桶；Compose不新增无条件初始化建桶（mc mb/init container/启动脚本均不加），bucket创建与23件原件同步一同进入fresh授权apply。
+- **显式bucket生命周期接口**：`bucket_exists()`只读；`ensure_bucket()`仅在apply通过全部fresh授权校验并取得advisory锁后的写入段调用，返回本次创建True/已存在False；并发创建竞争（BucketAlreadyOwnedByYou/BucketAlreadyExists）幂等复查，权限/连接错误原样抛出。`InMemoryObjectStore`同语义（`with_bucket=False`构造缺失bucket；缺桶put拒绝）。
+- **audit/verify缺桶失败关闭**：MinIO可达但bucket缺失→`BUCKET_MISSING`问题+ok=false+`bucketExists=false`，不创建bucket、不上传对象、不改RAG数据库；verify的object-only模式同样对象层失败且scope/degraded/dbChecked标记准确。
+- **plan缺桶仍只读确定**：计划新增`bucketExists`/`plannedBucketCreate`（进入planHash与targetFingerprint/finalFingerprint——`_state_fingerprint`纳入bucket存在性）；缺桶时`plannedBucketCreate=true`、前置指纹含"bucket不存在"、终态指纹含"bucket存在且对象/RAG登记完整"、完整23件对象清单不变；同状态两次生成逐字节一致且bucket仍不存在。schema/算法版本升级`rag-evidence-sync-plan/1.1`/`RAG-EVIDENCE-SYNC-1.1`（旧计划结构校验拒绝）。
+- **apply建桶授权边界**：建桶只发生在`--i-am-authorized`+计划结构+planHash+targetFingerprint+HEAD==codeSha+工作树契约+evidenceManifestHash未漂移+当前MinIO/RAG状态==计划前置指纹+endpoint/库名守卫全部通过后的持锁事务内；缺授权/错hash/错指纹/漂移→bucket仍不存在、对象数0、RAG记录零变化；apply结果新增`bucketCreated`。
+- **TDD与证据**：RED=新增`TestBucketLifecycle`13测试（旧实现10失败实锤——构造即建桶`assert True is False`、audit/plan/verify无BUCKET_MISSING/plannedBucketCreate等）→GREEN=48/48零skip（构造不建桶、ensure_bucket并发恰好一次创建、audit/plan缺桶零写入、未授权/错planHash/错指纹/evidence漂移/DB漂移零建桶、授权apply建桶+上传+四方verify、复跑noop、并发apply单bucket单记录、既有bucket兼容、冲突拒绝、object-only不建桶、凭据不泄露）；演练17项全ok改为缺桶起点（证据`rag-evidence-drill-2026-09-12T12-53-58-005Z.json`）：演练开始前删除隔离bucket，audit缺桶exit4+BUCKET_MISSING、两次plan后bucket仍不存在、未授权/错hash/错指纹/外部建桶漂移全部零建桶，授权apply后bucket存在且恰好23对象。
+- 边界：全程仅隔离PostgreSQL（`shv2-ctrl-pg`:54957）与隔离MinIO（`shv2-ctrl-minio-a/b`:54962/54963，演练后清理）；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；持久policyops未连接未写入；状态保持Ready for independent review。
