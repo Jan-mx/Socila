@@ -1,8 +1,8 @@
 # WI-20260911-01：上海官方原文采集与政策纠偏
 
 > Author: Jan
-> Status: Accepted（2026-09-11：23份官方原文、引用契约上海100%、双新规则、示例44/沪11、隔离库audit只规划上海delta；门禁见验收报告§1.6）
-> Updated: 2026-09-11
+> Status: Reopened（代码与隔离证据已交付；MinIO运行时原件同步及独立复审待闭环）
+> Updated: 2026-09-12
 
 ## Work Item
 
@@ -63,3 +63,9 @@
 ## 文档同步
 
 - PRD §22边界、traceability、TESTING、ARCHITECTURE（引用契约范围）、PROGRESS。
+
+## 独立审查补充（2026-09-12）
+
+- Git证据目录中的23份上海原件不能替代架构规定的MinIO运行时原件；当前采集脚本只写本地`docs/.../evidence`，尚未完成`policy-originals/originals/<sha256>`上传和RAG `object_key`对账。
+- 任务验收不得把“证据文件已提交”表述为“MinIO原件已入库”。
+- 闭环条件：每份原件在MinIO存在同字节对象，bucket/key、对象SHA、`meta.json`和RAG数据库记录一致，并有恢复演练证据。

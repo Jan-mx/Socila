@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-09
+> Updated: 2026-09-12
 
 ## 测试先行
 
@@ -281,3 +281,10 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - CLI集成演练（`rcl-rewrite-cli.integration.test.ts` 8例）：重建V1基线（seed→激活3区间→V1 CLI七模式）→generate-v2→audit→守卫反例（缺授权/错planHash/错targetFingerprint零写入）→行漂移拒绝→apply（108行原位、ID不变、1批次+108entries、case_text非空/transcript NULL、计数36/36/80）→verify→复跑noop→applied后篡改drift（从entries.after恢复后复跑noop）→并发两apply一执行一noop→故障点注入整体回滚→policyops库名默认拒绝。
 - 隔离验收演练（`scripts/rcl-rewrite-drill-v2.mjs`）：全新库上baseline→generate-v2→audit/plan→守卫→apply→verify/noop→0019×2幂等→post dump第三实例pg_restore+`restore-reconcile`全表+sequence对账→最终计数/审计核对，证据JSON入reports。
 - migration journal契约更新：0010～0018保持≤持久账本max（不重应用），0019=1788797000000为唯一高于账本max的新迁移（持久执行须另行fresh授权）。
+
+## SHV2独立审查新增门禁（2026-09-12）
+
+- **MinIO原件四方对账**：对每份运行时政策原件验证Git审计夹具字节SHA、MinIO `policy-originals/originals/<sha256>`对象字节SHA、evidence `content_sha256`及`rag.fetches`/`rag.document_versions.object_key`一致；缺对象、错bucket/key、错SHA或缺数据库记录均失败。
+- **V2业务hash字段**：隔离库apply和verify必须逐行断言`cases.content_hash`、`showcase_cases.content_hash`等于V2目标规范化内容hash，并与`case_rewrite_entries.new_content_hash`一致；只验证排除`content_hash`后的动态重算不足以通过。
+- **完整套件稳定性**：标准完整`npm test`必须零失败、零skip；`migration-lf.contract.test.ts`在完整套件中的5秒超时必须通过设置与真实最坏耗时匹配的显式超时或优化扫描消除。单文件7/7通过不能替代完整套件。
+- Docker或MinIO不可用时只能报告环境阻塞，不得把未执行的对象上传、恢复或对账记录为PASS。

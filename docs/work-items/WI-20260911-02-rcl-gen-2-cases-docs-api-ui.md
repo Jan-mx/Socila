@@ -1,8 +1,8 @@
 # WI-20260911-02：RCL-GEN-2.0案例、Markdown案例库、API与UI
 
 > Author: Jan
-> Status: Accepted（2026-09-11，代码+测试+生成资产；隔离库验收；无持久库写入）
-> Updated: 2026-09-11
+> Status: Reopened（代码、测试与隔离资产已交付；业务content_hash一致性待独立复审）
+> Updated: 2026-09-12
 
 ## Work Item
 
@@ -10,7 +10,7 @@
 - 关联PRD：`docs/prd/09-11-feature-shanghai-case-library-v2.md`
 - 关联需求：SHV2-FR-008～016、SHV2-NFR-001～003/005/006/008
 - 关联验收：SHV2-AC-006～013
-- 前置：WI-20260911-01 Accepted
+- 前置：WI-20260911-01代码提交`caa6344`保留；独立审查后WI-01因MinIO链路重新打开
 - 后置：WI-20260911-03
 
 ## 背景与证据
@@ -61,3 +61,8 @@
 - TDD：RED=3个新测试文件模块缺失失败；GREEN=58/58（generator-v2 40、case-library-doc 10、synthetic-copy 8）。
 - 门禁：`npm test` 80文件/829零skip；tsc 0；eslint 0 error；build 0；隔离PG17+pgvector `test:db` 27文件/144零skip（项目标准参数，见traceability）；agent.migrate×2幂等；pytest integration 20/20零skip+非集成94；Chromium E2E 23/23（含SHV2新增4例：公开页合成文案/首页导航/公开API字段/后台文档与字段）；scan-secrets --all 899文件零命中；Gitleaks完整历史96提交零发现；allowlist哨兵全过；案例库`--check`通过且篡改副本退出2。
 - 环境与边界：任务专属容器`shv2-task2-pg`（随机端口54955）+`shv2_e2e`/`shv2_drill`两库；持久policyops未连接未写入；未创建持久快照/release；非RCL人工案例未被改写；`transcript_text`未生成。
+
+## 独立审查补充（2026-09-12）
+
+- V2生成器和case/showcase审计hash已存在，但必须额外验证原位改写后业务列`cases.content_hash`和`showcase_cases.content_hash`与V2目标内容hash一致；当前实现/测试没有形成该数据库字段契约。
+- 在该契约闭环前，不能将“new_content_hash审计字段正确”作为“业务表content_hash正确”的替代证据。

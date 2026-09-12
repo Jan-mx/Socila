@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-11
+> Updated: 2026-09-12
 
 ## 当前Profile
 
@@ -216,3 +216,16 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 7. 操作后备份：完整dump+SHA，并在全新实例恢复对账。
 8. 防误写：数据库名为`policyops`时apply在任何连接前拒绝（需`RCL_REWRITE_ALLOW_PERSISTENT=1`）；持久执行禁止`RCL_REWRITE_ALLOW_DIRTY`与`RCL_REWRITE_INJECT_FAILURE_AT`（仅隔离演练使用）。
 9. 隔离演练重放：`RCL_REWRITE_DRILL_CONTAINER=<容器> RCL_REWRITE_DRILL_PORT=<端口> node scripts/rcl-rewrite-drill-v2.mjs`——全新库上完整走baseline→generate-v2→audit/plan/守卫反例→apply→verify/noop→0019×2幂等→post dump第三实例恢复对账→计数/审计核对，并输出证据JSON。
+
+## SHV2政策原件MinIO同步与恢复runbook（待实现、待授权）
+
+> Git中的`docs/refactor/policy-ops-agent/reports/**/evidence/`是审计夹具，不是运行时对象存储。MinIO同步、生产bucket写入和恢复验证属于独立持久操作；必须先由修复任务在隔离MinIO证明流程，再针对fresh对象清单取得用户明确授权。
+
+1. 以证据目录中每个`meta.json.sha256`为内容地址，目标bucket固定`policy-originals`，对象键固定`originals/<sha256>`；禁止使用文件名或可变URL作为唯一键。
+2. 上传前核对原件文件存在、字节SHA等于`meta.json`和DSL evidence；任一不符停止。
+3. 对象已存在时先读取并核对SHA，一致则幂等no-op；不同则拒绝覆盖，生成漂移报告。
+4. 上传成功后写入或核对`rag.fetches.object_key`和`rag.document_versions.object_key`，两处均必须指向相同对象；数据库`content_hash`必须等于对象SHA。
+5. 生成对象清单：document ID、bucket、object key、size、content type、Git SHA、MinIO SHA、数据库记录ID与状态；清单不得包含访问密钥或连接串。
+6. 备份前同时记录PostgreSQL表/sequence清单和MinIO对象清单；执行既有PostgreSQL dump及MinIO mirror，禁止只备份其中一侧。
+7. 在全新PG17+pgvector和全新MinIO实例恢复；逐对象比较字节SHA，并验证DocumentTree、Markdown、Chunk和引用仍能由`object_key`回溯到原件。
+8. 持久MinIO同步未获授权时，只允许生成只读audit/plan和隔离演练证据；不得连接生产MinIO执行put、覆盖或删除。

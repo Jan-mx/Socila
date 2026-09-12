@@ -2,14 +2,15 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-11
+> Updated: 2026-09-12
 
 ## 当前结论
 
-> SHV2进展（2026-09-11）：功能分支`codex/shanghai-case-v2`（基线`0885613`）上WI-20260911-01（上海证据与政策纠偏）与WI-20260911-02（RCL-GEN-2.0案例/Markdown案例库/API/UI）均已Accepted；WI-20260911-03（0019审计迁移与受控原位改写）待实施。全程仅隔离库演练，持久policyops未连接未写入。
+> SHV2进展（2026-09-12）：功能分支`codex/shanghai-case-v2@f583adc`已包含任务1/2/3代码与隔离证据；独立审查后因MinIO原件链路、业务`content_hash`同步和完整Node套件超时三项未闭环而Reopened。目标分支`0885613`未修改未合并，持久policyops未写入。
 
 - 七阶段重构Goal：**Accepted**，七份阶段验收报告全部PASS。
 - 当前开发分支：`refactor/policy-ops-agent-platform`；任务3/4最终集成分支已完成显式merge commit集成。
+- 09-11上海政策与案例V2 Feature：功能分支`codex/shanghai-case-v2@f583adc`代码/隔离证据已推送，目标分支仍为`0885613`未合并；2026-09-12独立审查后因MinIO原件链路、业务`content_hash`同步和完整Node套件超时三项未闭环而Reopened。
 - 当前运行事实源：单机Docker Compose中的PostgreSQL、MinIO和Agent存储；Neon不再承接运行时读写。
 - 本机定位：开发机，生产Compose数据卷保留但不常驻；远程服务器部署列入路线图。
 - 09-02 Feature（用户与管理员双角色鉴权，PRD `docs/prd/09-02-feature-user-admin-auth.md`）：**Accepted**（验收证据：`reports/feature-09-02-auth/acceptance-report.md`）。
@@ -515,7 +516,7 @@
 | Secret扫描 / Gitleaks / 哨兵 | PASS；scan-secrets --all 899文件零命中；Gitleaks 8.29.1完整历史96提交零发现（worktree临时独立克隆扫描）；allowlist哨兵3场景全过 |
 | 边界 | 持久policyops全程未连接未写入；未创建持久快照/release；非RCL人工案例零改写；E2E管理员哈希与脚本内置哈希不匹配为既有环境事实（隔离库内本地更新，见验收报告§2.4） |
 
-下一步：WI-20260911-03（0019审计迁移+受控原位改写CLI+隔离验收）。目标集成分支`refactor/policy-ops-agent-platform`保持不动；等待用户测试后另行授权合并。
+下一步：保留WI-20260911-03既有代码与隔离证据，从`f583adc`修复三项独立审查问题并重新验收；目标集成分支`refactor/policy-ops-agent-platform`保持不动，修复完成前暂缓用户最终测试与任何持久授权。
 
 ## 当前任务验证（WI-20260911-03 0019审计迁移+受控原位改写，2026-09-11本地新鲜执行）
 
@@ -529,4 +530,14 @@
 | Secret / Gitleaks / 哨兵 | PASS；scan-secrets 914文件零命中；gitleaks全历史98提交——manifest场景键19条误报经人工核实按ADR-0009精确allowlist+哨兵通过后复扫no leaks；migration-lf契约提交态7/7 |
 | 边界 | 持久policyops全程未连接未写入（守卫连接前拒绝）；0019仅交付SQL；改写持久执行须另行fresh授权 |
 
-至此09-11 Feature三个Work Item（01证据纠偏/02案例V2/03受控改写）代码层全部Accepted；功能分支待用户测试；`refactor/policy-ops-agent-platform`未修改未合并。
+## 09-12独立审查：09-11 Feature重新打开
+
+功能分支`codex/shanghai-case-v2`已推送到`f583adc`，远端SHA一致；`refactor/policy-ops-agent-platform`本地与远端仍为`0885613`，未修改、未合并。任务1/2/3的代码和隔离证据保留，但独立审查发现三个未关闭问题，三个Work Item与Feature状态改为Reopened：
+
+| 问题 | 当前证据 | 下一步 |
+| --- | --- | --- |
+| MinIO原件链路未闭环 | 23份上海原件只在Git evidence目录；采集脚本写本地文件，未证明`policy-originals/originals/<sha256>`对象和RAG `object_key`存在 | TDD实现幂等MinIO同步、四方SHA对账及全新MinIO恢复演练 |
+| V2业务`content_hash`未同步验证 | rewrite审计有`new_content_hash`，但更新列排除了业务表`content_hash`；现有测试只验证动态规范化hash | apply同步写入`cases.content_hash`/`showcase_cases.content_hash`并逐行核对审计一致性 |
+| 完整Node套件不稳定 | 独立复跑目标测试101/101、tsc通过；完整`npm test`为842/843，migration当前工作树用例5秒超时；单文件7/7通过 | 修复超时后重跑标准完整套件，零失败零skip才可恢复Accepted |
+
+当前精确下一步：由修复Agent从`f583adc`开始，只修上述问题并在隔离数据库/MinIO验证；不得执行持久政策物化、管理员批准、快照/release切换、0019或V2案例回填。修复通过独立复审并推送后，才交给用户测试；用户测试完成前不得合并目标分支。

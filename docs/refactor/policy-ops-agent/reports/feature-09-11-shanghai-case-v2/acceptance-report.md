@@ -1,8 +1,8 @@
 # 09-11 Feature：上海政策纠偏与36条案例V2全量重建 — 验收报告
 
 > Author: Jan
-> Status: Active（WI-20260911-01已验收；WI-02/03待实施）
-> Updated: 2026-09-11
+> Status: Reopened（任务1/2/3已有代码与隔离证据；独立审查问题待闭环）
+> Updated: 2026-09-12
 
 ## 1. WI-20260911-01 上海官方原文采集与政策纠偏
 
@@ -166,3 +166,18 @@
 
 - 持久`policyops`全程未连接未写入（守卫在任何连接前拒绝）；0019仅交付SQL，对持久库的执行与V1→V2改写为PRD §18授权点，须另行fresh授权包（含备份/回退点）。
 - 隔离环境：容器`shv2-task2-pg`（端口54955）；`shv2_e2e`（V2终态，供用户在浏览器直接核验合成案例展示）；`shv2_drill`/`shv2_drill3`（集成门禁）；演练库已清理。
+
+## 4. 2026-09-12独立审查结论
+
+功能分支`codex/shanghai-case-v2`已推送到`f583adc`，目标集成分支`refactor/policy-ops-agent-platform`仍为`0885613`且未合并。独立审查不撤销既有Agent执行证据，但发现以下未关闭问题，因此Feature及三个Work Item均不得标记最终Accepted：
+
+| 项目 | 独立复核结果 | 后续闭环条件 |
+| --- | --- | --- |
+| 任务2/3核心目标测试 | `generator-v2`、案例文档、rewrite、展示、上海政策及citation verifier共101/101通过 | 修复后保持通过 |
+| TypeScript | `npx tsc --noEmit`退出0 | 修复后保持通过 |
+| 完整Node套件 | 81文件中80通过；842/843测试通过；`migration-lf.contract.test.ts`当前工作树用例超过默认5秒而超时 | 标准完整`npm test`稳定零失败；单文件7/7通过不能替代完整套件 |
+| MinIO原件 | 23份上海原件已提交到Git证据目录，但采集脚本未接入MinIO；未见bucket、object key、对象SHA与RAG数据库四方对账 | `policy-originals/originals/<sha256>`对象存在，字节/SHA与Git原件、evidence和`rag.*.object_key`一致；完成恢复演练 |
+| V2业务hash | 审计`new_content_hash`按规范化行计算，但原位改写排除了业务表`content_hash`列，现有测试未验证业务列同步 | `cases.content_hash`、`showcase_cases.content_hash`逐行等于V2目标hash，并与rewrite entries一致 |
+| 持久边界 | 未执行持久政策物化、审批、快照/release、0019或V2改写 | 继续保持待fresh授权，不在修复任务中执行 |
+
+当前状态为“代码已交付、独立审查问题待闭环、用户测试前待修复”，不是最终验收完成。修复Agent必须先TDD复现上述三项问题，再修改代码并重跑完整门禁；不得把本报告或历史执行结果当作持久写入授权。

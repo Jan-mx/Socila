@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-11
+> Updated: 2026-09-12
 
 ## 用途
 
@@ -225,3 +225,15 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 
 - 门禁（2026-09-11本地新鲜）：`test:db`（全新库）29文件/156零skip；tsc/eslint/build退出0；pytest integration 20/20零skip+非集成94；Chromium E2E 23/23（V2终态分支：shv2_e2e改写planHash `fe92d7d8…` verify ok）；scan-secrets 914零命中；gitleaks全历史98提交经ADR-0009精确allowlist（哨兵通过）复扫no leaks；隔离演练9步全ok。
 - 边界：持久policyops未连接未写入；0019持久执行须另行fresh授权。
+
+## SHV2独立审查修复映射（2026-09-12，Reopened）
+
+| 审查需求 | 当前缺口 | 计划实现 | 必须新增/更新的测试 | 状态 |
+| --- | --- | --- | --- | --- |
+| SHV2-NFR-002/007 MinIO运行时原件 | Git evidence已提交，但未上传运行时MinIO，未登记/核对RAG `object_key` | 幂等同步器：`policy-originals/originals/<sha256>`；对象清单；Git/MinIO/evidence/RAG四方对账；全新MinIO恢复 | 对象不存在、已有一致对象no-op、已有冲突对象拒绝、SHA/size/content-type/object_key漂移、恢复后对象与DocumentTree回溯 | Reopened |
+| SHV2-FR-019/020 业务hash一致性 | rewrite计划/审计有`new_content_hash`，但业务表`cases.content_hash`和`showcase_cases.content_hash`未证明同步 | 原位apply写入V2业务hash；verify读取业务列并与规范化行hash、rewrite entry逐项比较 | 36 cases+36 showcases业务列一致；篡改任一业务hash后verify失败；故障回滚与复跑noop保持 | Reopened |
+| SHV2-NFR-008 完整Node门禁 | 完整`npm test`842/843，migration当前工作树用例默认5秒超时；单文件7/7通过 | 为真实文件/Git扫描设置稳定显式超时或降低扫描耗时，不改变断言 | 标准完整`npm test`连续新鲜运行零失败、零skip；保留单文件契约 | Reopened |
+| 文档事实一致性 | PRD仍含“仅完成PRD”，WI/验收报告误标最终Accepted | 同步PRD、三个WI、验收报告、架构、测试、运维和PROGRESS | 文档状态/分支/SHA/阻塞项一致性检查与相对链接检查 | 本次docs更新 |
+
+- 当前分支/远端：`codex/shanghai-case-v2@f583adc`；目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并。
+- 持久边界：修复任务只允许隔离数据库和隔离MinIO；生产MinIO、持久policyops、政策物化、快照/release及案例回填均需未来fresh授权。

@@ -1,8 +1,8 @@
 # 上海政策纠偏与36条案例V2全量重建PRD
 
 > Author: Jan
-> Status: Updating（WI-20260911-01/02/03代码层均已Accepted；功能分支已推送，等待用户测试；未合并目标分支）
-> Updated: 2026-09-11
+> Status: Updating（代码已交付；独立审查问题待闭环；用户测试前待修复；未合并目标分支）
+> Updated: 2026-09-12
 
 ## 1. 文档元数据
 
@@ -13,7 +13,7 @@
 | 目标分支 | `codex/shanghai-case-v2` |
 | 基线分支 | `origin/refactor/policy-ops-agent-platform` |
 | 已确认基线SHA | `0885613f2fbb68bf361d55c3b89694dc1024d1b4` |
-| 当前状态 | 仅完成PRD；未采集证据、未修改代码、未写数据库、未创建政策draft或快照 |
+| 当前状态 | 任务1/2/3已提交并推送到`f583adc`；独立审查发现MinIO原件链路、业务`content_hash`同步和完整Node套件超时问题；持久写入未执行 |
 | 实施顺序 | 上海证据与政策纠偏 → 案例V2生成与展示 → 受控原位改写与隔离验收 |
 | 合并约束 | 功能分支交付后等待用户独立测试；未经明确指令不得合入`refactor/policy-ops-agent-platform` |
 
@@ -380,7 +380,7 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 ### 13.1 上海证据与政策
 
 - **SHV2-FR-001 来源白名单**：上海事实只允许使用启用的官方域名。
-- **SHV2-FR-002 完整证据**：每项活动政策事实具有原件、元数据、SHA、定位和摘录。
+- **SHV2-FR-002 完整证据**：每项活动政策事实具有原件、元数据、SHA、定位和摘录；运行时原件进入MinIO `policy-originals/originals/<sha256>`，并与Git审计夹具和RAG `object_key`对账。
 - **SHV2-FR-003 引用覆盖**：上海全部活动参数/表和政策承载规则引用覆盖率100%。
 - **SHV2-FR-004 时间版本**：历史与当前参数使用无重叠有效期版本表达。
 - **SHV2-FR-005 错误纠偏**：纠正基数、失业金、最低工资、医保年限/等待期、灵活费率及补贴期限。
@@ -404,7 +404,7 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 - **SHV2-FR-017 纯Schema迁移**：0019不隐式改写业务数据。
 - **SHV2-FR-018 精确计划**：改写plan绑定代码、数据、证据、快照和完整写集合。
 - **SHV2-FR-019 原位改写**：保留整数ID，原位升级108条关联记录。
-- **SHV2-FR-020 完整审计**：每条记录保存before/after正文和hash。
+- **SHV2-FR-020 完整审计**：每条记录保存before/after正文和hash；`cases.content_hash`、`showcase_cases.content_hash`必须同步为V2目标hash并与审计`new_content_hash`一致。
 - **SHV2-FR-021 原子与并发**：单事务、行锁、advisory lock及提交前重验。
 - **SHV2-FR-022 幂等**：复跑no-op，部分完成拒绝。
 - **SHV2-FR-023 持久默认拒绝**：没有fresh授权时禁止写持久库。
@@ -424,7 +424,7 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 - **SHV2-NFR-004 安全**：连接、凭据和授权值不写入日志、manifest或Git。
 - **SHV2-NFR-005 兼容性**：既有API字段和非RCL人工案例不被破坏。
 - **SHV2-NFR-006 失败关闭**：来源、日期、字段、hash或状态异常时拒绝生成或写入。
-- **SHV2-NFR-007 恢复性**：持久执行前后均有可验证完整备份。
+- **SHV2-NFR-007 恢复性**：持久执行前后均有可验证的PostgreSQL与MinIO完整备份，并证明对象、`object_key`、DocumentTree和SHA关系可恢复。
 - **SHV2-NFR-008 零降级**：不得降低引用、Schema、测试、安全、地区隔离或发布门禁。
 
 ## 15. 测试矩阵
@@ -455,7 +455,7 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 
 ## 16. 验收标准
 
-- **SHV2-AC-001**：上海全部活动政策资产引用契约100%通过。
+- **SHV2-AC-001**：上海全部活动政策资产引用契约100%通过，且运行时所需原件完成Git/MinIO/evidence/RAG四方对账。
 - **SHV2-AC-002**：2026-09-01关键参数与官方有效文件一致。
 - **SHV2-AC-003**：失业金额与灵活缴费规则具有正常、缺参和边界测试。
 - **SHV2-AC-004**：上海新政策版本只形成预期delta，其他地区零漂移。
@@ -470,11 +470,11 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 - **SHV2-AC-013**：Markdown案例库与manifest通过`--check`。
 - **SHV2-AC-014**：0019只新增审计结构，不更新业务行。
 - **SHV2-AC-015**：受控apply精确原位更新108行并保留整数ID。
-- **SHV2-AC-016**：rewrite batch恰好1条、entries恰好108条且before/after完整。
+- **SHV2-AC-016**：rewrite batch恰好1条、entries恰好108条且before/after完整；业务表`content_hash`与每条审计`new_content_hash`一致。
 - **SHV2-AC-017**：错误授权、漂移、并发和故障点满足失败关闭与幂等契约。
 - **SHV2-AC-018**：隔离库最终为36 cases、36 showcases、80 tests，其中44 example、36 regression。
 - **SHV2-AC-019**：36条case_text非空，36条transcript_text保持NULL。
-- **SHV2-AC-020**：隔离库post dump在新实例恢复后全部表与sequence一致。
+- **SHV2-AC-020**：隔离库post dump和MinIO对象备份在全新实例恢复后，全部表、sequence、对象和SHA映射一致。
 - **SHV2-AC-021**：功能分支通过完整门禁并推送，但未合并目标分支。
 
 ## 17. 实施阶段
@@ -541,14 +541,18 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 
 ## 22. 当前PRD交付边界
 
-截至2026-09-11，本次仅交付本PRD。以下事项均未执行：
+截至2026-09-12，代码和隔离演练已交付，但以下审查问题仍未闭环：
 
-- 未保存或提交上海官方原文证据；
-- 未修改上海DSL、参数、规则、示例或引用契约；
-- 未实现`RCL-GEN-2.0`、案例文案、API或UI；
-- 未创建0019迁移、审计表或受控改写CLI；
-- 未运行政策物化、管理员审批、快照/release切换或案例回填；
-- 未写本机持久数据库；
-- 未提交、推送或合并功能代码。
+- 政策原件目前仅存在Git证据目录，尚未证明已同步到MinIO运行时存储；
+- V1→V2原位改写的审计`new_content_hash`已生成，但业务表`cases.content_hash`和`showcase_cases.content_hash`同步策略尚未通过独立验证；
+- 标准`npm test`在完整套件中有1项migration contract用例超时，单文件运行才通过；
+- 本PRD的历史“仅完成PRD”表述已过期，后续文档必须以功能分支实际提交和验收证据为准。
 
-后续开发必须以本PRD为唯一新增需求入口，并在实施前将状态改为`Updating`。
+以下持久事项仍未执行：
+
+- 未将政策原件同步到生产MinIO或完成对象恢复对账；
+- 未运行本机持久政策物化、管理员审批、快照/release切换或案例回填；
+- 未在持久`policyops`执行0019迁移或V1→V2原位改写；
+- 未合并`refactor/policy-ops-agent-platform`，未修改`main`，未创建PR、tag或Release。
+
+后续修复必须以本PRD为唯一新增需求入口；三个审查问题闭环并完成独立复审后，才能将Feature改为Accepted。

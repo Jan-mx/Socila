@@ -1,8 +1,8 @@
 # WI-20260911-03：0019审计迁移、受控原位改写CLI与隔离验收
 
 > Author: Jan
-> Status: Accepted（2026-09-11，代码+测试+隔离演练；无持久库写入）
-> Updated: 2026-09-11
+> Status: Reopened（代码与隔离演练已交付；业务hash字段和完整Node门禁待闭环）
+> Updated: 2026-09-12
 
 ## Work Item
 
@@ -10,7 +10,7 @@
 - 关联PRD：`docs/prd/09-11-feature-shanghai-case-library-v2.md`
 - 关联需求：SHV2-FR-017～025、SHV2-NFR-004/006/007/008
 - 关联验收：SHV2-AC-014～021
-- 前置：WI-20260911-02 Accepted
+- 前置：WI-20260911-02代码提交`8c3e098`保留；独立审查后WI-02因业务hash契约重新打开
 
 ## 范围
 
@@ -52,3 +52,9 @@
 - 隔离演练（证据`rewrite-drill-evidence-2026-09-11T19-01-07-253Z.json`，9步全ok）：全新库baseline（36/36/80）→generate-v2→audit pending→plan 108条→守卫三反例零写入→apply applied=true→verify ok→复跑noop→0019×2幂等→post dump第三实例pg_restore+restore-reconcile全表+sequence对账→最终36/36/80、1批次、108entries、36条V2干净case。
 - 门禁：全新库`test:db` 29文件/156零skip（含新增迁移4+CLI集成8例）；tsc 0；eslint 0 error；build 0；agent.migrate×2幂等；pytest integration 20/20零skip+非集成94；ruff/mypy 0问题；Chromium E2E 23/23——其中V2终态分支：shv2_e2e经受控改写（planHash fe92d7d8…，verify ok）后公开页可读问答/政策依据安全外链/管理后台结构化字段全部生效且无"待生成V2"提示；scan-secrets --all 914文件零命中；gitleaks全历史98提交——case-library manifest场景键触发的19条generic-api-key误报经人工核实后按ADR-0009登记"规则×路径"精确allowlist（哨兵回归3场景全过），复扫no leaks；migration-lf契约在提交态复跑7/7。
 - 边界：持久policyops全程未连接未写入（守卫在连接前拒绝）；未创建持久快照/release；0019仅交付SQL（持久执行须另行fresh授权）；E2E状态文件已入.gitignore不入Git。
+
+## 独立审查补充（2026-09-12）
+
+- `case_rewrite_entries.new_content_hash`是审计链字段，不能自动证明业务表`content_hash`列已更新；必须在apply、verify和数据库测试中逐项核对两者一致。
+- 标准完整Node套件曾在`migration-lf.contract.test.ts`当前工作树用例处发生5秒超时；单独运行7/7通过不等于完整`npm test`通过。
+- 只有业务hash字段契约和完整套件稳定通过后，WI才能恢复Accepted。

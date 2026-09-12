@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-07
+> Updated: 2026-09-12
 
 ## 上下文
 
@@ -106,6 +106,8 @@ flowchart LR
 - HTML、DOCX、XLSX、JSON和Markdown优先原生解析。
 - 文本PDF由PyMuPDF逐页提取，扫描或版面信息由PaddleOCR-VL-1.5处理。
 - 原件保存到MinIO，DocumentTree是权威解析结构，Markdown是派生副本。
+- **原件双层边界（09-11独立审查）**：MinIO是运行时政策原件和页面资源的权威存储；Git中的`docs/refactor/policy-ops-agent/reports/**/evidence/`只保存版本化审计夹具与引用快照，不能替代MinIO对象。运行时bucket固定为`policy-originals`，内容寻址对象键固定为`originals/<sha256>`；`rag.fetches.object_key`和`rag.document_versions.object_key`必须指向该对象，数据库`content_hash`、evidence `content_sha256`、Git原件字节SHA与MinIO对象SHA必须一致。
+- 官方页面采集与RAG摄取是两个显式阶段：采集器生成可审计文件后，摄取/同步器负责幂等上传MinIO、登记RAG元数据并核对对象；不得把“证据文件已提交”当作“运行时原件已入库”。
 - 文号、日期、金额、比例冲突或缺少模型置信度时进入人工复核。
 - 检索先过滤地区、有效期和发布状态，再执行全文、向量、RRF和重排。
 - SiliconFlow Embedding为`BAAI/bge-m3`，实测维度1024；Rerank为`BAAI/bge-reranker-v2-m3`。
@@ -130,6 +132,8 @@ flowchart LR
 | Graph Checkpoint | PostgreSQL Checkpoint | LangGraph |
 | 原始政策和页面资源 | MinIO | Ingestion |
 | Chunk、全文和向量 | PostgreSQL Agent | RAG |
+
+MinIO对象、RAG元数据与Git审计夹具共同形成来源链，但职责不同：MinIO承载运行时原件，PostgreSQL保存对象定位、版本、解析树和索引，Git夹具为确定性引用测试提供冻结副本。备份恢复必须同时证明PostgreSQL记录、MinIO对象、DocumentTree及其SHA关系一致。
 
 ## 部署
 
