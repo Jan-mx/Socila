@@ -21,9 +21,16 @@ Git审计夹具中的政策原件（original.html/附件 + meta.json + DSL evide
 - **缺桶生命周期契约（缺桶复审）**：MinioObjectStore构造与audit/plan/verify/拒绝路径
   零建桶（SHV2-FR-023持久默认拒绝、SHV2-NFR-006失败关闭）；MinIO可达但bucket缺失时
   audit/verify返回ok=false+BUCKET_MISSING，plan仍生成确定性只读计划并表达
-  `bucketExists=false/plannedBucketCreate=true`（进入planHash与targetFingerprint/
-  finalFingerprint）；bucket创建只发生在apply通过全部fresh授权校验并取得advisory锁后的
-  显式`ensure_bucket()`写入段；不采用Compose无条件初始化建桶；
+  `bucketExists=false/plannedBucketCreate=true`（两者进入planHash；状态指纹纳入bucket
+  真实存在性——targetFingerprint只绑定真实前置状态、finalFingerprint只绑定真实预期
+  终态；plannedBucketCreate是执行意图，不作为独立字段进入状态指纹）；bucket创建只发生
+  在apply通过全部fresh授权校验并取得advisory锁后的显式`ensure_bucket()`写入段（apply
+  据其实际返回值报告bucketCreated——外部进程抢先建桶时如实报告false）；
+  不采用Compose无条件初始化建桶；
+- **exists失败关闭（第四轮复审）**：对象存在性检查只有明确的NoSuchKey/NoSuchObject/
+  NoSuchBucket才返回False；AccessDenied、InvalidAccessKeyId、SignatureDoesNotMatch、
+  连接失败、超时、服务端错误及其他未知错误原样抛出（audit/plan/apply/verify必须失败，
+  不得转换为"对象缺失"；write-only权限组合下apply在exists处失败且绝不put）；
 - 幂等：对象已存在且SHA一致→no-op；内容不一致→拒绝覆盖（OBJECT_CONFLICT）；
   并发apply经advisory xact锁串行化并在锁内复查，不产生重复rag记录；
 - 防误写：bucket非`policy-originals`拒绝；非本机MinIO endpoint默认拒绝（需
@@ -628,6 +635,9 @@ class PolicyEvidenceSync:
                 )
             # 缺桶生命周期：bucket创建发生在全部fresh授权校验通过并取得advisory锁之后的
             # 显式ensure_bucket写入段；计划未声明plannedBucketCreate而bucket缺失属状态漂移。
+            # 真实创建归属：外部进程可能在bucket_exists与ensure_bucket之间抢先建桶，
+            # 此时ensure_bucket返回False——本次apply必须如实报告bucketCreated=false，
+            # 且不影响授权校验、advisory锁、对象上传、RAG登记与最终verify。
             bucket_created = False
             if not self.store.bucket_exists():
                 if not plan.get("plannedBucketCreate"):
@@ -635,8 +645,7 @@ class PolicyEvidenceSync:
                         "TARGET_STATE_DRIFT",
                         f"bucket {self.bucket}缺失但计划未声明plannedBucketCreate：计划与MinIO状态不一致（重新plan）",
                     )
-                self.store.ensure_bucket()
-                bucket_created = True
+                bucket_created = self.store.ensure_bucket()
             uploaded = 0
             noop = 0
             for doc in docs:

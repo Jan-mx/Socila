@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -33,7 +34,7 @@ from agent.rag.evidence_sync import (
 )
 from agent.rag.storage import InMemoryObjectStore, MinioObjectStore
 
-DRILL = os.environ.get("SOCILA_TEST_DATABASE_URL")
+DRILL = os.environ.get("SOCILA_TEST_DATABASE_URL", "")
 
 HTML = "<html><body><h1>上海市失业保险金支付标准通知</h1><p>第一条 全文正文内容用于占位，长度超过采集下限。</p></body></html>".encode()
 SHA = hashlib.sha256(HTML).hexdigest()
@@ -367,7 +368,9 @@ class TestControlledSync:
             conn.execute(
                 "INSERT INTO rag.sources (jurisdiction_code, name, entry_url, domain) VALUES ('310000','x','https://rsj.sh.gov.cn/x','rsj.sh.gov.cn')"
             )
-            source_id = conn.execute("SELECT id FROM rag.sources WHERE domain='rsj.sh.gov.cn' LIMIT 1").fetchone()[0]
+            source_row = conn.execute("SELECT id FROM rag.sources WHERE domain='rsj.sh.gov.cn' LIMIT 1").fetchone()
+            assert source_row is not None
+            source_id = source_row[0]
             conn.execute(
                 "INSERT INTO rag.fetches (source_id, url, status, content_hash, object_key, mime) VALUES (%s,'https://rsj.sh.gov.cn/x',200,%s,%s,'text/html')",
                 (source_id, SHA, f"originals/{SHA}"),
@@ -402,7 +405,8 @@ class TestControlledSync:
         from psycopg import connect
 
         with connect(DRILL, autocommit=True) as conn:
-            assert conn.execute("SELECT count(*) FROM rag.document_versions").fetchone()[0] == 0
+            version_row = conn.execute("SELECT count(*) FROM rag.document_versions").fetchone()
+            assert version_row is not None and version_row[0] == 0
         # 重新plan（新目标状态=对象已存在+记录缺失）→ apply补齐登记 → verify ok。
         recovery = self._apply(sync)
         assert recovery["applied"] is True
@@ -422,8 +426,11 @@ class TestControlledSync:
         applied = [r for r in results if r["applied"]]
         assert len(applied) >= 1
         with connect(DRILL, autocommit=True) as conn:
-            fetches = conn.execute("SELECT count(*) FROM rag.fetches WHERE object_key=%s", (f"originals/{SHA}",)).fetchone()[0]
-            versions = conn.execute("SELECT count(*) FROM rag.document_versions WHERE content_hash=%s", (SHA,)).fetchone()[0]
+            fetch_row = conn.execute("SELECT count(*) FROM rag.fetches WHERE object_key=%s", (f"originals/{SHA}",)).fetchone()
+            version_row = conn.execute("SELECT count(*) FROM rag.document_versions WHERE content_hash=%s", (SHA,)).fetchone()
+            assert fetch_row is not None and version_row is not None
+            fetches = fetch_row[0]
+            versions = version_row[0]
         assert fetches == 1 and versions == 1
         assert sync.verify()["ok"] is True
 
@@ -506,10 +513,10 @@ class TestControlledSync:
 
 # ── 真实隔离MinIO（备份→全新bucket恢复→四方对账）─────────────────────────────
 
-MINIO_EP = os.environ.get("RAG_SYNC_TEST_MINIO_ENDPOINT")
+MINIO_EP = os.environ.get("RAG_SYNC_TEST_MINIO_ENDPOINT", "")
 MINIO_AK = os.environ.get("RAG_SYNC_TEST_MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SK = os.environ.get("RAG_SYNC_TEST_MINIO_SECRET_KEY", "minioadmin")
-RESTORE_EP = os.environ.get("RAG_SYNC_TEST_MINIO_RESTORE_ENDPOINT")
+RESTORE_EP = os.environ.get("RAG_SYNC_TEST_MINIO_RESTORE_ENDPOINT", "")
 
 
 @pytest.mark.integration
@@ -649,8 +656,10 @@ class TestBucketLifecycle:
         from psycopg import connect
 
         with connect(DRILL, autocommit=True) as conn:
-            assert conn.execute("SELECT count(*) FROM rag.fetches").fetchone()[0] == 0
-            assert conn.execute("SELECT count(*) FROM rag.document_versions").fetchone()[0] == 0
+            fetch_row = conn.execute("SELECT count(*) FROM rag.fetches").fetchone()
+            version_row = conn.execute("SELECT count(*) FROM rag.document_versions").fetchone()
+            assert fetch_row is not None and version_row is not None
+            assert fetch_row[0] == 0 and version_row[0] == 0
 
     def test_plan_fresh_minio_deterministic_planned_bucket_create_zero_write(self, fresh_minio, evidence_env, monkeypatch):
         sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
@@ -690,7 +699,9 @@ class TestBucketLifecycle:
             conn.execute(
                 "INSERT INTO rag.sources (jurisdiction_code, name, entry_url, domain) VALUES ('310000','x','https://rsj.sh.gov.cn/x','rsj.sh.gov.cn')"
             )
-            source_id = conn.execute("SELECT id FROM rag.sources WHERE domain='rsj.sh.gov.cn' LIMIT 1").fetchone()[0]
+            source_row = conn.execute("SELECT id FROM rag.sources WHERE domain='rsj.sh.gov.cn' LIMIT 1").fetchone()
+            assert source_row is not None
+            source_id = source_row[0]
             conn.execute(
                 "INSERT INTO rag.fetches (source_id, url, status, content_hash, object_key, mime) VALUES (%s,'https://rsj.sh.gov.cn/x',200,%s,%s,'text/html')",
                 (source_id, SHA, f"originals/{SHA}"),
@@ -732,8 +743,11 @@ class TestBucketLifecycle:
         assert any(r["applied"] for r in results)
         assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is True
         with connect(DRILL, autocommit=True) as conn:
-            fetches = conn.execute("SELECT count(*) FROM rag.fetches WHERE object_key=%s", (f"originals/{SHA}",)).fetchone()[0]
-            versions = conn.execute("SELECT count(*) FROM rag.document_versions WHERE content_hash=%s", (SHA,)).fetchone()[0]
+            fetch_row = conn.execute("SELECT count(*) FROM rag.fetches WHERE object_key=%s", (f"originals/{SHA}",)).fetchone()
+            version_row = conn.execute("SELECT count(*) FROM rag.document_versions WHERE content_hash=%s", (SHA,)).fetchone()
+            assert fetch_row is not None and version_row is not None
+            fetches = fetch_row[0]
+            versions = version_row[0]
         assert fetches == 1 and versions == 1
 
     def test_preexisting_bucket_plan_compatible_no_recreate(self, fresh_minio, evidence_env, monkeypatch):
@@ -802,3 +816,516 @@ def test_cli_outputs_do_not_leak_credentials(tmp_path, evidence_env, monkeypatch
     assert PG_PASSWORD_MARKER not in output, "输出泄露数据库口令"
     # 数据库不可达走错误路径：退出码非0，但不得打印连接串。
     assert r.returncode != 0
+
+
+# ── 第四轮复审修复：S3错误失败关闭/bucket创建归属/拒绝路径零写入证据 ──────────
+
+
+def _s3err(code: str) -> Exception:
+    from minio.error import S3Error
+
+    # S3Error首参为HTTP响应对象；错误分类契约只依赖code字段，注入None即可。
+    return S3Error(cast(Any, None), code, f"drill-{code}", "resource", "request-id", "host-id")
+
+
+class _FakeS3Client:
+    """确定性S3客户端替身：stat_object按注入异常失败，put_object计数。"""
+
+    def __init__(self, exc: Exception | None) -> None:
+        self.exc = exc
+        self.put_calls = 0
+
+    def stat_object(self, bucket: str, key: str) -> None:
+        if self.exc is not None:
+            raise self.exc
+
+    def put_object(self, bucket: str, key: str, data: bytes, length: int, content_type: str) -> None:
+        self.put_calls += 1
+
+
+def _minio_store_with_stat_error(exc: Exception | None) -> tuple[MinioObjectStore, _FakeS3Client]:
+    store = MinioObjectStore("127.0.0.1:59999", "ak", "sk", EVIDENCE_BUCKET)
+    fake = _FakeS3Client(exc)
+    store._client = fake  # type: ignore[assignment]  # 测试注入：绕过网络构造确定性S3错误
+    return store, fake
+
+
+class _FakeResponse:
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    def read(self) -> bytes:
+        return self._data
+
+    def close(self) -> None:
+        pass
+
+    def release_conn(self) -> None:
+        pass
+
+
+class _HealthyFakeS3Client:
+    """权限正常替身（无网络）：bucket存在、对象缺失（NoSuchKey）、put可用。"""
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    def bucket_exists(self, bucket: str) -> bool:
+        return True
+
+    def stat_object(self, bucket: str, key: str) -> None:
+        if key not in self.objects:
+            raise _s3err("NoSuchKey")
+
+    def put_object(self, bucket: str, key: str, data, length: int, content_type: str) -> None:
+        self.objects[key] = data.read()
+
+    def get_object(self, bucket: str, key: str) -> _FakeResponse:
+        return _FakeResponse(self.objects[key])
+
+
+class _WriteOnlyFakeS3Client(_HealthyFakeS3Client):
+    """write-only权限组合替身：stat_object一律AccessDenied（权限降级），put仍可用并计数。
+    必须穿过真实MinioObjectStore.exists的调用路径（错误吞噬层在storage.py中）。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.put_calls = 0
+
+    def stat_object(self, bucket: str, key: str) -> None:
+        raise _s3err("AccessDenied")
+
+    def put_object(self, bucket: str, key: str, data, length: int, content_type: str) -> None:
+        self.put_calls += 1
+        super().put_object(bucket, key, data, length, content_type)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
+class TestAccessDeniedFailsClosed:
+    """问题1×问题3交叉：plan后权限降级为write-only组合（stat拒绝、put可用）时，
+    apply必须在exists处原样抛出AccessDenied且put调用次数为0（防止覆盖内容寻址对象）、
+    数据库零写入；audit/verify同样必须失败（不得把权限错误转换为"对象缺失"报告）。"""
+
+    def test_apply_access_denied_zero_put_zero_db_write(self, evidence_env, monkeypatch):
+        from minio.error import S3Error
+
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        store = MinioObjectStore("127.0.0.1:59999", "ak", "sk", EVIDENCE_BUCKET)
+        store._client = _HealthyFakeS3Client()  # type: ignore[assignment]  # plan时权限正常
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=DRILL)
+        plan = sync.build_plan()
+        degraded = _WriteOnlyFakeS3Client()
+        store._client = degraded  # type: ignore[assignment]  # apply前权限降级为write-only组合
+        before = _rag_db_fingerprint()
+        with pytest.raises(S3Error):
+            sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert degraded.put_calls == 0, "权限错误后不得继续put（write-only组合禁止覆盖内容寻址对象）"
+        assert _rag_db_fingerprint() == before, "权限错误拒绝路径必须零写入"
+
+    def test_audit_and_verify_fail_on_access_denied(self, evidence_env, monkeypatch):
+        from minio.error import S3Error
+
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        store = MinioObjectStore("127.0.0.1:59999", "ak", "sk", EVIDENCE_BUCKET)
+        store._client = _WriteOnlyFakeS3Client()  # type: ignore[assignment]
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=DRILL)
+        with pytest.raises(S3Error):
+            sync.audit()  # 旧实现：权限错误被吞→全部"对象缺失"报告，不失败
+        with pytest.raises(S3Error):
+            sync.verify()
+
+
+class _ExternalBucketRaceStore(InMemoryObjectStore):
+    """确定性建桶竞态（无sleep）：守卫与计划读到bucket缺失后、ensure_bucket执行前，
+    外部进程抢先建桶——真实ensure_bucket此时发现已存在并返回False（本次调用者非创建者）。"""
+
+    def __init__(self) -> None:
+        super().__init__(with_bucket=False)
+
+    def ensure_bucket(self) -> bool:
+        self._bucket_exists = True  # 外部进程创建成功，bucket此后存在
+        return False  # 本次ensure_bucket不是创建者
+
+
+def _truncate_rag() -> None:
+    from psycopg import connect
+
+    with connect(DRILL, autocommit=True) as conn:
+        conn.execute(
+            "TRUNCATE rag.chunks, rag.embeddings, rag.document_trees, rag.document_versions, rag.fetches, rag.sources CASCADE"
+        )
+
+
+def _norm_db_value(value):
+    import datetime
+    import uuid
+
+    if isinstance(value, datetime.timedelta):
+        return str(value)
+    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        return value.isoformat()
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+    return value
+
+
+def _rag_db_fingerprint() -> dict:
+    """三张RAG表的规范化行内容hash与行数（拒绝路径数据库零写入断言数据源）。"""
+    from psycopg import connect
+
+    state: dict[str, dict] = {}
+    with connect(DRILL, autocommit=True) as conn:
+        for table in ("rag.sources", "rag.fetches", "rag.document_versions"):
+            cur = conn.execute(f"SELECT * FROM {table} ORDER BY 1")
+            assert cur.description is not None
+            cols = [d.name for d in cur.description]
+            rows = cur.fetchall()
+            canonical = json.dumps(
+                {"cols": cols, "rows": [[_norm_db_value(v) for v in row] for row in rows]},
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            state[table] = {"rows": len(rows), "sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest()}
+    return state
+
+
+def _minio_fingerprint(raw) -> dict:
+    """bucket存在状态+全部对象键与字节SHA+对象数（拒绝路径对象层零写入断言数据源）。"""
+    exists = raw.bucket_exists(EVIDENCE_BUCKET)
+    objects: dict[str, str] = {}
+    if exists:
+        for obj in raw.list_objects(EVIDENCE_BUCKET, recursive=True):
+            data = raw.get_object(EVIDENCE_BUCKET, obj.object_name).read()
+            objects[obj.object_name] = hashlib.sha256(data).hexdigest()
+    return {"bucketExists": exists, "objectCount": len(objects), "objects": objects}
+
+
+def _zero_write_snapshot(raw) -> dict:
+    return {"db": _rag_db_fingerprint(), "minio": _minio_fingerprint(raw)}
+
+
+class TestS3ErrorClassification:
+    """问题1（失败关闭）：exists只有明确的NoSuchKey/NoSuchObject/NoSuchBucket才返回False；
+    AccessDenied、InvalidAccessKeyId、SignatureDoesNotMatch、连接失败、超时、服务端错误
+    及其他未知错误必须原样抛出，不得转换为"对象缺失"。"""
+
+    @pytest.mark.parametrize("code", ["NoSuchKey", "NoSuchObject", "NoSuchBucket"])
+    def test_exists_false_only_on_explicit_absence_codes(self, code):
+        store, _ = _minio_store_with_stat_error(_s3err(code))
+        assert store.exists("originals/abc") is False
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "AccessDenied",
+            "InvalidAccessKeyId",
+            "SignatureDoesNotMatch",
+            "InternalError",
+            "ServiceUnavailable",
+            "SlowDown",
+            "RequestTimeout",
+        ],
+    )
+    def test_exists_raises_on_non_absence_s3_errors(self, code):
+        from minio.error import S3Error
+
+        store, _ = _minio_store_with_stat_error(_s3err(code))
+        with pytest.raises(S3Error) as ei:
+            store.exists("originals/abc")
+        assert ei.value.code == code
+
+    def test_exists_raises_on_connection_failure(self):
+        store, _ = _minio_store_with_stat_error(ConnectionError("connection refused by peer"))
+        with pytest.raises(ConnectionError):
+            store.exists("originals/abc")
+
+    def test_exists_raises_on_timeout(self):
+        store, _ = _minio_store_with_stat_error(TimeoutError("read timed out"))
+        with pytest.raises(TimeoutError):
+            store.exists("originals/abc")
+
+    def test_stat_error_code_surface_through_sdk_contract(self):
+        """实证契约：真实MinIO对缺失对象/缺失bucket分别返回NoSuchKey/NoSuchBucket。"""
+        store, fake = _minio_store_with_stat_error(_s3err("NoSuchKey"))
+        assert store.exists("originals/abc") is False
+        fake.exc = _s3err("NoSuchBucket")
+        assert store.exists("originals/abc") is False
+        fake.exc = _s3err("AccessDenied")
+        from minio.error import S3Error
+
+        with pytest.raises(S3Error):
+            store.exists("originals/abc")
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not MINIO_EP, reason="requires RAG_SYNC_TEST_MINIO_ENDPOINT")
+class TestS3ErrorRealMinio:
+    """真实隔离MinIO上的错误分类：缺失对象/缺失bucket返回False，权限类错误必须抛出。"""
+
+    def test_missing_object_and_missing_bucket_return_false(self, fresh_minio):
+        store = MinioObjectStore(MINIO_EP, MINIO_AK, MINIO_SK, EVIDENCE_BUCKET)
+        assert fresh_minio.bucket_exists(EVIDENCE_BUCKET) is False
+        assert store.exists("originals/abc") is False  # bucket缺失：NoSuchBucket→False
+        fresh_minio.make_bucket(EVIDENCE_BUCKET)
+        assert store.exists("originals/abc") is False  # 对象缺失：NoSuchKey→False
+
+    def test_wrong_credentials_raise_instead_of_false(self, fresh_minio):
+        from minio.error import S3Error
+
+        bad = MinioObjectStore(MINIO_EP, MINIO_AK, "definitely-not-the-real-secret", EVIDENCE_BUCKET)
+        with pytest.raises(S3Error) as ei:
+            bad.exists("originals/abc")
+        assert ei.value.code == "SignatureDoesNotMatch"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
+class TestBucketCreatedAttribution:
+    """问题2：bucketCreated必须使用ensure_bucket()的实际返回值——外部进程在
+    bucket_exists与ensure_bucket之间抢先建桶时，本次apply必须报告bucketCreated=false，
+    且对象上传/RAG登记/verify不受影响（确定性竞态，无随机sleep）。"""
+
+    def test_apply_reports_false_when_external_process_won_the_race(self, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        store = _ExternalBucketRaceStore()
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=DRILL)
+        plan = sync.build_plan()
+        assert plan["plannedBucketCreate"] is True
+        result = sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert result["applied"] is True
+        assert result["bucketCreated"] is False, "外部进程抢先建桶时apply必须如实报告bucketCreated=false"
+        assert store.exists(f"originals/{SHA}"), "竞态失败方仍须完成对象上传"
+        assert sync.verify()["ok"] is True, "RAG登记与四方verify不受竞态影响"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not (DRILL and MINIO_EP), reason="requires SOCILA_TEST_DATABASE_URL + RAG_SYNC_TEST_MINIO_ENDPOINT")
+class TestBucketCreatedAttributionRealMinio:
+    def test_external_bucket_creation_race_reports_created_false(self, fresh_minio, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+
+        class _RaceStore(MinioObjectStore):
+            """ensure_bucket执行前外部进程抢先make_bucket（确定性注入竞态窗口）。"""
+
+            def ensure_bucket(self) -> bool:
+                fresh_minio.make_bucket(EVIDENCE_BUCKET)
+                return super().ensure_bucket()  # 已存在→False
+
+        store = _RaceStore(MINIO_EP, MINIO_AK, MINIO_SK, EVIDENCE_BUCKET)
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=DRILL)
+        plan = sync.build_plan()
+        assert plan["bucketExists"] is False and plan["plannedBucketCreate"] is True
+        result = sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert result["applied"] is True
+        assert result["bucketCreated"] is False
+        objects = list(fresh_minio.list_objects(EVIDENCE_BUCKET, recursive=True))
+        assert [o.object_name for o in objects] == [f"originals/{SHA}"]
+        assert sync.verify()["ok"] is True
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not (DRILL and MINIO_EP), reason="requires SOCILA_TEST_DATABASE_URL + RAG_SYNC_TEST_MINIO_ENDPOINT")
+class TestRejectionPathsZeroWrite:
+    """问题3：每个拒绝路径在apply调用前后比较三张RAG表（规范化行hash+行数）、
+    bucket存在状态与MinIO对象键/字节SHA/对象数；外部夹具制造的漂移以"漂移后基线"
+    为断言基准（外部漂移不计入apply写集合，并分别记录）。"""
+
+    def _apply(self, sync, plan, **overrides):
+        kwargs = {
+            "plan_hash": plan["planHash"],
+            "target_fingerprint": plan["targetFingerprint"],
+            "i_am_authorized": True,
+        }
+        kwargs.update(overrides)
+        return sync.apply(plan, **kwargs)
+
+    def test_refusal_missing_authorization(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        before = _zero_write_snapshot(fresh_minio)
+        with pytest.raises(EvidenceSyncError, match=r"AUTH|授权"):
+            self._apply(sync, plan, i_am_authorized=False)
+        assert _zero_write_snapshot(fresh_minio) == before
+
+    def test_refusal_wrong_plan_hash(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        before = _zero_write_snapshot(fresh_minio)
+        with pytest.raises(EvidenceSyncError, match=r"PLAN_HASH|planHash"):
+            self._apply(sync, plan, plan_hash="0" * 64)
+        assert _zero_write_snapshot(fresh_minio) == before
+
+    def test_refusal_wrong_target_fingerprint(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        before = _zero_write_snapshot(fresh_minio)
+        with pytest.raises(EvidenceSyncError, match=r"FINGERPRINT|fingerprint"):
+            self._apply(sync, plan, target_fingerprint="0" * 64)
+        assert _zero_write_snapshot(fresh_minio) == before
+
+    def test_refusal_code_sha_mismatch(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        stale = json.loads(json.dumps(plan))
+        stale["codeSha"] = "0" * 40
+        stale["planHash"] = plan_hash_of(stale)
+        before = _zero_write_snapshot(fresh_minio)
+        with pytest.raises(EvidenceSyncError, match=r"CODE_SHA|codeSha"):
+            self._apply(sync, stale)
+        assert _zero_write_snapshot(fresh_minio) == before
+
+    def test_refusal_dirty_worktree(self, fresh_minio, evidence_env, monkeypatch):
+        from agent.rag import evidence_sync as es
+
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        monkeypatch.delenv("RAG_EVIDENCE_ALLOW_DIRTY", raising=False)
+        monkeypatch.setattr(es, "git_head", lambda: {"sha": plan["codeSha"], "dirty": True})
+        before = _zero_write_snapshot(fresh_minio)
+        with pytest.raises(EvidenceSyncError, match=r"DIRTY|工作树"):
+            self._apply(sync, plan)
+        assert _zero_write_snapshot(fresh_minio) == before
+
+    def test_refusal_evidence_manifest_hash_drift(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        make_evidence(evidence_env["evidence_root"], "DOC-SH-EXTRA-2026")  # plan后证据集合漂移
+        before = _zero_write_snapshot(fresh_minio)
+        with pytest.raises(EvidenceSyncError, match=r"EVIDENCE_DRIFT|drift|漂移"):
+            self._apply(sync, plan)
+        assert _zero_write_snapshot(fresh_minio) == before
+
+    def test_refusal_minio_state_drift(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        fresh_minio.make_bucket(EVIDENCE_BUCKET)  # 外部漂移：建桶并放入冲突对象
+        fresh_minio.put_object(EVIDENCE_BUCKET, f"originals/{SHA}", io.BytesIO(OTHER_BYTES), length=len(OTHER_BYTES), content_type="text/html")
+        baseline = _zero_write_snapshot(fresh_minio)  # 外部漂移后基线（漂移≠apply写入）
+        with pytest.raises(EvidenceSyncError, match=r"DRIFT|漂移"):
+            self._apply(sync, plan)
+        assert _zero_write_snapshot(fresh_minio) == baseline, "apply自身对漂移必须零写入"
+
+    def test_refusal_rag_db_state_drift(self, fresh_minio, evidence_env, monkeypatch):
+        from psycopg import connect
+
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        with connect(DRILL, autocommit=True) as conn:
+            conn.execute(
+                "INSERT INTO rag.sources (jurisdiction_code, name, entry_url, domain) VALUES ('310000','x','https://rsj.sh.gov.cn/x','rsj.sh.gov.cn')"
+            )
+            source_row = conn.execute("SELECT id FROM rag.sources WHERE domain='rsj.sh.gov.cn' LIMIT 1").fetchone()
+            assert source_row is not None
+            source_id = source_row[0]
+            conn.execute(
+                "INSERT INTO rag.fetches (source_id, url, status, content_hash, object_key, mime) VALUES (%s,'https://rsj.sh.gov.cn/x',200,%s,%s,'text/html')",
+                (source_id, SHA, f"originals/{SHA}"),
+            )
+        baseline = _zero_write_snapshot(fresh_minio)  # 外部漂移后基线
+        with pytest.raises(EvidenceSyncError, match=r"DRIFT|漂移"):
+            self._apply(sync, plan)
+        assert _zero_write_snapshot(fresh_minio) == baseline, "apply自身对RAG漂移必须零写入"
+
+    def test_refusal_object_conflict(self, fresh_minio, evidence_env, monkeypatch):
+        fresh_minio.make_bucket(EVIDENCE_BUCKET)
+        fresh_minio.put_object(EVIDENCE_BUCKET, f"originals/{SHA}", io.BytesIO(OTHER_BYTES), length=len(OTHER_BYTES), content_type="text/html")
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        assert plan["conflicts"] == ["DOC-SH-TEST-2026"]
+        before = _zero_write_snapshot(fresh_minio)
+        with pytest.raises(EvidenceSyncError, match=r"CONFLICT|冲突"):
+            self._apply(sync, plan)
+        after = _zero_write_snapshot(fresh_minio)
+        assert after == before, "冲突拒绝必须零写入且对象字节不变"
+        assert after["minio"]["objects"][f"originals/{SHA}"] == hashlib.sha256(OTHER_BYTES).hexdigest()
+
+    def test_refusal_injected_failure_rolls_back_db_and_records_apply_side_minio(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        before = _zero_write_snapshot(fresh_minio)
+        with pytest.raises(EvidenceSyncError, match=r"INJECTED|注入"):
+            self._apply(sync, plan, inject_failure_at="after_uploads")
+        after = _zero_write_snapshot(fresh_minio)
+        assert after["db"] == before["db"], "注入点失败必须整体回滚：三张RAG表零写入"
+        # apply自身副作用如实记录：对象在注入前已上传（MinIO非事务资源）——
+        # 该变化属于apply的部分写入，与外部漂移分别记录。
+        assert before["minio"]["objectCount"] == 0
+        assert after["minio"]["bucketExists"] is True and after["minio"]["objectCount"] == 1
+
+    def test_concurrent_race_exactly_one_writer_loser_zero_extra_write(self, fresh_minio, evidence_env, monkeypatch):
+        from concurrent.futures import ThreadPoolExecutor
+
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        plan = sync.build_plan()
+        before = _zero_write_snapshot(fresh_minio)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: self._apply(sync, plan), range(2)))
+        assert sorted(r["applied"] for r in results) == [False, True]
+        after = _zero_write_snapshot(fresh_minio)
+        # 胜者一次合法写入的精确终态：恰好单行登记、单对象；失败方零额外写入。
+        assert after["db"]["rag.sources"]["rows"] == 1
+        assert after["db"]["rag.fetches"]["rows"] == 1
+        assert after["db"]["rag.document_versions"]["rows"] == 1
+        assert after["minio"]["bucketExists"] is True and after["minio"]["objectCount"] == 1
+        assert after["db"] != before["db"] or before["db"]["rag.sources"]["rows"] > 0
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not (DRILL and MINIO_EP), reason="requires SOCILA_TEST_DATABASE_URL + RAG_SYNC_TEST_MINIO_ENDPOINT")
+class TestFingerprintSemantics:
+    """问题4语义：planHash绑定整个计划（含bucketExists与plannedBucketCreate执行意图）；
+    targetFingerprint只绑定真实前置状态（bucketExists+对象+RAG）；
+    finalFingerprint只描述真实预期终态；plannedBucketCreate不是状态指纹的独立字段。"""
+
+    def test_bucket_state_change_updates_plan_hash_and_target_fingerprint_but_not_final(self, fresh_minio, evidence_env, monkeypatch):
+        sync = _fresh_sync(fresh_minio, evidence_env, monkeypatch)
+        absent = sync.build_plan()
+        assert absent["bucketExists"] is False and absent["plannedBucketCreate"] is True
+        fresh_minio.make_bucket(EVIDENCE_BUCKET)  # bucket真实存在性变化（外部操作）
+        present = sync.build_plan()
+        assert present["bucketExists"] is True and present["plannedBucketCreate"] is False
+        assert present["planHash"] != absent["planHash"], "plannedBucketCreate/bucketExists变化必须改变planHash"
+        assert present["targetFingerprint"] != absent["targetFingerprint"], "bucket真实存在性变化必须改变targetFingerprint"
+        assert present["finalFingerprint"] == absent["finalFingerprint"], "finalFingerprint只描述终态，与前置无关"
+        assert sync.build_plan()["planHash"] == present["planHash"], "同状态计划必须确定性"
+
+    def test_changing_planned_bucket_create_changes_plan_hash(self, evidence_env):
+        """plannedBucketCreate是执行意图并进入planHash（计划体成分）。"""
+        body_created = {"schema": PLAN_SCHEMA, "plannedBucketCreate": True, "k": "v"}
+        body_existing = {"schema": PLAN_SCHEMA, "plannedBucketCreate": False, "k": "v"}
+        assert plan_hash_of(body_existing) != plan_hash_of(body_created)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
+def test_cli_unexpected_s3_error_output_redacts_credentials(evidence_env, monkeypatch, capsys):
+    """CLI对非预期S3/连接错误统一脱敏：凭据与连接串口令不得出现在输出。"""
+    import agent.rag.evidence_sync as es
+
+    class _BoomStore(InMemoryObjectStore):
+        def bucket_exists(self):
+            raise RuntimeError(
+                "minio connect failed: postgresql://minio:Sup3rSecret9@127.0.0.1:9000/policy-originals"
+            )
+
+    monkeypatch.setattr(es, "_build_store", lambda endpoint, bucket: _BoomStore())
+    rc = es.main(
+        [
+            "audit",
+            "--evidence-dir", str(evidence_env["evidence_root"]),
+            "--dsl-root", str(evidence_env["dsl"]),
+            "--database-url", "postgresql://postgres:PgDrillS3cret7@localhost:59999/db",
+        ]
+    )
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert rc == 1
+    assert "Sup3rSecret9" not in output, "非预期错误输出泄露MinIO口令"
+    assert "PgDrillS3cret7" not in output, "非预期错误输出泄露数据库口令"

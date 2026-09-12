@@ -1,8 +1,8 @@
 # WI-20260911-03：0019审计迁移、受控原位改写CLI与隔离验收
 
 > Author: Jan
-> Status: Ready for independent review（2026-09-12业务hash字段契约与完整Node套件修复交付：单元17/17+集成10/10+演练10步全ok+完整套件零失败零skip；同日第二轮控制契约复审针对WI-01同步入口，本Work Item代码不变、保持Ready for independent review。独立复审确认前不标记Accepted）
-> Updated: 2026-09-12
+> Status: Ready for user testing（2026-09-12业务hash字段契约与完整Node套件修复交付；2026-09-13第四轮复审修复针对WI-01同步入口，本Work Item代码不变；完整门禁与独立复审通过后交付用户测试；用户测试与持久执行前不标记最终Accepted）
+> Updated: 2026-09-13
 
 ## Work Item
 

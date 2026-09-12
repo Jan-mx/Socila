@@ -1,5 +1,5 @@
 /**
- * 政策原件MinIO同步+PostgreSQL/MinIO完整备份恢复对账演练（控制契约复审后版本）。
+ * 政策原件MinIO同步+PostgreSQL/MinIO完整备份恢复对账演练（第四轮复审修复后版本）。
  *
  *   RAG_DRILL_PG_CONTAINER=<pg17容器> RAG_DRILL_PG_PORT=<端口> \
  *   RAG_DRILL_MINIO_ENDPOINT=<隔离MinIO> RAG_DRILL_MINIO_RESTORE_ENDPOINT=<全新MinIO> \
@@ -12,15 +12,21 @@
  *   2. audit缺桶预态（BUCKET_MISSING→exit4，零建桶）→ plan（缺桶仍只读生成确定性计划：
  *      bucketExists=false、plannedBucketCreate=true、两次逐字节一致、23 uploads、
  *      bucket仍不存在、对象数0）；
- *   3. 守卫反例（全部零建桶零写入）：缺--i-am-authorized→exit2、错planHash→exit4、
- *      错targetFingerprint→exit4、plan后外部建桶漂移→exit4、audit缺数据库→exit2；
- *   4. apply（显式建桶+23对象上传+rag登记+verify）→ 断言bucket存在且恰好23对象 →
- *      四方verify → 复跑同一计划noop:true → object-only verify（degraded标记）；
- *   5. 冲突对象拒绝覆盖（drift拒绝且对象字节不变；清除后复跑恢复）；
+ *   3. 守卫反例（全部零建桶零写入，每个反例输出rag.sources/rag.fetches/
+ *      rag.document_versions规范化行hash+行数与MinIO对象层before/after指纹）：
+ *      缺--i-am-authorized→exit2、错planHash→exit4、错targetFingerprint→exit4、
+ *      codeSha不一致→exit4、dirty工作树→exit2、plan后外部建桶+冲突对象漂移→exit4、
+ *      plan后RAG数据库状态漂移→exit4、write-only权限错误（受限IAM用户stat拒绝）→exit1、
+ *      audit缺数据库→exit2；
+ *   4. apply（显式建桶+23对象上传+rag登记+verify，bucketCreated=true）→ 断言bucket存在
+ *      且恰好23对象 → 四方verify → 复跑同一计划noop:true → object-only verify（降级标记）；
+ *   5. 冲突对象拒绝覆盖（对象字节不变；清除后复跑恢复）；
  *   6. 备份：pg_dump + 逐对象下载（sha256清单）；
  *   7. 恢复：全新数据库pg_restore + 全新MinIO受控回填（恢复程序自身显式建桶，非evidence_sync副作用）；
  *   8. 恢复副本四方对账（verify ok）+ 恢复副本同计划apply noop；
- *   9. 输出证据JSON；输出全程不含访问密钥/连接串口令。
+ *   9. bucket创建竞态归属准确：外部进程预先建桶后重新plan（plannedBucketCreate=false）
+ *      →apply报告bucketCreated=false且上传/登记/verify全部正确；
+ *  10. 输出证据JSON；输出全程不含访问密钥/连接串口令。
  *
  * 退出码：0全部通过；1任一步骤失败。
  */
@@ -46,7 +52,7 @@ const RESTORE_DB = `${DB}_restore`;
 const BASE = `postgresql://postgres:postgres@localhost:${PORT}`;
 const DRILL_URL = `${BASE}/${DB}`;
 const RESTORE_URL = `${BASE}/${RESTORE_DB}`;
-const SECRET_SENTINELS = [MINIO_SK, "minioadmin123", "postgres:postgres"].filter((s) => s && s.length > 6);
+const SECRET_SENTINELS = [MINIO_SK, "minioadmin123", "postgres:postgres", "R4LimitedPass9137"].filter((s) => s && s.length > 6);
 
 const results = [];
 let failed = false;
@@ -165,6 +171,90 @@ function bucketExists(ep) {
   return minioPy(ep, `print(c.bucket_exists("policy-originals"))`).trim() === "True";
 }
 
+// ── 拒绝路径零写入证据：三张RAG表规范化行hash+行数 与 MinIO对象层指纹 ─────────
+
+const RAG_FP_PY = `import json, hashlib, os, datetime, uuid
+import psycopg
+
+def norm(v):
+    if isinstance(v, datetime.timedelta):
+        return str(v)
+    if isinstance(v, (datetime.datetime, datetime.date, datetime.time)):
+        return v.isoformat()
+    if isinstance(v, uuid.UUID):
+        return str(v)
+    if isinstance(v, (dict, list)):
+        return json.dumps(v, sort_keys=True, ensure_ascii=False, default=str)
+    return v
+
+out = {}
+with psycopg.connect(os.environ["FP_DB_URL"], autocommit=True) as conn:
+    for table in ("rag.sources", "rag.fetches", "rag.document_versions"):
+        cur = conn.execute("SELECT * FROM " + table + " ORDER BY 1")
+        cols = [d.name for d in cur.description]
+        rows = cur.fetchall()
+        canonical = json.dumps(
+            {"cols": cols, "rows": [[norm(v) for v in r] for r in rows]},
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        out[table] = {"rows": len(rows), "sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest()}
+print(json.dumps(out, sort_keys=True))`;
+
+function ragFingerprint(dbUrl) {
+  return JSON.parse(py(RAG_FP_PY, { FP_DB_URL: dbUrl }));
+}
+
+function minioFingerprint(ep) {
+  return JSON.parse(
+    minioPy(
+      ep,
+      `import json, hashlib
+exists = c.bucket_exists("policy-originals")
+objects = {}
+if exists:
+    for o in c.list_objects("policy-originals", recursive=True):
+        data = c.get_object("policy-originals", o.object_name).read()
+        objects[o.object_name] = hashlib.sha256(data).hexdigest()
+print(json.dumps({"bucketExists": exists, "objectCount": len(objects), "objects": objects}, sort_keys=True))`,
+    ),
+  );
+}
+
+function zeroWriteSnapshot(ep, dbUrl) {
+  return { db: ragFingerprint(dbUrl), minio: minioFingerprint(ep) };
+}
+
+function assertApplyZeroWrite(label, ep, dbUrl, baseline) {
+  const after = zeroWriteSnapshot(ep, dbUrl);
+  if (JSON.stringify(after) !== JSON.stringify(baseline)) {
+    throw new Error(
+      `${label}：apply自身写入非零\nbefore=${JSON.stringify(baseline).slice(0, 300)}\nafter=${JSON.stringify(after).slice(0, 300)}`,
+    );
+  }
+  return after;
+}
+
+function truncateRag(dbUrl) {
+  py(
+    `import os, psycopg
+with psycopg.connect(os.environ["FP_DB_URL"], autocommit=True) as conn:
+    conn.execute("TRUNCATE rag.chunks, rag.embeddings, rag.document_trees, rag.document_versions, rag.fetches, rag.sources CASCADE")
+print("truncated")`,
+    { FP_DB_URL: dbUrl },
+  );
+}
+
+function mcRun(script, extraEnv = {}) {
+  const r = spawnSync("docker", ["run", "--rm", "--entrypoint", "/bin/sh", "minio/mc:latest", "-c", script], {
+    encoding: "utf8",
+    timeout: 300_000,
+    env: { ...process.env, ...extraEnv },
+  });
+  if (r.status !== 0) throw new Error(`mc失败（退出码${r.status}）：${(r.stderr || r.stdout || "").slice(0, 300)}`);
+  return r.stdout;
+}
+
 const APPLY_ARGS = (planFile, planHash, targetFingerprint) => [
   "apply",
   "--evidence-dir", EVIDENCE_DIR,
@@ -197,18 +287,21 @@ try {
     return { database: DB, primaryEndpoint: MINIO_EP, restoreEndpoint: MINIO_RESTORE_EP, primaryBucketExists: bucketExists(MINIO_EP), restoreBucketExists: bucketExists(MINIO_RESTORE_EP) };
   });
 
-  step("audit缺桶预态：BUCKET_MISSING → exit 4零建桶零写入", () => {
+  step("audit缺桶预态：BUCKET_MISSING → exit 4零建桶零写入（DB+对象层前后指纹一致）", () => {
+    const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
     const r = syncCli(["audit", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL], BASE_ENV, 4);
     if (!r.json || r.json.ok !== false || r.json.docs.length !== 23) throw new Error(`audit预态异常：${JSON.stringify(r.json?.docs?.length)}`);
     if (!r.json.problems.some((p) => p.includes("BUCKET_MISSING"))) throw new Error(`缺BUCKET_MISSING问题：${JSON.stringify(r.json.problems.slice(0, 3))}`);
     if (r.json.bucketExists !== false) throw new Error("audit报告bucketExists应为false");
     if (bucketExists(MINIO_EP)) throw new Error("audit隐式创建了bucket！");
-    return { docs: 23, bucketMissing: true, zeroBucketCreate: true };
+    const after = assertApplyZeroWrite("audit缺桶预态", MINIO_EP, DRILL_URL, before);
+    return { docs: 23, bucketMissing: true, zeroBucketCreate: true, zeroWriteFingerprints: { db: after.db, minio: { bucketExists: after.minio.bucketExists, objectCount: after.minio.objectCount } } };
   });
 
   let plan = null;
   let planFile = "";
-  step("plan（缺桶）：确定性输出、bucketExists=false/plannedBucketCreate=true、23 uploads、bucket仍不存在", () => {
+  step("plan（缺桶）：确定性输出、bucketExists=false/plannedBucketCreate=true、23 uploads、bucket仍不存在、零写入", () => {
+    const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
     syncCli(["plan", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL, "--out", path.join(WORK, "rag-plan.json")], BASE_ENV, 0);
     planFile = path.join(WORK, "rag-plan.json");
     const first = readFileSync(planFile, "utf8");
@@ -227,40 +320,150 @@ try {
     }
     if (bucketExists(MINIO_EP)) throw new Error("plan隐式创建了bucket！");
     if (bucketObjectCount(MINIO_EP) !== "0") throw new Error("plan后bucket出现对象！");
-    return { plannedUploads: 23, deterministic: true, plannedBucketCreate: true, bucketStillAbsent: true, planHash: plan.planHash.slice(0, 16) + "…" };
+    const after = assertApplyZeroWrite("plan缺桶", MINIO_EP, DRILL_URL, before);
+    return { plannedUploads: 23, deterministic: true, plannedBucketCreate: true, bucketStillAbsent: true, zeroWriteFingerprints: after, planHash: plan.planHash.slice(0, 16) + "…" };
   });
 
-  step("守卫反例A：apply缺--i-am-authorized → exit 2零写入零建桶", () => {
+  step("守卫反例A：apply缺--i-am-authorized → exit 2零写入零建桶（前后指纹一致）", () => {
+    const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
     const args = APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint).filter((a) => a !== "--i-am-authorized");
     const r = syncCli(args, BASE_ENV, 2);
     if (!/AUTH|授权|USAGE/i.test(r.out)) throw new Error("拒绝信息缺失");
     if (bucketExists(MINIO_EP)) throw new Error("未授权apply创建了bucket！");
-    return { exit: 2, zeroWrite: true, bucketStillAbsent: true };
+    const after = assertApplyZeroWrite("反例A缺授权", MINIO_EP, DRILL_URL, before);
+    return { exit: 2, zeroWrite: true, bucketStillAbsent: true, fingerprints: after };
   });
 
-  step("守卫反例B：错planHash → exit 4零写入零建桶", () => {
+  step("守卫反例B：错planHash → exit 4零写入零建桶（前后指纹一致）", () => {
+    const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
     const r = syncCli(APPLY_ARGS(planFile, "0".repeat(64), plan.targetFingerprint), BASE_ENV, 4);
     if (!/PLAN_HASH/i.test(r.out)) throw new Error("拒绝信息缺失");
     if (bucketExists(MINIO_EP)) throw new Error("错planHash的apply创建了bucket！");
-    return { exit: 4, zeroWrite: true, bucketStillAbsent: true };
+    const after = assertApplyZeroWrite("反例B错planHash", MINIO_EP, DRILL_URL, before);
+    return { exit: 4, zeroWrite: true, bucketStillAbsent: true, fingerprints: after };
   });
 
-  step("守卫反例C：错targetFingerprint → exit 4零写入零建桶", () => {
+  step("守卫反例C：错targetFingerprint → exit 4零写入零建桶（前后指纹一致）", () => {
+    const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
     const r = syncCli(APPLY_ARGS(planFile, plan.planHash, "0".repeat(64)), BASE_ENV, 4);
     if (!/FINGERPRINT/i.test(r.out)) throw new Error("拒绝信息缺失");
     if (bucketExists(MINIO_EP)) throw new Error("错指纹的apply创建了bucket！");
-    return { exit: 4, zeroWrite: true, bucketStillAbsent: true };
+    const after = assertApplyZeroWrite("反例C错指纹", MINIO_EP, DRILL_URL, before);
+    return { exit: 4, zeroWrite: true, bucketStillAbsent: true, fingerprints: after };
   });
 
-  step("守卫反例D：plan后外部建桶漂移 → exit 4零写入（清除后恢复前置态）", () => {
-    // 外部干预：绕过受控apply直接建bucket（受控演练内的漂移注入）。
-    minioPy(MINIO_EP, `c.make_bucket("policy-originals")
-print("external-bucket-created")`);
+  step("守卫反例F：codeSha不一致 → exit 4零写入零建桶（前后指纹一致）", () => {
+    const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
+    const staleFile = path.join(WORK, "rag-plan-stale-codesha.json");
+    py(
+      `import json, hashlib
+plan = json.load(open(r"${planFile.replace(/\\/g, "\\\\")}", encoding="utf-8"))
+plan["codeSha"] = "0" * 40
+body = {k: v for k, v in plan.items() if k != "planHash"}
+canonical = json.dumps(body, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+plan["planHash"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+json.dump(plan, open(r"${staleFile.replace(/\\/g, "\\\\")}", "w", encoding="utf-8"), ensure_ascii=False)
+print("stale-plan-written")`,
+    );
+    const r = syncCli(APPLY_ARGS(staleFile, JSON.parse(readFileSync(staleFile, "utf8")).planHash, plan.targetFingerprint), BASE_ENV, 4);
+    if (!/CODE_SHA|codeSha/i.test(r.out)) throw new Error(`codeSha拒绝信息缺失：${r.out.slice(0, 200)}`);
+    const after = assertApplyZeroWrite("反例F codeSha不一致", MINIO_EP, DRILL_URL, before);
+    return { exit: 4, zeroWrite: true, bucketStillAbsent: true, fingerprints: after };
+  });
+
+  step("守卫反例G：dirty工作树 → exit 2零写入零建桶（前后指纹一致）", () => {
+    const probe = path.join(ROOT, ".rag-r4-dirty-probe.tmp");
+    writeFileSync(probe, "dirty-probe\n");
+    try {
+      const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
+      const r = syncCli(APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint), { ...BASE_ENV, RAG_EVIDENCE_ALLOW_DIRTY: "" }, 2);
+      if (!/DIRTY|工作树/i.test(r.out)) throw new Error(`dirty拒绝信息缺失：${r.out.slice(0, 200)}`);
+      const after = assertApplyZeroWrite("反例G dirty工作树", MINIO_EP, DRILL_URL, before);
+      return { exit: 2, zeroWrite: true, bucketStillAbsent: true, fingerprints: after };
+    } finally {
+      rmSync(probe, { force: true });
+    }
+  });
+
+  step("守卫反例D：plan后外部建桶+冲突对象漂移 → exit 4零写入（清除后恢复前置态）", () => {
+    const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
+    // 外部干预：绕过受控apply直接建bucket并放入冲突内容对象（受控演练内的漂移注入）。
+    minioPy(MINIO_EP, `import io
+c.make_bucket("policy-originals")
+data = b"<html>external-drift-bytes</html>"
+c.put_object("policy-originals", "${plan.objects[0].objectKey}", io.BytesIO(data), length=len(data), content_type="text/html")
+print("external-bucket-and-object-created")`);
     const r = syncCli(APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint), BASE_ENV, 4);
     if (!/DRIFT|漂移/i.test(r.out)) throw new Error("漂移拒绝信息缺失");
-    if (bucketObjectCount(MINIO_EP) !== "0") throw new Error("漂移apply上传了对象！");
+    // 外部漂移后基线：断言基准为漂移后状态——apply自身零写入，外部漂移不计入apply写集合。
+    const baseline = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
+    if (baseline.minio.objectCount !== 1 || baseline.minio.bucketExists !== true) {
+      throw new Error(`外部漂移夹具异常：${JSON.stringify({ bucketExists: baseline.minio.bucketExists, objectCount: baseline.minio.objectCount })}`);
+    }
+    const after = assertApplyZeroWrite("反例D外部建桶+对象漂移", MINIO_EP, DRILL_URL, baseline);
     wipeBucket(MINIO_EP); // 清除外部漂移，恢复计划前置态
-    return { exit: 4, zeroWrite: true, externalDriftRefused: true, cleaned: true };
+    return {
+      exit: 4,
+      zeroWrite: true,
+      externalDriftRefused: true,
+      cleaned: true,
+      preDriftFingerprints: before,
+      externalDriftRecorded: { by: "external-test-fixture", bucketExists: baseline.minio.bucketExists, objectCount: baseline.minio.objectCount },
+      applyZeroWriteFingerprints: after,
+    };
+  });
+
+  step("守卫反例H：plan后RAG数据库状态漂移 → exit 4零写入（外部插入行单独记录，清除后恢复）", () => {
+    const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
+    // 外部干预：直接向rag.sources/rag.fetches插入目标记录（命中计划对象键→指纹改变）。
+    py(
+      `import os, json, psycopg
+with psycopg.connect(os.environ["FP_DB_URL"], autocommit=True) as conn:
+    row = conn.execute("INSERT INTO rag.sources (jurisdiction_code, name, entry_url, domain) VALUES ('310000','x','https://rsj.sh.gov.cn/x','rsj.sh.gov.cn') RETURNING id").fetchone()
+    conn.execute("INSERT INTO rag.fetches (source_id, url, status, content_hash, object_key, mime) VALUES (%s,'https://rsj.sh.gov.cn/x',200,%s,%s,'text/html')", (row[0], "${plan.objects[0].sha256}", "${plan.objects[0].objectKey}"))
+print("external-rag-rows-inserted")`,
+      { FP_DB_URL: DRILL_URL },
+    );
+    const r = syncCli(APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint), BASE_ENV, 4);
+    if (!/DRIFT|漂移/i.test(r.out)) throw new Error("RAG漂移拒绝信息缺失");
+    const baseline = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
+    const externalDrift = {
+      by: "external-test-fixture",
+      sourcesRowsDelta: baseline.db["rag.sources"].rows - before.db["rag.sources"].rows,
+      fetchesRowsDelta: baseline.db["rag.fetches"].rows - before.db["rag.fetches"].rows,
+    };
+    const after = assertApplyZeroWrite("反例H RAG数据库漂移", MINIO_EP, DRILL_URL, baseline);
+    truncateRag(DRILL_URL); // 清除外部漂移，恢复计划前置态（空RAG表）
+    return { exit: 4, zeroWrite: true, ragDriftRefused: true, cleaned: true, externalDriftRecorded: externalDrift, applyZeroWriteFingerprints: after };
+  });
+
+  step("守卫反例I：write-only权限错误（受限IAM用户stat拒绝）→ exit 1失败关闭零写入", () => {
+    const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
+    const minioPort = MINIO_EP.split(":")[1];
+    // 受控创建受限用户（仅s3:PutObject；bucket_exists/stat_object必AccessDenied）。
+    mcRun(
+      `mc alias set s http://host.docker.internal:${minioPort} "$MC_AK" "$MC_SK" >/dev/null
+mc admin user add s r4limited "$LIMITED_PASS"
+echo '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:PutObject"],"Resource":["arn:aws:s3:::policy-originals/*"]}]}' > /tmp/wo.json
+mc admin policy create s r4writeonly /tmp/wo.json >/dev/null
+mc admin policy attach s r4writeonly --user r4limited >/dev/null
+echo "limited-user-ready"`,
+      { MC_AK: MINIO_AK, MC_SK: MINIO_SK, LIMITED_PASS: "R4LimitedPass9137" },
+    );
+    try {
+      const r = syncCli(APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint), { ...BASE_ENV, AGENT_MINIO_ACCESS_KEY: "r4limited", AGENT_MINIO_SECRET_KEY: "R4LimitedPass9137" }, 1);
+      if (!/AccessDenied|UNEXPECTED/i.test(r.out)) throw new Error(`权限错误拒绝信息缺失：${r.out.slice(0, 200)}`);
+      const after = assertApplyZeroWrite("反例I权限错误", MINIO_EP, DRILL_URL, before);
+      if (bucketExists(MINIO_EP)) throw new Error("权限错误apply创建了bucket！");
+      return { exit: 1, failsClosed: true, zeroWrite: true, bucketStillAbsent: true, fingerprints: after };
+    } finally {
+      mcRun(
+        `mc alias set s http://host.docker.internal:${minioPort} "$MC_AK" "$MC_SK" >/dev/null
+mc admin user remove s r4limited >/dev/null 2>&1 || true
+echo "limited-user-removed"`,
+        { MC_AK: MINIO_AK, MC_SK: MINIO_SK },
+      );
+    }
   });
 
   step("守卫反例E：audit缺数据库连接 → exit 2", () => {
@@ -317,6 +520,7 @@ print("external-bucket-created")`);
   });
 
   step("冲突对象拒绝覆盖（对象字节不变；清除后复跑恢复）", () => {
+    const before = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
     const target = applyResult.manifest[0];
     py(
       `from minio import Minio
@@ -329,6 +533,7 @@ print("conflict-planted")`,
     );
     const r = syncCli(APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint), BASE_ENV, 4);
     if (!/DRIFT|CONFLICT|漂移|冲突/i.test(r.out)) throw new Error("冲突拒绝信息缺失");
+    const baseline = zeroWriteSnapshot(MINIO_EP, DRILL_URL);
     const sha = py(
       `from minio import Minio
 import os, hashlib
@@ -338,6 +543,8 @@ print(hashlib.sha256(data).hexdigest())`,
       { RAG_DRILL_SK: MINIO_SK },
     ).trim();
     if (sha === target.sha256) throw new Error("冲突对象被覆盖！");
+    if (baseline.minio.objects[target.objectKey] !== sha) throw new Error("冲突对象指纹与实际不一致");
+    const after = assertApplyZeroWrite("冲突拒绝", MINIO_EP, DRILL_URL, baseline);
     py(
       `from minio import Minio
 import os
@@ -354,7 +561,7 @@ print("conflict-removed")`,
     if (repair.json.applied !== true) throw new Error(`恢复apply异常：${JSON.stringify(repair.json)}`);
     const rv = syncCli(["verify", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL], BASE_ENV, 0);
     if (rv.json.ok !== true) throw new Error("恢复后verify未通过");
-    return { conflictRefused: true, objectPreserved: true, repairedViaReplan: true };
+    return { conflictRefused: true, objectPreserved: true, repairedViaReplan: true, preConflictFingerprints: before, conflictApplyZeroWriteFingerprints: { db: after.db, minio: { bucketExists: after.minio.bucketExists, objectCount: after.minio.objectCount } } };
   });
 
   step("备份：pg_dump + 逐对象下载（sha256清单）", () => {
@@ -426,6 +633,30 @@ print("restored")`,
     return { ok: true, objects: 23, database: RESTORE_DB, restoredNoop: true };
   });
 
+  step("bucket创建竞态归属准确：外部进程预先建桶 → 重新plan(plannedBucketCreate=false) → apply报告bucketCreated=false且上传/登记/verify全部正确", () => {
+    // 回到缺桶起点：清空primary bucket与RAG表（备份/恢复证据已固定，不受影响）。
+    wipeBucket(MINIO_EP);
+    truncateRag(DRILL_URL);
+    // 外部进程抢先建桶（不经受控apply）。
+    minioPy(MINIO_EP, `c.make_bucket("policy-originals")
+print("external-pre-created-bucket")`);
+    syncCli(["plan", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL, "--out", path.join(WORK, "rag-plan-race.json")], BASE_ENV, 0);
+    const racePlan = JSON.parse(readFileSync(path.join(WORK, "rag-plan-race.json"), "utf8"));
+    if (racePlan.bucketExists !== true || racePlan.plannedBucketCreate !== false) {
+      throw new Error(`竞态计划标记异常：bucketExists=${racePlan.bucketExists} plannedBucketCreate=${racePlan.plannedBucketCreate}`);
+    }
+    const r = syncCli(APPLY_ARGS(path.join(WORK, "rag-plan-race.json"), racePlan.planHash, racePlan.targetFingerprint), BASE_ENV, 0);
+    if (r.json.applied !== true || r.json.verified !== true) throw new Error(`竞态apply异常：${JSON.stringify({ applied: r.json?.applied, verified: r.json?.verified })}`);
+    if (r.json.bucketCreated !== false) throw new Error(`竞态归属错误：外部已建桶时bucketCreated=${r.json.bucketCreated}（必须为false）`);
+    if (bucketObjectCount(MINIO_EP) !== "23") throw new Error(`竞态apply对象数 ${bucketObjectCount(MINIO_EP)} ≠ 23`);
+    const rv = syncCli(["verify", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL], BASE_ENV, 0);
+    if (rv.json.ok !== true) throw new Error("竞态apply后verify未通过");
+    // 最终清理：对象层零残留（容器随任务清理删除）。
+    wipeBucket(MINIO_EP);
+    wipeBucket(MINIO_RESTORE_EP);
+    return { bucketCreated: false, uploaded: 23, objectsInBucket: 23, verifyOk: true, bucketsWiped: true };
+  });
+
   step("残留敏感扫描：证据文件与演练输出零密钥", () => {
     let scanned = 0;
     const scan = (p) => {
@@ -437,6 +668,8 @@ print("restored")`,
     scan(path.join(WORK, "rag-plan.json"));
     scan(path.join(WORK, "rag-plan-2.json"));
     scan(path.join(WORK, "rag-apply-manifest.json"));
+    scan(path.join(WORK, "rag-plan-race.json"));
+    scan(path.join(WORK, "rag-plan-repair.json"));
     scan(path.join(WORK, "minio-backup", "manifest.json"));
     return { filesScanned: scanned };
   });

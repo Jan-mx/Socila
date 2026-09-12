@@ -1,8 +1,8 @@
 # 上海政策纠偏与36条案例V2全量重建PRD
 
 > Author: Jan
-> Status: Updating（三个独立审查问题已修复交付并过全量门禁；Ready for independent review，独立复审确认前不标记Accepted；未合并目标分支）
-> Updated: 2026-09-12
+> Status: Ready for user testing（第四轮复审修复交付：MinIO错误失败关闭、bucket创建竞态归属、拒绝路径零写入证据、文档事实同步；完整门禁与独立复审通过后交付用户测试；不标记最终Accepted；未合并目标分支）
+> Updated: 2026-09-13
 
 ## 1. 文档元数据
 
@@ -13,7 +13,7 @@
 | 目标分支 | `codex/shanghai-case-v2` |
 | 基线分支 | `origin/refactor/policy-ops-agent-platform` |
 | 已确认基线SHA | `0885613f2fbb68bf361d55c3b89694dc1024d1b4` |
-| 当前状态 | 任务1/2/3已提交并推送到`f583adc`；独立审查发现MinIO原件链路、业务`content_hash`同步和完整Node套件超时问题；持久写入未执行 |
+| 当前状态 | 四轮修复已交付：f583adc=历史任务2/3交付SHA、b5a8d13=第一轮审查修复（MinIO接入/业务content_hash/Node超时）、82c905b=fresh授权与verify范围修复（控制契约）、6bd3edc=缺桶生命周期修复（亦为本轮开发起点）、本轮修复HEAD见交付报告；持久写入未执行 |
 | 实施顺序 | 上海证据与政策纠偏 → 案例V2生成与展示 → 受控原位改写与隔离验收 |
 | 合并约束 | 功能分支交付后等待用户独立测试；未经明确指令不得合入`refactor/policy-ops-agent-platform` |
 
@@ -541,14 +541,15 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 
 ## 22. 当前PRD交付边界
 
-2026-09-12修复交付后，三个独立审查问题已闭环（证据见验收报告§5与traceability修复映射）；同日独立复审再次发现MinIO缺桶生命周期控制缺口并重新打开WI-20260911-01，控制修复完成（证据见验收报告§6/§7与traceability修复映射），状态为Ready for independent review：
+2026-09-12修复交付后，三个独立审查问题已闭环（证据见验收报告§5与traceability修复映射）；同日第二轮控制契约复审修复与第三轮缺桶生命周期修复相继交付（证据见验收报告§6/§7与traceability修复映射）；2026-09-13第四轮复审修复（MinIO错误失败关闭、bucket创建竞态归属、拒绝路径零写入证据、文档事实同步）交付（证据见验收报告§8与traceability修复映射），完整门禁与独立复审通过后状态为Ready for user testing：
 
 - 政策原件MinIO链路：`services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify，bucket固定`policy-originals`、键`originals/<sha256>`）+`scripts/rag-evidence-drill.mjs`；真实23件原件在隔离MinIO/隔离PostgreSQL完成上传、RAG登记、幂等、守卫、冲突拒绝与pg_dump+全新实例恢复四方对账（18/18测试+12项演练全ok；历史审查记录，控制契约复审后见下）；
 - V2业务`content_hash`：apply同事务写入`cases.content_hash`/`showcase_cases.content_hash`（先按排除`content_hash`的投影计算目标hash再写列，防循环），verify逐条显式核对业务列与审计`new_content_hash`；36+36逐行一致、篡改verify失败、故障回滚、复跑noop、post dump恢复副本hash一致（单元17/17+集成10/10+演练10步全ok）；
 - 完整`npm test`：`migration-lf.contract.test.ts`改单次`git cat-file --batch`批量读取+显式30秒超时（断言零改动）；标准完整套件连续两次零失败零skip；
 - 本PRD的历史“仅完成PRD”表述已过期，后续文档必须以功能分支实际提交和验收证据为准；
 - 控制契约复审修复（起点`b5a8d13`，本修复提交HEAD）：evidence_sync apply改为fresh授权计划契约——确定性`build_plan`（schema/version、codeSha、jurisdiction、固定bucket、evidenceManifestHash、MinIO+RAG状态指纹与终态指纹、完整对象清单、计划上传/登记/noop集合、规范化planHash）+apply显式`--i-am-authorized/--plan-hash/--target-fingerprint`并在写入前校验计划结构、HEAD==codeSha、工作树、evidence未漂移与目标状态指纹；完整audit/plan/apply/verify必须连数据库，缺库verify不得ok:true，仅对象层走显式`--object-only`（verificationScope/degraded/dbChecked标记）；文档事实同步（f583adc=历史任务2/3交付SHA、b5a8d13=本次控制修复起点、最终SHA=本修复提交HEAD、演练步骤数按证据JSON如实）。35/35测试+17项演练全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`）。
-- 缺桶生命周期控制修复（起点`82c905b`，本修复提交HEAD）：2026-09-12只读核对生产容器socila-minio为bucketCount=0——生产MinIO同步尚未获得授权、尚未执行，**原件未进入生产MinIO**，任何文档不得表述为已入库；`MinioObjectStore.__init__`在bucket缺失时隐式`make_bucket`使audit/plan/verify等只读命令可能建桶，违反SHV2-FR-023/SHV2-NFR-006与plan/audit零写入契约。修复：构造零副作用，新增显式`bucket_exists()`/`ensure_bucket()`（只读与授权apply写入段边界）；audit/verify缺桶→`BUCKET_MISSING`+ok=false零写入；plan缺桶仍只读确定并表达`bucketExists=false`/`plannedBucketCreate=true`（进入planHash与target/finalFingerprint，schema升级1.1）；建桶仅发生在apply全部fresh授权校验通过并持锁后的写入段；不采用Compose无条件初始化建桶。48/48测试（13缺桶生命周期测试）+17项缺桶起点演练全ok（证据`rag-evidence-drill-2026-09-12T12-53-58-005Z.json`）。
+- 缺桶生命周期控制修复（起点`82c905b`，交付提交`6bd3edc`，亦为本轮开发起点）：2026-09-12只读核对生产容器socila-minio为bucketCount=0——生产MinIO同步尚未获得授权、尚未执行，**原件未进入生产MinIO**，任何文档不得表述为已入库；`MinioObjectStore.__init__`在bucket缺失时隐式`make_bucket`使audit/plan/verify等只读命令可能建桶，违反SHV2-FR-023/SHV2-NFR-006与plan/audit零写入契约。修复：构造零副作用，新增显式`bucket_exists()`/`ensure_bucket()`（只读与授权apply写入段边界）；audit/verify缺桶→`BUCKET_MISSING`+ok=false零写入；plan缺桶仍只读确定并表达`bucketExists=false`/`plannedBucketCreate=true`（两者进入planHash；状态指纹纳入bucket存在性——targetFingerprint绑定真实前置态、finalFingerprint绑定真实终态；plannedBucketCreate是执行意图，不作为独立字段进入状态指纹，schema升级1.1）；建桶仅发生在apply全部fresh授权校验通过并持锁后的写入段；不采用Compose无条件初始化建桶。48/48测试（13缺桶生命周期测试）+17项缺桶起点演练全ok（证据`rag-evidence-drill-2026-09-12T12-53-58-005Z.json`）。
+- 第四轮复审修复（起点`6bd3edc`，本修复提交HEAD，2026-09-13）：①MinIO对象存在性检查失败关闭——`MinioObjectStore.exists`只有明确的`NoSuchKey`/`NoSuchObject`/`NoSuchBucket`才返回False，`AccessDenied`/`InvalidAccessKeyId`/`SignatureDoesNotMatch`/连接失败/超时/服务端错误原样抛出；audit/plan/apply/verify遇到这些错误必须失败，权限异常时put调用次数为0（防止write-only权限组合覆盖内容寻址对象），CLI错误输出继续脱敏；②`bucketCreated`反映真实创建归属——apply使用`ensure_bucket()`实际返回值，外部进程在bucket_exists与ensure_bucket之间抢先建桶时报告`bucketCreated=false`（确定性竞态测试，不依赖sleep），不影响授权校验/advisory锁/上传/RAG登记/verify；③拒绝路径零写入证据——全部拒绝路径（缺授权/错planHash/错targetFingerprint/codeSha不一致/dirty工作树/evidenceManifestHash漂移/MinIO对象漂移/RAG数据库漂移/AccessDenied等非"不存在"S3错误/OBJECT_CONFLICT/注入故障/并发竞争）在apply调用前后比较rag.sources/rag.fetches/rag.document_versions规范化行hash+行数、bucket存在状态与MinIO对象键/字节SHA/对象数；外部操作制造的漂移与apply自身写入分别记录；④文档事实与hash语义同步（f583adc=历史任务2/3交付SHA、b5a8d13=第一轮审查修复、82c905b=fresh授权与verify范围修复、6bd3edc=本轮开发起点、最终SHA=本修复提交HEAD；planHash绑定整个计划含bucketExists与plannedBucketCreate、targetFingerprint只绑定真实前置状态、finalFingerprint只绑定真实预期终态、plannedBucketCreate是执行意图不入状态指纹）。81/81测试+22项演练全ok（证据`rag-evidence-drill-2026-09-12T16-47-00-452Z.json`）。
 
 以下持久事项仍未执行：
 

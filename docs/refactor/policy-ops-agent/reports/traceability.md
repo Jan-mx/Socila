@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-12
+> Updated: 2026-09-13
 
 ## 用途
 
@@ -259,8 +259,22 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | --- | --- | --- | --- | --- |
 | 构造与只读命令零建桶（SHV2-FR-023/SHV2-NFR-006、plan/audit零写入契约） | `MinioObjectStore.__init__`在bucket缺失时调用`make_bucket`：audit/plan/verify/服务启动/健康检查构造store即隐式创建`policy-originals` | `storage.py`构造只建立连接信息；显式`bucket_exists()`（只读）/`ensure_bucket()`（仅授权apply持锁写入段；返回本次创建True/已存在False；并发创建BucketAlreadyOwnedByYou/BucketAlreadyExists幂等复查；权限/连接错误原样抛出）；`InMemoryObjectStore`同语义（`with_bucket=False`构造缺失bucket、缺桶put拒绝）；`object_store_from_env`与全部调用方核查零建桶；不新增Compose无条件初始化建桶 | RED=新增`TestBucketLifecycle`13测试，旧实现10失败（`test_store_constructor_does_not_create_bucket`实锤构造即建桶：`assert True is False`）；GREEN=48/48零skip（构造不建桶、ensure_bucket并发恰好一次创建、audit/plan/verify缺桶零写入、授权apply建桶、既有bucket兼容、object-only不建桶） | 修复交付（待独立复审） |
 | audit/verify缺桶失败关闭 | 缺桶时对象stat异常被吞→全部"对象缺失"，无明确BUCKET_MISSING语义（且构造已隐式建桶） | audit/verify先`bucket_exists()`：缺失→`BUCKET_MISSING`问题+ok=false+`bucketExists=false`，不创建bucket/不上传/不改RAG；verify的object-only同样对象层失败且scope/degraded/dbChecked标记准确 | `test_audit_fresh_minio_bucket_missing_zero_write`（含rag表零变化断言）、`test_verify_missing_bucket_fails_without_creating`（full+object-only两档）、演练audit缺桶预态步 | 修复交付（待独立复审） |
-| plan缺桶仍确定性只读且状态入指纹 | 计划无bucket状态字段；指纹不含bucket存在性，缺桶时无法表达"建桶前置态" | 计划新增`bucketExists`/`plannedBucketCreate`（进入planHash与targetFingerprint/finalFingerprint——`_state_fingerprint`纳入`bucketExists`，终态恒为True）；缺桶时plannedBucketCreate=true、完整23件对象清单不变；同状态两次生成逐字节一致且bucket仍不存在；schema/算法版本升级`rag-evidence-sync-plan/1.1`/`RAG-EVIDENCE-SYNC-1.1`（旧计划结构校验拒绝） | `test_plan_fresh_minio_deterministic_planned_bucket_create_zero_write`、`verify_plan_structure`新增bucketExists/plannedBucketCreate布尔必填；演练plan步（缺桶）两次一致+bucket仍不存在+对象0 | 修复交付（待独立复审） |
+| plan缺桶仍确定性只读且状态入指纹 | 计划无bucket状态字段；指纹不含bucket存在性，缺桶时无法表达"建桶前置态" | 计划新增`bucketExists`/`plannedBucketCreate`（两者进入planHash；targetFingerprint只绑定真实前置状态、finalFingerprint只绑定真实预期终态——`_state_fingerprint`纳入`bucketExists`真实存在性，终态恒为True；plannedBucketCreate是执行意图，不作为独立字段进入状态指纹）；缺桶时plannedBucketCreate=true、完整23件对象清单不变；同状态两次生成逐字节一致且bucket仍不存在；schema/算法版本升级`rag-evidence-sync-plan/1.1`/`RAG-EVIDENCE-SYNC-1.1`（旧计划结构校验拒绝） | `test_plan_fresh_minio_deterministic_planned_bucket_create_zero_write`、`verify_plan_structure`新增bucketExists/plannedBucketCreate布尔必填；演练plan步（缺桶）两次一致+bucket仍不存在+对象0 | 修复交付（待独立复审） |
 | bucket创建纳入fresh授权apply | 建桶发生在构造期（先于任何授权校验），fresh计划不覆盖bucket创建这一持久变化 | 建桶仅发生在apply全部校验通过（`--i-am-authorized`、计划结构、planHash、targetFingerprint、HEAD==codeSha、工作树契约、evidenceManifestHash未漂移、当前MinIO/RAG状态==计划前置指纹、endpoint/库名守卫）并取得advisory锁后的持锁事务内：`ensure_bucket()`→上传`originals/<sha256>`→登记rag.fetches/document_versions→四方verify；缺授权/错hash/错指纹/计划或状态漂移→bucket仍不存在、对象数0、RAG记录零变化；apply结果新增`bucketCreated` | `test_apply_refusals_never_create_bucket`、`test_apply_refuses_evidence_drift_without_creating_bucket`、`test_apply_refuses_db_state_drift_without_creating_bucket`、`test_authorized_apply_creates_bucket_uploads_and_verifies`、`test_reapply_same_plan_noop_after_bucket_created`、`test_concurrent_apply_single_bucket_single_records`、`test_preexisting_bucket_plan_compatible_no_recreate`、`test_conflicting_object_refused_with_bucket_present`；演练守卫反例A-D（未授权/错planHash/错指纹/plan后外部建桶漂移）零建桶、apply后恰好23对象 | 修复交付（待独立复审） |
 | 演练从缺桶起点 | 旧演练预先创建bucket，未覆盖"MinIO可达、bucket不存在"路径 | `scripts/rag-evidence-drill.mjs`17项改为缺桶起点：开始前删除隔离bucket（primary/restore）；audit缺桶预态exit4+BUCKET_MISSING；两次plan后bucket仍不存在；未授权/错hash/错指纹/外部建桶漂移全部零建桶；授权apply后bucket存在且恰好23对象；备份→全新库pg_restore+全新MinIO受控回填（恢复程序显式建桶，非evidence_sync副作用）→恢复副本verify ok+同计划noop | 证据`rag-evidence-drill-2026-09-12T12-53-58-005Z.json`17项全ok（failed=false） | 修复交付（待独立复审） |
 
 - 持久边界：本轮全程仅隔离PostgreSQL（`shv2-ctrl-pg`:54957）与隔离MinIO（`shv2-ctrl-minio-a/b`:54962/54963，演练后清理）；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；持久policyops未连接未写入；`refactor/policy-ops-agent-platform@0885613`未修改未合并；状态Ready for independent review。
+
+## SHV2第四轮复审修复映射（2026-09-13，本修复提交HEAD）
+
+起点`6bd3edc`（缺桶生命周期修复交付提交，亦为本轮开发起点；f583adc=历史任务2/3交付SHA、b5a8d13=第一轮审查修复、82c905b=fresh授权与verify范围修复）。修复链语义与fingerprint语义详见PRD §22、验收报告§8。
+
+| 复审需求 | 修复前缺口 | 实际实现 | 测试/证据 | 状态 |
+| --- | --- | --- | --- | --- |
+| MinIO对象存在性检查失败关闭（SHV2-NFR-006） | `MinioObjectStore.exists`捕获所有`S3Error`返回False：权限/凭据/服务端错误被转换为"对象缺失"，write-only权限组合下apply继续put覆盖内容寻址对象 | 只有`NoSuchKey`/`NoSuchObject`/`NoSuchBucket`返回False（minio 7.2.20真实MinIO实证：缺失对象=NoSuchKey、缺失bucket=NoSuchBucket、错误凭据=SignatureDoesNotMatch）；其余S3错误与连接/超时错误原样抛出；audit/plan/apply/verify遇错误必须失败；CLI统一脱敏 | RED：7×非"不存在"S3错误参数化+真实MinIO错误凭据+write-only降级put计数+audit/verify权限错误共11测试失败；GREEN：81/81 | 修复交付（待用户测试） |
+| bucketCreated真实创建归属 | apply在`ensure_bucket()`后固定`bucket_created=True`；外部抢先建桶时归属失实 | `bucket_created = self.store.ensure_bucket()`；外部进程在bucket_exists与ensure_bucket之间抢先建桶→报告false；授权/锁/上传/登记/verify不变 | RED：InMemory确定性竞态+真实MinIO竞态注入2测试失败（报告True）；GREEN：归属准确；演练竞态归属步ok | 修复交付（待用户测试） |
+| 拒绝路径数据库零写入证据 | 既有测试只检查bucket未创建，未完整证明rag.sources/rag.fetches/rag.document_versions零变化与对象层不变 | `TestRejectionPathsZeroWrite` 11条+`TestAccessDeniedFailsClosed`的AccessDenied路径（跨两个测试类合计12条）逐条apply前后比较三张RAG表规范化行hash+行数、bucket存在状态、MinIO对象键/字节SHA/对象数；外部漂移以漂移后基线为断言基准并单独记录；注入故障记录apply侧部分对象写入+DB整体回滚；并发恰好单写者 | 12路径测试全GREEN（含AccessDenied路径RED→GREEN）；演练9个守卫反例输出DB+对象层before/after指纹（证据`rag-evidence-drill-2026-09-12T16-47-00-452Z.json`） | 修复交付（待用户测试） |
+| 文档事实与hash语义同步 | 文档把f583adc及旧问题写成当前状态；"plannedBucketCreate进入target/finalFingerprint"表述错误 | PRD/PROGRESS/README/WI-01/验收报告/traceability/ARCHITECTURE/TESTING/OPERATIONS同步修复链语义（f583adc/b5a8d13/82c905b/6bd3edc/本修复提交HEAD）与指纹语义（planHash绑定整个计划含bucketExists与plannedBucketCreate；targetFingerprint只绑定真实前置状态；finalFingerprint只绑定真实预期终态；plannedBucketCreate是执行意图不入状态指纹） | `TestFingerprintSemantics`（bucket状态变化→planHash与targetFingerprint变化而finalFingerprint不变；plannedBucketCreate变化→planHash变化）；文档一致性核对 | 本次docs更新 |
+
+- 演练升级：`scripts/rag-evidence-drill.mjs` 17项→22项（新增codeSha不一致、dirty工作树、RAG数据库漂移、write-only权限错误经受限IAM用户真实AccessDenied、bucket创建竞态归属），22项全ok。
+- 持久边界：本轮全程仅隔离PostgreSQL（`shv2-r4-pg`:55101）与隔离MinIO（`shv2-r4-minio-a/b`:55102/55103，任务专属容器，验收后删除）；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；持久policyops未连接未写入；`refactor/policy-ops-agent-platform@0885613`未修改未合并；未创建PR、未合并main、未创建tag/Release。

@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-12
+> Updated: 2026-09-13
 
 ## 当前状态
 
@@ -16,11 +16,13 @@
 
 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）**Accepted（2026-09-05两轮复审纠正后重新验收）**：首轮复审三项缺漏已纠正——命名契约区分"允许的精确旧协议片段"与"独立品牌标识"、`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`并新增哨兵回归（ADR-0009）、多地区Seed补齐jurisdiction作用域并有落库级测试；第二轮复审又修复扫描器注释自命中与`.gitleaksignore`说明文字历史误报，并将Next生产构建worker限制为2以适配本机及4GB Demo资源档。最终新鲜复验：`npm test` 359/359、Gitleaks 8.29.1完整历史43提交零发现、`npm run build`以2 workers退出0。通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层，规则格式唯一规范值`SOCILA-DSL-1.0`；活动代码与配置完成Socila硬切换；服务JWT身份为`socila-next-core`；粤川示例仅保留测试夹具，生产Seed与持久库均为0。证据见`reports/feature-09-05-socila-naming/acceptance-report.md`。
 
-09-11 Feature（`docs/prd/09-11-feature-shanghai-case-library-v2.md`，上海政策纠偏与36条案例V2重建）三个独立审查问题已于2026-09-12修复交付，状态**Ready for independent review（未合并目标分支，独立复审确认前不标记Accepted）**：①MinIO原件链路——`agent/rag/evidence_sync.py`（audit/plan/apply/verify，`policy-originals/originals/<sha256>`）+`scripts/rag-evidence-drill.mjs`，真实23件原件在隔离环境完成上传、RAG登记、幂等、守卫、冲突拒绝与PostgreSQL+MinIO双侧备份恢复四方对账（18/18测试+12项演练）；②V2业务hash——apply同事务写入`cases/showcase_cases.content_hash`（防循环计算），verify逐条显式核对业务列与审计`new_content_hash`，篡改verify失败、恢复副本hash一致（单元17/17+集成10/10+演练10步）；③完整套件——`migration-lf.contract.test.ts`单次`git cat-file --batch`+显式30秒超时，标准完整`npm test`连续两次零失败零skip。其余门禁（test:db零skip、pytest 31+101零skip、E2E 23/23、citation 32、--check、scan-secrets、哨兵、tsc/eslint/build/ruff/mypy）本地新鲜通过；持久policyops与生产MinIO未连接未写入。
+09-11 Feature（`docs/prd/09-11-feature-shanghai-case-library-v2.md`，上海政策纠偏与36条案例V2重建）三个独立审查问题已于2026-09-12修复交付，经第二轮控制契约、第三轮缺桶生命周期与2026-09-13第四轮复审修复（见下），当前状态**Ready for user testing（未合并目标分支；用户测试、生产MinIO/RAG同步、政策发布与持久案例改写未执行，不标记最终Accepted）**：①MinIO原件链路——`agent/rag/evidence_sync.py`（audit/plan/apply/verify，`policy-originals/originals/<sha256>`）+`scripts/rag-evidence-drill.mjs`，真实23件原件在隔离环境完成上传、RAG登记、幂等、守卫、冲突拒绝与PostgreSQL+MinIO双侧备份恢复四方对账（18/18测试+12项演练）；②V2业务hash——apply同事务写入`cases/showcase_cases.content_hash`（防循环计算），verify逐条显式核对业务列与审计`new_content_hash`，篡改verify失败、恢复副本hash一致（单元17/17+集成10/10+演练10步）；③完整套件——`migration-lf.contract.test.ts`单次`git cat-file --batch`+显式30秒超时，标准完整`npm test`连续两次零失败零skip。其余门禁（test:db零skip、pytest 31+101零skip、E2E 23/23、citation 32、--check、scan-secrets、哨兵、tsc/eslint/build/ruff/mypy）本地新鲜通过；持久policyops与生产MinIO未连接未写入。
 
 2026-09-12控制契约复审修复（起点`b5a8d13`，f583adc为历史任务2/3交付SHA；本修复提交HEAD）继续保持**Ready for independent review**：evidence_sync apply收紧为fresh授权计划契约（确定性`build_plan`+`--i-am-authorized/--plan-hash/--target-fingerprint`+写入前校验计划结构/HEAD/工作树/evidence未漂移/MinIO+RAG状态指纹，漂移与终态noop语义与rewrite CLI同构）；完整audit/plan/apply/verify必须连数据库（缺库verify不得ok:true），仅对象层走显式`--object-only`降级标记；35/35测试+17项隔离演练全ok（含授权/hash/漂移/并发/恢复反例与全新库+全新MinIO恢复对账）。
 
-2026-09-12缺桶生命周期复审修复（起点`82c905b`；本修复提交HEAD）继续保持**Ready for independent review**：`MinioObjectStore.__init__`移除隐式`make_bucket`副作用（构造与audit/plan/verify/服务启动零建桶，SHV2-FR-023/SHV2-NFR-006），新增显式`bucket_exists()`/`ensure_bucket()`（只读与授权apply持锁写入段边界，并发创建幂等）；audit/verify缺桶→`BUCKET_MISSING`+ok=false零写入；plan缺桶仍只读确定并表达`bucketExists=false`/`plannedBucketCreate=true`（进入planHash与target/finalFingerprint，schema升级1.1）；不采用Compose无条件初始化建桶——生产bucket与23件原件同步一同进入fresh授权apply。生产MinIO当前bucketCount=0（生产同步尚未授权执行，原件未入库）。48/48测试+17项缺桶起点演练全ok。
+2026-09-12缺桶生命周期复审修复（起点`82c905b`，交付提交`6bd3edc`）：`MinioObjectStore.__init__`移除隐式`make_bucket`副作用（构造与audit/plan/verify/服务启动零建桶，SHV2-FR-023/SHV2-NFR-006），新增显式`bucket_exists()`/`ensure_bucket()`（只读与授权apply持锁写入段边界，并发创建幂等）；audit/verify缺桶→`BUCKET_MISSING`+ok=false零写入；plan缺桶仍只读确定并表达`bucketExists=false`/`plannedBucketCreate=true`（两者进入planHash；状态指纹纳入bucket真实存在性——targetFingerprint绑定真实前置态、finalFingerprint绑定真实终态，plannedBucketCreate是执行意图不入状态指纹，schema升级1.1）；不采用Compose无条件初始化建桶——生产bucket与23件原件同步一同进入fresh授权apply。生产MinIO当前bucketCount=0（生产同步尚未授权执行，原件未入库）。48/48测试+17项缺桶起点演练全ok。
+
+2026-09-13第四轮复审修复（起点`6bd3edc`；本修复提交HEAD）达到**Ready for user testing**（用户测试、生产MinIO/RAG同步、政策发布与持久案例改写未执行，不标记最终Accepted）：①`MinioObjectStore.exists`失败关闭——只有`NoSuchKey`/`NoSuchObject`/`NoSuchBucket`返回False，`AccessDenied`/`InvalidAccessKeyId`/`SignatureDoesNotMatch`/连接失败/超时/服务端错误原样抛出（不再转换为"对象缺失"），权限异常时put调用次数为0，防止write-only权限组合覆盖内容寻址对象；②apply使用`ensure_bucket()`实际返回值报告`bucketCreated`——外部进程抢先建桶时如实报告false（确定性竞态测试）；③全部拒绝路径（授权/hash/指纹/codeSha/dirty/证据漂移/对象漂移/RAG漂移/权限错误/冲突/注入/并发）在apply前后比较三张RAG表规范化行hash+行数与MinIO对象层指纹，外部漂移与apply写入分别记录；④文档事实与hash语义统一（f583adc=历史任务2/3交付SHA、b5a8d13=第一轮审查修复、82c905b=fresh授权与verify范围修复、6bd3edc=缺桶生命周期修复与本轮起点、最终SHA=本修复提交HEAD）。81/81测试+22项演练全ok。
 
 09-03本地运行配置与凭据整改阶段（`docs/prd/09-03-stage-runtime-configuration-remediation.md`）**Accepted**：宿主/Compose环境加载与模板收口统一、管理员引导一次性化、新鲜备份经PG17+pgvector真实恢复对账、PostgreSQL口令完成轮换（轮换前后逐表对账34表/1610行一致），全部门禁本地新鲜复验；复审确认本阶段演练容器零残留（见`PROGRESS.md`与`reports/stage-09-03-runtime-config-remediation/acceptance-report.md`）。
 

@@ -91,13 +91,20 @@ class MinioObjectStore:
             resp.release_conn()
 
     def exists(self, key: str) -> bool:
+        """失败关闭（SHV2-NFR-006）：只有明确的"对象/bucket不存在"错误
+        （NoSuchKey/NoSuchObject/NoSuchBucket）才返回False；AccessDenied、
+        InvalidAccessKeyId、SignatureDoesNotMatch、连接失败、超时、服务端错误
+        及其他未知错误原样抛出——防止write-only权限组合把权限错误当作"对象缺失"
+        而继续put覆盖内容寻址对象。"""
         from minio.error import S3Error
 
         try:
             self._client.stat_object(self._bucket, key)
             return True
-        except S3Error:
-            return False
+        except S3Error as err:
+            if err.code in ("NoSuchKey", "NoSuchObject", "NoSuchBucket"):
+                return False
+            raise
 
 
 def object_store_from_env() -> ObjectStore:
