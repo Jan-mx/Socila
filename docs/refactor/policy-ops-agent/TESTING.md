@@ -294,3 +294,12 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - **MinIO同步**：`services/agent/tests/test_rag_evidence_sync.py` 18/18（守卫/枚举7例零依赖；隔离DB集成10例覆盖新对象上传、一致no-op、冲突拒绝、meta/DSL SHA不符、缺rag记录、DB content_hash漂移、错object_key、对象下载SHA漂移、plan零写入、apply后verify ok；真实隔离MinIO备份→全新实例恢复四方对账1例）。运行前提：`SOCILA_TEST_DATABASE_URL`（agent迁移+角色库）与`RAG_SYNC_TEST_MINIO_ENDPOINT`/`_RESTORE_ENDPOINT`（隔离MinIO）。真实23件原件编排演练`node scripts/rag-evidence-drill.mjs`（需`RAG_DRILL_PG_CONTAINER`/`RAG_DRILL_PG_PORT`/`RAG_DRILL_MINIO_*`环境）覆盖audit预态→plan→apply→verify→幂等→守卫反例→冲突拒绝→pg_dump+逐对象备份→全新库+全新MinIO恢复→恢复副本verify；证据JSON入reports。pytest整体门禁：integration 31/31、非集成101/101，均零skip（在`services/agent`目录下运行，且需`AGENT_DATABASE_URL`+`AGENT_DB_PASSWORD`以启用角色隔离与JWT重放用例）。
 - **V2业务hash**：单元`rewrite-v2.test.ts` 17/17（业务hash条目契约、防循环、verifyPlanBody三反例）；数据库`rcl-rewrite-cli.integration.test.ts` 10/10（业务hash逐行对账、tests无content_hash列、篡改verify失败、注入回滚）；演练最终核对业务hash漂移0/0且36/36全写入，恢复副本verify ok。
 - **完整套件**：`migration-lf.contract.test.ts`改为单次`git cat-file --batch`批量读取（1次子进程替代60次）+两用例显式30秒超时；断言零改动。修复前完整套件842/843（5243ms超时复现），修复后标准完整`npm test`连续两次零失败零skip。
+
+
+### 控制契约复审修复证据（2026-09-12第二轮，起点b5a8d13）
+
+- **fresh授权计划契约**：`test_rag_evidence_sync.py`新增零DB单元（apply授权参数逐项剔除拒绝、完整模式必须连库、object-only免库、plan_hash_of确定性/planHash不入自身hash、classify pending/noop/drift）与集成（build_plan确定性+形状、授权/planHash/指纹/codeSha/dirty/证据漂移/对象漂移/DB漂移全部零写入拒绝、幂等noop、注入后re-plan恢复、并发advisory锁无重复记录、冲突不覆盖、计划与输出零凭据）。全套35/35零skip；运行前提交先于演练（或隔离演练显式`RAG_EVIDENCE_ALLOW_DIRTY=1`）。
+- **verify范围契约**：缺库完整verify ok:false且问题指向数据库；`--object-only`结果断言`verificationScope="object-only"`/`degraded=true`/`dbChecked=false`；四方verify断言`verificationScope="four-way"`/`dbChecked=true`。
+- **演练门禁**：`node scripts/rag-evidence-drill.mjs` 17项全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`）：全新演练库（agent.migrate --with-roles）+清空隔离bucket→audit预态exit4→plan确定性两次一致→守卫反例A缺授权exit2/B错planHash exit4/C错指纹exit4/D plan后对象漂移exit4/E audit缺库exit2（全部零写入）→apply（单持锁事务）→四方verify→复跑同计划noop→object-only降级标记→冲突拒绝+re-plan恢复→pg_dump+逐对象备份（sha256清单）→全新库pg_restore+全新MinIO回填→恢复副本verify ok+同计划apply noop→输出零密钥。
+- **pytest整体门禁**：integration与非集成均零skip（在`services/agent`目录下运行并设置`SOCILA_TEST_DATABASE_URL`、`AGENT_DATABASE_URL`、`AGENT_DB_PASSWORD`及`RAG_SYNC_TEST_MINIO_*`）。
+- **Chromium E2E修复（AUTH-US-002）**：reload后URL会话恢复被面板预创建会话踩掉（既有竞态，独立playwright网络取证定位）；修复为`ChatPageClient`把URL会话ID作为ChatPanel外部会话ID（URL带会话ID时不预创建）。修复后完整Chromium E2E 23/23。

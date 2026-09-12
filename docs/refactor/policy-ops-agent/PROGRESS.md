@@ -530,7 +530,7 @@
 | Secret / Gitleaks / 哨兵 | PASS；scan-secrets 914文件零命中；gitleaks全历史98提交——manifest场景键19条误报经人工核实按ADR-0009精确allowlist+哨兵通过后复扫no leaks；migration-lf契约提交态7/7 |
 | 边界 | 持久policyops全程未连接未写入（守卫连接前拒绝）；0019仅交付SQL；改写持久执行须另行fresh授权 |
 
-## 09-12独立审查：09-11 Feature重新打开
+## 09-12独立审查：09-11 Feature重新打开（历史审查记录）
 
 功能分支`codex/shanghai-case-v2`已推送到`f583adc`，远端SHA一致；`refactor/policy-ops-agent-platform`本地与远端仍为`0885613`，未修改、未合并。任务1/2/3的代码和隔离证据保留，但独立审查发现三个未关闭问题，三个Work Item与Feature状态改为Reopened：
 
@@ -548,10 +548,24 @@
 
 | 问题 | 修复 | RED→GREEN证据 |
 | --- | --- | --- |
-| MinIO原件链路 | `services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify；`policy-originals/originals/<sha256>`；桶/endpoint/库名守卫；凭据redact）+CLI+`scripts/rag-evidence-drill.mjs`+配置模板bucket统一 | RED=ModuleNotFoundError（15例）→GREEN 18/18；真实23件原件演练10步全ok（含pg_dump+逐对象备份→全新库+全新MinIO恢复→恢复副本四方对账；证据`rag-evidence-drill-2026-09-12T04-14-59-793Z.json`） |
+| MinIO原件链路 | `services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify；`policy-originals/originals/<sha256>`；桶/endpoint/库名守卫；凭据redact）+CLI+`scripts/rag-evidence-drill.mjs`+配置模板bucket统一 | RED=ModuleNotFoundError（15例）→GREEN 18/18；真实23件原件演练12项全ok（含pg_dump+逐对象备份→全新库+全新MinIO恢复→恢复副本四方对账；证据`rag-evidence-drill-2026-09-12T04-14-59-793Z.json`） |
 | V2业务`content_hash` | `rewrite-v2.ts`：先按排除`content_hash`的投影算目标hash再写after投影（防循环）；apply同事务UPDATE业务列并单独核对；verify逐条显式核对；verifyPlanBody校验 | RED=单元2例失败→GREEN 17/17+集成10/10（业务hash逐行对账36+36、tests无该列、篡改verify失败、注入回滚）；演练10步全ok（漂移0/0、恢复副本verify ok；证据`rewrite-drill-evidence-2026-09-12T04-56-15-244Z.json`） |
 | 完整Node套件超时 | `migration-lf.contract.test.ts`单次`git cat-file --batch`批量读取（60次子进程→1次）+两用例显式30秒超时；断言零改动 | RED=842/843（目标用例5243ms超5s）→单文件7/7（469ms）→标准完整`npm test`连续两次零失败零skip |
 
 门禁（全部本地新鲜）：pytest integration 31/31+非集成101/101零skip；citation组32/32；tsc/eslint(0 error)/build退出0；ruff/mypy 0问题；Chromium E2E 23/23（`shv2_e2e`重建为满足新content_hash契约的V2终态）；案例库`--check`通过；scan-secrets 921文件零命中；allowlist哨兵3场景全过；test:db全新库（29文件/158）零skip；Gitleaks 8.29.1完整历史100提交零发现（新增`test_rag_evidence_sync.py`脱敏哨兵误报经人工核实按ADR-0009登记精确allowlist，哨兵3场景全过）。
 
 下一步：用户/独立复审确认后，由用户决定持久执行（生产MinIO同步、持久RAG登记、持久0019与V2改写）并另行fresh授权；目标集成分支合并仍需用户明确指令。
+
+## 2026-09-12控制契约复审修复（第二轮；起点b5a8d13，本修复提交HEAD）
+
+独立复审在b5a8d13基础上发现控制缺口，本轮只修以下三项（f583adc为历史任务2/3交付SHA；上一轮MinIO接入、业务content_hash与Node超时修复保留不推翻）：
+
+| 缺口 | 修复 | RED→GREEN证据 |
+| --- | --- | --- |
+| evidence_sync apply未绑定fresh授权计划 | `build_plan`确定性计划（schema/version、codeSha、jurisdiction、固定bucket、evidenceManifestHash、MinIO+RAG状态指纹与终态指纹、完整对象清单、计划上传/登记/noop集合、规范化planHash）；apply显式`--i-am-authorized/--plan-file/--plan-hash/--target-fingerprint`，写入前校验计划结构、HEAD==codeSha、工作树干净（RAG_EVIDENCE_ALLOW_DIRTY仅隔离演练）、evidence未漂移、MinIO+RAG状态指纹==targetFingerprint；终态noop、介于两者TARGET_STATE_DRIFT零写入拒绝；环境开关仅附加保护；并发advisory锁+锁内重分类 | RED=集合期ImportError（21测试）→GREEN=35/35；演练17项全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`：守卫反例A-E零写入、plan两次一致、apply、四方verify、noop、object-only、冲突拒绝+re-plan恢复、pg_dump+逐对象备份→全新库+全新MinIO恢复→恢复副本verify ok+同计划noop） |
+| 缺数据库时verify可ok:true | 完整audit/plan/apply/verify必须连数据库（CLI USAGE拒绝）；缺库完整verify ok:false；显式`--object-only`降级（verificationScope/degraded/dbChecked标记） | 集成断言缺库ok:false+问题指向数据库；object-only标记断言；演练object-only步+四方verify步 |
+| 文档事实过期 | f583adc=历史任务2/3交付SHA；b5a8d13=本次控制修复起点；最终SHA=本修复提交HEAD（交付报告给出）；历史Reopened章节标记历史审查记录；MinIO演练步骤数按证据JSON如实更正（12项/17项，rewrite演练10步不变） | 本文档与PRD/3WI/验收报告/traceability/OPERATIONS/TESTING一致性核对 |
+
+门禁（本修复提交HEAD代码状态）：35/35 evidence_sync测试、演练17项、pytest 43+106零skip、npm test×2 81文件/846零失败零skip、test:db 29文件/158零skip、tsc/eslint/build 0、Chromium E2E 23/23（含ChatPageClient修复）、citation 32、--check、scan-secrets 926零命中、哨兵、Gitleaks 101提交零发现、git diff --check干净。
+
+状态：**Ready for independent review**（不自行标记Accepted）。目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并；持久policyops与生产MinIO未连接未写入（全程仅隔离`shv2-ctrl-pg`:54957与`shv2-ctrl-minio-a/b`:54962/54963，演练后清理）。

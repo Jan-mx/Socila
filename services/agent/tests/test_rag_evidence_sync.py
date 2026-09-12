@@ -21,9 +21,14 @@ import pytest
 
 from agent.rag.evidence_sync import (
     EVIDENCE_BUCKET,
+    EVIDENCE_SYNC_ALGORITHM_VERSION,
+    PLAN_SCHEMA,
     EvidenceSyncError,
     PolicyEvidenceSync,
+    classify_target_state,
     guard_minio_endpoint,
+    parse_sync_args,
+    plan_hash_of,
 )
 from agent.rag.storage import InMemoryObjectStore
 
@@ -147,6 +152,66 @@ def test_missing_artifact_refused(tmp_path):
         sync.collect()
 
 
+# ── CLI参数与授权契约（零数据库单元）────────────────────────────────────────
+
+
+def _base_apply_args() -> list[str]:
+    return [
+        "apply",
+        "--evidence-dir", "evidence/310000",
+        "--database-url", "postgresql://postgres:postgres@127.0.0.1:59999/x",
+        "--plan-file", "plan.json",
+        "--plan-hash", "a" * 64,
+        "--target-fingerprint", "b" * 64,
+    ]
+
+
+def test_parse_apply_requires_full_authorization_binding():
+    args = parse_sync_args([*_base_apply_args(), "--i-am-authorized"])
+    assert args["mode"] == "apply" and args["i_am_authorized"] is True
+    assert args["plan_hash"] == "a" * 64 and args["target_fingerprint"] == "b" * 64
+    # 逐项剔除授权参数都必须拒绝。
+    for drop in ("--i-am-authorized", "--plan-file", "--plan-hash", "--target-fingerprint"):
+        argv = [*_base_apply_args(), "--i-am-authorized"]
+        i = argv.index(drop)
+        del argv[i : i + (1 if drop == "--i-am-authorized" else 2)]
+        with pytest.raises(EvidenceSyncError, match=r"USAGE|授权|plan|hash|fingerprint"):
+            parse_sync_args(argv)
+
+
+def test_parse_full_modes_require_database_url(monkeypatch):
+    monkeypatch.delenv("AGENT_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    for mode in ("audit", "plan", "apply", "verify"):
+        argv = [mode, "--evidence-dir", "evidence/310000"]
+        if mode == "apply":
+            argv += ["--i-am-authorized", "--plan-file", "p.json", "--plan-hash", "a" * 64, "--target-fingerprint", "b" * 64]
+        with pytest.raises(EvidenceSyncError, match=r"数据库|database"):
+            parse_sync_args(argv)
+
+
+def test_parse_verify_object_only_allowed_without_database(monkeypatch):
+    monkeypatch.delenv("AGENT_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    args = parse_sync_args(["verify", "--evidence-dir", "evidence/310000", "--object-only"])
+    assert args["mode"] == "verify" and args["object_only"] is True
+    assert args["database_url"] in (None, "")
+
+
+def test_parse_rejects_unknown_mode_and_missing_evidence_dir():
+    with pytest.raises(EvidenceSyncError, match=r"USAGE|mode"):
+        parse_sync_args(["bogus", "--evidence-dir", "x"])
+    with pytest.raises(EvidenceSyncError, match=r"USAGE|evidence"):
+        parse_sync_args(["audit", "--database-url", "postgresql://u:p@localhost:1/d"])
+
+
+def test_classify_target_state_semantics():
+    t, f = "t" * 64, "f" * 64
+    assert classify_target_state(t, t, f) == "pending"
+    assert classify_target_state(f, t, f) == "noop"
+    assert classify_target_state("c" * 64, t, f) == "drift"
+
+
 # ── 受控同步（隔离数据库）────────────────────────────────────────────────────
 
 
@@ -159,6 +224,8 @@ class TestControlledSync:
 
         assert DRILL is not None
         monkeypatch.setenv("DATABASE_URL", DRILL)
+        # 集成测试不针对工作树策略；dirty反例由test_apply_refuses_dirty_worktree_unless_drill_opt_in单独覆盖。
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
         with connect(DRILL, autocommit=True) as conn:
             conn.execute("TRUNCATE rag.chunks, rag.embeddings, rag.document_trees, rag.document_versions, rag.fetches, rag.sources CASCADE")
         store = InMemoryObjectStore()
@@ -167,8 +234,45 @@ class TestControlledSync:
         )
         return {"sync": sync, "store": store, "evidence_env": evidence_env}
 
+    def _apply(self, sync, **overrides):
+        """按新契约执行apply：build_plan → 显式授权参数。"""
+        plan = overrides.pop("plan", None) or sync.build_plan()
+        kwargs = {
+            "plan_hash": overrides.pop("plan_hash", plan["planHash"]),
+            "target_fingerprint": overrides.pop("target_fingerprint", plan["targetFingerprint"]),
+            "i_am_authorized": overrides.pop("i_am_authorized", True),
+        }
+        kwargs.update(overrides)
+        return sync.apply(plan, **kwargs)
+
+    def test_build_plan_deterministic_and_complete(self, sync_env):
+        p1 = sync_env["sync"].build_plan()
+        p2 = sync_env["sync"].build_plan()
+        assert json.dumps(p1, sort_keys=True) == json.dumps(p2, sort_keys=True)
+        assert p1["schema"] == PLAN_SCHEMA
+        assert p1["algorithmVersion"] == EVIDENCE_SYNC_ALGORITHM_VERSION
+        assert p1["bucket"] == "policy-originals"
+        assert p1["jurisdiction"] == "310000"
+        assert len(p1["codeSha"]) == 40
+        assert len(p1["evidenceManifestHash"]) == 64
+        assert len(p1["targetFingerprint"]) == 64
+        assert len(p1["finalFingerprint"]) == 64
+        assert len(p1["planHash"]) == 64
+        assert p1["objects"][0]["objectKey"] == f"originals/{SHA}"
+        assert p1["plannedUploads"] == ["DOC-SH-TEST-2026"]
+        assert p1["noopObjects"] == []
+        # planHash不进入自身hash；正文任何字段漂移都改变planHash。
+        assert plan_hash_of(p1) == p1["planHash"]
+        forged = json.loads(json.dumps(p1))
+        forged["jurisdiction"] = "440000"
+        assert plan_hash_of(forged) != p1["planHash"]
+        with_other_hash = json.loads(json.dumps(p1))
+        with_other_hash["planHash"] = "0" * 64
+        assert plan_hash_of(with_other_hash) == p1["planHash"]
+
     def test_apply_uploads_new_objects_and_writes_rag_records(self, sync_env):
-        result = sync_env["sync"].apply()
+        result = self._apply(sync_env["sync"])
+        assert result["applied"] is True and result["noop"] is False
         assert result["uploaded"] == 1
         key = f"originals/{SHA}"
         assert sync_env["store"].exists(key)
@@ -193,21 +297,137 @@ class TestControlledSync:
         assert result["manifest"][0]["objectKey"] == key
         assert "password" not in json.dumps(result).lower()
 
-    def test_reapply_existing_object_noop(self, sync_env):
-        sync_env["sync"].apply()
-        again = sync_env["sync"].apply()
-        assert again["uploaded"] == 0
-        assert again["noopObjects"] == 1
+    def test_apply_without_authorization_refused_zero_write(self, sync_env):
+        plan = sync_env["sync"].build_plan()
+        with pytest.raises(EvidenceSyncError, match=r"AUTH|授权|authorized"):
+            self._apply(sync_env["sync"], plan=plan, i_am_authorized=False)
+        assert sync_env["store"]._objects == {}
+        with pytest.raises(EvidenceSyncError, match=r"授权|i_am_authorized|plan_hash|planHash|PLAN_HASH"):
+            self._apply(sync_env["sync"], plan=plan, plan_hash="0" * 64)
+        assert sync_env["store"]._objects == {}
+
+    def test_apply_with_wrong_plan_hash_or_fingerprint_refused(self, sync_env):
+        plan = sync_env["sync"].build_plan()
+        with pytest.raises(EvidenceSyncError, match=r"planHash|PLAN_HASH"):
+            self._apply(sync_env["sync"], plan=plan, plan_hash="0" * 64)
+        with pytest.raises(EvidenceSyncError, match=r"fingerprint|FINGERPRINT|指纹"):
+            self._apply(sync_env["sync"], plan=plan, target_fingerprint="0" * 64)
+        # 计划正文被篡改（planHash重算不符）→ 拒绝。
+        forged = json.loads(json.dumps(plan))
+        forged["plannedUploads"] = []
+        with pytest.raises(EvidenceSyncError, match=r"planHash|PLAN_HASH|计划"):
+            self._apply(sync_env["sync"], plan=forged)
+        assert sync_env["store"]._objects == {}
+
+    def test_apply_with_code_sha_mismatch_refused(self, sync_env):
+        plan = sync_env["sync"].build_plan()
+        stale = json.loads(json.dumps(plan))
+        stale["codeSha"] = "0" * 40
+        stale["planHash"] = plan_hash_of(stale)
+        with pytest.raises(EvidenceSyncError, match=r"codeSha|CODE_SHA|HEAD"):
+            self._apply(sync_env["sync"], plan=stale)
+        assert sync_env["store"]._objects == {}
+
+    def test_apply_refuses_dirty_worktree_unless_drill_opt_in(self, sync_env, monkeypatch):
+        from agent.rag import evidence_sync as es
+
+        plan = sync_env["sync"].build_plan()
+        monkeypatch.delenv("RAG_EVIDENCE_ALLOW_DIRTY", raising=False)
+        monkeypatch.setattr(es, "git_head", lambda: {"sha": plan["codeSha"], "dirty": True})
+        with pytest.raises(EvidenceSyncError, match=r"DIRTY|工作树"):
+            self._apply(sync_env["sync"], plan=plan)
+        assert sync_env["store"]._objects == {}
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        result = self._apply(sync_env["sync"], plan=plan)
+        assert result["applied"] is True
+
+    def test_apply_refuses_evidence_drift_after_plan(self, sync_env):
+        plan = sync_env["sync"].build_plan()
+        # evidence_env["evidence"]即文档目录（fixture返回doc dir）。
+        (sync_env["evidence_env"]["evidence"] / "original.html").write_bytes(HTML + b"drift")
+        with pytest.raises(EvidenceSyncError, match=r"drift|漂移|evidence|manifest|META_SHA"):
+            self._apply(sync_env["sync"], plan=plan)
+        assert sync_env["store"]._objects == {}
+
+    def test_apply_refuses_minio_state_drift_after_plan(self, sync_env):
+        plan = sync_env["sync"].build_plan()
+        # plan之后受管对象漂移：目标键被放入不同内容（指纹从缺失变为冲突）。
+        sync_env["store"].put(f"originals/{SHA}", OTHER_BYTES, "text/html")
+        with pytest.raises(EvidenceSyncError, match=r"drift|漂移|状态"):
+            self._apply(sync_env["sync"], plan=plan)
+        assert sync_env["store"].get(f"originals/{SHA}") == OTHER_BYTES
+
+    def test_apply_refuses_db_state_drift_after_plan(self, sync_env):
+        from psycopg import connect
+
+        plan = sync_env["sync"].build_plan()
+        # plan之后RAG登记层漂移：提前写入目标object_key的fetch记录（指纹改变）。
+        with connect(DRILL, autocommit=True) as conn:
+            conn.execute(
+                "INSERT INTO rag.sources (jurisdiction_code, name, entry_url, domain) VALUES ('310000','x','https://rsj.sh.gov.cn/x','rsj.sh.gov.cn')"
+            )
+            source_id = conn.execute("SELECT id FROM rag.sources WHERE domain='rsj.sh.gov.cn' LIMIT 1").fetchone()[0]
+            conn.execute(
+                "INSERT INTO rag.fetches (source_id, url, status, content_hash, object_key, mime) VALUES (%s,'https://rsj.sh.gov.cn/x',200,%s,%s,'text/html')",
+                (source_id, SHA, f"originals/{SHA}"),
+            )
+        with pytest.raises(EvidenceSyncError, match=r"drift|漂移|状态"):
+            self._apply(sync_env["sync"], plan=plan)
+        assert sync_env["store"]._objects == {}
+
+    def test_reapply_same_plan_is_noop(self, sync_env):
+        sync = sync_env["sync"]
+        plan = sync.build_plan()
+        first = self._apply(sync, plan=plan)
+        assert first["applied"] is True
+        second = self._apply(sync, plan=plan)
+        assert second["noop"] is True and second["applied"] is False
+        assert second["uploaded"] == 0
 
     def test_conflicting_object_refused_no_overwrite(self, sync_env):
         key = f"originals/{SHA}"
         sync_env["store"].put(key, OTHER_BYTES, "text/html")
-        with pytest.raises(EvidenceSyncError, match=r"conflict|冲突|覆盖"):
-            sync_env["sync"].apply()
+        with pytest.raises(EvidenceSyncError, match=r"conflict|冲突|覆盖|drift|漂移"):
+            self._apply(sync_env["sync"])
         assert sync_env["store"].get(key) == OTHER_BYTES
 
+    def test_recoverable_after_failure_via_replan(self, sync_env):
+        sync = sync_env["sync"]
+        plan = sync.build_plan()
+        # 故障注入：对象上传后、数据库登记前失败。
+        with pytest.raises(EvidenceSyncError, match=r"INJECTED|注入"):
+            self._apply(sync, plan=plan, inject_failure_at="after_uploads")
+        assert sync_env["store"]._objects, "注入点前对象已上传"
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            assert conn.execute("SELECT count(*) FROM rag.document_versions").fetchone()[0] == 0
+        # 重新plan（新目标状态=对象已存在+记录缺失）→ apply补齐登记 → verify ok。
+        recovery = self._apply(sync)
+        assert recovery["applied"] is True
+        assert sync.verify()["ok"] is True
+
+    def test_concurrent_apply_no_duplicate_records(self, sync_env):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from psycopg import connect
+
+        sync = sync_env["sync"]
+        plan = sync.build_plan()
+        args = (plan,)
+        kwargs = {"plan_hash": plan["planHash"], "target_fingerprint": plan["targetFingerprint"], "i_am_authorized": True}
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: sync.apply(*args, **kwargs), range(2)))
+        applied = [r for r in results if r["applied"]]
+        assert len(applied) >= 1
+        with connect(DRILL, autocommit=True) as conn:
+            fetches = conn.execute("SELECT count(*) FROM rag.fetches WHERE object_key=%s", (f"originals/{SHA}",)).fetchone()[0]
+            versions = conn.execute("SELECT count(*) FROM rag.document_versions WHERE content_hash=%s", (SHA,)).fetchone()[0]
+        assert fetches == 1 and versions == 1
+        assert sync.verify()["ok"] is True
+
     def test_verify_detects_missing_rag_records(self, sync_env):
-        sync_env["sync"].apply()
+        self._apply(sync_env["sync"])
         from psycopg import connect
 
         with connect(DRILL, autocommit=True) as conn:
@@ -218,7 +438,7 @@ class TestControlledSync:
         assert any("rag" in p or "记录" in p for p in report["problems"])
 
     def test_verify_detects_db_content_hash_drift(self, sync_env):
-        sync_env["sync"].apply()
+        self._apply(sync_env["sync"])
         from psycopg import connect
 
         with connect(DRILL, autocommit=True) as conn:
@@ -228,7 +448,7 @@ class TestControlledSync:
         assert any("content_hash" in p for p in report["problems"])
 
     def test_verify_detects_wrong_object_key(self, sync_env):
-        sync_env["sync"].apply()
+        self._apply(sync_env["sync"])
         from psycopg import connect
 
         with connect(DRILL, autocommit=True) as conn:
@@ -239,23 +459,48 @@ class TestControlledSync:
         assert any("object_key" in p for p in report["problems"])
 
     def test_verify_detects_object_download_sha_drift(self, sync_env):
-        sync_env["sync"].apply()
+        self._apply(sync_env["sync"])
         key = f"originals/{SHA}"
         sync_env["store"]._objects[key] = OTHER_BYTES
         report = sync_env["sync"].verify()
         assert report["ok"] is False
         assert any("sha|SHA|漂移" in p or "SHA" in p for p in report["problems"])
 
+    def test_full_verify_without_database_never_ok(self, sync_env, evidence_env):
+        store = InMemoryObjectStore()
+        broken = PolicyEvidenceSync(
+            evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=None
+        )
+        report = broken.verify()
+        assert report["ok"] is False
+        assert any("数据库" in p or "database" in p.lower() for p in report["problems"])
+        assert report.get("degraded") is not True or report.get("verificationScope") != "four-way"
+
+    def test_object_only_verify_marks_degraded_scope(self, sync_env, evidence_env):
+        store = InMemoryObjectStore()
+        object_only = PolicyEvidenceSync(
+            evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=None
+        )
+        report = object_only.verify(object_only=True)
+        assert report["verificationScope"] == "object-only"
+        assert report["degraded"] is True
+        assert report["dbChecked"] is False
+        # object-only不得作为最终四方验收通过：标记必须显式存在。
+
     def test_plan_emits_upload_list_without_writes(self, sync_env):
-        plan = sync_env["sync"].plan()
-        assert plan["plannedUploads"][0]["objectKey"] == f"originals/{SHA}"
+        plan = sync_env["sync"].build_plan()
+        assert plan["plannedUploads"] == ["DOC-SH-TEST-2026"]
+        assert plan["plannedFetches"] == ["DOC-SH-TEST-2026"]
+        assert plan["plannedVersions"] == ["DOC-SH-TEST-2026"]
         assert sync_env["store"]._objects == {}
 
     def test_verify_ok_after_apply(self, sync_env):
-        sync_env["sync"].apply()
+        self._apply(sync_env["sync"])
         report = sync_env["sync"].verify()
         assert report["ok"] is True
         assert report["problems"] == []
+        assert report["verificationScope"] == "four-way"
+        assert report["dbChecked"] is True
 
 
 # ── 真实隔离MinIO（备份→全新bucket恢复→四方对账）─────────────────────────────
@@ -272,7 +517,8 @@ RESTORE_EP = os.environ.get("RAG_SYNC_TEST_MINIO_RESTORE_ENDPOINT")
     reason="requires SOCILA_TEST_DATABASE_URL + RAG_SYNC_TEST_MINIO_ENDPOINT + RAG_SYNC_TEST_MINIO_RESTORE_ENDPOINT",
 )
 class TestMinioBackupRestore:
-    def test_backup_restore_fresh_minio_four_way(self, evidence_env):
+    def test_backup_restore_fresh_minio_four_way(self, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
         from minio import Minio
 
         def client(ep: str) -> Minio:
@@ -285,7 +531,8 @@ class TestMinioBackupRestore:
         sync = PolicyEvidenceSync(
             evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=DRILL
         )
-        sync.apply()
+        plan = sync.build_plan()
+        sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
         assert sync.verify()["ok"] is True
 
         # 备份：逐对象下载到本地目录（含SHA清单）。
@@ -316,7 +563,13 @@ class TestMinioBackupRestore:
             evidence_env["evidence_root"], fresh_store, dsl_root=evidence_env["dsl"], database_url=DRILL
         )
         assert restored_sync.verify()["ok"] is False  # 空库：缺rag记录必须失败
-        restored_sync.apply()
+        restored_plan = restored_sync.build_plan()
+        restored_sync.apply(
+            restored_plan,
+            plan_hash=restored_plan["planHash"],
+            target_fingerprint=restored_plan["targetFingerprint"],
+            i_am_authorized=True,
+        )
         report = restored_sync.verify()
         assert report["ok"] is True, report["problems"]
 

@@ -1,5 +1,5 @@
 /**
- * 09-11独立审查问题一：政策原件MinIO同步+PostgreSQL/MinIO完整备份恢复对账演练。
+ * 政策原件MinIO同步+PostgreSQL/MinIO完整备份恢复对账演练（控制契约复审后版本）。
  *
  *   RAG_DRILL_PG_CONTAINER=<pg17容器> RAG_DRILL_PG_PORT=<端口> \
  *   RAG_DRILL_MINIO_ENDPOINT=<隔离MinIO> RAG_DRILL_MINIO_RESTORE_ENDPOINT=<全新MinIO> \
@@ -7,15 +7,18 @@
  *   node scripts/rag-evidence-drill.mjs [--keep]
  *
  * 流程（全部隔离环境，绝不触碰localhost:5432/policyops与生产MinIO bucket）：
- *   1. 全新演练库（agent.migrate含rag schema）+ 清空隔离bucket（primary/restore）；
- *   2. audit预态（23对象缺失→exit4）→ plan（23 uploads）→ apply（上传+rag登记+verify）
- *      → 复跑apply幂等no-op → verify ok；
- *   3. 守卫反例：错bucket/远程endpoint/policyops库名/冲突对象 → 拒绝且零覆盖；
- *   4. 备份：pg_dump + 逐对象下载（sha256清单）；
- *   5. 恢复：全新数据库pg_restore + 全新MinIO实例按备份回填；
- *   6. 恢复副本四方对账（Git原件/meta/DSL evidence已在collect固化，此处核对
- *      MinIO对象SHA、rag.fetches/rag.document_versions记录与content_hash）；
- *   7. 输出证据JSON；输出全程不含访问密钥/连接串口令。
+ *   1. 全新演练库（agent.migrate含rag schema与角色）+ 清空隔离bucket（primary/restore）；
+ *   2. audit预态（23对象缺失+rag记录缺失→exit4）→ plan（确定性：两次输出一致、23 uploads、
+ *      planHash/targetFingerprint/codeSha齐全）；
+ *   3. 守卫反例（全部零写入）：缺--i-am-authorized→exit2、错planHash→exit4、
+ *      错targetFingerprint→exit4、plan后对象漂移→exit4、audit缺数据库→exit2；
+ *   4. apply（上传+rag登记+verify）→ 四方verify → 复跑同一计划noop:true →
+ *      object-only verify（degraded标记）；
+ *   5. 冲突对象拒绝覆盖（drift拒绝且对象字节不变；清除后复跑恢复）；
+ *   6. 备份：pg_dump + 逐对象下载（sha256清单）；
+ *   7. 恢复：全新数据库pg_restore + 全新MinIO实例按备份回填；
+ *   8. 恢复副本四方对账（verify ok）+ 恢复副本同计划apply noop；
+ *   9. 输出证据JSON；输出全程不含访问密钥/连接串口令。
  *
  * 退出码：0全部通过；1任一步骤失败。
  */
@@ -25,10 +28,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 
 const ROOT = process.cwd();
-const CONTAINER = process.env.RAG_DRILL_PG_CONTAINER ?? "shv2-fix-pg";
-const PORT = process.env.RAG_DRILL_PG_PORT ?? "54956";
-const MINIO_EP = process.env.RAG_DRILL_MINIO_ENDPOINT ?? "127.0.0.1:54960";
-const MINIO_RESTORE_EP = process.env.RAG_DRILL_MINIO_RESTORE_ENDPOINT ?? "127.0.0.1:54961";
+const CONTAINER = process.env.RAG_DRILL_PG_CONTAINER ?? "shv2-ctrl-pg";
+const PORT = process.env.RAG_DRILL_PG_PORT ?? "54957";
+const MINIO_EP = process.env.RAG_DRILL_MINIO_ENDPOINT ?? "127.0.0.1:54962";
+const MINIO_RESTORE_EP = process.env.RAG_DRILL_MINIO_RESTORE_ENDPOINT ?? "127.0.0.1:54963";
 const MINIO_AK = process.env.RAG_DRILL_MINIO_ACCESS_KEY ?? "minioadmin";
 const MINIO_SK = process.env.RAG_DRILL_MINIO_SECRET_KEY ?? "";
 const KEEP = process.argv.includes("--keep");
@@ -88,6 +91,8 @@ function syncCli(args, env = {}, expect = 0) {
       AGENT_MINIO_ENDPOINT: MINIO_EP,
       AGENT_MINIO_ACCESS_KEY: MINIO_AK,
       AGENT_MINIO_SECRET_KEY: MINIO_SK,
+      // 仅隔离演练放行dirty工作树（门禁在提交前运行）；持久执行禁止该变量。
+      RAG_EVIDENCE_ALLOW_DIRTY: "1",
       ...env,
     },
   });
@@ -132,18 +137,29 @@ function cleanupDbs() {
   }
 }
 
+const APPLY_ARGS = (planFile, planHash, targetFingerprint) => [
+  "apply",
+  "--evidence-dir", EVIDENCE_DIR,
+  "--dsl-root", DSL_ROOT,
+  "--database-url", DRILL_URL,
+  "--plan-file", planFile,
+  "--i-am-authorized",
+  "--plan-hash", planHash,
+  "--target-fingerprint", targetFingerprint,
+];
+
 try {
   mkdirSync(WORK, { recursive: true });
   const BASE_ENV = { DATABASE_URL: DRILL_URL };
 
-  step("全新演练库（agent.migrate含rag schema）+ 清空隔离bucket", () => {
+  step("全新演练库（agent.migrate含rag schema与角色）+ 清空隔离bucket", () => {
     docker(["psql", "-U", "postgres", "-c", `DROP DATABASE IF EXISTS "${DB}" WITH (FORCE)`]);
     docker(["psql", "-U", "postgres", "-c", `CREATE DATABASE "${DB}"`]);
     docker(["psql", "-U", "postgres", "-d", DB, "-c", "CREATE EXTENSION IF NOT EXISTS vector"]);
-    const mig = spawnSync("uv", ["run", "--project", path.join(ROOT, "services", "agent"), "python", "-m", "agent.migrate"], {
+    const mig = spawnSync("uv", ["run", "--project", path.join(ROOT, "services", "agent"), "python", "-m", "agent.migrate", "--with-roles"], {
       cwd: path.join(ROOT, "services", "agent"),
       encoding: "utf8",
-      env: { ...process.env, DATABASE_URL: DRILL_URL },
+      env: { ...process.env, DATABASE_URL: DRILL_URL, AGENT_DB_PASSWORD: "postgres" },
       timeout: 300_000,
     });
     if (mig.status !== 0) throw new Error(`agent.migrate失败：${(mig.stderr || "").slice(0, 300)}`);
@@ -177,13 +193,24 @@ print("restore-bucket-clean")`,
     if (!r.json || r.json.ok !== false || r.json.docs.length !== 23) throw new Error(`audit预态异常：${JSON.stringify(r.json?.docs?.length)}`);
     const missing = r.json.docs.filter((d) => !d.objectExists).length;
     if (missing !== 23) throw new Error(`预态缺失对象数 ${missing} ≠ 23`);
-    return { docs: 23, missingObjects: missing, problems: r.json.problems.length };
+    return { docs: 23, missingObjects: missing };
   });
 
-  step("plan：23 uploads且零冲突、零写入", () => {
-    const r = syncCli(["plan", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL, "--out", path.join(WORK, "rag-plan.json")], BASE_ENV, 0);
-    if (r.json.plannedUploads.length !== 23 || r.json.conflicts.length !== 0) {
-      throw new Error(`plan异常：uploads=${r.json.plannedUploads.length} conflicts=${r.json.conflicts.length}`);
+  let plan = null;
+  let planFile = "";
+  step("plan：确定性输出（两次一致）、23 uploads、planHash/targetFingerprint/codeSha齐全", () => {
+    syncCli(["plan", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL, "--out", path.join(WORK, "rag-plan.json")], BASE_ENV, 0);
+    planFile = path.join(WORK, "rag-plan.json");
+    const first = readFileSync(planFile, "utf8");
+    syncCli(["plan", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL, "--out", path.join(WORK, "rag-plan-2.json")], BASE_ENV, 0);
+    const second = readFileSync(path.join(WORK, "rag-plan-2.json"), "utf8");
+    if (first !== second) throw new Error("plan输出不确定（两次不一致）");
+    plan = JSON.parse(first);
+    if (plan.plannedUploads.length !== 23 || plan.conflicts.length !== 0) {
+      throw new Error(`plan异常：uploads=${plan.plannedUploads.length} conflicts=${plan.conflicts.length}`);
+    }
+    if (!/^[0-9a-f]{64}$/.test(plan.planHash) || !/^[0-9a-f]{64}$/.test(plan.targetFingerprint) || !/^[0-9a-f]{40}$/.test(plan.codeSha)) {
+      throw new Error("plan hash/codeSha形状非法");
     }
     const objects = py(
       `from minio import Minio
@@ -193,49 +220,99 @@ print(len(list(c.list_objects("policy-originals", recursive=True))))`,
       { RAG_DRILL_SK: MINIO_SK },
     ).trim();
     if (objects !== "0") throw new Error(`plan后bucket出现对象：${objects}`);
-    return { plannedUploads: 23, bucketObjectsAfterPlan: 0 };
+    return { plannedUploads: 23, deterministic: true, planHash: plan.planHash.slice(0, 16) + "…" };
+  });
+
+  step("守卫反例A：apply缺--i-am-authorized → exit 2零写入", () => {
+    const args = APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint).filter((a) => a !== "--i-am-authorized");
+    const r = syncCli(args, BASE_ENV, 2);
+    if (!/AUTH|授权|USAGE/i.test(r.out)) throw new Error("拒绝信息缺失");
+    return { exit: 2, zeroWrite: true };
+  });
+
+  step("守卫反例B：错planHash → exit 4零写入", () => {
+    const r = syncCli(APPLY_ARGS(planFile, "0".repeat(64), plan.targetFingerprint), BASE_ENV, 4);
+    if (!/PLAN_HASH/i.test(r.out)) throw new Error("拒绝信息缺失");
+    return { exit: 4, zeroWrite: true };
+  });
+
+  step("守卫反例C：错targetFingerprint → exit 4零写入", () => {
+    const r = syncCli(APPLY_ARGS(planFile, plan.planHash, "0".repeat(64)), BASE_ENV, 4);
+    if (!/FINGERPRINT/i.test(r.out)) throw new Error("拒绝信息缺失");
+    return { exit: 4, zeroWrite: true };
+  });
+
+  step("守卫反例D：plan后对象漂移（植入受管冲突对象）→ exit 4零写入", () => {
+    const target = plan.objects[0];
+    py(
+      `from minio import Minio
+import os, io
+c = Minio("${MINIO_EP}", access_key="${MINIO_AK}", secret_key=os.environ["RAG_DRILL_SK"], secure=False)
+data = b"<html>post-plan-drift-bytes</html>"
+c.put_object("policy-originals", "${target.objectKey}", io.BytesIO(data), length=len(data), content_type="text/html")
+print("drift-planted")`,
+      { RAG_DRILL_SK: MINIO_SK },
+    );
+    const r = syncCli(APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint), BASE_ENV, 4);
+    if (!/DRIFT|漂移/i.test(r.out)) throw new Error("漂移拒绝信息缺失");
+    py(
+      `from minio import Minio
+import os
+c = Minio("${MINIO_EP}", access_key="${MINIO_AK}", secret_key=os.environ["RAG_DRILL_SK"], secure=False)
+c.remove_object("policy-originals", "${target.objectKey}")
+print("drift-removed")`,
+      { RAG_DRILL_SK: MINIO_SK },
+    );
+    return { exit: 4, zeroWrite: true, plantedKeyRemoved: true };
+  });
+
+  step("守卫反例E：audit缺数据库连接 → exit 2", () => {
+    const r = spawnSync("uv", ["run", "--project", path.join(ROOT, "services", "agent"), "python", "-m", "agent.rag.evidence_sync", "audit", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT], {
+      cwd: ROOT,
+      encoding: "utf8",
+      timeout: 120_000,
+      env: { ...process.env, AGENT_MINIO_ENDPOINT: MINIO_EP, AGENT_MINIO_ACCESS_KEY: MINIO_AK, AGENT_MINIO_SECRET_KEY: MINIO_SK, AGENT_DATABASE_URL: "", DATABASE_URL: "" },
+    });
+    if (r.status !== 2 || !/数据库|USAGE/.test((r.stderr || "") + (r.stdout || ""))) {
+      throw new Error(`audit缺数据库未按USAGE拒绝：${r.status} ${(r.stderr || "").slice(0, 200)}`);
+    }
+    return { exit: 2 };
   });
 
   let applyResult = null;
-  step("apply：23对象上传+rag登记+verify通过", () => {
-    const r = syncCli(["apply", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL], BASE_ENV, 0);
+  step("apply：23对象上传+rag登记（单持锁事务）", () => {
+    const r = syncCli(APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint), BASE_ENV, 0);
     applyResult = r.json;
-    if (r.json.uploaded !== 23 || r.json.verified !== true) throw new Error(`apply异常：${JSON.stringify({ uploaded: r.json.uploaded, verified: r.json.verified })}`);
+    if (r.json.applied !== true || r.json.verified !== true) throw new Error(`apply异常：${JSON.stringify({ applied: r.json.applied, verified: r.json.verified })}`);
     if (r.json.manifest.length !== 23) throw new Error(`manifest ${r.json.manifest.length} ≠ 23`);
     writeFileSync(path.join(WORK, "rag-apply-manifest.json"), JSON.stringify(r.json.manifest, null, 2) + "\n");
     return { uploaded: 23, fetches: r.json.fetches, versions: r.json.versions, manifestEntries: r.json.manifest.length };
   });
 
-  step("verify：23对象SHA与rag记录对账通过", () => {
+  step("verify：四方对账通过（Git/meta/DSL已在collect固化+对象SHA+rag记录）", () => {
     const r = syncCli(["verify", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL], BASE_ENV, 0);
     if (r.json.ok !== true || r.json.objectCount !== 23) throw new Error(`verify异常：ok=${r.json.ok} objects=${r.json.objectCount}`);
-    return { ok: true, objects: 23 };
-  });
-
-  step("幂等：复跑apply uploaded=0/noop=23", () => {
-    const r = syncCli(["apply", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL], BASE_ENV, 0);
-    if (r.json.uploaded !== 0 || r.json.noopObjects !== 23) throw new Error(`幂等异常：uploaded=${r.json.uploaded} noop=${r.json.noopObjects}`);
-    return { uploaded: 0, noopObjects: 23 };
-  });
-
-  step("守卫反例：错bucket/远程endpoint/policyops库名 → 拒绝", () => {
-    const wrongBucket = syncCli(["audit", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--bucket", "policyops"], {}, 2);
-    if (!/bucket/i.test(wrongBucket.out)) throw new Error("错bucket拒绝信息缺失");
-    const remote = spawnSync("uv", ["run", "--project", path.join(ROOT, "services", "agent"), "python", "-m", "agent.rag.evidence_sync", "audit", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT], {
-      cwd: ROOT,
-      encoding: "utf8",
-      env: { ...process.env, AGENT_MINIO_ENDPOINT: "minio.prod.example:9000", AGENT_MINIO_ACCESS_KEY: MINIO_AK, AGENT_MINIO_SECRET_KEY: MINIO_SK },
-      timeout: 120_000,
-    });
-    if (remote.status !== 2 || !/REMOTE_ENDPOINT_REFUSED/.test(remote.stderr)) {
-      throw new Error(`远程endpoint未默认拒绝：${remote.status} ${remote.stderr.slice(0, 200)}`);
+    if (r.json.verificationScope !== "four-way" || r.json.dbChecked !== true || r.json.degraded !== false) {
+      throw new Error(`verify范围标记异常：${JSON.stringify({ scope: r.json.verificationScope, db: r.json.dbChecked, degraded: r.json.degraded })}`);
     }
-    const persistent = syncCli(["apply", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", "postgresql://postgres:postgres@localhost:5432/policyops"], {}, 2);
-    if (!/PERSISTENT_TARGET_REFUSED|policyops/i.test(persistent.out)) throw new Error("policyops库名未拒绝");
-    return { wrongBucket: 2, remoteEndpoint: 2, persistentDb: 2 };
+    return { ok: true, objects: 23, scope: "four-way" };
   });
 
-  step("冲突对象拒绝覆盖（OBJECT_CONFLICT且零写入）", () => {
+  step("幂等：复跑同一计划 → noop:true", () => {
+    const r = syncCli(APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint), BASE_ENV, 0);
+    if (r.json.noop !== true || r.json.applied !== false) throw new Error(`复跑异常：noop=${r.json.noop} applied=${r.json.applied}`);
+    return { noop: true, uploaded: 0 };
+  });
+
+  step("object-only verify：显式降级标记（scope/degraded/dbChecked）", () => {
+    const r = syncCli(["verify", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL, "--object-only"], BASE_ENV, 0);
+    if (r.json.verificationScope !== "object-only" || r.json.degraded !== true || r.json.dbChecked !== false) {
+      throw new Error(`object-only标记异常：${JSON.stringify(r.json.verificationScope)}`);
+    }
+    return { scope: "object-only", degraded: true };
+  });
+
+  step("冲突对象拒绝覆盖（对象字节不变；清除后复跑恢复）", () => {
     const target = applyResult.manifest[0];
     py(
       `from minio import Minio
@@ -246,8 +323,8 @@ c.put_object("policy-originals", "${target.objectKey}", io.BytesIO(data), length
 print("conflict-planted")`,
       { RAG_DRILL_SK: MINIO_SK },
     );
-    const r = syncCli(["apply", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL], BASE_ENV, 4);
-    if (!/OBJECT_CONFLICT|冲突/.test(r.out)) throw new Error("冲突拒绝信息缺失");
+    const r = syncCli(APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint), BASE_ENV, 4);
+    if (!/DRIFT|CONFLICT|漂移|冲突/i.test(r.out)) throw new Error("冲突拒绝信息缺失");
     const sha = py(
       `from minio import Minio
 import os, hashlib
@@ -257,7 +334,6 @@ print(hashlib.sha256(data).hexdigest())`,
       { RAG_DRILL_SK: MINIO_SK },
     ).trim();
     if (sha === target.sha256) throw new Error("冲突对象被覆盖！");
-    // 还原：删除冲突对象并重新apply补齐。
     py(
       `from minio import Minio
 import os
@@ -266,8 +342,15 @@ c.remove_object("policy-originals", "${target.objectKey}")
 print("conflict-removed")`,
       { RAG_DRILL_SK: MINIO_SK },
     );
-    syncCli(["apply", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL], BASE_ENV, 0);
-    return { conflictRefused: true, objectPreserved: true, repaired: true };
+    // 恢复：冲突移除后正确对象缺失、记录仍在→原计划前置态已不可达；重新plan
+    // （新targetFingerprint=对象缺失+记录在册）→apply补齐对象→verify ok。
+    syncCli(["plan", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL, "--out", path.join(WORK, "rag-plan-repair.json")], BASE_ENV, 0);
+    const repairPlan = JSON.parse(readFileSync(path.join(WORK, "rag-plan-repair.json"), "utf8"));
+    const repair = syncCli(APPLY_ARGS(path.join(WORK, "rag-plan-repair.json"), repairPlan.planHash, repairPlan.targetFingerprint), BASE_ENV, 0);
+    if (repair.json.applied !== true) throw new Error(`恢复apply异常：${JSON.stringify(repair.json)}`);
+    const rv = syncCli(["verify", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", DRILL_URL], BASE_ENV, 0);
+    if (rv.json.ok !== true) throw new Error("恢复后verify未通过");
+    return { conflictRefused: true, objectPreserved: true, repairedViaReplan: true };
   });
 
   step("备份：pg_dump + 逐对象下载（sha256清单）", () => {
@@ -318,7 +401,7 @@ print("restored")`,
     return { restoreDb: RESTORE_DB, restoredObjects: manifest.length };
   });
 
-  step("恢复副本四方对账：verify（恢复DB+恢复MinIO）ok", () => {
+  step("恢复副本四方对账：verify ok + 同计划apply noop", () => {
     const r = syncCli(
       ["verify", "--evidence-dir", EVIDENCE_DIR, "--dsl-root", DSL_ROOT, "--database-url", RESTORE_URL],
       { DATABASE_URL: RESTORE_URL, AGENT_MINIO_ENDPOINT: MINIO_RESTORE_EP },
@@ -327,7 +410,11 @@ print("restored")`,
     if (r.json.ok !== true || r.json.objectCount !== 23) {
       throw new Error(`恢复副本verify异常：ok=${r.json?.ok} ${(r.json?.problems ?? []).slice(0, 3).join("；")}`);
     }
-    return { ok: true, objects: 23, database: RESTORE_DB };
+    const noopArgs = APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint)
+      .map((a) => (a === DRILL_URL ? RESTORE_URL : a));
+    const noop = syncCli(noopArgs, { DATABASE_URL: RESTORE_URL, AGENT_MINIO_ENDPOINT: MINIO_RESTORE_EP }, 0);
+    if (noop.json.noop !== true) throw new Error(`恢复副本复跑异常：noop=${noop.json?.noop}`);
+    return { ok: true, objects: 23, database: RESTORE_DB, restoredNoop: true };
   });
 
   step("残留敏感扫描：证据文件与演练输出零密钥", () => {
@@ -339,6 +426,7 @@ print("restored")`,
       scanned += 1;
     };
     scan(path.join(WORK, "rag-plan.json"));
+    scan(path.join(WORK, "rag-plan-2.json"));
     scan(path.join(WORK, "rag-apply-manifest.json"));
     scan(path.join(WORK, "minio-backup", "manifest.json"));
     return { filesScanned: scanned };

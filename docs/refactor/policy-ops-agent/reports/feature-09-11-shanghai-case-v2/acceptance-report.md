@@ -182,7 +182,7 @@
 
 当前状态为“代码已交付、独立审查问题待闭环、用户测试前待修复”，不是最终验收完成。修复Agent必须先TDD复现上述三项问题，再修改代码并重跑完整门禁；不得把本报告或历史执行结果当作持久写入授权。
 
-## 5. 2026-09-12修复交付（三问题闭环，全量门禁本地新鲜执行）
+## 5. 2026-09-12修复交付（三问题闭环，全量门禁本地新鲜执行；历史审查记录——起点d47dedf、交付提交b5a8d13）
 
 起点`d47dedf`（独立审查缺口记录），分支`codex/shanghai-case-v2`，目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并。严格TDD：每项先记录RED再实现转GREEN；未删除断言、未降低引用规则、未跳过测试。
 
@@ -191,7 +191,7 @@
 - RED：`services/agent/tests/test_rag_evidence_sync.py`收集期`ModuleNotFoundError: agent.rag.evidence_sync`（15例）。
 - 实现：`services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify；bucket固定`policy-originals`、对象键`originals/<sha256>`；错bucket/远程endpoint/policyops库名连接前拒绝；冲突对象拒绝覆盖；清单与错误路径凭据redact）；CLI `python -m agent.rag.evidence_sync`；`scripts/rag-evidence-drill.mjs`；`config/runtime.env.example`默认bucket改`policy-originals`。
 - GREEN：18/18（守卫7例+隔离DB集成10例+真实MinIO备份恢复1例）。
-- 真实23件原件演练10步全ok（证据`rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）：audit预态23缺失→plan 23 uploads零写入→apply 23上传+rag.sources(3域名)/fetches/document_versions登记→verify→幂等uploaded=0/noop=23→守卫反例exit2×3→OBJECT_CONFLICT拒绝且对象字节不变→pg_dump+23对象逐字节备份→全新PG库pg_restore+全新MinIO回填→恢复副本四方对账verify ok→证据零密钥。22/23份有DSL evidence引用且SHA全部一致；`DOC-SH-EMPLOYER-SUBSIDY-BASIS-2024`为政策依据辅助页无DSL引用（清单dslRefs:0如实报告）。
+- 真实23件原件演练12项全ok（证据`rag-evidence-drill-2026-09-12T04-14-59-793Z.json`；本项为历史审查记录，控制契约复审后以§6的17项演练为准）：audit预态23缺失→plan 23 uploads零写入→apply 23上传+rag.sources(3域名)/fetches/document_versions登记→verify→幂等uploaded=0/noop=23→守卫反例exit2×3→OBJECT_CONFLICT拒绝且对象字节不变→pg_dump+23对象逐字节备份→全新PG库pg_restore+全新MinIO回填→恢复副本四方对账verify ok→证据零密钥。22/23份有DSL evidence引用且SHA全部一致；`DOC-SH-EMPLOYER-SUBSIDY-BASIS-2024`为政策依据辅助页无DSL引用（清单dslRefs:0如实报告）。
 
 ### 5.2 问题二：V2业务content_hash（SHV2-FR-019/020）
 
@@ -225,7 +225,7 @@
 | allowlist哨兵 | 3场景全过 |
 | PostgreSQL+MinIO完整备份恢复对账 | 演练step9-10：pg_dump+逐对象备份→全新库pg_restore+全新MinIO回填→恢复副本verify ok |
 | Gitleaks完整历史 | 8.29.1扫描100提交零发现（`.gitleaksignore`7条基线+ADR-0009新增"规则×路径"allowlist：`test_rag_evidence_sync.py`脱敏哨兵口令，2026-09-12人工核实；哨兵回归3场景全过） |
-| 隔离演练 | rewrite 10步+evidence 10步全ok（两份证据JSON） |
+| 隔离演练 | rewrite 10步+evidence 12项全ok（两份证据JSON；evidence步骤数以证据JSON为准） |
 
 ### 5.5 最终数字（2026-09-12新鲜执行）
 
@@ -238,3 +238,33 @@
 - 持久`policyops`全程未连接未写入（rewrite与evidence_sync守卫均在连接前拒绝）；生产MinIO（socila-minio:9000）未连接；0019与V2改写仅存在于隔离库。
 - 隔离环境：PG容器`shv2-fix-pg`:54956（含agent schema+roles的`shv2_fix_rag`、双schema`shv2_fix_rw`、全新test:db库`shv2_fix_testdb`）、`shv2-task2-pg`:54955（`shv2_e2e`重建为V2终态供用户核验）、MinIO容器`shv2-fix-minio-a/b`:54960/54961（演练用，bucket在演练内创建与清空）。
 - 持久执行（生产MinIO同步、持久RAG登记、持久0019/改写、政策物化、快照/release）须另行fresh授权。
+
+## 6. 2026-09-12控制契约复审修复（本修复提交HEAD，起点b5a8d13）
+
+起点`b5a8d13`（§5的MinIO接入、业务content_hash与Node超时修复保留不推翻；f583adc为历史任务2/3交付SHA）。严格TDD：RED=新增契约测试集合期ImportError（21测试）→GREEN=35/35。
+
+### 6.1 问题一：apply绑定fresh授权计划
+
+- `evidence_sync.py`新增`build_plan`（确定性计划：`schema="rag-evidence-sync-plan/1.0"`、`algorithmVersion`、`codeSha`、`jurisdiction`、固定bucket、`evidenceManifestHash`（文档集合规范化SHA）、`targetFingerprint`（MinIO+RAG当前状态指纹）、`finalFingerprint`（期望终态指纹）、完整对象清单、`plannedUploads/plannedFetches/plannedVersions/noopObjects/conflicts`、规范化`planHash`；同状态两次生成逐字节一致）。
+- `apply(plan, plan_hash, target_fingerprint, i_am_authorized)`：任何写入前校验——授权声明、计划结构、planHash重算一致、HEAD==计划codeSha、工作树干净（`RAG_EVIDENCE_ALLOW_DIRTY`仅限隔离演练）、evidence未漂移（manifestHash）、MinIO+RAG状态指纹==targetFingerprint；状态达终态→幂等noop；介于前置与终态之间→`TARGET_STATE_DRIFT`零写入拒绝。`RAG_EVIDENCE_ALLOW_REMOTE`/`RAG_EVIDENCE_ALLOW_PERSISTENT`仅为endpoint/库名附加保护，不能替代fresh授权参数。
+- 冲突对象拒绝覆盖、凭据脱敏、恢复能力保留；并发apply经任务专属advisory锁串行化并在锁内重分类（上传+登记同一持锁事务），锁内复查不产生重复rag记录。
+
+### 6.2 问题二：verify范围契约
+
+- 完整audit/plan/apply/verify必须提供数据库连接（CLI缺库以USAGE拒绝，exit 2）；缺库完整verify返回ok:false并逐件报告"无法核对rag.fetches/rag.document_versions"。
+- 显式`--object-only`降级模式仅核对本地文件与MinIO对象层，结果带`verificationScope="object-only"`、`degraded=true`、`dbChecked=false`，不作为四方验收通过。
+- 完整verify逐件核对：Git原件字节SHA与meta.json.sha256/byteSize/DSL evidence.content_sha256（collect固化）、MinIO bucket/object_key/下载后SHA、rag.fetches与rag.document_versions的object_key/content_hash及两处object_key一致。
+
+### 6.3 问题三：文档事实同步
+
+- f583adc标注为历史任务2/3交付SHA；b5a8d13标注为本次控制修复起点；最终SHA以"本修复提交HEAD"表述并回填于交付报告；历史Reopened章节标记"历史审查记录"；MinIO演练步骤数按证据JSON如实更正（b5a8d13证据为12项，本轮为17项；rewrite演练10步不变）；状态保持Ready for independent review。
+
+### 6.4 Chromium E2E阻塞项根因修复（门禁路径上的既有产品bug）
+
+首轮Chromium E2E在`shv2_e2e`（V2终态库）上稳定复现AUTH-US-002失败（对话发送后`page.reload()`断言回复消失，4次复现）。根因调查（独立playwright脚本全链路网络取证）：发送后URL为`/chat?conversationId=C1`；reload时URL会话恢复成功（`GET /api/chat/C1 200`），但ChatPanel挂载期的"预创建会话"（JRP-FR-021）晚完成，`onConversationCreated`无条件把面板与URL改写为新空会话——正在展示的回复被切走。这是`9196939`（任务3）以来即存在的竞态，与本轮三项修复无关，但阻塞E2E门禁。最小修复：`ChatPageClient`将URL会话ID直接作为ChatPanel的`externalConversationId`（`panelConversationId ?? conversationIdFromUrl ?? undefined`），URL存在会话ID时面板不再预创建新会话（恢复失败的既有重置路径不受影响）。修复后独立脚本复现通过（reload后回复可见、URL保持C1），完整Chromium E2E 23/23通过（58.6s）。
+
+### 6.5 门禁与证据（本修复提交HEAD，数字回填于交付报告）
+
+- `test_rag_evidence_sync.py` 35/35零skip（12零DB单元+23集成）；ruff/mypy 0问题。
+- 演练`scripts/rag-evidence-drill.mjs` 17项全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`）：全新演练库→audit预态→plan（确定性两次一致）→守卫反例A缺授权exit2/B错planHash exit4/C错指纹exit4/D plan后对象漂移exit4/E audit缺库exit2（全部零写入）→apply→四方verify→复跑同一计划noop→object-only降级标记→冲突拒绝+re-plan恢复→pg_dump+逐对象备份→全新库pg_restore+全新MinIO回填→恢复副本四方对账verify ok+同计划apply noop→输出零密钥。
+- 其余门禁（全部在本修复提交HEAD代码状态新鲜执行）：rewrite-v2单元（npm test内）+CLI集成10/10+隔离演练10步全ok（证据`rewrite-drill-evidence-2026-09-12T08-57-53-721Z.json`）；标准完整`npm test`连续两次81文件/846用例零失败零skip；`test:db`全新库29文件/158用例零skip；tsc 0/eslint 0 error/build 0；pytest integration 43/43+非集成106/106零skip；Chromium E2E 23/23（含6.4修复）；citation组32/32；案例库`--check` ok；scan-secrets 926文件零命中；allowlist哨兵3场景全过；Gitleaks 8.29.1完整历史101提交零发现；`git diff --check`干净。

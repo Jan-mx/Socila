@@ -1,7 +1,7 @@
 # WI-20260911-01：上海官方原文采集与政策纠偏
 
 > Author: Jan
-> Status: Ready for independent review（2026-09-12 MinIO原件链路修复交付：18/18测试+真实23件演练10步全ok；独立复审确认前不标记Accepted）
+> Status: Ready for independent review（2026-09-12 MinIO原件链路修复交付：18/18测试+真实23件演练12项全ok；同日控制契约复审修复：35/35测试+17项演练全ok。独立复审确认前不标记Accepted）
 > Updated: 2026-09-12
 
 ## Work Item
@@ -74,5 +74,15 @@
 
 - 实现：`services/agent/agent/rag/evidence_sync.py`（`PolicyEvidenceSync`，audit/plan/apply/verify四模式；复用`agent/rag/storage.py`的MinIO/内存ObjectStore、`migrations/0003_rag_schema.sql`的rag.sources/fetches/document_versions、`capture-official-page.mjs`产出目录布局；bucket固定`policy-originals`、对象键固定`originals/<sha256>`；错bucket/远程endpoint/policyops库名连接前拒绝；对象冲突拒绝覆盖；输出清单与错误路径统一凭据redact）；CLI入口`python -m agent.rag.evidence_sync`；编排`scripts/rag-evidence-drill.mjs`；配置模板`config/runtime.env.example`默认bucket改为`policy-originals`（与`storage.py`一致，Compose不覆盖）。
 - TDD：RED=`test_rag_evidence_sync.py`整体ModuleNotFoundError（15例）；GREEN=18/18（守卫与枚举7例零依赖；隔离DB集成10例：上传+RAG登记/幂等no-op/冲突拒绝/缺记录/DB content_hash漂移/错object_key/对象下载SHA漂移/plan零写入/verify ok；真实MinIO备份→全新实例恢复四方对账1例）。
-- 真实23件原件隔离演练（`scripts/rag-evidence-drill.mjs`，10步全ok，证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）：audit预态23缺失（exit4）→plan 23 uploads零写入→apply 23上传+rag.sources(3域名)/fetches/document_versions登记+verify→幂等复跑uploaded=0/noop=23→守卫反例（错bucket/远程endpoint/policyops库名均exit2）→OBJECT_CONFLICT拒绝且对象字节不变→pg_dump+23对象逐字节备份（SHA清单）→全新数据库pg_restore+全新MinIO回填→恢复副本四方对账verify ok→证据文件零密钥。22/23份原件有DSL evidence引用且SHA全部一致；DOC-SH-EMPLOYER-SUBSIDY-BASIS-2024为政策依据辅助页，无DSL引用（清单`dslRefs:0`如实报告，不作为阻断）。
+- 真实23件原件隔离演练（`scripts/rag-evidence-drill.mjs`，12项全ok，证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T04-14-59-793Z.json`；本节为历史审查记录）：audit预态23缺失（exit4）→plan 23 uploads零写入→apply 23上传+rag.sources(3域名)/fetches/document_versions登记+verify→幂等复跑uploaded=0/noop=23→守卫反例（错bucket/远程endpoint/policyops库名均exit2）→OBJECT_CONFLICT拒绝且对象字节不变→pg_dump+23对象逐字节备份（SHA清单）→全新数据库pg_restore+全新MinIO回填→恢复副本四方对账verify ok→证据文件零密钥。22/23份原件有DSL evidence引用且SHA全部一致；DOC-SH-EMPLOYER-SUBSIDY-BASIS-2024为政策依据辅助页，无DSL引用（清单`dslRefs:0`如实报告，不作为阻断）。
 - 边界：全程仅隔离MinIO（`shv2-fix-minio-a/b`:54960/54961）与隔离PostgreSQL（`shv2-fix-pg`:54956）；生产MinIO（socila-minio）与持久policyops未连接未写入；持久对象同步/恢复对账须另行fresh授权。
+
+## 控制契约复审修复交付（2026-09-12第二轮；起点b5a8d13，本修复提交HEAD）
+
+独立复审在b5a8d13基础上发现两项控制缺口，修复如下（f583adc为历史任务2/3交付SHA）：
+
+- **apply绑定fresh授权计划**：`evidence_sync.py`新增确定性`build_plan`（schema/version、codeSha、jurisdiction、固定bucket、evidenceManifestHash、MinIO+RAG目标状态指纹与期望终态指纹、完整对象清单、plannedUploads/plannedFetches/plannedVersions/noopObjects/conflicts、规范化planHash；同状态两次生成逐字节一致）；`apply(plan, plan_hash, target_fingerprint, i_am_authorized)`在任何写入前校验——授权声明、计划结构、planHash重算、HEAD==计划codeSha、工作树干净（`RAG_EVIDENCE_ALLOW_DIRTY`仅隔离演练）、evidence未漂移、MinIO+RAG状态指纹==targetFingerprint；终态→幂等noop；介于前置与终态→`TARGET_STATE_DRIFT`零写入拒绝。`RAG_EVIDENCE_ALLOW_REMOTE`/`RAG_EVIDENCE_ALLOW_PERSISTENT`仅作endpoint/库名附加保护。冲突拒绝、凭据脱敏、幂等与恢复能力保留；并发apply经advisory锁串行化并在锁内重分类（上传+登记同一持锁事务），锁内复查无重复rag记录。
+- **verify范围契约**：完整audit/plan/apply/verify必须连数据库（CLI缺库USAGE拒绝exit2）；缺库完整verify ok:false并逐件报告；显式`--object-only`降级（`verificationScope="object-only"`/`degraded=true`/`dbChecked=false`，不作为四方验收）；完整verify逐件核对Git原件字节SHA、meta.json.sha256/byteSize、DSL evidence.content_sha256、MinIO bucket/object_key/下载SHA、rag.fetches与rag.document_versions的object_key/content_hash及两处object_key一致。
+- **TDD与证据**：RED=新增契约测试集合期ImportError（21测试）→GREEN=35/35零skip（12零DB单元+23集成，含授权缺失/错planHash/错指纹/codeSha不符/dirty工作树/证据漂移/对象漂移/DB漂移零写入、幂等noop、冲突不覆盖、注入后re-plan恢复、并发无重复、计划与输出零凭据）；演练17项全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`）。
+- **Chromium E2E阻塞项修复**：E2E门禁路径发现既有产品竞态——AUTH-US-002 reload后URL会话恢复被ChatPanel预创建会话踩掉（独立playwright网络取证：恢复GET 200后`onConversationCreated`把面板/URL改写为新空会话）。最小修复`ChatPageClient`将URL会话ID作为ChatPanel外部会话ID（URL带会话ID时不预创建，恢复失败重置路径不变）。修复后完整Chromium E2E 23/23（58.6s）。
+- 边界：全程仅隔离PostgreSQL（`shv2-ctrl-pg`:54957）与隔离MinIO（`shv2-ctrl-minio-a/b`:54962/54963，演练后清理）；持久policyops与生产MinIO未连接未写入；状态保持Ready for independent review。

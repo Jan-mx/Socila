@@ -543,10 +543,11 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 
 2026-09-12修复交付后，三个独立审查问题已闭环（证据见验收报告§5与traceability修复映射），状态为Ready for independent review：
 
-- 政策原件MinIO链路：`services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify，bucket固定`policy-originals`、键`originals/<sha256>`）+`scripts/rag-evidence-drill.mjs`；真实23件原件在隔离MinIO/隔离PostgreSQL完成上传、RAG登记、幂等、守卫、冲突拒绝与pg_dump+全新实例恢复四方对账（18/18测试+10步演练全ok）；
+- 政策原件MinIO链路：`services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify，bucket固定`policy-originals`、键`originals/<sha256>`）+`scripts/rag-evidence-drill.mjs`；真实23件原件在隔离MinIO/隔离PostgreSQL完成上传、RAG登记、幂等、守卫、冲突拒绝与pg_dump+全新实例恢复四方对账（18/18测试+12项演练全ok；历史审查记录，控制契约复审后见下）；
 - V2业务`content_hash`：apply同事务写入`cases.content_hash`/`showcase_cases.content_hash`（先按排除`content_hash`的投影计算目标hash再写列，防循环），verify逐条显式核对业务列与审计`new_content_hash`；36+36逐行一致、篡改verify失败、故障回滚、复跑noop、post dump恢复副本hash一致（单元17/17+集成10/10+演练10步全ok）；
 - 完整`npm test`：`migration-lf.contract.test.ts`改单次`git cat-file --batch`批量读取+显式30秒超时（断言零改动）；标准完整套件连续两次零失败零skip；
-- 本PRD的历史“仅完成PRD”表述已过期，后续文档必须以功能分支实际提交和验收证据为准。
+- 本PRD的历史“仅完成PRD”表述已过期，后续文档必须以功能分支实际提交和验收证据为准；
+- 控制契约复审修复（起点`b5a8d13`，本修复提交HEAD）：evidence_sync apply改为fresh授权计划契约——确定性`build_plan`（schema/version、codeSha、jurisdiction、固定bucket、evidenceManifestHash、MinIO+RAG状态指纹与终态指纹、完整对象清单、计划上传/登记/noop集合、规范化planHash）+apply显式`--i-am-authorized/--plan-hash/--target-fingerprint`并在写入前校验计划结构、HEAD==codeSha、工作树、evidence未漂移与目标状态指纹；完整audit/plan/apply/verify必须连数据库，缺库verify不得ok:true，仅对象层走显式`--object-only`（verificationScope/degraded/dbChecked标记）；文档事实同步（f583adc=历史任务2/3交付SHA、b5a8d13=本次控制修复起点、最终SHA=本修复提交HEAD、演练步骤数按证据JSON如实）。35/35测试+17项演练全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`）。
 
 以下持久事项仍未执行：
 

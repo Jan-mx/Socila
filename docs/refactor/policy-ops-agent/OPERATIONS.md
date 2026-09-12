@@ -219,7 +219,7 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 
 ## SHV2政策原件MinIO同步与恢复runbook（隔离流程已实现并演练；持久执行待授权）
 
-> Git中的`docs/refactor/policy-ops-agent/reports/**/evidence/`是审计夹具，不是运行时对象存储。同步入口已实现（`services/agent/agent/rag/evidence_sync.py`，CLI `python -m agent.rag.evidence_sync`），2026-09-12在隔离MinIO+隔离PostgreSQL完成真实23件原件的10步演练（含pg_dump+逐对象备份、全新库+全新MinIO恢复、恢复副本四方对账；证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）。对生产MinIO/持久policyops的同步仍属独立持久操作，须针对fresh对象清单取得用户明确授权。
+> Git中的`docs/refactor/policy-ops-agent/reports/**/evidence/`是审计夹具，不是运行时对象存储。同步入口已实现（`services/agent/agent/rag/evidence_sync.py`，CLI `python -m agent.rag.evidence_sync`）。2026-09-12在隔离MinIO+隔离PostgreSQL完成真实23件原件的12项演练（历史审查记录，证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）；同日控制契约复审修复（apply绑定fresh授权计划+verify范围契约）后以17项演练为准（证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T08-43-47-471Z.json`，含守卫反例A-E、plan确定性、幂等noop、object-only降级、冲突拒绝+re-plan恢复、pg_dump+逐对象备份、全新库+全新MinIO恢复对账）。对生产MinIO/持久policyops的同步仍属独立持久操作，须针对fresh对象清单取得用户明确授权。
 
 1. 以证据目录中每个`meta.json.sha256`为内容地址，目标bucket固定`policy-originals`，对象键固定`originals/<sha256>`；禁止使用文件名或可变URL作为唯一键。
 2. 上传前核对原件文件存在、字节SHA等于`meta.json`和DSL evidence；任一不符停止。
@@ -239,16 +239,27 @@ uv run --project services/agent python -m agent.rag.evidence_sync audit   --evid
 # plan（输出待上传清单，零写入）
 uv run --project services/agent python -m agent.rag.evidence_sync plan ... --out rag-plan.json
 
-# apply（幂等上传+rag.sources/fetches/document_versions登记+apply后verify）
-uv run --project services/agent python -m agent.rag.evidence_sync apply ...
+# plan（确定性计划：planHash/targetFingerprint/codeSha/evidenceManifestHash/对象清单/计划集合；
+#       同状态两次输出逐字节一致；--out同时落盘，apply以该文件为不可变输入）
+uv run --project services/agent python -m agent.rag.evidence_sync plan ... --out rag-plan.json
 
-# verify（逐对象下载重算SHA+数据库记录核对；恢复副本上重跑即"恢复后四方对账"）
+# apply（fresh授权契约：显式--i-am-authorized + 不可变计划文件 + planHash + targetFingerprint；
+#       写入前校验计划结构/planHash重算、HEAD==计划codeSha、工作树干净、evidence未漂移、
+#       MinIO+RAG状态指纹==targetFingerprint；终态幂等noop；漂移零写入拒绝）
+uv run --project services/agent python -m agent.rag.evidence_sync apply ...   --plan-file rag-plan.json --i-am-authorized --plan-hash <planHash> --target-fingerprint <targetFingerprint>
+
+# verify（完整四方：Git原件/meta/DSL+对象SHA+rag记录；恢复副本上重跑即"恢复后四方对账"）
 uv run --project services/agent python -m agent.rag.evidence_sync verify ...
+
+# verify --object-only（显式降级：仅对象层，结果带verificationScope/degraded/dbChecked标记，
+#                       不得作为四方验收通过；完整audit/plan/apply/verify均必须连数据库）
+uv run --project services/agent python -m agent.rag.evidence_sync verify ... --object-only
 
 # 备份恢复编排（隔离PG容器+两个隔离MinIO endpoint）
 RAG_DRILL_PG_CONTAINER=<容器> RAG_DRILL_PG_PORT=<端口> RAG_DRILL_MINIO_ENDPOINT=<隔离MinIO> RAG_DRILL_MINIO_RESTORE_ENDPOINT=<全新MinIO> RAG_DRILL_MINIO_ACCESS_KEY=... RAG_DRILL_MINIO_SECRET_KEY=... node scripts/rag-evidence-drill.mjs
 ```
 
 - 对象存储凭据从`AGENT_MINIO_ENDPOINT/ACCESS_KEY/SECRET_KEY(/SECURE)`读取；`AGENT_MINIO_BUCKET`默认即`policy-originals`（固定值，其他bucket在连接前拒绝）。
-- 守卫：非本机endpoint默认拒绝（`RAG_EVIDENCE_ALLOW_REMOTE=1`仅限隔离演练显式放行）；目标库名`policyops`默认拒绝（`RAG_EVIDENCE_ALLOW_PERSISTENT=1`仅限fresh授权）；对象已存在且SHA不一致→`OBJECT_CONFLICT`拒绝覆盖。
+- 守卫：非本机endpoint默认拒绝（`RAG_EVIDENCE_ALLOW_REMOTE=1`仅限隔离演练显式放行）；目标库名`policyops`默认拒绝（`RAG_EVIDENCE_ALLOW_PERSISTENT=1`仅限fresh授权）；对象已存在且SHA不一致→`OBJECT_CONFLICT`/状态漂移拒绝覆盖。
+- **fresh授权契约（2026-09-12控制复审）**：apply必须绑定不可变计划文件与`--i-am-authorized/--plan-hash/--target-fingerprint`——环境开关只是endpoint/库名的附加保护，不能替代授权参数；授权缺失、hash错误、计划过期（evidenceManifestHash/状态指纹漂移）、HEAD≠codeSha或工作树dirty均零写入拒绝；状态达计划终态→幂等noop。并发apply由任务专属advisory锁串行化并在锁内重分类。
 - 输出（stdout与`--out`文件）只含docId/bucket/objectKey/size/contentType/sha256/dslRefs/记录ID，连接串口令在错误路径统一redact。
