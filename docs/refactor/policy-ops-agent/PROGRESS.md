@@ -6,11 +6,11 @@
 
 ## 当前结论
 
-> SHV2进展（2026-09-13）：功能分支`codex/shanghai-case-v2`第四轮复审修复（MinIO对象存在性检查失败关闭、bucketCreated真实创建归属、拒绝路径数据库/MinIO零写入证据、文档事实与hash语义同步）已交付并过全量门禁，状态Ready for user testing（用户测试、生产MinIO/RAG同步、政策发布与持久案例改写未执行，不标记最终Accepted）。修复链：f583adc=历史任务2/3交付SHA、b5a8d13=第一轮审查修复、82c905b=fresh授权与verify范围修复、6bd3edc=缺桶生命周期修复（第四轮起点）、本轮修复HEAD见交付报告。目标分支`0885613`未修改未合并，持久policyops与生产MinIO未连接未写入。
+> SHV2进展（2026-09-13）：功能分支`codex/shanghai-case-v2@a85420f`重新进入Updating/Reopened。生产MinIO bucket=0、RAG七张表=0；同步器仅登记downloaded版本，尚无DocumentTree/chunks/embeddings，Web对话未接入RAG。ensure期间冲突对象仍可能在事务外verify前留下RAG登记。`WI-20260913-01`已定义最小运行闭环；本轮只更新文档，不写MinIO/数据库、不合并目标分支。
 
 - 七阶段重构Goal：**Accepted**，七份阶段验收报告全部PASS。
 - 当前开发分支：`refactor/policy-ops-agent-platform`；任务3/4最终集成分支已完成显式merge commit集成。
-- 09-11上海政策与案例V2 Feature：功能分支`codex/shanghai-case-v2`已推送（f583adc为历史任务2/3交付SHA，其后b5a8d13/82c905b/6bd3edc三轮复审修复与本轮第四轮修复依次交付），目标分支仍为`0885613`未合并；2026-09-12独立审查曾因MinIO原件链路、业务`content_hash`同步和完整Node套件超时而Reopened，四轮修复后状态Ready for user testing（持久写入未执行）。
+- 09-11上海政策与案例V2 Feature：历史修复链保留；当前因运行时MinIO/RAG与对话来源链未闭环而Reopened。开发入口为`WI-20260913-01-shanghai-rag-runtime-closure.md`；用户人工测试前不得合并，生产fresh授权前不得写当前MinIO或policyops。
 - 当前运行事实源：单机Docker Compose中的PostgreSQL、MinIO和Agent存储；Neon不再承接运行时读写。
 - 本机定位：开发机，生产Compose数据卷保留但不常驻；远程服务器部署列入路线图。
 - 09-02 Feature（用户与管理员双角色鉴权，PRD `docs/prd/09-02-feature-user-admin-auth.md`）：**Accepted**（验收证据：`reports/feature-09-02-auth/acceptance-report.md`）。
@@ -598,4 +598,12 @@
 
 演练升级：`scripts/rag-evidence-drill.mjs`17项→22项（新增codeSha不一致、dirty工作树、RAG数据库漂移、write-only权限错误经受限IAM用户真实AccessDenied、bucket创建竞态归属5个反例/步骤；全部守卫反例输出DB+对象层before/after指纹；外部漂移与apply写入分别记录），22项全ok（证据`rag-evidence-drill-2026-09-12T16-47-00-452Z.json`）。
 
-门禁与状态：见验收报告§8。目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并；持久policyops未连接未写入；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；全程仅隔离`shv2-r4-pg`:55101与`shv2-r4-minio-a/b`:55102/55103（任务专属，演练后清理）。状态：**Ready for user testing**（用户测试、生产MinIO/RAG同步、政策发布与持久案例改写未执行，不标记最终Accepted）。
+门禁与状态：见验收报告§8。目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并；持久policyops未连接未写入；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；全程仅隔离`shv2-r4-pg`:55101与`shv2-r4-minio-a/b`:55102/55103（任务专属，演练后清理）。该段为第四轮历史结果，当前状态由下节取代。
+
+## 2026-09-13运行时RAG闭环重新规划（docs-only）
+
+- 只读事实：MinIO Console=`127.0.0.1:9001/login`，宿主S3 API=`127.0.0.1:9000`，容器S3 API=`minio:9000`，持久卷=`socila_minio-data:/data`；生产bucket=0、RAG七张表=0。
+- 根因：`evidence_sync`只登记downloaded版本；现有`IngestService`不为该路径生成派生索引且会对已存在hash伪报indexed；Web对话没有`searchPolicy`。另有ensure期间外部写入冲突对象后可能先提交RAG登记的竞态。
+- 文档交付：原PRD新增SHV2-FR-028～031、NFR-009、AC-022～028；新增`WI-20260913-01`，WI-01重新打开；历史证据不改写。
+- 当前状态：Updating/Reopened。下一步由Goal Agent按WI开发并在隔离环境验收，推送后暂停等待用户人工测试；本轮不修改代码、Compose、MinIO或数据库。
+- docs-only验证：`src/lib/documentation-copy.test.ts` 3/3；12个变更Markdown中的13个相对链接全部存在；`scan-secrets --all`扫描931个候选文件零命中；`git diff --check`通过。最终文档提交SHA由交付报告给出。

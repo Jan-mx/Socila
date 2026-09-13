@@ -267,3 +267,18 @@ RAG_DRILL_PG_CONTAINER=<容器> RAG_DRILL_PG_PORT=<端口> RAG_DRILL_MINIO_ENDPO
 - 守卫：非本机endpoint默认拒绝（`RAG_EVIDENCE_ALLOW_REMOTE=1`仅限隔离演练显式放行）；目标库名`policyops`默认拒绝（`RAG_EVIDENCE_ALLOW_PERSISTENT=1`仅限fresh授权）；对象已存在且SHA不一致→`OBJECT_CONFLICT`/状态漂移拒绝覆盖。
 - **fresh授权契约（2026-09-12控制复审）**：apply必须绑定不可变计划文件与`--i-am-authorized/--plan-hash/--target-fingerprint`——环境开关只是endpoint/库名的附加保护，不能替代授权参数；授权缺失、hash错误、计划过期（evidenceManifestHash/状态指纹漂移）、HEAD≠codeSha或工作树dirty均零写入拒绝；状态达计划终态→幂等noop。并发apply由任务专属advisory锁串行化并在锁内重分类。
 - 输出（stdout与`--out`文件）只含docId/bucket/objectKey/size/contentType/sha256/dslRefs/记录ID，连接串口令在错误路径统一redact。
+
+## SHV2当前MinIO端口、索引与部署runbook（WI-20260913-01，待实现）
+
+| 场景 | Endpoint | 说明 |
+| --- | --- | --- |
+| 浏览器管理 | `http://127.0.0.1:9001/login` | MinIO Console，只作人工核验 |
+| 宿主同步/索引CLI | `127.0.0.1:9000` | S3 API |
+| Agent/Worker容器 | `minio:9000` | Docker内部S3 API |
+| 持久存储 | `socila_minio-data:/data` | 现有named volume，禁止替换或删除 |
+
+- Compose需显式设置`AGENT_MINIO_BUCKET=policy-originals`；任何将9001或`/login`配置为对象API的操作必须在连接前拒绝。
+- 开发顺序：功能分支隔离验收与独立复审→用户人工测试→`--no-ff`合并refactor→merge SHA全门禁→重建Web/Agent/Worker/Beat→保持MinIO volume不变部署。
+- 生产同步前分别备份并恢复验证当前policyops和MinIO对象清单；同步计划输出fresh `codeSha/planHash/targetFingerprint/23对象写集合`，索引计划另行输出派生写集合。两个apply均需用户针对实际hash精确授权。
+- 同步apply通过宿主9000创建`policy-originals`并上传`originals/<sha256>`；索引apply生成tree/chunks/embeddings。9001截图只作为人工辅助，不能替代对象SHA、数据库记录或恢复验证。
+- 部署和同步后验证`docker inspect socila-minio`仍显示`/data`来自`socila_minio-data`，容器更新前后23对象不变；不得直接访问`/var/lib/docker/volumes/.../_data`写文件。

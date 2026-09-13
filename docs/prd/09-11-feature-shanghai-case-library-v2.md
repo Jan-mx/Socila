@@ -1,7 +1,7 @@
 # 上海政策纠偏与36条案例V2全量重建PRD
 
 > Author: Jan
-> Status: Ready for user testing（第四轮复审修复交付：MinIO错误失败关闭、bucket创建竞态归属、拒绝路径零写入证据、文档事实同步；完整门禁与独立复审通过后交付用户测试；不标记最终Accepted；未合并目标分支）
+> Status: Updating / Reopened（运行时RAG闭环待开发：生产MinIO尚无bucket，RAG索引为空，Web对话尚未接入政策检索；不标记Accepted；未合并目标分支）
 > Updated: 2026-09-13
 
 ## 1. 文档元数据
@@ -13,7 +13,7 @@
 | 目标分支 | `codex/shanghai-case-v2` |
 | 基线分支 | `origin/refactor/policy-ops-agent-platform` |
 | 已确认基线SHA | `0885613f2fbb68bf361d55c3b89694dc1024d1b4` |
-| 当前状态 | 四轮修复已交付：f583adc=历史任务2/3交付SHA、b5a8d13=第一轮审查修复（MinIO接入/业务content_hash/Node超时）、82c905b=fresh授权与verify范围修复（控制契约）、6bd3edc=缺桶生命周期修复（亦为本轮开发起点）、本轮修复HEAD见交付报告；持久写入未执行 |
+| 当前状态 | 功能分支`a85420f`已交付四轮修复，但独立复审仍发现ensure期间冲突对象可能在事务外verify前留下RAG登记；生产MinIO bucket=0，RAG七张表=0，原件仅登记流程已实现但未持久执行，DocumentTree/chunks/embeddings和Web对话RAG尚未闭环 |
 | 实施顺序 | 上海证据与政策纠偏 → 案例V2生成与展示 → 受控原位改写与隔离验收 |
 | 合并约束 | 功能分支交付后等待用户独立测试；未经明确指令不得合入`refactor/policy-ops-agent-platform` |
 
@@ -528,8 +528,8 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 
 本Feature未来只有在以下条件全部满足后才能标记Accepted：
 
-1. SHV2-FR-001～027和SHV2-NFR-001～008均有实现与测试映射。
-2. SHV2-AC-001～021均有新鲜、可复现证据。
+1. SHV2-FR-001～031和SHV2-NFR-001～009均有实现与测试映射。
+2. SHV2-AC-001～028均有新鲜、可复现证据。
 3. 上海活动政策引用覆盖率100%，没有未决来源或政策含义。
 4. 36条案例的结构化事实、自然语言文档、来源、快照和hash完全一致。
 5. 全部Node、数据库、Python、Chromium、构建、引用和安全门禁零skip通过。
@@ -559,4 +559,41 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 - 未在持久`policyops`执行0019迁移或V1→V2原位改写；
 - 未合并`refactor/policy-ops-agent-platform`，未修改`main`，未创建PR、tag或Release。
 
-后续修复必须以本PRD为唯一新增需求入口；审查问题闭环并完成独立复审后，才能将Feature改为Accepted。
+后续修复必须以本PRD为唯一Feature需求入口；运行时RAG闭环由`WI-20260913-01-shanghai-rag-runtime-closure.md`实施。审查问题、用户人工测试及本PRD其余持久事项全部闭环后，才能将Feature改为Accepted。
+
+## 23. 运行时MinIO与对话RAG闭环（2026-09-13新增）
+
+### 23.1 当前事实
+
+- MinIO Console为`http://127.0.0.1:9001/login`；9001只用于人工管理界面，不能作为S3 API endpoint。
+- 宿主同步/索引CLI使用`127.0.0.1:9000`，Agent/Worker容器使用`minio:9000`；两者访问同一`socila-minio`。
+- MinIO容器的`/data`挂载Docker named volume`socila_minio-data`。原件必须通过S3 API写入，不得直接操作Docker内部volume目录。
+- 2026-09-13只读核对：生产MinIO bucket数量为0；`rag.sources/fetches/document_versions/document_trees/chunks/embeddings/retrieval_audit`均为0。
+- 当前`evidence_sync`只负责对象与`rag.sources/fetches/document_versions`登记，版本状态为`downloaded`；不会生成DocumentTree、chunks或embeddings。
+- 当前Web对话只提供`computePlan/validateField/updateProfile`，没有政策RAG搜索工具；案例页的`policySources`不是对话RAG检索结果。
+
+### 23.2 新增需求
+
+- **SHV2-FR-028 MinIO运行映射**：Compose中Agent/Worker显式使用`AGENT_MINIO_ENDPOINT=minio:9000`与`AGENT_MINIO_BUCKET=policy-originals`；宿主受控CLI使用`127.0.0.1:9000`；9001仅为Console。对象经S3 API持久化到现有`socila_minio-data:/data`，不得替换或删除该volume。
+- **SHV2-FR-029 受控索引**：为已登记的23份原件提供`audit/plan/apply/verify/search`索引CLI，计划绑定code SHA、对象/版本/派生索引指纹、Embedding模型、维度、indexVersion、planHash和target fingerprint；从MinIO校验原件后生成DocumentTree、Markdown、chunks和真实1024维embeddings，派生数据完整后才标记`indexed`。
+- **SHV2-FR-030 内部搜索与原件读取**：Agent提供服务JWT保护的政策搜索和原件读取接口；搜索返回命中片段、父条款、路径、分数、官方URL、文档版本和内容SHA；原件读取必须重新核对对象SHA。
+- **SHV2-FR-031 对话来源链**：Web对话新增`searchPolicy`工具和登录态原件下载代理。回答政策金额、比例、资格、期限、有效期或来源问题时使用RAG，并同时给出官网原文与归档原件链接；无可靠命中时不得编造来源。
+- **SHV2-NFR-009 RAG运行安全**：不暴露MinIO endpoint、凭据或预签名直链；下载使用attachment、nosniff和private no-store；地区必须与会话确认地区一致；9001误作API、对象SHA漂移、Embedding失败或索引不完整均失败关闭。
+
+### 23.3 新增验收
+
+- **SHV2-AC-022**：9000 S3 API与9001 Console角色明确；9001误配为API稳定失败；`docker inspect`证明`socila_minio-data:/data`映射未改变。
+- **SHV2-AC-023**：持久执行后`policy-originals`恰好包含23个`originals/<sha256>`对象，Git/meta/DSL/MinIO/RAG SHA一致。
+- **SHV2-AC-024**：23个document version均为`indexed`且各有DocumentTree；chunks非空，embeddings数量等于chunks，真实维度为1024。
+- **SHV2-AC-025**：FTS与向量通道均产生候选；固定查询命中缴费基数7546、失业金2340/1872/1690和灵活就业医保等待期6个月；地区和日期过滤正确。
+- **SHV2-AC-026**：内部搜索/原件接口验证服务JWT；Web下载验证登录态；未知版本、错误JWT和SHA漂移失败关闭。
+- **SHV2-AC-027**：对话E2E调用`searchPolicy`并同时展示官方URL和`/api/rag/originals/<documentVersionId>`；下载字节SHA与MinIO对象一致。
+- **SHV2-AC-028**：PostgreSQL与MinIO对象备份恢复到全新实例后，四方verify、索引verify和固定查询结果一致；同步与索引apply复跑均为noop。
+
+### 23.4 交付顺序与边界
+
+1. 功能分支完成开发、隔离验收与独立复审后暂停，状态只能为`Ready for user testing`。
+2. 用户人工验证对话检索、官网链接和登录态原件下载后，才允许以`--no-ff`合入`refactor/policy-ops-agent-platform`。
+3. 从merge SHA重建并更新Web/Agent/Worker/Beat；MinIO继续使用现有`socila_minio-data`。
+4. 生产同步和索引分别生成fresh `codeSha/planHash/targetFingerprint/写集合`，取得精确授权后才可写当前MinIO和policyops。
+5. 本次不接入仍为Fake的PolicyOps LangGraph `retrieve_impact`，不执行政策materialization、管理员批准、snapshot/release、0019或持久案例改写。

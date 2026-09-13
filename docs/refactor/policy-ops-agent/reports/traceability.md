@@ -278,3 +278,17 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 
 - 演练升级：`scripts/rag-evidence-drill.mjs` 17项→22项（新增codeSha不一致、dirty工作树、RAG数据库漂移、write-only权限错误经受限IAM用户真实AccessDenied、bucket创建竞态归属），22项全ok。
 - 持久边界：本轮全程仅隔离PostgreSQL（`shv2-r4-pg`:55101）与隔离MinIO（`shv2-r4-minio-a/b`:55102/55103，任务专属容器，验收后删除）；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；持久policyops未连接未写入；`refactor/policy-ops-agent-platform@0885613`未修改未合并；未创建PR、未合并main、未创建tag/Release。
+
+## SHV2运行时RAG闭环规划映射（WI-20260913-01，docs-only）
+
+| 需求 | 当前缺口 | 计划实现 | 计划测试/证据 | 状态 |
+| --- | --- | --- | --- | --- |
+| SHV2-FR-028 / AC-022 MinIO映射 | 端口与volume已存在但bucket未创建，Compose未显式bucket；9001易被误当API | Agent/Worker固定`minio:9000`+`policy-originals`，宿主CLI固定`127.0.0.1:9000`，保持`socila_minio-data:/data` | 9000/9001契约、docker inspect、容器更新后对象持久性 | Planned |
+| SHV2-NFR-006 / AC-017 同步竞态 | ensure期间错误同键对象可能在事务外verify前留下RAG登记 | ensure后、上传后、提交前对象SHA重验；冲突回滚RAG | 确定性建桶+冲突对象竞态，RAG三表前后指纹 | Planned |
+| SHV2-FR-029 / AC-023～025 受控索引 | downloaded版本无tree/chunks/embeddings，无法搜索 | `evidence_index`五模式，真实bge-m3 1024维，完整后indexed | 23 versions/trees、embeddings=chunks、固定查询、地区/日期隔离 | Planned |
+| SHV2-FR-030 / AC-026 内部API | 无运行时搜索与原件读取端点 | 服务JWT搜索/原件API，读取时复核SHA | JWT、未知版本、SHA漂移、附件头与字节SHA | Planned |
+| SHV2-FR-031 / AC-027 对话来源链 | 对话只有三个既有工具，无RAG来源链接 | Web登录下载代理+`searchPolicy`，官网与归档链接 | 对话E2E、未登录下载、无命中不编造 | Planned |
+| SHV2-NFR-007 / AC-028 恢复 | 尚无生产对象与派生索引恢复证据 | PostgreSQL+MinIO pre/post备份及全新实例恢复 | 四方verify、索引verify、固定检索与noop | Planned |
+
+- 当前代码起点：`a85420f079f4d57079a8ccb80a1a9ad17adc625a`；本轮只更新需求文档，实际实现与测试路径由后续Goal Agent回填。
+- 当前持久边界：生产MinIO bucket=0、RAG七表=0；未修改代码、Compose、数据库、MinIO、refactor或main。

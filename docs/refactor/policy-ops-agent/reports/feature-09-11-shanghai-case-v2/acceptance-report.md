@@ -1,7 +1,7 @@
 # 09-11 Feature：上海政策纠偏与36条案例V2全量重建 — 验收报告
 
 > Author: Jan
-> Status: Ready for user testing（2026-09-13第四轮复审修复交付；用户测试、生产MinIO/RAG同步、政策发布与持久案例改写未执行，不标记最终Accepted）
+> Status: Reopened（运行时MinIO/RAG与对话来源链未闭环；本报告§9记录新增缺口，本轮仅更新文档）
 > Updated: 2026-09-13
 
 ## 1. WI-20260911-01 上海官方原文采集与政策纠偏
@@ -331,4 +331,18 @@
 - `test_rag_evidence_sync.py` 81/81零skip（48既有+33新增）；ruff/mypy 0问题。
 - 全量门禁结果见交付报告：完整`npm test`、`test:db`、pytest integration/非集成、tsc/eslint/build、Chromium E2E、citation、案例库`--check`、rewrite演练、scan-secrets、Gitleaks完整历史、allowlist哨兵、`git diff --check`、Markdown链接与状态一致性。
 - 边界：全程仅隔离PostgreSQL（`shv2-r4-pg`:55101）与隔离MinIO（`shv2-r4-minio-a/b`:55102/55103，任务专属容器，演练后清理删除）；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；持久policyops未连接未写入；`refactor/policy-ops-agent-platform@0885613`未修改未合并；未创建PR、未合并main、未创建tag/Release。
-- 状态：**Ready for user testing**（用户测试、生产MinIO/RAG同步、政策发布与持久案例改写未执行，不标记最终Accepted）。
+- 当时状态：**Ready for user testing**（第四轮历史结论；已被§9重新打开）。
+
+## 9. 2026-09-13运行时RAG闭环缺口（当前状态）
+
+第四轮代码与隔离证据继续保留，但后续独立复审及生产只读核对确认：
+
+1. ensure期间若外部进程同时创建bucket并写入错误同键对象，现实现可能把该对象计为noop、提交RAG登记，再由事务外verify失败；需要在ensure后、上传后和事务提交前复核对象SHA。
+2. 生产MinIO当前bucket=0，`rag.sources/fetches/document_versions/document_trees/chunks/embeddings/retrieval_audit`均为0；23份原件未进入运行时存储。
+3. 现有同步只产生downloaded版本，不生成DocumentTree/chunks/embeddings；`RetrievalService`只搜索indexed版本，因此无法检索。
+4. Web对话没有`searchPolicy`，不会返回RAG命中片段或登录态原件链接；案例页静态policySources不能替代该链路。
+5. 端口事实：9000是S3 API，9001是Console；`socila-minio:/data`挂载现有`socila_minio-data`，不得直接写卷目录或删除该volume。
+
+本Feature恢复Reopened。`WI-20260913-01`完成开发、完整门禁和独立复审后只能进入Ready for user testing；用户人工测试通过后才合并refactor。生产同步与索引仍须基于merge SHA的fresh精确授权。本节不声称任何代码、MinIO、数据库、部署或持久验收已经完成。
+
+本轮docs-only验证：文档目标测试3/3；12个变更Markdown中的13个相对链接全部存在；`scan-secrets --all`扫描931个候选文件零命中；`git diff --check`通过。未修改业务代码、Compose、MinIO、PostgreSQL、refactor或main。

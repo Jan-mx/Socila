@@ -1,7 +1,7 @@
 # WI-20260911-01：上海官方原文采集与政策纠偏
 
 > Author: Jan
-> Status: Ready for user testing（2026-09-13第四轮复审修复交付：MinIO错误失败关闭、bucket创建竞态归属、拒绝路径零写入证据；完整门禁与独立复审通过后交付用户测试；用户测试与持久执行前不标记最终Accepted）
+> Status: Reopened（ensure期间外部创建bucket并写入冲突对象时，现实现可能在事务外verify发现错误前已提交RAG登记；由WI-20260913-01闭环）
 > Updated: 2026-09-13
 
 ## Work Item
@@ -109,3 +109,9 @@
 - **文档事实与hash语义同步（问题4）**：见PRD §22、PROGRESS、验收报告§8、traceability、ARCHITECTURE、TESTING、OPERATIONS。语义统一：planHash绑定整个计划（含bucketExists与plannedBucketCreate）；targetFingerprint只绑定真实前置状态（bucketExists、对象状态、RAG状态）；finalFingerprint只绑定真实预期终态（bucket存在、23个对象、RAG登记）；plannedBucketCreate是执行意图，不作为独立字段进入状态指纹；改变plannedBucketCreate必须改变planHash；bucket真实存在性变化必须改变targetFingerprint。
 - **TDD与证据**：RED=13测试在6bd3edc旧实现失败（10×S3错误分类失败关闭、1×真实MinIO错误凭据、2×bucketCreated归属）→GREEN=81/81零skip；演练升级为22项（新增codeSha不一致、dirty工作树、RAG数据库漂移、write-only权限错误经受限IAM用户真实AccessDenied、bucket创建竞态归属；9个守卫反例输出DB+对象层before/after指纹）全ok（证据`rag-evidence-drill-2026-09-12T16-47-00-452Z.json`）。
 - 边界：全程仅隔离PostgreSQL（`shv2-r4-pg`:55101）与隔离MinIO（`shv2-r4-minio-a/b`:55102/55103，任务专属容器，演练后清理）；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；持久policyops未连接未写入；状态Ready for user testing（不标记最终Accepted）。
+
+## 第五轮待修复：ensure期间冲突对象（2026-09-13）
+
+独立复审确认：当前apply在`ensure_bucket()`前检查冲突；若外部进程在ensure期间创建bucket并写入相同key但错误字节，后续循环只把“对象存在”计为noop，可能先提交`rag.sources/fetches/document_versions`，再由事务外verify发现SHA不符。该路径不满足SHV2-NFR-006失败关闭和零RAG写入要求。
+
+闭环条件：ensure后、上传后及数据库提交前校验全部目标对象字节SHA；确定性竞态测试必须同时注入建桶和冲突对象，断言对象不覆盖且三张RAG表前后指纹一致。最终演练证据必须记录并匹配执行脚本Git blob SHA。实现、索引和运行验收统一由`WI-20260913-01-shanghai-rag-runtime-closure.md`承接。

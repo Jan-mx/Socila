@@ -305,6 +305,16 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - **pytest整体门禁**：integration与非集成均零skip（在`services/agent`目录下运行并设置`SOCILA_TEST_DATABASE_URL`、`AGENT_DATABASE_URL`、`AGENT_DB_PASSWORD`及`RAG_SYNC_TEST_MINIO_*`）。
 - **Chromium E2E修复（AUTH-US-002）**：reload后URL会话恢复被面板预创建会话踩掉（既有竞态，独立playwright网络取证定位）；修复为`ChatPageClient`把URL会话ID作为ChatPanel外部会话ID（URL带会话ID时不预创建）。修复后完整Chromium E2E 23/23。
 
+## SHV2运行时RAG闭环门禁（WI-20260913-01）
+
+- **端口契约**：9000为S3 API、9001为Console；9001或含`/login`的endpoint必须失败且不得回退。Compose必须显式固定Agent/Worker bucket为`policy-originals`，`docker inspect`验证`socila_minio-data:/data`。
+- **同步竞态**：确定性注入ensure期间“外部建桶+错误同键对象”，断言对象不覆盖、三张RAG登记表前后指纹一致；ensure后、上传后和事务提交前均重算对象SHA。演练证据必须包含执行脚本Git blob SHA。
+- **索引契约**：隔离库最终为23 document versions、23 trees、chunks>0、embeddings=chunks、真实维度1024且全部indexed；任一文档失败只回滚其派生事务，旧计划失效。
+- **检索契约**：FTS和向量均产生候选，RRF/rerank固定查询命中7546、2340/1872/1690和医保等待期6个月；上海/广东和日期过滤不得串区。
+- **API与下载**：内部端点缺失/错误JWT拒绝；Web下载缺失登录拒绝；未知版本404；对象SHA漂移失败关闭；正确附件具备attachment/nosniff/private no-store且字节SHA一致。
+- **对话E2E**：政策事实问题调用`searchPolicy`，最终文本同时包含官方URL和登录态`/api/rag/originals/<documentVersionId>`；无命中不得生成来源。
+- **恢复门禁**：PostgreSQL与MinIO对象备份恢复到全新实例后，四方verify、索引verify和固定查询结果一致；同步/索引复跑noop。
+
 ### 第四轮复审修复证据（2026-09-13，起点6bd3edc）
 
 - **S3错误失败关闭契约（问题1）**：`TestS3ErrorClassification`（零DB，确定性fake client注入`MinioObjectStore._client`）——`NoSuchKey`/`NoSuchObject`/`NoSuchBucket`返回False；`AccessDenied`/`InvalidAccessKeyId`/`SignatureDoesNotMatch`/`InternalError`/`ServiceUnavailable`/`SlowDown`/`RequestTimeout`原样抛出；连接失败/超时原样抛出。`TestS3ErrorRealMinio`（真实隔离MinIO）：缺失对象/缺失bucket返回False（实证NoSuchKey/NoSuchBucket）、错误凭据`SignatureDoesNotMatch`必须抛出而非False。`TestAccessDeniedFailsClosed`（穿过真实`MinioObjectStore.exists`吞噬层的write-only降级替身）：apply在exists处抛出AccessDenied且put调用次数为0（防止覆盖内容寻址对象）、数据库零写入；audit/verify遇AccessDenied必须失败而非返回"对象缺失"报告。

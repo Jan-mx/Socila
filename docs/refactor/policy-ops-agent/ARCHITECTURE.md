@@ -107,6 +107,8 @@ flowchart LR
 - 文本PDF由PyMuPDF逐页提取，扫描或版面信息由PaddleOCR-VL-1.5处理。
 - 原件保存到MinIO，DocumentTree是权威解析结构，Markdown是派生副本。
 - **原件双层边界（09-11独立审查）**：MinIO是运行时政策原件和页面资源的权威存储；Git中的`docs/refactor/policy-ops-agent/reports/**/evidence/`只保存版本化审计夹具与引用快照，不能替代MinIO对象。运行时bucket固定为`policy-originals`，内容寻址对象键固定为`originals/<sha256>`；`rag.fetches.object_key`和`rag.document_versions.object_key`必须指向该对象，数据库`content_hash`、evidence `content_sha256`、Git原件字节SHA与MinIO对象SHA必须一致。
+- **运行端口与持久卷（SHV2-FR-028）**：宿主只通过`127.0.0.1:9000`访问S3 API，Agent/Worker只通过`minio:9000`访问同一服务；`http://127.0.0.1:9001/login`是Console，不能作为对象API。`socila-minio:/data`固定挂载named volume`socila_minio-data`；对象经S3 API落入该卷，应用不得直接写Docker内部volume路径，也不得以部署为由替换或删除该卷。
+- **运行时检索链（SHV2-FR-029～031）**：受控同步产生`downloaded`版本后，独立索引阶段从MinIO复核对象SHA，生成DocumentTree/Markdown/chunks/1024维embeddings并原子推进为`indexed`；服务JWT保护的Agent搜索返回片段与来源元数据，Web的`searchPolicy`工具在会话确认地区内调用搜索，并通过登录态代理提供原件附件。案例`policySources`与对话RAG来源是两条不同读取链，不能互相替代。
 - 官方页面采集与RAG摄取是两个显式阶段：采集器生成可审计文件后，摄取/同步器负责幂等上传MinIO、登记RAG元数据并核对对象；不得把“证据文件已提交”当作“运行时原件已入库”。
 - 文号、日期、金额、比例冲突或缺少模型置信度时进入人工复核。
 - 检索先过滤地区、有效期和发布状态，再执行全文、向量、RRF和重排。
