@@ -1,0 +1,731 @@
+{
+  "drill": "rag-evidence-sync+index",
+  "container": "shv2-goal-pg",
+  "port": "55120",
+  "primaryMinio": "127.0.0.1:55121",
+  "restoreMinio": "127.0.0.1:55122",
+  "database": "rag_drill_684b0e",
+  "restoreDatabase": "rag_drill_684b0e_restore",
+  "script": "scripts/rag-evidence-drill.mjs",
+  "implementationCommitSha": "d32b8122ba402cc34eda0922737a122f53fac1f4",
+  "implementationWorktreeCleanAtStart": true,
+  "implementationWorktreeCleanBeforeEvidence": true,
+  "scriptBlobSha": "e106e22d5afa951eabcba9df16c73dd5505488e4",
+  "executedScriptBlobSha": "e106e22d5afa951eabcba9df16c73dd5505488e4",
+  "scriptBlobSemantics": "git-object-id-of-exact-bytes; committed blob equals executed worktree blob",
+  "finishedAt": "2026-09-13T11:14:27.134Z",
+  "failed": false,
+  "results": [
+    {
+      "name": "证据attestation：绑定当前干净实现提交与实际执行脚本blob",
+      "ok": true,
+      "ms": 0,
+      "detail": {
+        "implementationCommitSha": "d32b8122ba402cc34eda0922737a122f53fac1f4",
+        "implementationWorktreeClean": true,
+        "script": "scripts/rag-evidence-drill.mjs",
+        "scriptBlobSha": "e106e22d5afa951eabcba9df16c73dd5505488e4",
+        "executedScriptBlobSha": "e106e22d5afa951eabcba9df16c73dd5505488e4",
+        "scriptBlobSemantics": "git-object-id-of-exact-bytes; committed blob equals executed worktree blob"
+      }
+    },
+    {
+      "name": "全新演练库（agent.migrate含rag schema与角色）+ 删除隔离bucket（缺桶起点）",
+      "ok": true,
+      "ms": 5155,
+      "detail": {
+        "database": "rag_drill_684b0e",
+        "primaryEndpoint": "127.0.0.1:55121",
+        "restoreEndpoint": "127.0.0.1:55122",
+        "primaryBucketExists": false,
+        "restoreBucketExists": false
+      }
+    },
+    {
+      "name": "audit缺桶预态：BUCKET_MISSING → exit 4零建桶零写入（DB+对象层前后指纹一致）",
+      "ok": true,
+      "ms": 5415,
+      "detail": {
+        "docs": 23,
+        "bucketMissing": true,
+        "zeroBucketCreate": true,
+        "zeroWriteFingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 0,
+              "sha256": "52ae10244b73154caaae38f7028be516b8f15aecd0005bc32b15da3284320cd9"
+            },
+            "rag.sources": {
+              "rows": 0,
+              "sha256": "57fa8d1761fafc04caeaf4b1b76cbd18e26b7de873a778eacf3951f113ae60f8"
+            }
+          },
+          "minio": {
+            "bucketExists": false,
+            "objectCount": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "plan（缺桶）：确定性输出、bucketExists=false/plannedBucketCreate=true、23 uploads、bucket仍不存在、零写入",
+      "ok": true,
+      "ms": 7956,
+      "detail": {
+        "plannedUploads": 23,
+        "deterministic": true,
+        "plannedBucketCreate": true,
+        "bucketStillAbsent": true,
+        "zeroWriteFingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 0,
+              "sha256": "52ae10244b73154caaae38f7028be516b8f15aecd0005bc32b15da3284320cd9"
+            },
+            "rag.sources": {
+              "rows": 0,
+              "sha256": "57fa8d1761fafc04caeaf4b1b76cbd18e26b7de873a778eacf3951f113ae60f8"
+            }
+          },
+          "minio": {
+            "bucketExists": false,
+            "objectCount": 0,
+            "objects": {}
+          }
+        },
+        "planHash": "a3ba5cf3f2e01bb0…"
+      }
+    },
+    {
+      "name": "守卫反例A：apply缺--i-am-authorized → exit 2零写入零建桶（前后指纹一致）",
+      "ok": true,
+      "ms": 4568,
+      "detail": {
+        "exit": 2,
+        "zeroWrite": true,
+        "bucketStillAbsent": true,
+        "fingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 0,
+              "sha256": "52ae10244b73154caaae38f7028be516b8f15aecd0005bc32b15da3284320cd9"
+            },
+            "rag.sources": {
+              "rows": 0,
+              "sha256": "57fa8d1761fafc04caeaf4b1b76cbd18e26b7de873a778eacf3951f113ae60f8"
+            }
+          },
+          "minio": {
+            "bucketExists": false,
+            "objectCount": 0,
+            "objects": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "守卫反例B：错planHash → exit 4零写入零建桶（前后指纹一致）",
+      "ok": true,
+      "ms": 5231,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true,
+        "bucketStillAbsent": true,
+        "fingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 0,
+              "sha256": "52ae10244b73154caaae38f7028be516b8f15aecd0005bc32b15da3284320cd9"
+            },
+            "rag.sources": {
+              "rows": 0,
+              "sha256": "57fa8d1761fafc04caeaf4b1b76cbd18e26b7de873a778eacf3951f113ae60f8"
+            }
+          },
+          "minio": {
+            "bucketExists": false,
+            "objectCount": 0,
+            "objects": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "守卫反例C：错targetFingerprint → exit 4零写入零建桶（前后指纹一致）",
+      "ok": true,
+      "ms": 5529,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true,
+        "bucketStillAbsent": true,
+        "fingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 0,
+              "sha256": "52ae10244b73154caaae38f7028be516b8f15aecd0005bc32b15da3284320cd9"
+            },
+            "rag.sources": {
+              "rows": 0,
+              "sha256": "57fa8d1761fafc04caeaf4b1b76cbd18e26b7de873a778eacf3951f113ae60f8"
+            }
+          },
+          "minio": {
+            "bucketExists": false,
+            "objectCount": 0,
+            "objects": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "守卫反例F：codeSha不一致 → exit 4零写入零建桶（前后指纹一致）",
+      "ok": true,
+      "ms": 5109,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true,
+        "bucketStillAbsent": true,
+        "fingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 0,
+              "sha256": "52ae10244b73154caaae38f7028be516b8f15aecd0005bc32b15da3284320cd9"
+            },
+            "rag.sources": {
+              "rows": 0,
+              "sha256": "57fa8d1761fafc04caeaf4b1b76cbd18e26b7de873a778eacf3951f113ae60f8"
+            }
+          },
+          "minio": {
+            "bucketExists": false,
+            "objectCount": 0,
+            "objects": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "守卫反例G：dirty工作树 → exit 2零写入零建桶（前后指纹一致）",
+      "ok": true,
+      "ms": 4690,
+      "detail": {
+        "exit": 2,
+        "zeroWrite": true,
+        "bucketStillAbsent": true,
+        "fingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 0,
+              "sha256": "52ae10244b73154caaae38f7028be516b8f15aecd0005bc32b15da3284320cd9"
+            },
+            "rag.sources": {
+              "rows": 0,
+              "sha256": "57fa8d1761fafc04caeaf4b1b76cbd18e26b7de873a778eacf3951f113ae60f8"
+            }
+          },
+          "minio": {
+            "bucketExists": false,
+            "objectCount": 0,
+            "objects": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "守卫反例D：plan后外部建桶+冲突对象漂移 → exit 4零写入（清除后恢复前置态）",
+      "ok": true,
+      "ms": 8452,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true,
+        "externalDriftRefused": true,
+        "cleaned": true,
+        "preDriftFingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 0,
+              "sha256": "52ae10244b73154caaae38f7028be516b8f15aecd0005bc32b15da3284320cd9"
+            },
+            "rag.sources": {
+              "rows": 0,
+              "sha256": "57fa8d1761fafc04caeaf4b1b76cbd18e26b7de873a778eacf3951f113ae60f8"
+            }
+          },
+          "minio": {
+            "bucketExists": false,
+            "objectCount": 0,
+            "objects": {}
+          }
+        },
+        "externalDriftRecorded": {
+          "by": "external-test-fixture",
+          "bucketExists": true,
+          "objectCount": 1
+        },
+        "applyZeroWriteFingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 0,
+              "sha256": "52ae10244b73154caaae38f7028be516b8f15aecd0005bc32b15da3284320cd9"
+            },
+            "rag.sources": {
+              "rows": 0,
+              "sha256": "57fa8d1761fafc04caeaf4b1b76cbd18e26b7de873a778eacf3951f113ae60f8"
+            }
+          },
+          "minio": {
+            "bucketExists": true,
+            "objectCount": 1,
+            "objects": {
+              "originals/dc4c73495e55611f69792b21385bc1098ec98a853857b99fe138f79e8119936d": "8ccd023bc514a562f086fedfa3009106ec70f24b55ca3e32ce37f87cbea7ee34"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "守卫反例H：plan后RAG数据库状态漂移 → exit 4零写入（外部插入行单独记录，清除后恢复）",
+      "ok": true,
+      "ms": 8349,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true,
+        "ragDriftRefused": true,
+        "cleaned": true,
+        "externalDriftRecorded": {
+          "by": "external-test-fixture",
+          "sourcesRowsDelta": 1,
+          "fetchesRowsDelta": 1
+        },
+        "applyZeroWriteFingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 1,
+              "sha256": "c5146bca6b671437f7a502838d45cc7106d61989e4c7810884c392719dbba9a0"
+            },
+            "rag.sources": {
+              "rows": 1,
+              "sha256": "de6ecccd3ea485b0e779ba46019dc484f78de077badd20ba3c361dc9e873d2d4"
+            }
+          },
+          "minio": {
+            "bucketExists": false,
+            "objectCount": 0,
+            "objects": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "守卫反例I：write-only权限错误（受限IAM用户stat拒绝）→ exit 1失败关闭零写入",
+      "ok": true,
+      "ms": 7646,
+      "detail": {
+        "exit": 1,
+        "failsClosed": true,
+        "zeroWrite": true,
+        "bucketStillAbsent": true,
+        "fingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 0,
+              "sha256": "cd45a9e4a5acc6cf0f0b996a4241a8e7e1b9b7317c148c146e087077fcd6ec55"
+            },
+            "rag.fetches": {
+              "rows": 0,
+              "sha256": "52ae10244b73154caaae38f7028be516b8f15aecd0005bc32b15da3284320cd9"
+            },
+            "rag.sources": {
+              "rows": 0,
+              "sha256": "57fa8d1761fafc04caeaf4b1b76cbd18e26b7de873a778eacf3951f113ae60f8"
+            }
+          },
+          "minio": {
+            "bucketExists": false,
+            "objectCount": 0,
+            "objects": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "守卫反例E：audit缺数据库连接 → exit 2",
+      "ok": true,
+      "ms": 427,
+      "detail": {
+        "exit": 2
+      }
+    },
+    {
+      "name": "apply：显式建桶+23对象上传+rag登记（PG登记事务；MinIO不参与数据库原子提交）",
+      "ok": true,
+      "ms": 5106,
+      "detail": {
+        "bucketCreated": true,
+        "uploaded": 23,
+        "objectsInBucket": 23,
+        "fetches": 23,
+        "versions": 23,
+        "manifestEntries": 23
+      }
+    },
+    {
+      "name": "verify：四方对账通过（Git/meta/DSL已在collect固化+对象SHA+rag记录）",
+      "ok": true,
+      "ms": 2049,
+      "detail": {
+        "ok": true,
+        "objects": 23,
+        "scope": "four-way",
+        "bucketExists": true
+      }
+    },
+    {
+      "name": "幂等：复跑同一计划 → noop:true（bucket与对象数不变）",
+      "ok": true,
+      "ms": 4161,
+      "detail": {
+        "noop": true,
+        "uploaded": 0,
+        "objectsStill": 23
+      }
+    },
+    {
+      "name": "object-only verify：显式降级标记（scope/degraded/dbChecked）",
+      "ok": true,
+      "ms": 1272,
+      "detail": {
+        "scope": "object-only",
+        "degraded": true
+      }
+    },
+    {
+      "name": "冲突对象拒绝覆盖（对象字节不变；清除后复跑恢复）",
+      "ok": true,
+      "ms": 16296,
+      "detail": {
+        "conflictRefused": true,
+        "objectPreserved": true,
+        "repairedViaReplan": true,
+        "preConflictFingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 23,
+              "sha256": "bb34ee9f30083331c774ab7f1d69f5b7cf1931ad12ce14520280d8fdc74ecebe"
+            },
+            "rag.fetches": {
+              "rows": 23,
+              "sha256": "de2d4cccc818ccb84e073da3238685ce6c765df0a38f2b28161399c112d88883"
+            },
+            "rag.sources": {
+              "rows": 2,
+              "sha256": "6ac105277d75491bc1b50fd2602644377218542c1f67dd1262a4b6c1b13abf4e"
+            }
+          },
+          "minio": {
+            "bucketExists": true,
+            "objectCount": 23,
+            "objects": {
+              "originals/00dfad742c727e66c0f5dc7bc21f0143755310fe2c7b1d4a9764bf40e6ad320d": "00dfad742c727e66c0f5dc7bc21f0143755310fe2c7b1d4a9764bf40e6ad320d",
+              "originals/0be56a245e0f361ba736efdb0fbdd4241242039fd7111446b2cc9332f31a3ae9": "0be56a245e0f361ba736efdb0fbdd4241242039fd7111446b2cc9332f31a3ae9",
+              "originals/14c31397b23efc63acec377d6503bd95ddaea226c6a6bfa620a0435f9c3bf1ba": "14c31397b23efc63acec377d6503bd95ddaea226c6a6bfa620a0435f9c3bf1ba",
+              "originals/1fd7e2f2cbfa1346a98ffd3a0467792949338473bd1cb3efa32387e2f1ef0883": "1fd7e2f2cbfa1346a98ffd3a0467792949338473bd1cb3efa32387e2f1ef0883",
+              "originals/272f8d280432d87cb3e7c3f1d67bc7215112679b4a7bc2b59720799b77ef5507": "272f8d280432d87cb3e7c3f1d67bc7215112679b4a7bc2b59720799b77ef5507",
+              "originals/297352d22d52e1a9babf4218abc751dd363177dfa7ad947124f6e7363bc39e8a": "297352d22d52e1a9babf4218abc751dd363177dfa7ad947124f6e7363bc39e8a",
+              "originals/2a9320b5a463ecac6891b0ba295b5e4ef10c160ac391483c8ac8f1aa26b88aba": "2a9320b5a463ecac6891b0ba295b5e4ef10c160ac391483c8ac8f1aa26b88aba",
+              "originals/36b8ec96b66d0c886d69512cea2454469d6a8472d3cc9e5cba75bc7797dfc71d": "36b8ec96b66d0c886d69512cea2454469d6a8472d3cc9e5cba75bc7797dfc71d",
+              "originals/3b31a97ef37ec0abf554f20107b180087adf05119c6d78dcc1a638ba23359cd1": "3b31a97ef37ec0abf554f20107b180087adf05119c6d78dcc1a638ba23359cd1",
+              "originals/47ea8304b41063734aaa1321a5d78b88f983ae488ceb1e83701e736c80a96d09": "47ea8304b41063734aaa1321a5d78b88f983ae488ceb1e83701e736c80a96d09",
+              "originals/4c95b372865d91ceb1bcf494a9cc67f8d4e48f953a254488f1b85ef9fbcd282a": "4c95b372865d91ceb1bcf494a9cc67f8d4e48f953a254488f1b85ef9fbcd282a",
+              "originals/549493856745e71c69843e87abceaa722583f9829c630ae616fda6d28260e587": "549493856745e71c69843e87abceaa722583f9829c630ae616fda6d28260e587",
+              "originals/60f2cd9ae5d0010d08821963906cf6829ffc1875de266723ca2e1417ab595f22": "60f2cd9ae5d0010d08821963906cf6829ffc1875de266723ca2e1417ab595f22",
+              "originals/6bfbdd7ffa894fb0c574205de1e9f644f29e18a5cecc001c00c311ff4cd9277c": "6bfbdd7ffa894fb0c574205de1e9f644f29e18a5cecc001c00c311ff4cd9277c",
+              "originals/8285e470654ea89f239099c38204a4bf2432bafaf2c69edb9350069ba1cc7ef9": "8285e470654ea89f239099c38204a4bf2432bafaf2c69edb9350069ba1cc7ef9",
+              "originals/bfbd79a9b338d8a781cea6290369be22e2b5fa0c1c8e279938da14497cd7a612": "bfbd79a9b338d8a781cea6290369be22e2b5fa0c1c8e279938da14497cd7a612",
+              "originals/c53260044ae652bb6024c6d20de2fa0354c0d21adb64676df1e35c957499ec9e": "c53260044ae652bb6024c6d20de2fa0354c0d21adb64676df1e35c957499ec9e",
+              "originals/c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+              "originals/d1c46fed55d50bee2c23f77d15d5a0e5588491aedf9e4a249b4ad0416c730bb2": "d1c46fed55d50bee2c23f77d15d5a0e5588491aedf9e4a249b4ad0416c730bb2",
+              "originals/d36d41d6cc51454f0177baf28be52dc9e5039f1d97c3b857d4cbd5416f3318b1": "d36d41d6cc51454f0177baf28be52dc9e5039f1d97c3b857d4cbd5416f3318b1",
+              "originals/dc4c73495e55611f69792b21385bc1098ec98a853857b99fe138f79e8119936d": "dc4c73495e55611f69792b21385bc1098ec98a853857b99fe138f79e8119936d",
+              "originals/e158ad6970069a6cff47f7f5384770fc966132e6b6c0d11c719abb19422e6fcd": "e158ad6970069a6cff47f7f5384770fc966132e6b6c0d11c719abb19422e6fcd",
+              "originals/effcb1dbb93ac9470eea75f5b3b489e75db49afc0bba9d63e4a43804848b9471": "effcb1dbb93ac9470eea75f5b3b489e75db49afc0bba9d63e4a43804848b9471"
+            }
+          }
+        },
+        "conflictApplyZeroWriteFingerprints": {
+          "db": {
+            "rag.document_versions": {
+              "rows": 23,
+              "sha256": "bb34ee9f30083331c774ab7f1d69f5b7cf1931ad12ce14520280d8fdc74ecebe"
+            },
+            "rag.fetches": {
+              "rows": 23,
+              "sha256": "de2d4cccc818ccb84e073da3238685ce6c765df0a38f2b28161399c112d88883"
+            },
+            "rag.sources": {
+              "rows": 2,
+              "sha256": "6ac105277d75491bc1b50fd2602644377218542c1f67dd1262a4b6c1b13abf4e"
+            }
+          },
+          "minio": {
+            "bucketExists": true,
+            "objectCount": 23
+          }
+        }
+      }
+    },
+    {
+      "name": "索引audit预态：23 versions全部downloaded、0 complete（ok=false零写入）",
+      "ok": true,
+      "ms": 4188,
+      "detail": {
+        "documentCount": 23,
+        "completeCount": 0,
+        "model": "BAAI/bge-m3",
+        "dims": 1024,
+        "derived": {
+          "chunks": 0,
+          "embeddings": 0,
+          "indexed": 0,
+          "trees": 0
+        }
+      }
+    },
+    {
+      "name": "索引plan：绑定23 versions/对象SHA/派生指纹/模型/维度/indexVersion/planHash/指纹/写集合（两次逐字节一致）",
+      "ok": true,
+      "ms": 5094,
+      "detail": {
+        "documents": 23,
+        "plannedIndex": 23,
+        "writeSet": 23,
+        "model": "BAAI/bge-m3",
+        "dims": 1024,
+        "indexVersion": "BAAI/bge-m3:1024",
+        "planHash": "83e7a9f99e500b7a…"
+      }
+    },
+    {
+      "name": "索引apply守卫反例：缺授权exit2/错planHash exit4/错指纹exit4（派生表零写入）",
+      "ok": true,
+      "ms": 5304,
+      "detail": {
+        "refusals": 3,
+        "derivedStill": {
+          "chunks": 0,
+          "embeddings": 0,
+          "indexed": 0,
+          "trees": 0
+        }
+      }
+    },
+    {
+      "name": "索引apply：真实SiliconFlow BAAI/bge-m3 1024维嵌入（每文档独立事务）",
+      "ok": true,
+      "ms": 84487,
+      "detail": {
+        "indexed": 23,
+        "planHash": "83e7a9f99e500b7a…"
+      }
+    },
+    {
+      "name": "索引verify：23/23 complete（tree/chunks>0/embeddings=chunks/维度1024/状态indexed）",
+      "ok": true,
+      "ms": 3704,
+      "detail": {
+        "versions": 23,
+        "trees": 23,
+        "chunks": 185,
+        "embeddings": 185,
+        "dims": [
+          1024
+        ],
+        "models": [
+          "BAAI/bge-m3"
+        ],
+        "indexVersion": "BAAI/bge-m3:1024"
+      }
+    },
+    {
+      "name": "固定查询：7546 / 2340-1872-1690 / 等待期6个月 命中，FTS与向量通道均产生候选",
+      "ok": true,
+      "ms": 42436,
+      "detail": {
+        "queries": [
+          {
+            "query": "上海社保缴费基数上下限是多少",
+            "expect": [
+              "7546",
+              "37731"
+            ],
+            "hits": 5,
+            "channels": {
+              "fts": 1,
+              "dense": 185
+            }
+          },
+          {
+            "query": "失业保险金发放标准 第1-12月 第13-24月",
+            "expect": [
+              "2340"
+            ],
+            "hits": 3,
+            "channels": {
+              "fts": 1,
+              "dense": 185
+            }
+          },
+          {
+            "query": "灵活就业人员参加职工医保等待期是多久",
+            "expect": [
+              "6个月"
+            ],
+            "hits": 4,
+            "channels": {
+              "fts": 1,
+              "dense": 185
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "地区过滤：广东查询零命中（不串区）",
+      "ok": true,
+      "ms": 3948,
+      "detail": {
+        "jurisdiction": "440000",
+        "hits": 0
+      }
+    },
+    {
+      "name": "日期过滤：effective_to排除后命中消失、恢复NULL后命中恢复",
+      "ok": true,
+      "ms": 35075,
+      "detail": {
+        "documentVersionId": "5cc5ccf4-ee5b-4dbf-becf-3ce2b2a5c734",
+        "excluded": true,
+        "restored": true
+      }
+    },
+    {
+      "name": "索引复跑：同一计划noop:true（完整终态幂等）",
+      "ok": true,
+      "ms": 3421,
+      "detail": {
+        "noop": true,
+        "indexed": 0
+      }
+    },
+    {
+      "name": "备份：pg_dump + 逐对象下载（sha256清单）",
+      "ok": true,
+      "ms": 1481,
+      "detail": {
+        "dumpBytes": 862618,
+        "backupObjects": 23
+      }
+    },
+    {
+      "name": "恢复：全新数据库pg_restore + 全新MinIO受控回填（恢复程序显式建桶）",
+      "ok": true,
+      "ms": 23771,
+      "detail": {
+        "restoreDb": "rag_drill_684b0e_restore",
+        "restoredObjects": 23
+      }
+    },
+    {
+      "name": "恢复副本四方对账：verify ok + 同计划apply noop",
+      "ok": true,
+      "ms": 7646,
+      "detail": {
+        "ok": true,
+        "objects": 23,
+        "database": "rag_drill_684b0e_restore",
+        "restoredNoop": true
+      }
+    },
+    {
+      "name": "恢复副本索引对账：索引verify ok + 固定查询结果一致",
+      "ok": true,
+      "ms": 31088,
+      "detail": {
+        "indexVerifyOk": true,
+        "complete": 23,
+        "fixedQueries": 3
+      }
+    },
+    {
+      "name": "bucket创建竞态归属准确：外部进程预先建桶 → 重新plan(plannedBucketCreate=false) → apply报告bucketCreated=false且上传/登记/verify全部正确",
+      "ok": true,
+      "ms": 11830,
+      "detail": {
+        "bucketCreated": false,
+        "uploaded": 23,
+        "objectsInBucket": 23,
+        "verifyOk": true,
+        "bucketsWiped": true
+      }
+    },
+    {
+      "name": "残留敏感扫描：证据文件与演练输出零密钥",
+      "ok": true,
+      "ms": 34,
+      "detail": {
+        "filesScanned": 8
+      }
+    },
+    {
+      "name": "成功证据写入前最终attestation复核",
+      "ok": true,
+      "ms": 0,
+      "detail": {
+        "implementationCommitSha": "d32b8122ba402cc34eda0922737a122f53fac1f4",
+        "implementationWorktreeClean": true,
+        "scriptBlobSha": "e106e22d5afa951eabcba9df16c73dd5505488e4",
+        "executedScriptBlobSha": "e106e22d5afa951eabcba9df16c73dd5505488e4"
+      }
+    }
+  ]
+}

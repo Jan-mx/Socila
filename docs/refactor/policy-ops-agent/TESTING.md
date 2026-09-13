@@ -334,3 +334,8 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - **任务5 Compose契约**：agent/worker显式`AGENT_MINIO_ENDPOINT=minio:9000`+`AGENT_MINIO_BUCKET=policy-originals`；`src/lib/env/rag-runtime-config-contract.test.ts` 5例（endpoint/bucket固定、9001与/login拒绝、`socila_minio-data:/data`、无第二MinIO卷、无无条件建桶）。
 - **隔离验收演练**：`scripts/rag-evidence-drill.mjs` 22项→33项（新增执行脚本blob SHA自检、索引audit预态/plan/守卫/真实apply/verify/固定查询双通道/地区过滤/日期过滤/索引noop/恢复副本索引对账），33项全ok（真实SiliconFlow BAAI/bge-m3；证据`rag-evidence-drill-2026-09-13T05-57-34-688Z.json`，failed=false，含scriptBlobSha=执行脚本Git blob SHA）。
 - **门禁数字（全部本地新鲜执行）**：pytest 232/232零skip（integration+非集成，需`SOCILA_TEST_DATABASE_URL`+`RAG_SYNC_TEST_MINIO_*`+`AGENT_DATABASE_URL`+`AGENT_DB_PASSWORD`）；ruff 0问题；mypy 54文件0错误；npm test 84文件/863用例零失败零skip；test:db全新PG17+pgvector（db-gate-task34编排：migration×2/bootstrap×2/seed×2幂等+test:db全量+agent.migrate×2+pytest integration全部通过）；tsc 0；eslint 0 error（16条既有warning未新增）；build退出0（1条既有citation-verifier动态fs warning，历史基线记录非本次引入）；citation组32/32；案例库`--check` ok；scan-secrets --all 932文件零命中；Gitleaks 8.29.1完整历史105提交零发现；allowlist哨兵3场景全过；git diff --check通过。
+
+#### 当前分支复验（`d32b812`，2026-09-13）
+
+- 最新真实SiliconFlow隔离演练证据：`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T11-14-27-135Z.json`；同步、索引、固定检索、恢复和幂等均通过，证据由当前提交脚本和干净工作树生成。
+- 生产MinIO仍为bucket=0、RAG七表仍为0；生产写入前必须重新生成并授权当次`codeSha/planHash/targetFingerprint/写集合`，历史隔离数字不能替代生产验收。

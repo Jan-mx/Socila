@@ -11,6 +11,7 @@
 - 关联需求：SHV2-FR-002/023/028～031，SHV2-NFR-006/007/009
 - 关联验收：SHV2-AC-001/017/020/022～028
 - 起点：`codex/shanghai-case-v2@a85420f079f4d57079a8ccb80a1a9ad17adc625a`
+- 当前交付HEAD：`d32b8122ba402cc34eda0922737a122f53fac1f4`（实现、隔离演练与复审修复已包含）
 - 合并目标：`refactor/policy-ops-agent-platform`；用户人工测试通过前禁止合并
 
 ## 背景

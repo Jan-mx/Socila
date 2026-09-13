@@ -625,3 +625,15 @@
 完整门禁（全部本地新鲜执行）：pytest 232/232零skip；ruff 0问题；mypy 54文件0错误；npm test 84文件/863用例零失败零skip；test:db全新PG17+pgvector全通过（migration×2/bootstrap×2/seed×2幂等+test:db全量+agent.migrate×2+pytest integration）；tsc 0；eslint 0 error（16条既有warning未新增）；build退出0（1条既有citation-verifier动态fs访问warning，历史基线记录非本次引入）；Chromium E2E 26/26（auth 10+SHV2 4+task3 5+task4 4+新增shv2-rag-chat 3）；citation组32/32；案例库`--check` ok；scan-secrets --all 932文件零命中；Gitleaks 8.29.1完整历史105提交零发现；allowlist哨兵3场景全过；git diff --check通过；Markdown相对链接检查通过。
 
 状态：**Ready for user testing**（不标记Feature最终Accepted）。生产同步/索引、持久RAG写入、refactor合并均待用户测试通过后按WI-20260913-01交付与授权边界的fresh精确授权执行。
+
+## 2026-09-13当前复核（`d32b812`）
+
+- 功能分支`codex/shanghai-case-v2`已推送并与远端一致；`refactor/policy-ops-agent-platform@0885613`和`main`均未修改。
+- 最新真实SiliconFlow隔离演练证据为`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T11-14-27-135Z.json`，同步、索引、固定检索、恢复和noop均通过；当前工作树仅保留该待归档证据文件。
+- 生产事实保持：MinIO bucket=0，RAG七表=0，未连接或写入生产`policyops`，未升级生产容器。状态保持`Ready for user testing`；用户测试通过后才允许合并和生成生产fresh授权计划。
+
+### 当前门禁复验
+
+- `npm test`：85文件 / 877测试通过，0失败、0skip；此前命名扫描在完整套件中的5秒超时已通过该用例显式30秒上限修复。
+- `npx tsc --noEmit`、`npx eslint src`（0 error，7条既有warning）和`npm run build`退出0；Build仅保留既有citation-verifier动态文件访问warning。
+- `uv run pytest -m \"not integration\" -q`（`services/agent`）：137通过、131 deselected；ruff与mypy均无问题。隔离集成门禁以最新真实演练证据为准，生产写入前仍需fresh重跑。

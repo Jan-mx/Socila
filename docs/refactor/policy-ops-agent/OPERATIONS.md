@@ -286,3 +286,9 @@ RAG_DRILL_PG_CONTAINER=<容器> RAG_DRILL_PG_PORT=<端口> RAG_DRILL_MINIO_ENDPO
 - 生产同步前分别备份并恢复验证当前policyops和MinIO对象清单；同步计划输出fresh `codeSha/planHash/targetFingerprint/23对象写集合`，索引计划另行输出派生写集合。两个apply均需用户针对实际hash精确授权。
 - 同步apply通过宿主9000创建`policy-originals`并上传`originals/<sha256>`；索引apply生成tree/chunks/embeddings。9001截图只作为人工辅助，不能替代对象SHA、数据库记录或恢复验证。
 - 部署和同步后验证`docker inspect socila-minio`仍显示`/data`来自`socila_minio-data`，容器更新前后23对象不变；不得直接访问`/var/lib/docker/volumes/.../_data`写文件。
+
+### 当前UAT边界（2026-09-13，`d32b812`）
+
+- 功能分支已完成隔离RAG同步/索引和对话来源链演练，当前只允许用户人工测试；不得因UAT而连接生产`policyops`或生产MinIO。
+- 宿主S3 API固定为`127.0.0.1:9000`，Console固定为`http://127.0.0.1:9001/login`；Agent/Worker使用`minio:9000`。9001或带`/login`的地址配置为`AGENT_MINIO_ENDPOINT`必须失败。
+- 生产bucket与RAG七表仍为空。容器升级、生产同步和索引是用户测试后的独立步骤，分别要求fresh备份、计划哈希、目标指纹和明确授权；不得直接写`socila_minio-data`卷目录。

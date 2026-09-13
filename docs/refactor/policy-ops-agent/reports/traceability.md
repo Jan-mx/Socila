@@ -295,3 +295,12 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 - 代码起点`4da7f1a4269b99f351ef2994ac7cf6771914d0fa`；最终SHA=本任务提交HEAD（见PROGRESS对应章节回填）。
 - 持久边界：生产socila-minio（bucket=0）与持久policyops未连接未写入；隔离环境为任务专属`shv2-wi13-pg`:55110与`shv2-wi13-minio-a/b`:55111/55112。
 - 状态：**Ready for user testing**；生产同步/索引与refactor合并待用户测试后的fresh精确授权。
+
+## 当前交付复核（`d32b812`，2026-09-13）
+
+| 需求 | 当前实现/证据 | 状态 |
+| --- | --- | --- |
+| SHV2-AC-022～025 | `evidence_index.py`、Compose端口契约、`rag-evidence-drill-2026-09-13T11-14-27-135Z.json`（23版本/Tree/chunks/1024维向量、固定查询、地区/日期过滤） | 隔离通过，待用户测试 |
+| SHV2-AC-026～027 | `agent/api/app.py`、Next下载代理、`searchPolicy`及对话E2E | 隔离通过，待用户测试 |
+| SHV2-AC-028 | PostgreSQL+MinIO备份恢复后四方verify、索引verify、固定查询和noop | 隔离通过，待用户测试 |
+| 生产持久化边界 | 生产MinIO bucket=0、RAG七表=0；目标分支仍`0885613`未合并 | 未授权，不执行 |

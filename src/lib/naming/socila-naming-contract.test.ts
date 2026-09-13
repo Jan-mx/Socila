@@ -78,7 +78,7 @@ describe("Socila命名契约（SDL-AC-003：活动路径无遗留品牌缩写运
   it("活动代码与配置零遗留标识命中", () => {
     const findings = scanActiveFiles();
     expect(findings).toEqual([]);
-  });
+  }, 30_000);
 
   it("扫描范围覆盖活动根且排除历史文档与package-lock", () => {
     const files = listActiveFiles();

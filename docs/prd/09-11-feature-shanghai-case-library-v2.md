@@ -13,7 +13,7 @@
 | 目标分支 | `codex/shanghai-case-v2` |
 | 基线分支 | `origin/refactor/policy-ops-agent-platform` |
 | 已确认基线SHA | `0885613f2fbb68bf361d55c3b89694dc1024d1b4` |
-| 当前状态 | 功能分支`a85420f`已交付四轮修复，但独立复审仍发现ensure期间冲突对象可能在事务外verify前留下RAG登记；生产MinIO bucket=0，RAG七张表=0，原件仅登记流程已实现但未持久执行，DocumentTree/chunks/embeddings和Web对话RAG尚未闭环 |
+| 当前状态 | 功能分支已推进至`d32b812`并完成运行时RAG闭环的隔离实现与复审；生产MinIO bucket=0、RAG七张表=0仍是未写入事实，当前停在用户人工测试，未合并目标分支 |
 | 实施顺序 | 上海证据与政策纠偏 → 案例V2生成与展示 → 受控原位改写与隔离验收 |
 | 合并约束 | 功能分支交付后等待用户独立测试；未经明确指令不得合入`refactor/policy-ops-agent-platform` |
 
@@ -607,3 +607,10 @@ SHV2-FR-028～031、SHV2-NFR-009与SHV2-AC-022～028已全部实现并在隔离�
 - **内部接口与对话来源链**：服务JWT保护的搜索/原件接口与Web登录态下载代理、`searchPolicy`工具按§23.2契约交付；对话E2E证明政策事实问题同时展示官网原文与归档原件链接、无命中不编造。
 - **Compose映射**：agent/worker显式`minio:9000`+`policy-originals`，配置契约测试防回归；`socila_minio-data:/data`不变。
 - 生产MinIO bucket=0与RAG七表=0的持久事实未变：生产同步/索引须待用户测试通过后按§18/§23.4的fresh精确授权执行。
+
+### 23.6 当前执行记录（2026-09-13，`d32b812`）
+
+- `codex/shanghai-case-v2`本地与远端均为`d32b8122ba402cc34eda0922737a122f53fac1f4`；`refactor/policy-ops-agent-platform`仍为`0885613f2fbb68bf361d55c3b89694dc1024d1b4`，未修改、未合并。
+- 最新隔离演练证据为`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T11-14-27-135Z.json`：真实SiliconFlow索引23/23、Tree/chunks/1024维embeddings、固定查询、地区/日期过滤、双侧备份恢复及幂等均通过；证据由当前提交中的脚本和干净工作树生成。
+- 当前生产边界不变：未连接或写入`localhost:5432/policyops`，未写入生产MinIO，未创建`policy-originals`；未执行政策release、0019、V1→V2持久改写或容器升级。
+- 状态保持`Ready for user testing`，用户测试通过后才允许合并；生产同步和索引必须分别生成fresh `codeSha/planHash/targetFingerprint/写集合`并取得精确授权。
