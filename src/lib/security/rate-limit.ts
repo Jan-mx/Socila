@@ -109,3 +109,11 @@ export function applyRateLimitHeaders(
   }
 }
 
+/**
+ * 测试专用：清空进程内全部限流bucket（配合vi.setSystemTime可控时钟）。
+ * 生产代码不得调用。
+ */
+export function resetRateLimitBucketsForTest(): void {
+  buckets.clear();
+}
+

@@ -11,6 +11,7 @@ import { SYSTEM_PROMPT, buildContextPrompt } from "./prompts";
 import type { AgentQuestion, UserProfileSummary } from "./prompts";
 import { tools } from "./tools";
 import { getOpenAIConfig } from "./config";
+import { withDeepSeekCompat } from "./deepseek-compat";
 
 // ─── 上下文类型 ───────────────────────────────────────────────────────────────
 
@@ -129,12 +130,27 @@ export function requiresPolicyOutputProvenance(text: string): boolean {
     /(?:法定|领取|标准|金额|比例|费率|资格|补贴|待遇|政策|规定|有效|上限|下限|依据|来源|原文)/;
   const profileCollectionOrEcho =
     /(?:(?:请|麻烦).{0,20}(?:告诉|提供|补充|确认)|(?:已记录|收到|了解到|根据您提供)|(?:您|你)(?:的)?.{0,30}(?:是多少|是几|有多少|是否|吗|呢|[？?]))/;
+  // UAT修复2026-09-14：能力自述豁免。助手在普通回复里自然带出的自我介绍/能力说明
+  // （如“我是社保规划助手，主要帮你做缴费缺口和补贴测算”）不是政策事实断言；
+  // 生产实证：普通祝福类问题的回复被旧逻辑误判并整段替换为兜底文本，普通对话无法返回。
+  // 例外：句段含数量化事实（数字+单位/文号）或官方来源引用（gov.cn/归档路径）时，
+  // 仍必须进入来源门禁——失败关闭语义不变。
+  const capabilitySelfDescription =
+    /(?:我是|我们是)|(?:主要)?帮你|为您|助手|顾问|规划师|随时告诉我/;
+  const quantitativeFact =
+    /\d+(?:\.\d+)?\s*(?:元|%|％|岁|年|个月|月)|〔\d{4}〕\s*\d+\s*号/;
+  const officialSourceRef = /gov\.cn|\/api\/rag\/originals\/|〔\d{4}〕\s*\d+\s*号/;
 
   return text
     .split(/[。！？!?；;\r\n]+/)
     .map((segment) => segment.trim())
     .filter(Boolean)
     .some((segment) => {
+      // 助手人设/服务性句段（且无数量化事实、无官方来源引用）整体豁免。
+      const capabilityExempt =
+        capabilitySelfDescription.test(segment) &&
+        !quantitativeFact.test(segment) &&
+        !officialSourceRef.test(segment);
       let profileEchoContext = false;
       return segment
         .split(/[，,]+/)
@@ -148,6 +164,7 @@ export function requiresPolicyOutputProvenance(text: string): boolean {
             (startsProfileContext || profileEchoContext) &&
             !policyAssertion.test(fragment);
           return (
+            !capabilityExempt &&
             !pureProfileFragment &&
             policySubject.test(fragment) &&
             policyFact.test(fragment)
@@ -267,9 +284,11 @@ function extractRenderedDestinations(text: string): string[] {
     if (destination) destinations.add(destination);
   }
 
+  // 全角/半角标点与括号同时作为终止符：路径后紧跟全角括号补充说明（如“（登录后可下载）”）
+  // 不得把括号内容粘进路径，否则精确来源校验会误判为编造链接（UAT修复2026-09-14）。
   const plainDestinations =
     text.match(
-      /(?:[a-z][a-z0-9+.-]*:\/\/|\/\/[a-z0-9.-]+|\/api\/rag\/originals\/)[^\s<>"'）)\]}，,；;。]+/gi,
+      /(?:[a-z][a-z0-9+.-]*:\/\/|\/\/[a-z0-9.-]+|\/api\/rag\/originals\/)[^\s<>(（)"'）\]}，,；;。：？！]+/gi,
     ) ?? [];
   for (const destination of plainDestinations) destinations.add(destination);
   return [...destinations];
@@ -340,7 +359,11 @@ export function createChatStream(
   onFinish?: (result: { text: string }) => void | Promise<void>,
 ) {
   const { apiKey, baseURL, model } = getOpenAIConfig();
-  const openai = createOpenAI({ apiKey, baseURL });
+  // DeepSeek兼容（2026-09-14探测矩阵）：默认thinking拒绝强制tool_choice（生产UAT
+  // 阻断"Thinking mode does not support this tool_choice"）。适配器仅对DeepSeek
+  // /chat/completions且显式tool_choice的JSON请求注入thinking={type:"disabled"}；
+  // 普通对话与tool_choice=auto保持默认thinking；首步强制searchPolicy来源门禁不变。
+  const openai = createOpenAI({ apiKey, baseURL, fetch: withDeepSeekCompat(fetch) });
 
   const currentDate = context?.currentDate ?? formatServerDate();
   // 未确认地区时模型仍需能追问地区；确认后才允许进入政策检索/事实输出门禁。

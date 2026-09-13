@@ -15,6 +15,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { loginViaApi, registerLoginAndEnterChat } from "./api-auth";
+
 type RclE2EState = {
   batchId: string;
   counts: { cases: number; showcase: number; tests: number };
@@ -36,21 +38,13 @@ function nextUser(): string {
   return `t4user${suffix}${userSeq}`;
 }
 
+// UAT修复2026-09-14：登录页IP限流20次/5分钟为产品契约（窗口契约由rate-limit单测覆盖）；本spec登录前置改走API。
 async function registerAndLogin(
   page: Page,
   username: string,
   password: string,
 ): Promise<void> {
-  await page.goto("/register");
-  await page.getByLabel("用户名").fill(username);
-  await page.getByLabel("密码", { exact: true }).fill(password);
-  await page.getByLabel("确认密码").fill(password);
-  await page.getByRole("button", { name: "注册" }).click();
-  await page.waitForURL(/\/login\?registered=1/);
-  await page.goto("/login");
-  await page.getByLabel("用户名").fill(username);
-  await page.getByLabel("密码", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await registerLoginAndEnterChat(page, username, password);
 }
 
 test.describe.serial("任务4 地区化政策案例库（RCL-AC-008/009/012/013/015）", () => {
@@ -100,10 +94,8 @@ test.describe.serial("任务4 地区化政策案例库（RCL-AC-008/009/012/013/
   test("RCL-AC-012: 管理案例搜索只返回active（active AND filters）", async ({
     page,
   }) => {
-    await page.goto("/login");
-    await page.getByLabel("用户名").fill(ADMIN_USERNAME);
-    await page.getByLabel("密码", { exact: true }).fill(ADMIN_PASSPHRASE);
-    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await loginViaApi(page, ADMIN_USERNAME, ADMIN_PASSPHRASE);
+    await page.goto("/admin");
     await page.waitForURL(/\/admin|\/chat/);
 
     // 管理API：搜索RPC-前缀只返回active案例（apply产物均为active）。
@@ -136,10 +128,8 @@ test.describe.serial("任务4 地区化政策案例库（RCL-AC-008/009/012/013/
     page,
   }) => {
     // 复用 RCL-AC-008 注册的用户（注册接口有每小时频率限制）。
-    await page.goto("/login");
-    await page.getByLabel("用户名").fill(`t4user${suffix}1`);
-    await page.getByLabel("密码", { exact: true }).fill(E2E_PASSPHRASE);
-    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await loginViaApi(page, `t4user${suffix}1`, E2E_PASSPHRASE);
+    await page.goto("/chat");
     await page.waitForURL(/\/chat/);
 
     const res = await page.evaluate(async () => {
@@ -166,11 +156,9 @@ test.describe.serial("任务4 地区化政策案例库（RCL-AC-008/009/012/013/
     const anon = await request.get("/api/admin/case-archive");
     expect(anon.status()).toBe(401);
 
-    // 普通用户：403（管理写/读门禁）。复用已注册用户登录（注册/登录均有频率限制）。
-    await page.goto("/login");
-    await page.getByLabel("用户名").fill(`t4user${suffix}1`);
-    await page.getByLabel("密码", { exact: true }).fill(E2E_PASSPHRASE);
-    await page.getByRole("button", { name: "登录", exact: true }).click();
+    // 普通用户：403（管理写/读门禁）。复用已注册用户API登录（登录页IP限流为产品契约）。
+    await loginViaApi(page, `t4user${suffix}1`, E2E_PASSPHRASE);
+    await page.goto("/chat");
     await page.waitForURL(/\/chat/);
     const userRes = await page.evaluate(async () => {
       const r = await fetch("/api/admin/case-archive", { method: "GET" });

@@ -26,10 +26,10 @@ import { startLoginSession } from "@/server/modules/identity/application/login.u
 import { rotateRefreshSession } from "@/server/modules/identity/application/refresh.use-case";
 import { normalizeUsername } from "@/server/modules/identity/domain/username";
 import { getIdentityDeps } from "@/server/modules/identity/infrastructure/identity-container";
-
-/** 每IP/规范化用户名 15 分钟最多 5 次（AUTH-NFR-003；每IP 20 次在登录页动作层执行）。 */
-const LOGIN_USER_RATE_LIMIT = 5;
-const LOGIN_USER_RATE_WINDOW_MS = 15 * 60 * 1000;
+import {
+  LOGIN_USER_RATE_LIMIT,
+  LOGIN_USER_RATE_WINDOW_MS,
+} from "@/lib/auth/login-rate-limits";
 
 export const { auth, signIn, signOut, handlers } = NextAuth({
   providers: [

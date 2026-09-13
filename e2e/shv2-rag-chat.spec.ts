@@ -14,30 +14,23 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
+import { loginViaApi, registerLoginAndEnterChat } from "./api-auth";
+
 const suffix = Date.now().toString(36).slice(-6);
 const E2E_USER_RAG = `e2erag${suffix}`;
 const E2E_PASSPHRASE = ["e2e", "rag", "pass", "123"].join("-");
 const MOCK_DOC_VERSION_ID = "a1b2c3d4-0000-4000-8000-000000003100";
 const MOCK_OFFICIAL_URL = "https://rsj.sh.gov.cn/e2e-mock-policy-2340";
 
+// UAT修复2026-09-14：登录页IP限流20次/5分钟为产品契约（窗口契约由rate-limit单测覆盖），
+// 本spec的登录前置改走API登录，避免套件级登录提交总数超过限流阈值。
 async function registerAndLogin(page: Page, username: string, password: string): Promise<void> {
-  await page.goto("/register");
-  await page.getByLabel("用户名").fill(username);
-  await page.getByLabel("密码", { exact: true }).fill(password);
-  await page.getByLabel("确认密码").fill(password);
-  await page.getByRole("button", { name: "注册" }).click();
-  await expect(page).toHaveURL(/\/login\?registered=1/);
-  await page.getByLabel("用户名").fill(username);
-  await page.getByLabel("密码", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "登录", exact: true }).click();
-  await page.waitForURL(/\/chat/);
+  await registerLoginAndEnterChat(page, username, password);
 }
 
 async function login(page: Page, username: string, password: string): Promise<void> {
-  await page.goto("/login");
-  await page.getByLabel("用户名").fill(username);
-  await page.getByLabel("密码", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await loginViaApi(page, username, password);
+  await page.goto("/chat");
   await page.waitForURL(/\/chat/);
 }
 

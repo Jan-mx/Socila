@@ -3,7 +3,7 @@
  *
  * user/admin 共用 /login；账号状态、角色、密码校验由数据库事实决定。
  * 登录成功后跳转 /post-login 按角色与合法 callback 决定落点；
- * 每IP登录限流 20 次/15 分钟（AUTH-NFR-003）。
+ * 每IP登录限流 20 次/5 分钟（AUTH-NFR-003，窗口由15分钟改为5分钟）。
  */
 import { AuthError } from "next-auth";
 import { headers } from "next/headers";
@@ -11,6 +11,11 @@ import { redirect } from "next/navigation";
 
 import { signIn } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/security/rate-limit";
+import {
+  LOGIN_IP_RATE_LIMIT,
+  LOGIN_IP_RATE_WINDOW_MS,
+  LOGIN_RATE_LIMITED_MESSAGE,
+} from "@/lib/auth/login-rate-limits";
 import { safeCallbackUrl } from "@/lib/auth/callback-url";
 
 export const dynamic = "force-dynamic";
@@ -34,15 +39,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     const username = String(formData.get("username") ?? "").trim();
     const password = String(formData.get("password") ?? "");
 
-    // 每IP登录限流（AUTH-NFR-003）：20次/15分钟
+    // 每IP登录限流（AUTH-NFR-003）：20次/5分钟（窗口由15分钟改为5分钟，次数门槛不变）
     const h = await headers();
     const ip =
       h.get("x-real-ip") ??
       h.get("x-forwarded-for")?.split(",")[0]?.trim() ??
       "unknown";
     const limit = checkRateLimit(`auth:login:ip:${ip}`, {
-      limit: 20,
-      windowMs: 15 * 60 * 1000,
+      limit: LOGIN_IP_RATE_LIMIT,
+      windowMs: LOGIN_IP_RATE_WINDOW_MS,
     });
     if (!limit.allowed) {
       redirect("/login?error=rate_limited");
@@ -101,7 +106,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           )}
           {error === "rate_limited" && (
             <div className="mb-7 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-base text-amber-700">
-              尝试过于频繁，请稍后再试。
+              {LOGIN_RATE_LIMITED_MESSAGE}
             </div>
           )}
 

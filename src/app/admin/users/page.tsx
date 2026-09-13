@@ -158,7 +158,7 @@ export default function AdminUsersPage() {
     setActionMessage(null);
     if (
       !window.confirm(
-        `确认为 ${user.username} 生成临时密码？旧密码与全部会话将立即失效。`,
+        `确认为 ${user.username} 生成临时密码？旧密码与全部会话将立即失效。再次重置会立即使上一次临时密码及用户当前密码失效，请只把最后一次生成的临时密码交给用户。`,
       )
     ) {
       return;
@@ -253,7 +253,7 @@ export default function AdminUsersPage() {
             {tempPassword.password}
           </p>
           <p className="mt-2 text-xs">
-            有效期至 {tempPassword.expiresAt}；用户登录后必须先修改密码。
+            有效期至 {tempPassword.expiresAt}；用户登录后必须先修改密码。再次重置会立即使本临时密码及用户当前密码失效，请只把最后一次生成的临时密码交给用户。
           </p>
           <button
             type="button"

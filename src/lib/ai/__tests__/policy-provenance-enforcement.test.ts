@@ -94,6 +94,23 @@ describe("政策事实服务端来源门禁", () => {
     expect(requiresPolicyOutputProvenance("政策来源：https://example.com/fake")).toBe(true);
   });
 
+  it("能力自述句段（无数量化事实）不触发来源门禁（UAT修复2026-09-14）", () => {
+    // 生产实证：普通祝福/寒暄回复附带的助手能力自述被旧逻辑误判为无来源政策事实，
+    // 整段替换为兜底文本，普通对话无法正常返回。
+    const personaReply =
+      "祝你生日快乐，新的一岁平安顺遂、心想事成！" +
+      "（提醒一下：我是社保规划助手，主要帮你做退休节点、养老/医保缴费缺口和补贴测算。" +
+      "如需祝福之外的社保规划，随时告诉我性别和出生年份就行～）";
+    expect(requiresPolicyOutputProvenance(personaReply)).toBe(false);
+    expect(requiresPolicyOutputProvenance("祝你生日快乐，万事胜意！")).toBe(false);
+    // 能力自述里夹带数量化政策事实时仍必须门禁
+    expect(
+      requiresPolicyOutputProvenance(
+        "我是社保规划助手，上海最低工资是2740元。",
+      ),
+    ).toBe(true);
+  });
+
   it("画像收集问题不是政策事实输出", () => {
     expect(
       requiresPolicyOutputProvenance("请告诉我您的年龄和社保缴费年限。"),
@@ -133,6 +150,19 @@ describe("政策事实服务端来源门禁", () => {
         { success: true, hits: [hit], noReliableHits: false },
       ]),
     ).toEqual({ accepted: true, text: markdownAnswer });
+  });
+
+  it("归档路径后紧跟全角括号补充说明时仍精确放行（UAT修复2026-09-14）", () => {
+    // 生产模型/回复自然形态：路径后接全角括号说明（如“（登录后可下载）”），
+    // 提取器必须把全角开括号视为路径终止符，不得把括号内容粘进路径后误判为编造。
+    const annotated =
+      `标准为2340元。官网原文：${hit.officialUrl}；` +
+      `归档原件：${hit.originalDownloadPath}（登录后可下载）。`;
+    expect(
+      evaluatePolicyProvenance(annotated, [
+        { success: true, hits: [hit], noReliableHits: false },
+      ]),
+    ).toEqual({ accepted: true, text: annotated });
   });
 
   it("模型编造官网或归档URL时整段替换，不泄漏政策事实", () => {

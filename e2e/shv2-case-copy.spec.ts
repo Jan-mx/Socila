@@ -17,6 +17,8 @@ import { expect, test } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { loginViaApi } from "./api-auth";
+
 const ADMIN_USERNAME = "Jan";
 const ADMIN_PASSPHRASE = ["Acceptance", "Temp", "9137"].join("-");
 const BANNED = /真实咨询记录|真实社保规划案例|真实咨询样本|真实案例/;
@@ -116,10 +118,9 @@ test.describe.serial("SHV2 合成披露与API契约（SHV2-AC-010/012）", () =>
   });
 
   test("SHV2-AC-012: 管理后台使用“合成案例文档”，V1空正文显示“待生成V2案例文档”，管理API附带caseNature", async ({ page }) => {
-    await page.goto("/login");
-    await page.getByLabel("用户名").fill(ADMIN_USERNAME);
-    await page.getByLabel("密码", { exact: true }).fill(ADMIN_PASSPHRASE);
-    await page.getByRole("button", { name: "登录", exact: true }).click();
+    // UAT修复2026-09-14：登录页IP限流20次/5分钟为产品契约（窗口契约由rate-limit单测覆盖），此处改走API登录。
+    await loginViaApi(page, ADMIN_USERNAME, ADMIN_PASSPHRASE);
+    await page.goto("/admin");
     await page.waitForURL(/\/admin|\/chat/);
 
     const api = await page.evaluate(async () => {

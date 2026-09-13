@@ -18,6 +18,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { loginViaApi, registerLoginAndEnterChat } from "./api-auth";
+
 type E2EState = {
   sh: { snapshotId: string; releaseId: number; jurisdictionCode: string };
   gd: { snapshotId: string; releaseId: number; jurisdictionCode: string };
@@ -35,21 +37,13 @@ const suffix = Date.now().toString(36).slice(-6);
 const E2E_USER = `t3user${suffix}`;
 const E2E_PASSPHRASE = ["e2e", "t3", "pass", "123"].join("-");
 
+// UAT修复2026-09-14：登录页IP限流20次/5分钟为产品契约（窗口契约由rate-limit单测覆盖）；本spec登录前置改走API。
 async function registerAndLogin(
   page: Page,
   username: string,
   password: string,
 ): Promise<void> {
-  await page.goto("/register");
-  await page.getByLabel("用户名").fill(username);
-  await page.getByLabel("密码", { exact: true }).fill(password);
-  await page.getByLabel("确认密码").fill(password);
-  await page.getByRole("button", { name: "注册" }).click();
-  await page.waitForURL(/\/login\?registered=1/);
-  await page.goto("/login");
-  await page.getByLabel("用户名").fill(username);
-  await page.getByLabel("密码", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await registerLoginAndEnterChat(page, username, password);
 }
 
 test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）", () => {
@@ -95,10 +89,8 @@ test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）",
     page,
   }) => {
     // 每个测试独立浏览器上下文：先登录（/plan 属受保护页面，匿名重定向 /login）。
-    await page.goto("/login");
-    await page.getByLabel("用户名").fill(E2E_USER);
-    await page.getByLabel("密码", { exact: true }).fill(E2E_PASSPHRASE);
-    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await loginViaApi(page, E2E_USER, E2E_PASSPHRASE);
+    await page.goto("/chat");
     await page.waitForURL(/\/chat/);
     await page.goto("/plan/new");
     await page.waitForURL(/\/plan\/new/);
@@ -126,10 +118,8 @@ test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）",
   });
 
   test("JRP-AC-006/017: 广东领取地市代码契约与四川不可选", async ({ page }) => {
-    await page.goto("/login");
-    await page.getByLabel("用户名").fill(E2E_USER);
-    await page.getByLabel("密码", { exact: true }).fill(E2E_PASSPHRASE);
-    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await loginViaApi(page, E2E_USER, E2E_PASSPHRASE);
+    await page.goto("/chat");
     await page.waitForURL(/\/chat/);
     await page.goto("/plan/new");
     const selector = page.getByRole("button", {
@@ -157,10 +147,8 @@ test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）",
   test("JRP-AC-008: 历史plan经replay真实重放（三方hash一致返回200与snapshotId）", async ({
     page,
   }) => {
-    await page.goto("/login");
-    await page.getByLabel("用户名").fill(E2E_USER);
-    await page.getByLabel("密码", { exact: true }).fill(E2E_PASSPHRASE);
-    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await loginViaApi(page, E2E_USER, E2E_PASSPHRASE);
+    await page.goto("/chat");
     await page.waitForURL(/\/chat/);
 
     // 经公开 API 计算一次上海 plan（E2E setup 已激活上海区间）。
@@ -209,11 +197,9 @@ test.describe.serial("任务3 地区规划真实入口（JRP-AC-001/006/010）",
     page,
   }) => {
     const state = loadE2EState();
-    await page.goto("/login");
-    await page.getByLabel("用户名").fill(ADMIN_USERNAME);
-    await page.getByLabel("密码", { exact: true }).fill(ADMIN_PASSPHRASE);
-    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await loginViaApi(page, ADMIN_USERNAME, ADMIN_PASSPHRASE);
     // 管理员登录后进入 admin dashboard（普通用户进入 /chat）。
+    await page.goto("/admin");
     await page.waitForURL(/\/admin|\/chat/);
 
     // ① 跨地区停用拒绝：广东URL+上海releaseId返回409且上海保持active（零修改）。
