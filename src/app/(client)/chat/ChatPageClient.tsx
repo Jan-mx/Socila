@@ -313,7 +313,7 @@ export function ChatPageClient() {
             <div className="h-full w-full">
               <ChatPanel
                 key={chatPanelKey}
-                conversationId={panelConversationId ?? undefined}
+                conversationId={panelConversationId ?? conversationIdFromUrl ?? undefined}
                 initialMessages={initialMessages}
                 userProfile={restoredProfile ?? undefined}
                 onConversationCreated={handleConversationCreated}

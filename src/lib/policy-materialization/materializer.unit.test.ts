@@ -204,18 +204,18 @@ describe("repair目标绑定与指纹（WI-20260906-01）", () => {
 });
 
 describe("manifest（NRP-FR-019，确定性）", () => {
-  it("四地区计数与仓库权威资产一致（CN16/6、沪8/27、粤2/10、川0/3）", () => {
+  it("四地区计数与仓库权威资产一致（CN16/6、沪10/31、粤2/10、川0/3；SHV2纠偏后）", () => {
     const manifest = buildManifest(fakeGitReader());
     const byJur = new Map(manifest.regions.map((r) => [r.jurisdictionCode, r]));
     expect(byJur.get("CN")!.rules).toHaveLength(16);
     expect(byJur.get("CN")!.params).toHaveLength(6);
-    expect(byJur.get("310000")!.rules).toHaveLength(8);
-    expect(byJur.get("310000")!.params).toHaveLength(27);
+    expect(byJur.get("310000")!.rules).toHaveLength(10);
+    expect(byJur.get("310000")!.params).toHaveLength(31);
     expect(byJur.get("440000")!.rules).toHaveLength(2);
     expect(byJur.get("440000")!.params).toHaveLength(10);
     expect(byJur.get("510000")!.rules).toHaveLength(0);
     expect(byJur.get("510000")!.params).toHaveLength(3);
-    expect(manifest.counts).toEqual({ rules: 26, params: 46, ruleSets: 4, packs: 4 });
+    expect(manifest.counts).toEqual({ rules: 28, params: 50, ruleSets: 4, packs: 4 });
   });
 
   it("同一提交内容构建的manifest哈希恒定", () => {
@@ -318,7 +318,8 @@ describe("计划器（NRP-FR-018/NRP-AC-013）", () => {
     );
     expect(versions.get("rule|R-500-4050-ELIGIBILITY")).toBe(2);
     expect(versions.get("rule_set|RS-SHANGHAI-PLAN-V1")).toBe(2);
-    expect(versions.get("param|P-SH-MIN-WAGE")).toBe(2);
+    // P-SH-MIN-WAGE 现为双窗口（2690历史+2740当前）：既有v1 → 窗口依次v2、v3。
+    expect(versions.get("param|P-SH-MIN-WAGE")).toBe(3);
     // 新业务键（重分类引入）→v1。
     expect(versions.get("param|P-MI-LIFETIME-MALE-YEARS")).toBe(1);
     expect(versions.get("param|T-UNEMPLOYMENT-DURATION-BY-YEARS")).toBe(1);

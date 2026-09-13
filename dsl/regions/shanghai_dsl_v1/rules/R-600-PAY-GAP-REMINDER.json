@@ -1,28 +1,23 @@
 {
   "dsl_version": "SOCILA-DSL-1.0",
   "rule_id": "R-600-PAY-GAP-REMINDER",
-  "name": "社保补差提醒（社平/基数发布滞后导致7-8月差额）",
+  "name": "社保基数调整补差提醒（依据当期正式通知与个人实际缴费月份）",
   "module": "contribution",
   "status": "published",
   "priority": 600,
   "effective_from": "2024-01-01",
   "effective_to": null,
   "supersedes": [],
-  "notes": "when 中使用自定义 JSONLogic 操作符 intersects(a,b)：判断两个数组是否有交集。该规则用于输出“补差提醒”，具体补多少/如何补由经办页面展示为准。",
+  "notes": "不再固定7月、8月补差月份；新基数生效信息以当期正式通知为准（2026年度自7月1日起），补差与否取决于个人在新基数生效后是否仍按旧基数缴费，须由本人确认。",
   "inputs": [
     {
-      "key": "user.social.paid_months_in_year",
-      "type": "array",
+      "key": "user.social.months_paid_at_old_base",
+      "type": "number",
       "required": false,
-      "desc": "当年已缴费月份列表（1-12）"
+      "desc": "新基数生效后仍按旧基数缴费的月数（个人确认）"
     }
   ],
-  "parameter_refs": [
-    {
-      "param_id": "T-SH-PAY-GAP-MONTHS",
-      "purpose": "可能触发补差的月份列表"
-    }
-  ],
+  "parameter_refs": [],
   "decision_table": {
     "hit_policy": "first",
     "rows": [
@@ -31,7 +26,7 @@
         "when": {
           "==": [
             {
-              "var": "user.social.paid_months_in_year"
+              "var": "user.social.months_paid_at_old_base"
             },
             null
           ]
@@ -42,30 +37,41 @@
               "type": "set",
               "path": "calc.contribution.pay_gap_needed",
               "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-PAY-GAP",
+                "text": "新缴费基数生效后，是否存在仍按旧基数缴费的月份（如基数调整通知晚于生效日发布）？请确认月数以便判断是否需要补差。",
+                "field": "user.social.months_paid_at_old_base"
+              }
             }
           ]
         }
       },
       {
-        "row_id": "row_2_intersects",
+        "row_id": "row_2_needed",
         "when": {
           "and": [
             {
               "!=": [
                 {
-                  "var": "user.social.paid_months_in_year"
+                  "var": "user.social.months_paid_at_old_base"
                 },
                 null
               ]
             },
             {
-              "intersects": [
+              ">": [
                 {
-                  "var": "user.social.paid_months_in_year"
+                  "var": "user.social.months_paid_at_old_base"
                 },
-                {
-                  "var": "params.T-SH-PAY-GAP-MONTHS"
-                }
+                0
               ]
             }
           ]
@@ -78,10 +84,17 @@
               "value": true
             },
             {
+              "type": "set",
+              "path": "calc.contribution.pay_gap_months",
+              "value": {
+                "var": "user.social.months_paid_at_old_base"
+              }
+            },
+            {
               "type": "emit_warning",
               "value": {
                 "warning_id": "W-PAY-GAP",
-                "text": "你的缴费月份包含可能需要补差的月份（常见7-8月，视社平/基数发布时间）。请关注随申办/税务通知并及时补差，避免影响后续扣费。"
+                "text": "新基数生效后存在按旧基数缴费的月份，可能需要按当期正式通知补差；请关注随申办/税务通知并及时办理，避免影响后续扣费。"
               }
             }
           ]
@@ -94,22 +107,18 @@
             {
               "!=": [
                 {
-                  "var": "user.social.paid_months_in_year"
+                  "var": "user.social.months_paid_at_old_base"
                 },
                 null
               ]
             },
             {
-              "!": {
-                "intersects": [
-                  {
-                    "var": "user.social.paid_months_in_year"
-                  },
-                  {
-                    "var": "params.T-SH-PAY-GAP-MONTHS"
-                  }
-                ]
-              }
+              "==": [
+                {
+                  "var": "user.social.months_paid_at_old_base"
+                },
+                0
+              ]
             }
           ]
         },
@@ -131,33 +140,59 @@
       "type": "boolean"
     },
     {
+      "key": "calc.contribution.pay_gap_months",
+      "type": "number"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
       "key": "calc.warnings",
+      "type": "array"
+    },
+    {
+      "key": "calc.agent_questions",
       "type": "array"
     }
   ],
   "examples": [
     {
-      "name": "缴费月份包含7 -> 需要补差提醒",
+      "name": "新基数生效后按旧基数缴费2个月 -> 需要补差提醒",
       "input": {
         "user": {
           "social": {
-            "paid_months_in_year": [
-              6,
-              7,
-              8
-            ]
+            "months_paid_at_old_base": 2
           }
         }
       },
       "expected": {
         "calc": {
           "contribution": {
-            "pay_gap_needed": true
+            "pay_gap_needed": true,
+            "pay_gap_months": 2
           }
         }
       }
     }
   ],
-  "evidence": [],
+  "evidence": [
+    {
+      "document_id": "DOC-SH-CONTRIB-BASE-2026",
+      "jurisdiction_code": "310000",
+      "title": "单位职工缴纳城镇养老保险的基数是多少？（上海市人力资源和社会保障局）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tdjjf_17554/20260824/t0035_1443297.html",
+      "fetched_at": "2026-09-11T03:39:20.456Z",
+      "content_sha256": "dc4c73495e55611f69792b21385bc1098ec98a853857b99fe138f79e8119936d",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-CONTRIB-BASE-2026/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答末段"
+      },
+      "excerpt": "2026年7月1日起，本市社保缴费基数的上限调整为37731元/月,下限调整为7546元/月。"
+    }
+  ],
   "operation": "add"
 }

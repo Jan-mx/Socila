@@ -110,6 +110,12 @@ export interface ApplyOptions {
   /** 工作树dsl/regions无未提交改动（由CLI git status检查注入）。 */
   worktreeClean: boolean;
   actor: string;
+  /**
+   * 事务内固定计数核对表（NRP-AC-015）。默认使用 `EXPECTED_TOTAL_COUNTS`
+   * （当前授权阶段的持久库目标）；隔离演练/集成测试按各自场景显式注入，
+   * 守卫在任何场景下均执行且不得省略（SHV2 WI-20260911-01）。
+   */
+  expectedTotalCounts?: Record<string, number>;
 }
 
 export interface ApplyResult {
@@ -549,9 +555,10 @@ async function applyInTransaction(
       });
     }
 
-    // 事务内核验1：固定计数（NRP-AC-015）。
+    // 事务内核验1：固定计数（NRP-AC-015；场景可注入，默认当前授权阶段目标）。
     const post = await loadExistingState(drizzleSqlLike(tx));
-    for (const [table, expected] of Object.entries(EXPECTED_TOTAL_COUNTS)) {
+    const expectedTotals: Record<string, number> = opts.expectedTotalCounts ?? { ...EXPECTED_TOTAL_COUNTS };
+    for (const [table, expected] of Object.entries(expectedTotals)) {
       if (post.counts[table] !== expected) {
         throw new Error(
           `[apply] 事务内核验失败：${table}=${post.counts[table]}，预期=${expected}——全部回滚`,

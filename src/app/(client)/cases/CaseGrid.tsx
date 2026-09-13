@@ -4,18 +4,30 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Files, MessageSquareQuote, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageBubble } from "@/components/chat/MessageBubble";
+import type { CaseNature, PolicySource } from "@/lib/showcase/case-nature";
+import { PENDING_V2_DOC_LABEL, SYNTHETIC_CASE_LABEL, SYNTHETIC_DISCLAIMER } from "@/lib/showcase/labels";
 import { cn } from "@/lib/utils/cn";
 
 const PAGE_SIZE = 10;
 type PaginationToken = number | "ellipsis";
 
-interface ShowcaseCase {
+/** 公开案例视图模型（服务端由数据行派生；页面层不推断、不虚构任何正文）。 */
+export interface ShowcaseCaseView {
   id: string;
   title: string;
   tags: string[];
+  /** 可读问答；不可读（V1占位/空）时为空串并由 readable=false 标记。 */
   userMessage: string;
   aiResponse: string;
+  readable: boolean;
   category?: string;
+  regionLabel: string;
+  capabilityLabel: string;
+  personaSummary: string;
+  asOfDate: string | null;
+  needsAgent: boolean;
+  caseNature: CaseNature;
+  policySources: PolicySource[];
 }
 
 function buildPaginationTokens(totalPages: number, currentPage: number): PaginationToken[] {
@@ -61,22 +73,30 @@ function buildPaginationTokens(totalPages: number, currentPage: number): Paginat
   return tokens;
 }
 
+function NatureBadge({ nature }: { nature: CaseNature }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+      {nature === "synthetic" ? SYNTHETIC_CASE_LABEL : "人工维护案例"}
+    </span>
+  );
+}
+
 function CaseCard({
   caseData,
   onSelect,
   index,
 }: {
-  caseData: ShowcaseCase;
-  onSelect: (c: ShowcaseCase) => void;
+  caseData: ShowcaseCaseView;
+  onSelect: (c: ShowcaseCaseView) => void;
   index: number;
 }) {
-  const visibleTags = caseData.tags.slice(0, 4);
-  const hiddenTagCount = Math.max(caseData.tags.length - visibleTags.length, 0);
+  const visibleTags = caseData.tags.filter((t) => !/^\d{6}$/.test(t) && !t.startsWith("capability:")).slice(0, 4);
 
   return (
     <button
       type="button"
       onClick={() => onSelect(caseData)}
+      data-case-card
       className="group relative w-full cursor-pointer overflow-hidden rounded-3xl border border-border/80 bg-card px-5 py-5 text-left shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:px-6 sm:py-6"
     >
       <div
@@ -85,18 +105,26 @@ function CaseCard({
       />
 
       <div className="relative">
-        <div className="flex items-center justify-between gap-3">
-          <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="inline-flex items-center rounded-full border border-border bg-background-elevated px-3 py-1 text-xs text-muted-foreground">
             第 {index + 1} 条
           </span>
-          {caseData.category ? (
-            <span className="inline-flex items-center rounded-full border border-border bg-background-elevated px-3 py-1 text-xs text-muted-foreground">
-              {caseData.category}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span data-case-region className="inline-flex items-center rounded-full border border-border bg-background-elevated px-2.5 py-0.5 text-xs text-foreground">
+              地区：{caseData.regionLabel}
             </span>
-          ) : null}
+            <span data-case-capability className="inline-flex items-center rounded-full border border-border bg-background-elevated px-2.5 py-0.5 text-xs text-foreground">
+              能力：{caseData.capabilityLabel}
+            </span>
+            <NatureBadge nature={caseData.caseNature} />
+          </div>
         </div>
 
         <h3 className="mt-4 text-lg font-semibold leading-7 text-foreground">{caseData.title}</h3>
+
+        <p className="mt-2 text-xs text-muted-foreground">
+          人物条件：<span data-case-persona className="text-foreground">{caseData.personaSummary}</span>
+        </p>
 
         <div className="mt-3 flex flex-wrap gap-2">
           {visibleTags.map((tag) => (
@@ -107,20 +135,21 @@ function CaseCard({
               {tag}
             </span>
           ))}
-          {hiddenTagCount > 0 ? (
-            <span className="inline-flex items-center rounded-full border border-border bg-background-elevated px-2.5 py-1 text-xs text-muted-foreground">
-              +{hiddenTagCount}
-            </span>
-          ) : null}
         </div>
 
-        <p className="mt-4 line-clamp-4 text-sm leading-7 text-muted-foreground">{caseData.userMessage}</p>
+        {caseData.readable ? (
+          <p data-case-question className="mt-4 line-clamp-4 text-sm leading-7 text-muted-foreground">
+            {caseData.userMessage}
+          </p>
+        ) : (
+          <p data-case-pending className="mt-4 rounded-xl border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+            {PENDING_V2_DOC_LABEL}：该案例尚未写入可读问答文档，页面不展示占位内容。
+          </p>
+        )}
 
         <div className="mt-5 flex items-center justify-between">
-          <span
-            className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-colors group-hover:text-primary-hover"
-          >
-            查看完整问答
+          <span className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-colors group-hover:text-primary-hover">
+            查看完整问答与政策依据
             <MessageSquareQuote className="h-4 w-4" />
           </span>
         </div>
@@ -129,11 +158,38 @@ function CaseCard({
   );
 }
 
+function PolicySourceList({ sources }: { sources: PolicySource[] }) {
+  if (sources.length === 0) {
+    return <p className="text-sm text-muted-foreground">该案例未附带结构化政策来源。</p>;
+  }
+  return (
+    <ol className="space-y-3">
+      {sources.map((p, i) => (
+        <li key={`${p.documentId}-${i}`} className="rounded-xl border border-border/70 bg-background-elevated/60 px-3 py-2 text-sm">
+          <p className="font-medium text-foreground">《{p.title}》</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            发布机关：{p.authority} · 条款定位：{p.locator.type} / {p.locator.reference}
+          </p>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">原文摘录：{p.excerpt}</p>
+          <a
+            href={p.officialUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 inline-block break-all text-xs text-primary underline-offset-2 hover:underline"
+          >
+            {p.officialUrl}
+          </a>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function CaseDetail({
   caseData,
   onClose,
 }: {
-  caseData: ShowcaseCase;
+  caseData: ShowcaseCaseView;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -178,9 +234,12 @@ function CaseDetail({
             >
               {caseData.title}
             </h2>
-            <p className="mt-1 text-xs text-muted-foreground">案例编号：{caseData.id}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              案例编号：{caseData.id} · 地区：{caseData.regionLabel} · 能力：{caseData.capabilityLabel} · 人物条件：{caseData.personaSummary}
+            </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {caseData.tags.map((tag) => (
+              <NatureBadge nature={caseData.caseNature} />
+              {caseData.tags.filter((t) => !/^\d{6}$/.test(t)).map((tag) => (
                 <span
                   key={tag}
                   className="inline-flex items-center rounded-full border border-border bg-background-elevated px-2 py-0.5 text-xs text-muted-foreground"
@@ -200,10 +259,46 @@ function CaseDetail({
           </button>
         </div>
 
-        <div className="max-h-[72vh] overflow-y-auto bg-background-elevated/45 px-5 py-6 sm:px-6 sm:py-7">
-          <div className="space-y-6 rounded-2xl border border-border/70 bg-card/80 p-4 sm:p-5">
-            <MessageBubble role="user" content={caseData.userMessage} />
-            <MessageBubble role="assistant" content={caseData.aiResponse} />
+        <div className="max-h-[72vh] space-y-5 overflow-y-auto bg-background-elevated/45 px-5 py-6 sm:px-6 sm:py-7">
+          <div className="rounded-2xl border border-border/70 bg-card/80 p-4 sm:p-5">
+            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">完整问答</p>
+            {caseData.readable ? (
+              <div className="space-y-6">
+                <MessageBubble role="user" content={caseData.userMessage} />
+                <MessageBubble role="assistant" content={caseData.aiResponse} />
+              </div>
+            ) : (
+              <p data-case-pending className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                {PENDING_V2_DOC_LABEL}：该案例尚未写入可读问答文档，页面不展示占位或虚构内容。
+              </p>
+            )}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">计算日期</p>
+              <p data-case-asof className="mt-1 text-sm text-foreground">
+                {caseData.asOfDate ?? "—"}
+                <span className="ml-2 text-xs text-muted-foreground">（政策参数按该日期生效版本执行）</span>
+              </p>
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">风险提示</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-foreground">
+                <li>{SYNTHETIC_DISCLAIMER}；人物为合成画像，不含真实个人数据。</li>
+                <li>
+                  {caseData.needsAgent
+                    ? "结论级别：需人工补充确认（needs_agent）——存在待补充字段，规则引擎不估算相关数值。"
+                    : "结论级别：确定性结论——只在上述输入与计算日期有效政策参数下成立，条件变化需重新测算。"}
+                </li>
+                <li>办理以经办机构核定为准。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border/70 bg-card/80 p-4 sm:p-5">
+            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">政策依据</p>
+            <PolicySourceList sources={caseData.policySources} />
           </div>
         </div>
       </div>
@@ -211,8 +306,8 @@ function CaseDetail({
   );
 }
 
-export function CaseGrid({ cases }: { cases: ShowcaseCase[] }) {
-  const [selected, setSelected] = useState<ShowcaseCase | null>(null);
+export function CaseGrid({ cases }: { cases: ShowcaseCaseView[] }) {
+  const [selected, setSelected] = useState<ShowcaseCaseView | null>(null);
   const listTopRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
@@ -288,7 +383,7 @@ export function CaseGrid({ cases }: { cases: ShowcaseCase[] }) {
         <div className="flex items-center gap-2 text-sm text-foreground">
           <Files className="h-4 w-4 text-primary" />
           <span className="font-medium">
-            当前显示第 {rangeStart}-{rangeEnd} 条，共 {cases.length} 条记录
+            当前显示第 {rangeStart}-{rangeEnd} 条，共 {cases.length} 条{SYNTHETIC_CASE_LABEL}
           </span>
         </div>
         <p className="text-xs text-muted-foreground sm:text-sm">
@@ -298,7 +393,7 @@ export function CaseGrid({ cases }: { cases: ShowcaseCase[] }) {
 
       {cases.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-border bg-card/80 px-6 py-12 text-center">
-          <p className="text-base text-muted-foreground">暂无可展示的案例记录</p>
+          <p className="text-base text-muted-foreground">暂无可展示的案例</p>
         </div>
       ) : (
         <>

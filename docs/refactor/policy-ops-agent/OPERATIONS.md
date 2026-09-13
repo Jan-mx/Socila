@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-11
+> Updated: 2026-09-12
 
 ## 当前Profile
 
@@ -202,3 +202,93 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 7. 核对本地HEAD、upstream和远端SHA一致；三个`codex/*`分支全部保留，不删除、不合并`main`。
 
 执行结果（2026-09-11）：源`39f0e2a2d6bf694091d97341041e93558ac6ded6`、目标合并前与merge-base均为`57f051da7ffb4ce4862d44845a4a1e595f9f1eaf`；自动合并无冲突。隔离DB、Chromium 19/19、Node、TypeScript、ESLint、Build、Python及安全门禁完成，任务专属容器已清理；持久库只读计数未变化。最终merge commit由提交后本地/upstream/远端三方SHA核对，未合并`main`或创建tag。
+
+## V1→V2受控原位改写runbook（WI-20260911-03，SHV2 §12/§18）
+
+> 开发阶段只在隔离PG17+pgvector容器/库演练（已执行，证据`reports/feature-09-11-shanghai-case-v2/rewrite-drill-evidence-*.json`）。对持久`policyops`的执行属PRD §18第三个授权点，必须另行生成fresh授权包并取得用户对当次哈希与目标的明确授权；本runbook本身、历史授权与本Feature PRD均不构成授权。
+
+1. 前置：持久库已完成0019（账本19条）；SH/GD快照与release为V2生成所绑定的现状；工作树干净且HEAD==计划codeSha。
+2. 备份：紧邻操作时间的完整`pg_dump -Fc`+SHA-256清单，并在全新PG17+pgvector实例恢复对账（40表+20 sequence）。
+3. 只读：`DATABASE_URL=<policyops> RCL_REWRITE_ALLOW_PERSISTENT=1 node scripts/rcl-case-rewrite-v2.mjs audit --generated <generated-scenarios-v2.json>`——状态必须pending、allV1=true、mismatches为空。
+4. 计划：`plan --generated <gen.json> --out <dir>`——输出planHash/targetFingerprint/finalFingerprint与108条entries（36 cases+36 showcase+36 regression；整数ID保留；新旧UID/hash/快照hash/evidence hash/完整before/after）。
+5. 授权apply：`RCL_REWRITE_ALLOW_PERSISTENT=1 node scripts/rcl-case-rewrite-v2.mjs apply --generated <gen.json> --plan-file <rewrite-plan-v2.json> --i-am-authorized --plan-hash <planHash> --target-fingerprint <fp>`——单事务REPEATABLE READ+advisory xact lock+FOR UPDATE锁定108行；逐行旧hash核对→原位UPDATE→新hash核对；1个applied批次+恰好108条entries；COMMIT前finalFingerprint核对；任一漂移整体回滚。
+6. 验证：`verify --generated <gen.json> --plan-file <plan>`必须ok:true（终态指纹、批次/entries审计、逐行hash、36/36/80、沪粤18/18、case_text非空、transcript NULL）；复跑apply必须`noop:true`；部分完成/不一致返回`REWRITE_STATE_DRIFT`（禁止补写，立即报告）。
+7. 操作后备份：完整dump+SHA，并在全新实例恢复对账。
+8. 防误写：数据库名为`policyops`时apply在任何连接前拒绝（需`RCL_REWRITE_ALLOW_PERSISTENT=1`）；持久执行禁止`RCL_REWRITE_ALLOW_DIRTY`与`RCL_REWRITE_INJECT_FAILURE_AT`（仅隔离演练使用）。
+9. 隔离演练重放：`RCL_REWRITE_DRILL_CONTAINER=<容器> RCL_REWRITE_DRILL_PORT=<端口> node scripts/rcl-rewrite-drill-v2.mjs`——全新库上完整走baseline→generate-v2→audit/plan/守卫反例→apply→verify/noop→0019×2幂等→post dump第三实例恢复对账→计数/审计核对，并输出证据JSON。
+
+## SHV2政策原件MinIO同步与恢复runbook（隔离流程已实现并演练；持久执行待授权）
+
+> Git中的`docs/refactor/policy-ops-agent/reports/**/evidence/`是审计夹具，不是运行时对象存储。同步入口已实现（`services/agent/agent/rag/evidence_sync.py`，CLI `python -m agent.rag.evidence_sync`）。2026-09-12在隔离MinIO+隔离PostgreSQL完成真实23件原件的12项演练（历史审查记录，证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）；同日控制契约复审修复（apply绑定fresh授权计划+verify范围契约）后以17项演练为准（证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T08-43-47-471Z.json`）；同日缺桶生命周期复审修复后演练改为缺桶起点17项（证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T12-53-58-005Z.json`）。2026-09-13第四轮复审修复后以22项演练为准（证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-12T16-47-00-452Z.json`：缺桶起点+audit/plan零写入指纹+守卫反例A缺授权/B错planHash/C错指纹/F codeSha不一致/G dirty工作树/D外部建桶+冲突对象漂移/H RAG数据库漂移/I write-only权限错误真实AccessDenied/E缺库全部零写入且输出DB+对象层before/after指纹+apply建桶恰好23对象+四方verify+noop+object-only+冲突拒绝+re-plan恢复+pg_dump+逐对象备份+全新库+全新MinIO恢复对账+bucket创建竞态归属准确+输出零密钥）。对生产MinIO/持久policyops的同步仍属独立持久操作，须针对fresh对象清单取得用户明确授权。
+
+> **bucket生命周期（09-12缺桶复审；09-13第四轮补充）**：`MinioObjectStore`构造与audit/plan/verify/服务启动零建桶；bucket创建只经授权apply写入段的显式`ensure_bucket()`（计划`plannedBucketCreate=true`时；apply据其实际返回值报告`bucketCreated`——外部进程抢先建桶时如实报告false），并**不采用Compose无条件初始化建桶**（不新增mc mb、init container或启动脚本）——部署或重启不得绕过授权创建持久资源。`exists`失败关闭：只有`NoSuchKey`/`NoSuchObject`/`NoSuchBucket`返回False，`AccessDenied`/`InvalidAccessKeyId`/`SignatureDoesNotMatch`/连接失败/超时/服务端错误原样抛出，不得把权限错误当作"对象缺失"继续put。生产容器socila-minio当前bucketCount=0（2026-09-12只读核对）：生产同步尚未授权执行，政策原件未进入生产MinIO；生产bucket必须在独立复审与用户测试通过后，基于生产环境fresh planHash、targetFingerprint与对象清单取得用户单独明确授权，才能由受控apply创建。
+>
+> **指纹语义（权威表述）**：planHash绑定整个计划（含`bucketExists`与`plannedBucketCreate`）；targetFingerprint只绑定真实前置状态（bucketExists、对象状态、RAG状态）；finalFingerprint只绑定真实预期终态（bucket存在、23个对象、RAG登记）；`plannedBucketCreate`是执行意图，不作为独立字段进入状态指纹——改变它必须改变planHash；bucket真实存在性变化必须改变targetFingerprint。拒绝路径零写入证据：全部守卫反例在apply调用前后比较rag.sources/rag.fetches/rag.document_versions规范化行hash+行数与MinIO对象层（对象键/字节SHA/对象数）指纹，外部漂移与apply自身写入分别记录。
+
+1. 以证据目录中每个`meta.json.sha256`为内容地址，目标bucket固定`policy-originals`，对象键固定`originals/<sha256>`；禁止使用文件名或可变URL作为唯一键。
+2. 上传前核对原件文件存在、字节SHA等于`meta.json`和DSL evidence；任一不符停止。
+3. 对象已存在时先读取并核对SHA，一致则幂等no-op；不同则拒绝覆盖，生成漂移报告。
+4. 上传成功后写入或核对`rag.fetches.object_key`和`rag.document_versions.object_key`，两处均必须指向相同对象；数据库`content_hash`必须等于对象SHA。
+5. 生成对象清单：document ID、bucket、object key、size、content type、Git SHA、MinIO SHA、数据库记录ID与状态；清单不得包含访问密钥或连接串。
+6. 备份前同时记录PostgreSQL表/sequence清单和MinIO对象清单；执行既有PostgreSQL dump及MinIO mirror，禁止只备份其中一侧。
+7. 在全新PG17+pgvector和全新MinIO实例恢复；逐对象比较字节SHA，并验证DocumentTree、Markdown、Chunk和引用仍能由`object_key`回溯到原件。
+8. 持久MinIO同步未获授权时，只允许生成只读audit/plan和隔离演练证据；不得连接生产MinIO执行put、覆盖或删除。
+
+## SHV2政策原件同步命令（隔离环境实测）
+
+```bash
+# audit（只读对账；--database-url可省略则只对账对象层）
+uv run --project services/agent python -m agent.rag.evidence_sync audit   --evidence-dir docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000   --dsl-root dsl/regions --database-url "$DRILL_URL"
+
+# plan（输出待上传清单，零写入）
+uv run --project services/agent python -m agent.rag.evidence_sync plan ... --out rag-plan.json
+
+# plan（确定性计划：planHash/targetFingerprint/codeSha/evidenceManifestHash/对象清单/计划集合；
+#       同状态两次输出逐字节一致；--out同时落盘，apply以该文件为不可变输入）
+uv run --project services/agent python -m agent.rag.evidence_sync plan ... --out rag-plan.json
+
+# apply（fresh授权契约：显式--i-am-authorized + 不可变计划文件 + planHash + targetFingerprint；
+#       写入前校验计划结构/planHash重算、HEAD==计划codeSha、工作树干净、evidence未漂移、
+#       MinIO+RAG状态指纹==targetFingerprint；终态幂等noop；漂移零写入拒绝）
+uv run --project services/agent python -m agent.rag.evidence_sync apply ...   --plan-file rag-plan.json --i-am-authorized --plan-hash <planHash> --target-fingerprint <targetFingerprint>
+
+# verify（完整四方：Git原件/meta/DSL+对象SHA+rag记录；恢复副本上重跑即"恢复后四方对账"）
+uv run --project services/agent python -m agent.rag.evidence_sync verify ...
+
+# verify --object-only（显式降级：仅对象层，结果带verificationScope/degraded/dbChecked标记，
+#                       不得作为四方验收通过；完整audit/plan/apply/verify均必须连数据库）
+uv run --project services/agent python -m agent.rag.evidence_sync verify ... --object-only
+
+# 备份恢复编排（隔离PG容器+两个隔离MinIO endpoint）
+RAG_DRILL_PG_CONTAINER=<容器> RAG_DRILL_PG_PORT=<端口> RAG_DRILL_MINIO_ENDPOINT=<隔离MinIO> RAG_DRILL_MINIO_RESTORE_ENDPOINT=<全新MinIO> RAG_DRILL_MINIO_ACCESS_KEY=... RAG_DRILL_MINIO_SECRET_KEY=... node scripts/rag-evidence-drill.mjs
+```
+
+- 对象存储凭据从`AGENT_MINIO_ENDPOINT/ACCESS_KEY/SECRET_KEY(/SECURE)`读取；`AGENT_MINIO_BUCKET`默认即`policy-originals`（固定值，其他bucket在连接前拒绝）。
+- 守卫：非本机endpoint默认拒绝（`RAG_EVIDENCE_ALLOW_REMOTE=1`仅限隔离演练显式放行）；目标库名`policyops`默认拒绝（`RAG_EVIDENCE_ALLOW_PERSISTENT=1`仅限fresh授权）；对象已存在且SHA不一致→`OBJECT_CONFLICT`/状态漂移拒绝覆盖。
+- **fresh授权契约（2026-09-12控制复审）**：apply必须绑定不可变计划文件与`--i-am-authorized/--plan-hash/--target-fingerprint`——环境开关只是endpoint/库名的附加保护，不能替代授权参数；授权缺失、hash错误、计划过期（evidenceManifestHash/状态指纹漂移）、HEAD≠codeSha或工作树dirty均零写入拒绝；状态达计划终态→幂等noop。并发apply由任务专属advisory锁串行化并在锁内重分类。
+- 输出（stdout与`--out`文件）只含docId/bucket/objectKey/size/contentType/sha256/dslRefs/记录ID，连接串口令在错误路径统一redact。
+
+## SHV2当前MinIO端口、索引与部署runbook（WI-20260913-01，隔离验收已闭环；持久执行待授权）
+
+> **受控索引（WI-20260913-01任务2已实现）**：`services/agent/agent/rag/evidence_index.py`（CLI `python -m agent.rag.evidence_index`，audit/plan/apply/verify/search五模式）。计划绑定codeSha、全部document versions（对象键与SHA）、派生状态指纹、`BAAI/bge-m3`、1024维、indexVersion（`BAAI/bge-m3:1024`）、planHash、targetFingerprint、finalFingerprint与完整派生写集合；apply显式`--i-am-authorized --plan-file --plan-hash --target-fingerprint`并校验HEAD==codeSha、工作树干净（`RAG_INDEX_ALLOW_DIRTY`仅隔离演练）、目标库名policyops默认拒绝（`RAG_INDEX_ALLOW_PERSISTENT=1`仅fresh授权）；从MinIO读原件复核SHA→DocumentTree/Markdown→chunks→真实SiliconFlow 1024维embeddings→每份文档独立事务（清理旧派生行→写入→标记indexed）；当前文档失败整体回滚该文档、部分完成后原计划失效必须重新plan、完整终态复跑noop。`IngestService`对dedup命中downloaded/parsed版本不再返回伪indexed（派生索引完整才返回indexed）。内部RAG接口`POST /internal/v1/rag/search`、`GET /internal/v1/rag/documents/{id}/original`（`agent/rag/runtime.py`，服务JWT保护，原件读取复核SHA，未知版本404、对象缺失/SHA漂移502失败关闭）；Web登录态下载代理`GET /api/rag/originals/{documentVersionId}`与`searchPolicy`对话工具（地区必须等于会话确认地区；回复同时展示官网原文与归档原件链接；无可靠命中不编造）。
+>
+> **隔离验收（2026-09-13）**：`scripts/rag-evidence-drill.mjs`升级为33项（同步+竞态+真实索引+固定查询+地区/日期过滤+恢复副本索引对账），全ok证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T05-57-34-688Z.json`（记录执行脚本Git blob SHA `4edd7d8a…`，与提交中脚本一致）。对生产MinIO/持久policyops的同步与索引仍属独立持久操作，须针对fresh planHash/targetFingerprint/写集合取得用户明确授权。
+
+| 场景 | Endpoint | 说明 |
+| --- | --- | --- |
+| 浏览器管理 | `http://127.0.0.1:9001/login` | MinIO Console，只作人工核验 |
+| 宿主同步/索引CLI | `127.0.0.1:9000` | S3 API |
+| Agent/Worker容器 | `minio:9000` | Docker内部S3 API |
+| 持久存储 | `socila_minio-data:/data` | 现有named volume，禁止替换或删除 |
+
+- Compose需显式设置`AGENT_MINIO_BUCKET=policy-originals`；任何将9001或`/login`配置为对象API的操作必须在连接前拒绝。
+- 开发顺序：功能分支隔离验收与独立复审→用户人工测试→`--no-ff`合并refactor→merge SHA全门禁→重建Web/Agent/Worker/Beat→保持MinIO volume不变部署。
+- 生产同步前分别备份并恢复验证当前policyops和MinIO对象清单；同步计划输出fresh `codeSha/planHash/targetFingerprint/23对象写集合`，索引计划另行输出派生写集合。两个apply均需用户针对实际hash精确授权。
+- 同步apply通过宿主9000创建`policy-originals`并上传`originals/<sha256>`；索引apply生成tree/chunks/embeddings。9001截图只作为人工辅助，不能替代对象SHA、数据库记录或恢复验证。
+- 部署和同步后验证`docker inspect socila-minio`仍显示`/data`来自`socila_minio-data`，容器更新前后23对象不变；不得直接访问`/var/lib/docker/volumes/.../_data`写文件。
+
+### 当前UAT边界（2026-09-13，`d32b812`）
+
+- 功能分支已完成隔离RAG同步/索引和对话来源链演练，当前只允许用户人工测试；不得因UAT而连接生产`policyops`或生产MinIO。
+- 宿主S3 API固定为`127.0.0.1:9000`，Console固定为`http://127.0.0.1:9001/login`；Agent/Worker使用`minio:9000`。9001或带`/login`的地址配置为`AGENT_MINIO_ENDPOINT`必须失败。
+- 生产bucket与RAG七表仍为空。容器升级、生产同步和索引是用户测试后的独立步骤，分别要求fresh备份、计划哈希、目标指纹和明确授权；不得直接写`socila_minio-data`卷目录。

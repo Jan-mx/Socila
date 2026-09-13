@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-09
+> Updated: 2026-09-12
 
 ## 测试先行
 
@@ -264,3 +264,78 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - **迁移审计阻断门禁（第五轮复审）**：`scripts/rcl-audit-task34.mjs`中journal非单调/与预期不符、ID 10～16/21/22账本hash≠Git blob LF SHA、隔离库删除重复行后migration×2非no-op均为阻断错误（throw，不生成repair-forward计划）；`--trusted-dir`模式只读复验既有可信归档（8文件/SHA/manifest/restore/第三库恢复一致）并禁止覆盖（2026-09-10第五轮审计：journalMonotonic=true、ledgerGitBlobHashMatch=true 9/9、ledgerRegressionNoopAfterDelete=true）。
 - **repair-forward执行器（第六轮，WI-20260907-04）**：`src/lib/case-repair/__tests__/repair-forward.test.ts` 20例（Red→Green；独立于case-governance目录以保持RCL-AC-015契约）——确定性批次ID `sha256("task34-r4-trusted-archive:<manifestHash>")`前16字节设v5位===`c8a7c104-8b8b-53f5-9bfd-1c8a8a6be141`（禁止随机UUID）；988条entries由manifest逐条构建（452/36/500）、任一非64位小写hex→`ENTRY_HASH_INVALID`、同批次entity_type+entity_id重复→`ENTRY_DUPLICATE`、计数不符→`TRUSTED_ARCHIVE_MISMATCH`；可信批次行真实计数/table_hashes/created_by；planHash覆盖entries+批次ID+codeSha且相同输入确定性；账本删除语句三组(id AND hash AND created_at)+RETURNING id；状态分类pending/repaired/drift（部分完成、988不完整、业务指纹/计数变化、账本旧值漂移均为drift）；参数守卫（无参数失败、apply缺授权/planHash/targetFingerprint拒绝、未知模式拒绝）。
 - **repair-forward隔离演练（第六轮）**：`scripts/rcl-repair-drill-task34.mjs <post-dump> --out <dir>`在任务专属全新PG17+pgvector容器按顺序验证19场景（audit/plan初始指纹一致并交叉核对attestation===第五轮审计；缺授权/错planHash/错targetFingerprint/账本旧值漂移/prepared批次漂移/可信归档临时副本漂移/非法hash与重复→拒绝且零写入；正常apply单事务；账本18条原值；批次rolled_back且历史entries保留；新可信批次字段；988 entries逐项（verify --plan）；36/36/78/10/5与业务表hash不变；migration×2 no-op；复跑noop；并发两apply一执行一noop（40001重试）；5故障注入点完整回滚；repair后dump第三库恢复40表/20 sequence零mismatch），写`repair-executor-test-report.json`；2026-09-10证据`task34-r6-repair-drill-2026-09-10/`（19/19）。审计脚本`--executor-test-report`绑定该报告且要求19项全过，并调用执行器`plan`生成`executable-write-set.json`与审计交叉核对（targetFingerprint/attestation/账本指纹/codeSha/可信归档/988/确定性ID/pending/工作树干净）。
+
+## SHV2 RCL-GEN-2.0案例与文档（09-11 WI-20260911-02）
+
+- 生成器V2（`src/lib/case-governance/__tests__/generator-v2.test.ts` 40例）：版本与V2 UID、36/18/18与全部策展配额（9/9、6/6/6、18个唯一组合）、上海六能力各3条且每状态1条、非退休能力断言自身输出、完整生日/女性口径/失业三要素/灵活基数/补贴认定契约、字段缺失→needs_agent反例、case_text与标题/问题/回答互异非占位、数值单源（36条数字全溯源、expected逐命名空间=引擎）、policySources白名单与仓库meta.json SHA/URL一致、广东五能力与as-of、重复生成逐字节一致。
+- 内存链路辅助（`__tests__/engine-chain-v2.ts`）：以`mergePolicyContext`+`orchestrateSnapshot`镜像快照执行路径（含claim_city_code规范化），供单元层期望计算；与数据库快照路径的一致性由"已提交manifest≡内存生成"交叉校验证明。
+- Markdown案例库（`case-library-doc.test.ts` 10例）：确定性渲染、manifestHash正文重算、`checkCaseLibraryMarkdown`漂移检测（改字符/改内容/改hash/减条目均失败）、已提交`docs/refactor/policy-ops-agent/case-library/shanghai-guangdong-v2.md`通过`--check`且与内存生成逐条一致；脚本`scripts/rcl-case-library-v2-doc.ts --check`退出码0/2。
+- API与文案契约（`src/lib/showcase/synthetic-copy.test.ts` 8例）：`decorateShowcaseCase`（synthetic/human_curated、不完整evidence不升格）、两个路由新增字段向后兼容（mock仓储）、公开页/首页/导航/卡片禁用"真实咨询"表述、后台"合成案例文档"与"待生成V2案例文档"。
+- Chromium E2E（`e2e/shv2-case-copy.spec.ts` 4例）：公开页合成披露与卡片结构、首页/导航、公开API 36条caseNature/policySources、管理后台文档字段与权限内联（匿名/普通用户契约由task4 spec覆盖）；V1数据状态断言"待生成V2案例文档"且不展示占位问答。
+- test:db标准参数：本机Windows长时串行运行以`--dangerouslyIgnoreUnhandledErrors`屏蔽vitest 3.2.6 worker teardown RPC竞态（`scripts/db-gate-task34.mjs`既有约定，测试失败仍非零退出）；集成测试必须显式`SOCILA_TEST_DATABASE_URL`与`RCL_DRILL_PG_CONTAINER`。
+
+## V1→V2受控原位改写（09-11 WI-20260911-03）
+
+- 0019migration行为（`src/lib/case-rewrite/__tests__/rcl-0019-migration.integration.test.ts` 4例）：审计表列全集、plan_hash唯一、(batch,entity_type,entity_id)唯一、hash列CHECK拒绝非法值、外键RESTRICT不级联删除历史审计、SQL重复执行幂等、journal 0019严格单调（when=1788797000000）。
+- 核心单元（`src/lib/case-rewrite/__tests__/rewrite-v2.test.ts` 14例）：批次ID v5确定性派生、planHash正文重算与敏感性、来源工件指纹/attestation、人物槽位匹配（V2按§8.2矩阵重新分配能力→槽位而非scenario_key为匹配身份）、投影（整数ID保留/V2 UID/case_text/transcript不虚构/last_run清空）、108条entries完整绑定、状态分类（pending/applied/drift）、参数守卫、业务行+快照+release指纹敏感性。
+- CLI集成演练（`rcl-rewrite-cli.integration.test.ts` 8例）：重建V1基线（seed→激活3区间→V1 CLI七模式）→generate-v2→audit→守卫反例（缺授权/错planHash/错targetFingerprint零写入）→行漂移拒绝→apply（108行原位、ID不变、1批次+108entries、case_text非空/transcript NULL、计数36/36/80）→verify→复跑noop→applied后篡改drift（从entries.after恢复后复跑noop）→并发两apply一执行一noop→故障点注入整体回滚→policyops库名默认拒绝。
+- 隔离验收演练（`scripts/rcl-rewrite-drill-v2.mjs`）：全新库上baseline→generate-v2→audit/plan→守卫→apply→verify/noop→0019×2幂等→post dump第三实例pg_restore+`restore-reconcile`全表+sequence对账→最终计数/审计核对，证据JSON入reports。
+- migration journal契约更新：0010～0018保持≤持久账本max（不重应用），0019=1788797000000为唯一高于账本max的新迁移（持久执行须另行fresh授权）。
+
+## SHV2独立审查新增门禁（2026-09-12）
+
+- **MinIO原件四方对账**：对每份运行时政策原件验证Git审计夹具字节SHA、MinIO `policy-originals/originals/<sha256>`对象字节SHA、evidence `content_sha256`及`rag.fetches`/`rag.document_versions.object_key`一致；缺对象、错bucket/key、错SHA或缺数据库记录均失败。
+- **V2业务hash字段**：隔离库apply和verify必须逐行断言`cases.content_hash`、`showcase_cases.content_hash`等于V2目标规范化内容hash，并与`case_rewrite_entries.new_content_hash`一致；只验证排除`content_hash`后的动态重算不足以通过。
+- **完整套件稳定性**：标准完整`npm test`必须零失败、零skip；`migration-lf.contract.test.ts`在完整套件中的5秒超时必须通过设置与真实最坏耗时匹配的显式超时或优化扫描消除。单文件7/7通过不能替代完整套件。
+- Docker或MinIO不可用时只能报告环境阻塞，不得把未执行的对象上传、恢复或对账记录为PASS。
+
+### 修复交付门禁证据（2026-09-12本地新鲜执行）
+
+- **MinIO同步**：`services/agent/tests/test_rag_evidence_sync.py`（历史审查记录：首轮18/18；控制契约复审35/35；缺桶复审后48/48零skip——守卫/枚举7例零依赖；隔离DB集成覆盖新对象上传、一致no-op、冲突拒绝、meta/DSL SHA不符、缺rag记录、DB content_hash漂移、错object_key、对象下载SHA漂移、plan零写入、apply后verify ok、fresh授权计划契约、真实隔离MinIO备份→全新实例恢复四方对账，及缺桶生命周期`TestBucketLifecycle`13例）。运行前提：`SOCILA_TEST_DATABASE_URL`（agent迁移+角色库）与`RAG_SYNC_TEST_MINIO_ENDPOINT`/`_RESTORE_ENDPOINT`（隔离MinIO）。真实23件原件编排演练`node scripts/rag-evidence-drill.mjs`（需`RAG_DRILL_PG_CONTAINER`/`RAG_DRILL_PG_PORT`/`RAG_DRILL_MINIO_*`环境）覆盖audit预态→plan→apply→verify→幂等→守卫反例→冲突拒绝→pg_dump+逐对象备份→全新库+全新MinIO恢复→恢复副本verify；证据JSON入reports。pytest整体门禁：integration 31/31、非集成101/101，均零skip（在`services/agent`目录下运行，且需`AGENT_DATABASE_URL`+`AGENT_DB_PASSWORD`以启用角色隔离与JWT重放用例）。
+- **V2业务hash**：单元`rewrite-v2.test.ts` 17/17（业务hash条目契约、防循环、verifyPlanBody三反例）；数据库`rcl-rewrite-cli.integration.test.ts` 10/10（业务hash逐行对账、tests无content_hash列、篡改verify失败、注入回滚）；演练最终核对业务hash漂移0/0且36/36全写入，恢复副本verify ok。
+- **完整套件**：`migration-lf.contract.test.ts`改为单次`git cat-file --batch`批量读取（1次子进程替代60次）+两用例显式30秒超时；断言零改动。修复前完整套件842/843（5243ms超时复现），修复后标准完整`npm test`连续两次零失败零skip。
+
+
+### 控制契约复审修复证据（2026-09-12第二轮，起点b5a8d13）
+
+- **fresh授权计划契约**：`test_rag_evidence_sync.py`新增零DB单元（apply授权参数逐项剔除拒绝、完整模式必须连库、object-only免库、plan_hash_of确定性/planHash不入自身hash、classify pending/noop/drift）与集成（build_plan确定性+形状、授权/planHash/指纹/codeSha/dirty/证据漂移/对象漂移/DB漂移全部零写入拒绝、幂等noop、注入后re-plan恢复、并发advisory锁无重复记录、冲突不覆盖、计划与输出零凭据）。全套35/35零skip；运行前提交先于演练（或隔离演练显式`RAG_EVIDENCE_ALLOW_DIRTY=1`）。
+- **缺桶生命周期契约（09-12缺桶复审）**：`TestBucketLifecycle`13测试（真实隔离MinIO，fixture保证每例从"bucket不存在"开始）——构造不建桶、`ensure_bucket`并发恰好一次创建、audit缺桶`BUCKET_MISSING`+ok=false零写入、plan缺桶确定性（`bucketExists=false`/`plannedBucketCreate=true`、两次逐字节一致、bucket仍不存在）、未授权/错planHash/错指纹/evidence漂移/DB漂移全部零建桶、授权apply建桶+上传+四方verify（`bucketCreated=true`）、复跑noop、并发apply单bucket单记录、既有bucket兼容（`plannedBucketCreate=false`）、冲突拒绝、object-only缺桶失败不建桶；`TestMinioBackupRestore`改用真实`MinioObjectStore`并从缺桶起点演练（恢复副本由恢复程序显式建桶）；演练`scripts/rag-evidence-drill.mjs`17项改为缺桶起点（开始前删除隔离bucket，断言audit/plan/守卫反例后bucket仍不存在、授权apply后恰好23对象）。运行前提：`SOCILA_TEST_DATABASE_URL`+`RAG_SYNC_TEST_MINIO_ENDPOINT`/`_RESTORE_ENDPOINT`。pytest整体门禁：integration 56/56、非集成106/106，均零skip。
+- **verify范围契约**：缺库完整verify ok:false且问题指向数据库；`--object-only`结果断言`verificationScope="object-only"`/`degraded=true`/`dbChecked=false`；四方verify断言`verificationScope="four-way"`/`dbChecked=true`。
+- **演练门禁**：`node scripts/rag-evidence-drill.mjs` 17项全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`）：全新演练库（agent.migrate --with-roles）+清空隔离bucket→audit预态exit4→plan确定性两次一致→守卫反例A缺授权exit2/B错planHash exit4/C错指纹exit4/D plan后对象漂移exit4/E audit缺库exit2（全部零写入）→apply（单持锁事务）→四方verify→复跑同计划noop→object-only降级标记→冲突拒绝+re-plan恢复→pg_dump+逐对象备份（sha256清单）→全新库pg_restore+全新MinIO回填→恢复副本verify ok+同计划apply noop→输出零密钥。
+- **pytest整体门禁**：integration与非集成均零skip（在`services/agent`目录下运行并设置`SOCILA_TEST_DATABASE_URL`、`AGENT_DATABASE_URL`、`AGENT_DB_PASSWORD`及`RAG_SYNC_TEST_MINIO_*`）。
+- **Chromium E2E修复（AUTH-US-002）**：reload后URL会话恢复被面板预创建会话踩掉（既有竞态，独立playwright网络取证定位）；修复为`ChatPageClient`把URL会话ID作为ChatPanel外部会话ID（URL带会话ID时不预创建）。修复后完整Chromium E2E 23/23。
+
+## SHV2运行时RAG闭环门禁（WI-20260913-01）
+
+- **端口契约**：9000为S3 API、9001为Console；9001或含`/login`的endpoint必须失败且不得回退。Compose必须显式固定Agent/Worker bucket为`policy-originals`，`docker inspect`验证`socila_minio-data:/data`。
+- **同步竞态**：确定性注入ensure期间“外部建桶+错误同键对象”，断言对象不覆盖、三张RAG登记表前后指纹一致；ensure后、上传后和事务提交前均重算对象SHA。演练证据必须包含执行脚本Git blob SHA。
+- **索引契约**：隔离库最终为23 document versions、23 trees、chunks>0、embeddings=chunks、真实维度1024且全部indexed；任一文档失败只回滚其派生事务，旧计划失效。
+- **检索契约**：FTS和向量均产生候选，RRF/rerank固定查询命中7546、2340/1872/1690和医保等待期6个月；上海/广东和日期过滤不得串区。
+- **API与下载**：内部端点缺失/错误JWT拒绝；Web下载缺失登录拒绝；未知版本404；对象SHA漂移失败关闭；正确附件具备attachment/nosniff/private no-store且字节SHA一致。
+- **对话E2E**：政策事实问题调用`searchPolicy`，最终文本同时包含官方URL和登录态`/api/rag/originals/<documentVersionId>`；无命中不得生成来源。
+- **恢复门禁**：PostgreSQL与MinIO对象备份恢复到全新实例后，四方verify、索引verify和固定查询结果一致；同步/索引复跑noop。
+
+### 第四轮复审修复证据（2026-09-13，起点6bd3edc）
+
+- **S3错误失败关闭契约（问题1）**：`TestS3ErrorClassification`（零DB，确定性fake client注入`MinioObjectStore._client`）——`NoSuchKey`/`NoSuchObject`/`NoSuchBucket`返回False；`AccessDenied`/`InvalidAccessKeyId`/`SignatureDoesNotMatch`/`InternalError`/`ServiceUnavailable`/`SlowDown`/`RequestTimeout`原样抛出；连接失败/超时原样抛出。`TestS3ErrorRealMinio`（真实隔离MinIO）：缺失对象/缺失bucket返回False（实证NoSuchKey/NoSuchBucket）、错误凭据`SignatureDoesNotMatch`必须抛出而非False。`TestAccessDeniedFailsClosed`（穿过真实`MinioObjectStore.exists`吞噬层的write-only降级替身）：apply在exists处抛出AccessDenied且put调用次数为0（防止覆盖内容寻址对象）、数据库零写入；audit/verify遇AccessDenied必须失败而非返回"对象缺失"报告。
+- **bucketCreated创建归属契约（问题2）**：`TestBucketCreatedAttribution`（InMemory确定性竞态注入：ensure_bucket返回False模拟外部抢先建桶，无sleep）与`TestBucketCreatedAttributionRealMinio`（真实MinIO ensure_bucket前注入外部make_bucket）——apply必须报告`bucketCreated=false`且对象上传/RAG登记/四方verify全部正确。
+- **拒绝路径零写入契约（问题3）**：`TestRejectionPathsZeroWrite` 11条与`TestAccessDeniedFailsClosed`的AccessDenied路径（跨两个测试类合计12条：缺授权/错planHash/错targetFingerprint/codeSha不一致/dirty工作树/evidenceManifestHash漂移/MinIO对象漂移/RAG数据库漂移/AccessDenied/OBJECT_CONFLICT/注入故障/并发竞争）逐条在apply调用前后比较rag.sources/rag.fetches/rag.document_versions规范化行hash+行数（`_rag_db_fingerprint`）与bucket存在状态+对象键/字节SHA/对象数（`_minio_fingerprint`）；外部漂移以漂移后基线为断言基准并单独记录；注入故障断言DB整体回滚+如实记录apply侧部分对象写入；并发断言恰好单写者且失败方零额外写入。
+- **fingerprint语义契约（问题4）**：`TestFingerprintSemantics`——bucket真实存在性变化→planHash与targetFingerprint变化而finalFingerprint不变（finalFingerprint只描述终态）；plannedBucketCreate变化→planHash变化（执行意图入计划）；同状态计划确定性。
+- **RED→GREEN**：13测试在6bd3edc旧实现失败（7×非"不存在"S3错误被吞、1×SDK契约、1×真实MinIO错误凭据、2×write-only降级put继续、2×bucketCreated归属）→修复后`test_rag_evidence_sync.py` 81/81零skip（48既有+33新增）。
+- **演练升级**：`scripts/rag-evidence-drill.mjs` 17项→22项——新增codeSha不一致、dirty工作树、RAG数据库漂移、write-only权限错误经受限IAM用户真实AccessDenied、bucket创建竞态归属5个反例/步骤；9个守卫反例输出DB+对象层before/after指纹；22项全ok（证据`rag-evidence-drill-2026-09-12T16-47-00-452Z.json`）。运行前提同上+Docker（minio/mc:latest镜像用于受限用户步骤）。
+- **指纹语义权威表述**：planHash绑定整个计划（含bucketExists与plannedBucketCreate）；targetFingerprint只绑定真实前置状态（bucketExists、对象状态、RAG状态）；finalFingerprint只绑定真实预期终态（bucket存在、23个对象、RAG登记）；plannedBucketCreate是执行意图，不作为独立字段进入状态指纹。
+
+### WI-20260913-01运行时RAG闭环实现与验收证据（2026-09-13，起点4da7f1a）
+
+- **任务1同步竞态（第五轮复审闭环）**：`evidence_sync.apply`新增`_verify_objects_or_conflict`三检查点（ensure后/上传后/事务提交前）。RED=3测试在旧实现失败（`TestEnsureRaceConflict` InMemory+真实MinIO双实现：外部ensure期间建桶+错误同键对象→旧实现把对象计为noop并提交RAG登记后才在事务外verify失败（APPLY_VERIFY_FAILED），期望OBJECT_CONFLICT且RAG三表前后指纹一致；`TestPostUploadConflictCheck`上传窗口内外部写入错误对象→旧实现提交RAG登记）+`TestPreCommitObjectCheck`提交前篡改1例（独立复审P2-1修正：注入点为第8次get=提交前终检，并断言错误消息来自`_verify_objects_or_conflict`而非既有冲突检查；旧实现无第8次get→verify干净→RED）→GREEN 85/85（81既有+4新增）。
+- **任务2受控索引**：`agent/rag/evidence_index.py`五模式+`tests/test_rag_evidence_index.py` 22例零skip（RED=集合期ModuleNotFoundError；plan绑定23 versions/对象SHA/派生指纹/BAAI/bge-m3/1024/indexVersion/planHash/双指纹/写集合、apply守卫零写入、单文档事务回滚、部分完成计划失效+re-plan恢复、终态noop、verify漂移反例、9001与/login端点拒绝、IngestService伪indexed反例、真实MinIO对象SHA复核、真实页面HTML解析回归）。配套修复：`IngestService.dedup`不再伪报indexed（`derived_index_complete`）；`FakeSiliconFlowClient.embed`维度修复（seed*4切片在维度>128时静默短向量）；`RetrievalService`空候选不调用rerank并写审计；`parse_html`重写为全块级提取（真实政府页面正文在嵌套div内、HTML注释节点.tag为cython函数曾致崩溃）。
+- **任务3内部RAG接口**：`agent/rag/runtime.py`（search元数据回填/original SHA复核失败关闭）+`agent/api/app.py`两端点（RagSearchRequest输入校验、统一错误映射404/502）+`agent/api/main.py`懒装配装配（服务启动不依赖模型凭据）；`tests/test_rag_api.py` 11例零skip（JWT拒绝、输入校验、命中结构、attachment/nosniff/private no-store、未知版本404、对象缺失/SHA漂移502、元数据回填、广东过滤零命中且不调用空文档rerank）。
+- **任务4对话来源链**：`src/lib/ai/search-policy.ts`+`searchPolicy`工具+系统提示词规则10～12+`src/app/api/rag/originals/[documentVersionId]/route.ts`；`src/lib/ai/__tests__/search-policy.test.ts` 8例+route测试4例（未登录401、非法ID 400、JWT代理与附件头、404/502失败关闭）；E2E `e2e/shv2-rag-chat.spec.ts` 3例（mock模型工具调用编排+mock Agent内部API，未登录下载401、对话双链展示+登录态下载字节一致、无命中不编造）。
+- **任务5 Compose契约**：agent/worker显式`AGENT_MINIO_ENDPOINT=minio:9000`+`AGENT_MINIO_BUCKET=policy-originals`；`src/lib/env/rag-runtime-config-contract.test.ts` 5例（endpoint/bucket固定、9001与/login拒绝、`socila_minio-data:/data`、无第二MinIO卷、无无条件建桶）。
+- **隔离验收演练**：`scripts/rag-evidence-drill.mjs` 22项→33项（新增执行脚本blob SHA自检、索引audit预态/plan/守卫/真实apply/verify/固定查询双通道/地区过滤/日期过滤/索引noop/恢复副本索引对账），33项全ok（真实SiliconFlow BAAI/bge-m3；证据`rag-evidence-drill-2026-09-13T05-57-34-688Z.json`，failed=false，含scriptBlobSha=执行脚本Git blob SHA）。
+- **门禁数字（全部本地新鲜执行）**：pytest 232/232零skip（integration+非集成，需`SOCILA_TEST_DATABASE_URL`+`RAG_SYNC_TEST_MINIO_*`+`AGENT_DATABASE_URL`+`AGENT_DB_PASSWORD`）；ruff 0问题；mypy 54文件0错误；npm test 84文件/863用例零失败零skip；test:db全新PG17+pgvector（db-gate-task34编排：migration×2/bootstrap×2/seed×2幂等+test:db全量+agent.migrate×2+pytest integration全部通过）；tsc 0；eslint 0 error（16条既有warning未新增）；build退出0（1条既有citation-verifier动态fs warning，历史基线记录非本次引入）；citation组32/32；案例库`--check` ok；scan-secrets --all 932文件零命中；Gitleaks 8.29.1完整历史105提交零发现；allowlist哨兵3场景全过；git diff --check通过。
+
+#### 当前分支复验（`d32b812`，2026-09-13）
+
+- 最新真实SiliconFlow隔离演练证据：`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T11-14-27-135Z.json`；同步、索引、固定检索、恢复和幂等均通过，证据由当前提交脚本和干净工作树生成。
+- 生产MinIO仍为bucket=0、RAG七表仍为0；生产写入前必须重新生成并授权当次`codeSha/planHash/targetFingerprint/写集合`，历史隔离数字不能替代生产验收。

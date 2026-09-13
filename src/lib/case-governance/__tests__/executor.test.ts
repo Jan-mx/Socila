@@ -10,7 +10,7 @@
  * - generate 真实生成36条场景并回填快照规划器期望；
  * - plan-replacement 构建完整manifest并输出可验证manifestHash；
  * - apply 调用受控替换并返回真实删除/插入计数；
- * - verify 核对 N/36/N+42 与字段完整性。
+ * - verify 核对 N/36/N+44 与字段完整性。
  *
  * 纯函数/依赖注入：本文件不连库、不spawn进程；CLI脚本只是executor的薄壳。
  */
@@ -196,14 +196,14 @@ describe("RCL受控执行器（RCL-FR-021）", () => {
       caseCount: 0,
       showcaseCount: 0,
       newTestCount: 0,
-      exampleTestCount: 42,
+      exampleTestCount: 44,
       newCases: [],
       newShowcase: [],
       newTests: [],
       exampleTests: [],
       exampleSync: { retained: [], updated: [], added: [], deleted: [] },
       oldTargets: { cases: [], showcase: [], tests: [] },
-      counts: { cases: 0, showcase: 0, tests: 42 },
+      counts: { cases: 0, showcase: 0, tests: 44 },
       manifestHash: "",
       createdAt: "2026-09-09T00:00:00.000Z",
     });
@@ -386,7 +386,7 @@ describe("RCL受控执行器（RCL-FR-021）", () => {
     ).rejects.toBeInstanceOf(RclExecutorError);
   });
 
-  it("verify：核对N/36/N+42与配额（沪粤18/18、男女9/9、年龄段6/6/6、就业态6/6/6）", async () => {
+  it("verify：核对N/36/N+44与配额（沪粤18/18、男女9/9、年龄段6/6/6、就业态6/6/6）", async () => {
     const db = fakeDb();
     db.execute.mockImplementation((async (q: unknown) => {
       const t = queryText(q);
@@ -510,7 +510,7 @@ describe("RCL第三轮复审：verify-archive必须拒绝空明细verified恢复
         caseCount: 36,
         showcaseCount: 36,
         newTestCount: 36,
-        exampleTestCount: 42,
+        exampleTestCount: 44,
         newCases: [],
         newShowcase: Array.from({ length: 36 }, (_, i) => ({
           rowId: 0, uid: `RPC-${i < 18 ? "310000" : "440000"}-S-${i}-V1`, contentHash: "c".repeat(64),

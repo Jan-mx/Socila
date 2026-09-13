@@ -1,7 +1,7 @@
 /**
  * RCL-FR-007/008/009/010/011/012/013/014/015/018/020、RCL-AC-005/007/008/009/011/013
  * 端到端：确定性生成 → 快照规划器计算期望 → 评分落库 → manifest → 原子替换 →
- * 计数 N/36/N+42 与配额校验。全程隔离库，不写持久库。
+ * 计数 N/36/N+44 与配额校验。全程隔离库，不写持久库。
  *
  * 前提：SOCILA_TEST_DATABASE_URL 指向已迁移+已seed的全新PG17库。
  */
@@ -101,7 +101,7 @@ async function activateRegion(
   return created.snapshotId;
 }
 
-describe("RCL 端到端：生成→评分→替换→N/36/N+42（RCL-AC-005/007/008/009/011/013）", () => {
+describe("RCL 端到端：生成→评分→替换→N/36/N+44（RCL-AC-005/007/008/009/011/013）", () => {
   beforeAll(async () => {
     if (!DRILL_URL) {
       throw new Error("SOCILA_TEST_DATABASE_URL 未设置（CI database-gates 自动提供）");
@@ -120,7 +120,7 @@ describe("RCL 端到端：生成→评分→替换→N/36/N+42（RCL-AC-005/007/
     await db.delete(tests).where(sql`name like 'RPCT-%'`);
   });
 
-  it("生成36场景并计算期望：断言可比且满足、质量分真实、计数N/36/N+42", async () => {
+  it("生成36场景并计算期望：断言可比且满足、质量分真实、计数N/36/N+44", async () => {
     // 1) 激活上海/广东修复后日期快照（广东两个窗口：2026与2030，
     //    mi-2030场景断言男30/女25参数只在2030窗口快照中存在）。
     await activateRegion("310000", "2026-09-01");
@@ -227,7 +227,7 @@ describe("RCL 端到端：生成→评分→替换→N/36/N+42（RCL-AC-005/007/
       };
     });
 
-    // 5) 计数校验：N/36/N+42（RCL-AC-011）。
+    // 5) 计数校验：N/36/N+44（RCL-AC-011）。
     expect(manifest.caseCount).toBe(newCases.length);
     expect(manifest.showcaseCount).toBe(36);
     const rclManifest = buildRclManifest({

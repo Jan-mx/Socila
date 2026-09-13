@@ -72,3 +72,7 @@ services/agent/**/__pycache__/
 
 # local database backups (09-03 CFG-FR-005: dumps/manifests never enter Git)
 /backup/
+
+# E2E前置状态文件（e2e-rcl-setup运行产物，跑完即删，不入Git）
+.e2e-rcl-state.json
+.e2e-task3-state.json

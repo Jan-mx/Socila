@@ -2,12 +2,15 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-11
+> Updated: 2026-09-13
 
 ## 当前结论
 
+> SHV2进展（2026-09-13）：功能分支`codex/shanghai-case-v2@a85420f`重新进入Updating/Reopened。生产MinIO bucket=0、RAG七张表=0；同步器仅登记downloaded版本，尚无DocumentTree/chunks/embeddings，Web对话未接入RAG。ensure期间冲突对象仍可能在事务外verify前留下RAG登记。`WI-20260913-01`已定义最小运行闭环；本轮只更新文档，不写MinIO/数据库、不合并目标分支。
+
 - 七阶段重构Goal：**Accepted**，七份阶段验收报告全部PASS。
 - 当前开发分支：`refactor/policy-ops-agent-platform`；任务3/4最终集成分支已完成显式merge commit集成。
+- 09-11上海政策与案例V2 Feature：历史修复链保留；当前因运行时MinIO/RAG与对话来源链未闭环而Reopened。开发入口为`WI-20260913-01-shanghai-rag-runtime-closure.md`；用户人工测试前不得合并，生产fresh授权前不得写当前MinIO或policyops。
 - 当前运行事实源：单机Docker Compose中的PostgreSQL、MinIO和Agent存储；Neon不再承接运行时读写。
 - 本机定位：开发机，生产Compose数据卷保留但不常驻；远程服务器部署列入路线图。
 - 09-02 Feature（用户与管理员双角色鉴权，PRD `docs/prd/09-02-feature-user-admin-auth.md`）：**Accepted**（验收证据：`reports/feature-09-02-auth/acceptance-report.md`）。
@@ -497,3 +500,140 @@
 4. 建立首批官方政策采集和RAG索引。
 
 历史逐步执行日志已归档至[archive/memory-bank/progress.md](./archive/memory-bank/progress.md)，阶段证据见[reports](./reports/README.md)。
+
+## 当前任务验证（WI-20260911-02 RCL-GEN-2.0案例/文档/API/UI，2026-09-11本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| 基线核对 | 分支`codex/shanghai-case-v2`；任务2残留清理后工作树干净，HEAD保持任务1提交`caa6344` |
+| TDD Red | 3个新测试文件（generator-v2/case-library-doc/synthetic-copy）首跑模块缺失失败已记录 |
+| Node单元（`npm test`） | PASS；80文件/829通过、skip 0（含SHV2新增58例） |
+| TypeScript / ESLint / Build | PASS；tsc退出0；eslint 0 error（既有10 warning未新增）；build退出0 |
+| 数据库集成（隔离PG17+pgvector `shv2_drill`） | PASS；`test:db` 27文件/144零skip（项目标准参数运行，见traceability）；agent.migrate×2幂等；pytest -m integration 20/20零skip、非集成94、ruff/mypy 0问题 |
+| 生成器V2隔离库生成 | PASS；`generate-v2`经真实活动快照输出36条（沪18/粤18、3个快照绑定），coverageManifestHash与libraryManifestHash确定性 |
+| Markdown案例库 | PASS；`render`+`--check`通过（36/18/18）；篡改副本退出2；已提交manifest与内存生成器逐条一致 |
+| Chromium E2E | PASS；23/23（auth 10+SHV2 4+task3 5+task4 4；SHV2 4例覆盖公开页合成文案/首页导航/公开API字段/后台文档与结构字段） |
+| Secret扫描 / Gitleaks / 哨兵 | PASS；scan-secrets --all 899文件零命中；Gitleaks 8.29.1完整历史96提交零发现（worktree临时独立克隆扫描）；allowlist哨兵3场景全过 |
+| 边界 | 持久policyops全程未连接未写入；未创建持久快照/release；非RCL人工案例零改写；E2E管理员哈希与脚本内置哈希不匹配为既有环境事实（隔离库内本地更新，见验收报告§2.4） |
+
+下一步：保留WI-20260911-03既有代码与隔离证据，从`f583adc`修复三项独立审查问题并重新验收；目标集成分支`refactor/policy-ops-agent-platform`保持不动，修复完成前暂缓用户最终测试与任何持久授权。
+
+## 当前任务验证（WI-20260911-03 0019审计迁移+受控原位改写，2026-09-11本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 单元14例模块缺失失败；迁移集成（无0019）与CLI集成失败已记录 |
+| Node单元（提交态） | PASS；migration-lf契约7/7（含0019 journal单调与持久账本max关系）；全量见§4 |
+| 数据库集成（全新库shv2_drill3） | PASS；`test:db` 29文件/156零skip（含0019迁移4例+CLI集成8例）；agent.migrate×2幂等；pytest integration 20/20零skip、非集成94、ruff/mypy 0 |
+| 隔离演练（`rcl-rewrite-drill-v2.mjs`） | PASS；9步全ok（全新库baseline→generate-v2→audit/plan→守卫三反例→apply 108行→verify/复跑noop→0019×2幂等→post dump第三实例恢复对账→最终36/36/80+1批次+108entries+36条V2干净case）；证据`rewrite-drill-evidence-2026-09-11T19-01-07-253Z.json` |
+| Chromium E2E（V2终态） | PASS；23/23——shv2_e2e经受控改写（planHash `fe92d7d8…`）后V2分支断言全部生效 |
+| Secret / Gitleaks / 哨兵 | PASS；scan-secrets 914文件零命中；gitleaks全历史98提交——manifest场景键19条误报经人工核实按ADR-0009精确allowlist+哨兵通过后复扫no leaks；migration-lf契约提交态7/7 |
+| 边界 | 持久policyops全程未连接未写入（守卫连接前拒绝）；0019仅交付SQL；改写持久执行须另行fresh授权 |
+
+## 09-12独立审查：09-11 Feature重新打开（历史审查记录）
+
+功能分支`codex/shanghai-case-v2`已推送到`f583adc`，远端SHA一致；`refactor/policy-ops-agent-platform`本地与远端仍为`0885613`，未修改、未合并。任务1/2/3的代码和隔离证据保留，但独立审查发现三个未关闭问题，三个Work Item与Feature状态改为Reopened：
+
+| 问题 | 当前证据 | 下一步 |
+| --- | --- | --- |
+| MinIO原件链路未闭环 | 23份上海原件只在Git evidence目录；采集脚本写本地文件，未证明`policy-originals/originals/<sha256>`对象和RAG `object_key`存在 | TDD实现幂等MinIO同步、四方SHA对账及全新MinIO恢复演练 |
+| V2业务`content_hash`未同步验证 | rewrite审计有`new_content_hash`，但更新列排除了业务表`content_hash`；现有测试只验证动态规范化hash | apply同步写入`cases.content_hash`/`showcase_cases.content_hash`并逐行核对审计一致性 |
+| 完整Node套件不稳定 | 独立复跑目标测试101/101、tsc通过；完整`npm test`为842/843，migration当前工作树用例5秒超时；单文件7/7通过 | 修复超时后重跑标准完整套件，零失败零skip才可恢复Accepted |
+
+当前精确下一步：由修复Agent从`f583adc`开始，只修上述问题并在隔离数据库/MinIO验证；不得执行持久政策物化、管理员批准、快照/release切换、0019或V2案例回填。修复通过独立复审并推送后，才交给用户测试；用户测试完成前不得合并目标分支。
+
+## 修复交付（2026-09-12）：三个审查问题闭环，Ready for independent review
+
+从`d47dedf`开始严格TDD修复（RED记录→实现→GREEN→全量门禁），全程仅隔离PostgreSQL（`shv2-fix-pg`:54956、`shv2-task2-pg`:54955）与隔离MinIO（`shv2-fix-minio-a/b`:54960/54961）：
+
+| 问题 | 修复 | RED→GREEN证据 |
+| --- | --- | --- |
+| MinIO原件链路 | `services/agent/agent/rag/evidence_sync.py`（audit/plan/apply/verify；`policy-originals/originals/<sha256>`；桶/endpoint/库名守卫；凭据redact）+CLI+`scripts/rag-evidence-drill.mjs`+配置模板bucket统一 | RED=ModuleNotFoundError（15例）→GREEN 18/18；真实23件原件演练12项全ok（含pg_dump+逐对象备份→全新库+全新MinIO恢复→恢复副本四方对账；证据`rag-evidence-drill-2026-09-12T04-14-59-793Z.json`） |
+| V2业务`content_hash` | `rewrite-v2.ts`：先按排除`content_hash`的投影算目标hash再写after投影（防循环）；apply同事务UPDATE业务列并单独核对；verify逐条显式核对；verifyPlanBody校验 | RED=单元2例失败→GREEN 17/17+集成10/10（业务hash逐行对账36+36、tests无该列、篡改verify失败、注入回滚）；演练10步全ok（漂移0/0、恢复副本verify ok；证据`rewrite-drill-evidence-2026-09-12T04-56-15-244Z.json`） |
+| 完整Node套件超时 | `migration-lf.contract.test.ts`单次`git cat-file --batch`批量读取（60次子进程→1次）+两用例显式30秒超时；断言零改动 | RED=842/843（目标用例5243ms超5s）→单文件7/7（469ms）→标准完整`npm test`连续两次零失败零skip |
+
+门禁（全部本地新鲜）：pytest integration 31/31+非集成101/101零skip；citation组32/32；tsc/eslint(0 error)/build退出0；ruff/mypy 0问题；Chromium E2E 23/23（`shv2_e2e`重建为满足新content_hash契约的V2终态）；案例库`--check`通过；scan-secrets 921文件零命中；allowlist哨兵3场景全过；test:db全新库（29文件/158）零skip；Gitleaks 8.29.1完整历史100提交零发现（新增`test_rag_evidence_sync.py`脱敏哨兵误报经人工核实按ADR-0009登记精确allowlist，哨兵3场景全过）。
+
+下一步：用户/独立复审确认后，由用户决定持久执行（生产MinIO同步、持久RAG登记、持久0019与V2改写）并另行fresh授权；目标集成分支合并仍需用户明确指令。
+
+## 2026-09-12控制契约复审修复（第二轮；起点b5a8d13，本修复提交HEAD）
+
+独立复审在b5a8d13基础上发现控制缺口，本轮只修以下三项（f583adc为历史任务2/3交付SHA；上一轮MinIO接入、业务content_hash与Node超时修复保留不推翻）：
+
+| 缺口 | 修复 | RED→GREEN证据 |
+| --- | --- | --- |
+| evidence_sync apply未绑定fresh授权计划 | `build_plan`确定性计划（schema/version、codeSha、jurisdiction、固定bucket、evidenceManifestHash、MinIO+RAG状态指纹与终态指纹、完整对象清单、计划上传/登记/noop集合、规范化planHash）；apply显式`--i-am-authorized/--plan-file/--plan-hash/--target-fingerprint`，写入前校验计划结构、HEAD==codeSha、工作树干净（RAG_EVIDENCE_ALLOW_DIRTY仅隔离演练）、evidence未漂移、MinIO+RAG状态指纹==targetFingerprint；终态noop、介于两者TARGET_STATE_DRIFT零写入拒绝；环境开关仅附加保护；并发advisory锁+锁内重分类 | RED=集合期ImportError（21测试）→GREEN=35/35；演练17项全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`：守卫反例A-E零写入、plan两次一致、apply、四方verify、noop、object-only、冲突拒绝+re-plan恢复、pg_dump+逐对象备份→全新库+全新MinIO恢复→恢复副本verify ok+同计划noop） |
+| 缺数据库时verify可ok:true | 完整audit/plan/apply/verify必须连数据库（CLI USAGE拒绝）；缺库完整verify ok:false；显式`--object-only`降级（verificationScope/degraded/dbChecked标记） | 集成断言缺库ok:false+问题指向数据库；object-only标记断言；演练object-only步+四方verify步 |
+| 文档事实过期 | f583adc=历史任务2/3交付SHA；b5a8d13=本次控制修复起点；最终SHA=本修复提交HEAD（交付报告给出）；历史Reopened章节标记历史审查记录；MinIO演练步骤数按证据JSON如实更正（12项/17项，rewrite演练10步不变） | 本文档与PRD/3WI/验收报告/traceability/OPERATIONS/TESTING一致性核对 |
+
+门禁（本修复提交HEAD代码状态）：35/35 evidence_sync测试、演练17项、pytest 43+106零skip、npm test×2 81文件/846零失败零skip、test:db 29文件/158零skip、tsc/eslint/build 0、Chromium E2E 23/23（含ChatPageClient修复）、citation 32、--check、scan-secrets 926零命中、哨兵、Gitleaks 101提交零发现、git diff --check干净。
+
+状态：**Ready for independent review**（不自行标记Accepted）。目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并；持久policyops与生产MinIO未连接未写入（全程仅隔离`shv2-ctrl-pg`:54957与`shv2-ctrl-minio-a/b`:54962/54963，演练后清理）。
+
+## 2026-09-12缺桶生命周期复审修复（第三轮；起点82c905b，交付提交6bd3edc，亦为第四轮起点）
+
+独立复审在82c905b基础上发现MinIO缺桶生命周期控制缺口：2026-09-12只读核对生产容器socila-minio为bucketCount=0（与生产同步尚未授权、尚未执行一致，原件未进入生产MinIO），而`storage.py`的`MinioObjectStore.__init__`在bucket缺失时隐式`make_bucket`——audit/plan/verify等只读命令构造store即可能创建`policy-originals`，违反SHV2-FR-023持久默认拒绝、SHV2-NFR-006失败关闭、plan/audit零写入契约与fresh授权覆盖全部持久变化。82c905b已完成的fresh授权计划、四方verify、content_hash、Node超时与E2E修复保留不推翻。
+
+| 缺口 | 修复 | RED→GREEN证据 |
+| --- | --- | --- |
+| 构造期隐式建桶 | `MinioObjectStore.__init__`只建立连接信息；`object_store_from_env`与全部调用方核查（服务启动/健康检查/模块import/只读请求零建桶）；新增显式`bucket_exists()`（只读）与`ensure_bucket()`（仅授权apply持锁写入段；返回本次创建/已存在，并发创建幂等，权限/连接错误原样抛出）；`InMemoryObjectStore`同语义（`with_bucket=False`、缺桶put拒绝）；不新增Compose初始化建桶 | RED=新增`TestBucketLifecycle`13测试，旧实现10失败（构造即建桶`assert True is False`、audit/plan/verify无BUCKET_MISSING/plannedBucketCreate、ensure_bucket缺方法）→GREEN=48/48零skip |
+| audit/verify缺桶误通过/隐式写入 | bucket缺失→`BUCKET_MISSING`问题+ok=false+`bucketExists=false`，零建桶零上传零RAG写入；object-only同样对象层失败且scope/degraded/dbChecked标记准确 | 集成`test_audit_fresh_minio_bucket_missing_zero_write`/`test_verify_missing_bucket_fails_without_creating`（full+object-only） |
+| plan未表达缺桶状态 | 计划新增`bucketExists`/`plannedBucketCreate`（两者进入planHash；targetFingerprint只绑定真实前置状态、finalFingerprint只绑定真实预期终态——`_state_fingerprint`纳入bucket真实存在性，plannedBucketCreate是执行意图不作为独立字段进入状态指纹）；缺桶时plannedBucketCreate=true、前置指纹含"bucket不存在"、终态指纹含"bucket存在且登记完整"、23件对象清单不变；同状态两次逐字节一致且bucket仍不存在；schema/算法版本升级1.1（旧计划结构校验拒绝） | `test_plan_fresh_minio_deterministic_planned_bucket_create_zero_write`；演练plan步断言两次一致+bucket仍不存在+对象0 |
+| apply建桶时机未授权化 | 建桶仅发生在`--i-am-authorized`+计划结构+planHash+targetFingerprint+HEAD==codeSha+工作树契约+evidenceManifestHash未漂移+当前MinIO/RAG状态==计划前置指纹+endpoint/库名守卫全部通过后的持锁事务内（`ensure_bucket`）；缺授权/错hash/错指纹/漂移→bucket仍不存在、对象0、RAG零变化；apply结果新增`bucketCreated` | 演练守卫反例A-D（未授权/错planHash/错指纹/plan后外部建桶漂移）后bucket仍不存在且对象0；授权apply后bucket存在+恰好23对象 |
+
+门禁（交付提交`6bd3edc`代码状态）：48/48 evidence_sync测试零skip（13缺桶生命周期+35既有）、演练17项缺桶起点全ok（证据`rag-evidence-drill-2026-09-12T12-53-58-005Z.json`）、pytest integration 56/56+非集成106/106零skip、npm test×2 81文件/846零失败零skip、test:db零skip、tsc/eslint/build 0、ruff/mypy 0、Chromium E2E 23/23、citation 32、--check、scan-secrets零命中、哨兵、Gitleaks完整历史零发现、git diff --check干净。
+
+当时状态：Ready for independent review（该轮；已被第四轮复审修复接续）。目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并；持久policyops未连接未写入；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；全程仅隔离`shv2-ctrl-pg`:54957与`shv2-ctrl-minio-a/b`:54962/54963，演练后清理。
+
+## 2026-09-13第四轮复审修复（起点6bd3edc，本修复提交HEAD）
+
+独立复审在6bd3edc基础上发现四项缺口：①`MinioObjectStore.exists`捕获所有`S3Error`返回False——权限/凭据/服务端错误被转换为"对象缺失"，write-only权限组合下apply继续put会覆盖内容寻址对象；②`evidence_sync.py`在`ensure_bucket()`后固定`bucket_created=True`——外部进程抢先建桶时创建归属失实；③拒绝路径测试只检查bucket未创建，未完整证明三张RAG表零写入；④文档仍把f583adc及旧问题写成当前状态、fingerprint语义表述不准确。
+
+| 缺口 | 修复 | RED→GREEN证据 |
+| --- | --- | --- |
+| MinIO对象存在性检查失败开放 | `storage.py exists`只有`NoSuchKey`/`NoSuchObject`/`NoSuchBucket`返回False（经minio 7.2.20对真实MinIO实证：缺失对象=NoSuchKey、缺失bucket=NoSuchBucket、错误凭据=SignatureDoesNotMatch）；`AccessDenied`/`InvalidAccessKeyId`/`SignatureDoesNotMatch`/连接失败/超时/服务端错误原样抛出；audit/plan/apply/verify遇这些错误必须失败；权限异常时put调用次数为0；CLI错误输出继续凭据/连接串脱敏 | RED=13测试在6bd3edc旧实现失败（7×非"不存在"S3错误被吞返回False、真实MinIO错误凭据被吞、write-only降级后apply继续put且put_calls≥1、audit/verify权限错误仍返回报告、2×bucketCreated归属失实）；GREEN=81/81零skip |
+| bucketCreated创建归属失实 | apply改用`bucket_created = self.store.ensure_bucket()`实际返回值；外部进程在bucket_exists与ensure_bucket之间抢先建桶→`bucketCreated=false`（确定性竞态注入，无sleep）；不影响授权校验/advisory锁/对象上传/RAG登记/最终verify | RED=2测试（InMemory确定性竞态+真实MinIO竞态注入均报告True）；GREEN=归属准确且上传/登记/verify全部正确；演练竞态归属步ok |
+| 拒绝路径缺零写入证明 | 新增`TestRejectionPathsZeroWrite`11条与`TestAccessDeniedFailsClosed`的AccessDenied路径（跨两个测试类合计12条拒绝路径：缺授权/错planHash/错targetFingerprint/codeSha不一致/dirty工作树/evidenceManifestHash漂移/MinIO对象漂移/RAG数据库漂移/AccessDenied/OBJECT_CONFLICT/注入故障/并发竞争）逐条在apply调用前后比较rag.sources/rag.fetches/rag.document_versions规范化行hash+行数、bucket存在状态、MinIO对象键/字节SHA/对象数；外部夹具制造的漂移以"漂移后基线"为断言基准并单独记录，不计入apply写集合；注入故障如实记录apply侧部分对象写入（MinIO非事务资源）+数据库事务整体回滚 | 新增33测试（13 RED+20覆盖型）；全部GREEN；演练9个守卫反例输出DB+对象层before/after指纹 |
+| 文档事实过期/指纹语义不准确 | PRD/PROGRESS/README/WI/验收报告/traceability/ARCHITECTURE/TESTING/OPERATIONS同步：f583adc=历史任务2/3交付SHA、b5a8d13=第一轮审查修复、82c905b=fresh授权与verify范围修复、6bd3edc=缺桶生命周期修复（第四轮起点）、最终SHA=本修复提交HEAD；语义统一：planHash绑定整个计划（含bucketExists与plannedBucketCreate）、targetFingerprint只绑定真实前置状态（bucketExists+对象+RAG）、finalFingerprint只绑定真实预期终态（bucket存在+23对象+RAG登记）、plannedBucketCreate是执行意图不作为独立字段进入状态指纹、改变plannedBucketCreate必须改变planHash、bucket真实存在性变化必须改变targetFingerprint | `TestFingerprintSemantics`（bucket状态变化→planHash与targetFingerprint变化而finalFingerprint不变、plannedBucketCreate变化→planHash变化）；文档一致性人工核对 |
+
+演练升级：`scripts/rag-evidence-drill.mjs`17项→22项（新增codeSha不一致、dirty工作树、RAG数据库漂移、write-only权限错误经受限IAM用户真实AccessDenied、bucket创建竞态归属5个反例/步骤；全部守卫反例输出DB+对象层before/after指纹；外部漂移与apply写入分别记录），22项全ok（证据`rag-evidence-drill-2026-09-12T16-47-00-452Z.json`）。
+
+门禁与状态：见验收报告§8。目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并；持久policyops未连接未写入；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；全程仅隔离`shv2-r4-pg`:55101与`shv2-r4-minio-a/b`:55102/55103（任务专属，演练后清理）。该段为第四轮历史结果，当前状态由下节取代。
+
+## 2026-09-13运行时RAG闭环重新规划（docs-only）
+
+- 只读事实：MinIO Console=`127.0.0.1:9001/login`，宿主S3 API=`127.0.0.1:9000`，容器S3 API=`minio:9000`，持久卷=`socila_minio-data:/data`；生产bucket=0、RAG七张表=0。
+- 根因：`evidence_sync`只登记downloaded版本；现有`IngestService`不为该路径生成派生索引且会对已存在hash伪报indexed；Web对话没有`searchPolicy`。另有ensure期间外部写入冲突对象后可能先提交RAG登记的竞态。
+- 文档交付：原PRD新增SHV2-FR-028～031、NFR-009、AC-022～028；新增`WI-20260913-01`，WI-01重新打开；历史证据不改写。
+- 当前状态：Updating/Reopened。下一步由Goal Agent按WI开发并在隔离环境验收，推送后暂停等待用户人工测试；本轮不修改代码、Compose、MinIO或数据库。
+- docs-only验证：`src/lib/documentation-copy.test.ts` 3/3；12个变更Markdown中的13个相对链接全部存在；`scan-secrets --all`扫描931个候选文件零命中；`git diff --check`通过。最终文档提交SHA由交付报告给出。
+
+## 2026-09-13运行时RAG闭环开发与隔离验收（WI-20260913-01；起点4da7f1a，最终SHA=本任务提交HEAD）
+
+严格TDD实现五个任务并完成隔离验收与完整门禁，全程仅任务专属隔离环境（PG容器`shv2-wi13-pg`:55110、隔离MinIO `shv2-wi13-minio-a/b`:55111/55112）；生产socila-minio与持久policyops未连接未写入（生产MinIO仅保持先前只读核对事实：bucket=0）。
+
+| 任务 | 实现 | TDD与证据 |
+| --- | --- | --- |
+| 1 同步竞态修复（SHV2-NFR-006/AC-017） | `evidence_sync.apply`新增`_verify_objects_or_conflict`三检查点：ensure后重新枚举并下载核对全部目标对象SHA、上传完成后与RAG登记前再核、数据库事务提交前终检；任一同键错误对象→`OBJECT_CONFLICT`（缺失→`OBJECT_MISSING`），对象不覆盖、RAG三表零写入 | RED=3测试在旧实现失败（`TestEnsureRaceConflict` InMemory+真实MinIO：旧实现把ensure期间冲突对象计为noop并提交RAG登记后才在事务外verify失败；`TestPostUploadConflictCheck`上传窗口冲突注入）+`TestPreCommitObjectCheck`提交前篡改1例（独立复审P2-1修正注入点至第8次get并断言错误来自终检；旧实现该阈值下verify干净→RED）→GREEN `test_rag_evidence_sync.py` 85/85 |
+| 2 受控真实索引（SHV2-FR-029/AC-023～025） | `agent/rag/evidence_index.py`（audit/plan/apply/verify/search五模式；计划绑定23 versions/对象键及SHA/派生状态指纹/BAAI/bge-m3/1024/indexVersion/planHash/targetFingerprint/finalFingerprint/完整派生写集合；apply显式授权绑定+HEAD==codeSha+干净工作树+状态未漂移；MinIO读原件复核SHA→tree/markdown/chunks/真实1024维embeddings→每文档独立事务→全部成功标记indexed；部分完成后原计划失效必须重新plan；完整终态复跑noop）；`IngestService` dedup不再伪报indexed（`derived_index_complete`） | `tests/test_rag_evidence_index.py` 22/22零skip（RED=集合期ModuleNotFoundError）；配套修复：FakeSiliconFlowClient声明维度与实际向量长度不一致、RetrievalService空候选不调用rerank、parse_html真实政府页面重写（嵌套div正文+HTML注释节点兼容） |
+| 3 内部RAG接口（SHV2-FR-030/AC-026） | `agent/rag/runtime.py`（search回填sourceName/officialUrl/contentSha256/mime；original复核SHA：未知版本404、对象缺失/SHA漂移失败关闭）+`app.py`两端点（服务JWT、输入校验、attachment/nosniff/private no-store、不暴露MinIO地址/凭据/预签名URL）+`main.py`懒装配（服务启动不依赖模型凭据） | `tests/test_rag_api.py` 11/11零skip |
+| 4 对话来源链（SHV2-FR-031/AC-027） | `src/lib/ai/search-policy.ts`+`searchPolicy`工具+提示词规则10～12+`GET /api/rag/originals/{id}`登录态代理（服务JWT代理Agent流、attachment/nosniff/private no-store、不暴露MinIO直链）；每命中附`/api/rag/originals/<documentVersionId>`；无可靠命中如实说明不编造 | `search-policy.test.ts` 8例+route测试4例（RED=模块缺失）；E2E `shv2-rag-chat.spec.ts` 3例（mock模型工具调用编排+mock Agent内部API） |
+| 5 Compose运行映射（SHV2-FR-028/AC-022） | agent/worker显式`AGENT_MINIO_ENDPOINT=minio:9000`+`AGENT_MINIO_BUCKET=policy-originals`；volume与9001语义不变、不新增第二MinIO卷、无无条件建桶 | `rag-runtime-config-contract.test.ts` 5/5（RED=bucket缺失）；`docker compose config`通过 |
+
+隔离验收：`scripts/rag-evidence-drill.mjs`升级22项→33项全ok（证据`rag-evidence-drill-2026-09-13T05-57-34-688Z.json`，failed=false；真实SiliconFlow BAAI/bge-m3完成23/23索引：23 versions/23 trees/chunks>0/embeddings=chunks/维度1024/全部indexed；固定查询命中7546/37731、2340/1872/1690、等待期6个月且FTS与向量双通道均产生候选；广东过滤零命中；日期过滤排除/恢复生效；同步与索引复跑均noop；pg_dump+逐对象备份→全新库+全新MinIO恢复后四方verify、索引verify与固定查询一致；证据记录执行脚本Git blob SHA `4edd7d8a…`，与提交中脚本一致）。rewrite-v2恢复演练`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-drill-evidence-2026-09-13T06-39-43-390Z.json`）。
+
+完整门禁（全部本地新鲜执行）：pytest 232/232零skip；ruff 0问题；mypy 54文件0错误；npm test 84文件/863用例零失败零skip；test:db全新PG17+pgvector全通过（migration×2/bootstrap×2/seed×2幂等+test:db全量+agent.migrate×2+pytest integration）；tsc 0；eslint 0 error（16条既有warning未新增）；build退出0（1条既有citation-verifier动态fs访问warning，历史基线记录非本次引入）；Chromium E2E 26/26（auth 10+SHV2 4+task3 5+task4 4+新增shv2-rag-chat 3）；citation组32/32；案例库`--check` ok；scan-secrets --all 932文件零命中；Gitleaks 8.29.1完整历史105提交零发现；allowlist哨兵3场景全过；git diff --check通过；Markdown相对链接检查通过。
+
+状态：**Ready for user testing**（不标记Feature最终Accepted）。生产同步/索引、持久RAG写入、refactor合并均待用户测试通过后按WI-20260913-01交付与授权边界的fresh精确授权执行。
+
+## 2026-09-13当前复核（功能分支tip，实现主体`d32b812`）
+
+- 功能分支`codex/shanghai-case-v2`已推送并与远端一致；`refactor/policy-ops-agent-platform@0885613`和`main`均未修改。
+- 最新真实SiliconFlow隔离演练证据为`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T11-14-27-135Z.json`，同步、索引、固定检索、恢复和noop均通过；当前工作树仅保留该待归档证据文件。
+- 生产事实保持：MinIO bucket=0，RAG七表=0，未连接或写入生产`policyops`，未升级生产容器。状态保持`Ready for user testing`；用户测试通过后才允许合并和生成生产fresh授权计划。
+
+### 当前门禁复验
+
+- `npm test`：85文件 / 877测试通过，0失败、0skip；此前命名扫描在完整套件中的5秒超时已通过该用例显式30秒上限修复。
+- `npx tsc --noEmit`、`npx eslint src`（0 error，7条既有warning）和`npm run build`退出0；Build仅保留既有citation-verifier动态文件访问warning。
+- `uv run pytest -m \"not integration\" -q`（`services/agent`）：137通过、131 deselected；ruff与mypy均无问题。隔离集成门禁以最新真实演练证据为准，生产写入前仍需fresh重跑。

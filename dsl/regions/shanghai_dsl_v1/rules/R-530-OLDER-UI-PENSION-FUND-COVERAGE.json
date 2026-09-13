@@ -8,7 +8,7 @@
   "effective_from": "2024-01-01",
   "effective_to": null,
   "supersedes": [],
-  "notes": "该政策与4050/岗位补贴存在互斥可能；互斥由 R-540 处理。",
+  "notes": "机制与口径出自上海市人社局官方问答（2025-01-20）：按灵活就业最低缴费标准部分由失业保险基金支付，距法定退休年龄不足1年内实际缴纳月数在退休后一次性支付。",
   "inputs": [
     {
       "key": "user.status.on_unemployment_benefit",
@@ -51,7 +51,7 @@
               "type": "emit_question",
               "value": {
                 "question_id": "Q-MONTHS-TO-RETIRE",
-                "text": "缺少距退休月数，无法判断是否进入“大龄领失业金养老费基金承担”窗口（常见≤12个月）。",
+                "text": "缺少距退休月数，无法判断是否处于“距法定退休年龄不足1年”的大龄窗口。",
                 "field": "user.subsidy.months_to_legal_retire"
               }
             }
@@ -123,7 +123,7 @@
               "type": "emit_warning",
               "value": {
                 "warning_id": "W-OLDER-UI-PENSION",
-                "text": "如符合大龄条件，失业金期间养老最低档可能由失业基金承担；通常需要先缴后退并在退休前后办理，需按经办要求操作。"
+                "text": "符合大龄条件时，在本市以个人身份参加企业职工基本养老保险并缴费，其中按灵活就业人员最低缴费标准的部分由失业保险基金支付；须达到法定退休年龄次月起申请，按距退休不足1年内实际缴纳月数一次性支付。"
               }
             }
           ]
@@ -167,6 +167,55 @@
       }
     }
   ],
-  "evidence": [],
+  "evidence": [
+    {
+      "document_id": "DOC-SH-UI-OLDER-PENSION-STANDARD-2025",
+      "jurisdiction_code": "310000",
+      "title": "大龄领取失业保险金人员参加企业职工基本养老保险的补贴标准是什么？（上海市人力资源和社会保障局）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tlqtj_17563/20250120/t0035_1430066.html",
+      "fetched_at": "2026-09-11T03:58:15.406Z",
+      "content_sha256": "14c31397b23efc63acec377d6503bd95ddaea226c6a6bfa620a0435f9c3bf1ba",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-OLDER-PENSION-STANDARD-2025/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答"
+      },
+      "excerpt": "大龄领取失业保险金人员在本市以个人身份参加企业职工基本养老保险并缴费，其中按本市灵活就业人员最低缴费标准的部分由失业保险基金支付。"
+    },
+    {
+      "document_id": "DOC-SH-UI-OLDER-PENSION-APPLY-2025",
+      "jurisdiction_code": "310000",
+      "title": "大龄领取失业保险金人员如何申领由失业保险基金承担的养老保险费用？（上海市人力资源和社会保障局）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tlqtj_17563/20250120/t0035_1430067.html",
+      "fetched_at": "2026-09-11T03:58:20.289Z",
+      "content_sha256": "4c95b372865d91ceb1bcf494a9cc67f8d4e48f953a254488f1b85ef9fbcd282a",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-OLDER-PENSION-APPLY-2025/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答"
+      },
+      "excerpt": "经办机构审核后按照个人距离法定退休年龄不足1年内实际缴纳月数一次性支付。"
+    },
+    {
+      "document_id": "DOC-SH-UI-OLDER-PENSION-FUND-2025",
+      "jurisdiction_code": "310000",
+      "title": "在本市领取失业保险金的大龄人员在外省市参加企业职工基本养老保险，可否申领由失业保险基金承担的费用？（上海市人力资源和社会保障局）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tlqtj_17563/20250120/t0035_1430068.html",
+      "fetched_at": "2026-09-11T03:56:18.320Z",
+      "content_sha256": "8285e470654ea89f239099c38204a4bf2432bafaf2c69edb9350069ba1cc7ef9",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-OLDER-PENSION-FUND-2025/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答"
+      },
+      "excerpt": "在本市领取失业保险金的大龄人员应参加本市企业职工基本养老保险，才可以在本市申领由失业保险基金承担的费用。"
+    }
+  ],
   "operation": "add"
 }

@@ -1,51 +1,37 @@
 {
   "dsl_version": "SOCILA-DSL-1.0",
   "rule_id": "R-510-4050-AMOUNT",
-  "name": "4050补贴金额估算（基数下限 * 缴费比例 * 补贴比例）",
+  "name": "4050灵活就业社保补贴金额估算（下限基数应缴社会保险费×补贴比例）",
   "module": "subsidy",
   "status": "published",
   "priority": 510,
   "effective_from": "2024-01-01",
   "effective_to": null,
   "supersedes": [],
-  "notes": "此为估算。实际4050补贴通常按“基数下限对应缴费额的50%”口径发放，且仅覆盖指定险种；以经办为准。",
+  "notes": "估算口径：以缴费当月职工社会保险缴费基数的下限作为缴费基数计算的应缴社会保险费的50%（沪人社规〔2022〕8号三）；仅覆盖指定险种，以经办为准。",
   "inputs": [
     {
       "key": "calc.subsidy.4050_eligible",
       "type": "boolean",
       "required": true
-    },
-    {
-      "key": "user.social.base_lower_amount_per_month",
-      "type": "number",
-      "required": false,
-      "desc": "缴费基数下限（月）"
-    },
-    {
-      "key": "params.P-SH-PENSION-RATE-FLEX",
-      "type": "number",
-      "required": true
-    },
-    {
-      "key": "params.P-SH-MEDICAL-RATE-FLEX",
-      "type": "number",
-      "required": true
-    },
-    {
-      "key": "params.P-SH-4050-SUBSIDY-RATE",
-      "type": "number",
-      "required": true
     }
   ],
   "parameter_refs": [
     {
-      "param_id": "P-SH-PENSION-RATE-FLEX"
+      "param_id": "P-SH-CONTRIB-BASE-LOWER",
+      "purpose": "当期缴费基数下限（元/月）"
     },
     {
-      "param_id": "P-SH-MEDICAL-RATE-FLEX"
+      "param_id": "P-SH-PENSION-RATE-FLEX",
+      "purpose": "灵活就业养老保险费率"
     },
     {
-      "param_id": "P-SH-4050-SUBSIDY-RATE"
+      "param_id": "P-SH-MEDICAL-RATE-FLEX",
+      "purpose": "灵活就业医疗保险费率"
+    },
+    {
+      "param_id": "P-SH-4050-SUBSIDY-RATE",
+      "purpose": "补贴比例（应缴社会保险费的50%）"
     }
   ],
   "decision_table": {
@@ -84,7 +70,7 @@
         }
       },
       {
-        "row_id": "row_2_missing_base",
+        "row_id": "row_2_params_missing",
         "when": {
           "and": [
             {
@@ -96,11 +82,39 @@
               ]
             },
             {
-              "==": [
+              "or": [
                 {
-                  "var": "user.social.base_lower_amount_per_month"
+                  "==": [
+                    {
+                      "var": "params.P-SH-CONTRIB-BASE-LOWER"
+                    },
+                    null
+                  ]
                 },
-                null
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-PENSION-RATE-FLEX"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-MEDICAL-RATE-FLEX"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-4050-SUBSIDY-RATE"
+                    },
+                    null
+                  ]
+                }
               ]
             }
           ]
@@ -118,11 +132,10 @@
               "value": true
             },
             {
-              "type": "emit_question",
+              "type": "emit_warning",
               "value": {
-                "question_id": "Q-BASE-LOWER",
-                "text": "请提供当前缴费基数下限（或选择“按下限缴费”），用于估算4050补贴金额。",
-                "field": "user.social.base_lower_amount_per_month"
+                "warning_id": "W-SUBSIDY-PARAM-MISSING",
+                "text": "缺少有效缴费基数下限、灵活就业费率或补贴比例参数，无法估算补贴金额。"
               }
             }
           ]
@@ -131,23 +144,11 @@
       {
         "row_id": "row_3_compute",
         "when": {
-          "and": [
+          "==": [
             {
-              "==": [
-                {
-                  "var": "calc.subsidy.4050_eligible"
-                },
-                true
-              ]
+              "var": "calc.subsidy.4050_eligible"
             },
-            {
-              "!=": [
-                {
-                  "var": "user.social.base_lower_amount_per_month"
-                },
-                null
-              ]
-            }
+            true
           ]
         },
         "then": {
@@ -156,20 +157,39 @@
               "type": "set",
               "path": "calc.subsidy.flex_cost_est",
               "value": {
-                "*": [
+                "/": [
                   {
-                    "var": "user.social.base_lower_amount_per_month"
-                  },
-                  {
-                    "+": [
+                    "floor": [
                       {
-                        "var": "params.P-SH-PENSION-RATE-FLEX"
-                      },
-                      {
-                        "var": "params.P-SH-MEDICAL-RATE-FLEX"
+                        "+": [
+                          {
+                            "*": [
+                              {
+                                "*": [
+                                  {
+                                    "var": "params.P-SH-CONTRIB-BASE-LOWER"
+                                  },
+                                  {
+                                    "+": [
+                                      {
+                                        "var": "params.P-SH-PENSION-RATE-FLEX"
+                                      },
+                                      {
+                                        "var": "params.P-SH-MEDICAL-RATE-FLEX"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              100
+                            ]
+                          },
+                          0.5
+                        ]
                       }
                     ]
-                  }
+                  },
+                  100
                 ]
               }
             },
@@ -177,13 +197,32 @@
               "type": "set",
               "path": "calc.subsidy.4050_amount_est",
               "value": {
-                "*": [
+                "/": [
                   {
-                    "var": "calc.subsidy.flex_cost_est"
+                    "floor": [
+                      {
+                        "+": [
+                          {
+                            "*": [
+                              {
+                                "*": [
+                                  {
+                                    "var": "calc.subsidy.flex_cost_est"
+                                  },
+                                  {
+                                    "var": "params.P-SH-4050-SUBSIDY-RATE"
+                                  }
+                                ]
+                              },
+                              100
+                            ]
+                          },
+                          0.5
+                        ]
+                      }
+                    ]
                   },
-                  {
-                    "var": "params.P-SH-4050-SUBSIDY-RATE"
-                  }
+                  100
                 ]
               }
             }
@@ -206,25 +245,21 @@
       "type": "boolean"
     },
     {
-      "key": "calc.agent_questions",
+      "key": "calc.warnings",
       "type": "array"
     }
   ],
   "examples": [
     {
-      "name": "下限基数5000，比例0.3，补贴50% -> 750",
+      "name": "下限基数7546、费率0.3、补贴50% -> 1131.9",
       "input": {
         "calc": {
           "subsidy": {
             "4050_eligible": true
           }
         },
-        "user": {
-          "social": {
-            "base_lower_amount_per_month": 5000
-          }
-        },
         "params": {
+          "P-SH-CONTRIB-BASE-LOWER": 7546,
           "P-SH-PENSION-RATE-FLEX": 0.2,
           "P-SH-MEDICAL-RATE-FLEX": 0.1,
           "P-SH-4050-SUBSIDY-RATE": 0.5
@@ -233,13 +268,46 @@
       "expected": {
         "calc": {
           "subsidy": {
-            "flex_cost_est": 1500,
-            "4050_amount_est": 750
+            "flex_cost_est": 2263.8,
+            "4050_amount_est": 1131.9
           }
         }
       }
     }
   ],
-  "evidence": [],
+  "evidence": [
+    {
+      "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "jurisdiction_code": "310000",
+      "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+      "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+      "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+      "fetched_at": "2026-09-11T04:01:44.294Z",
+      "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "paragraph",
+        "reference": "三"
+      },
+      "excerpt": "补贴标准为按照以缴费当月职工社会保险缴费基数的下限作为缴费基数计算的应缴社会保险费的50%，补贴期限除对距法定退休年龄不足5年的可延长至退休外，同一名“就业困难人员”累计最长不超过3年。"
+    },
+    {
+      "document_id": "DOC-SH-FLEX-SUBSIDY-STANDARD-2022",
+      "jurisdiction_code": "310000",
+      "title": "申请就业困难人员灵活就业社会保险费补贴的补贴标准是多少？（上海市人力资源和社会保障局）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tcjjyyhzc_17545/20220705/t0035_1408073.html",
+      "fetched_at": "2026-09-11T03:47:00.726Z",
+      "content_sha256": "2a9320b5a463ecac6891b0ba295b5e4ef10c160ac391483c8ac8f1aa26b88aba",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-FLEX-SUBSIDY-STANDARD-2022/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答"
+      },
+      "excerpt": "补贴标准为按照以缴费当月职工社会保险缴费基数的下限作为缴费基数计算的应缴社会保险费的50%。"
+    }
+  ],
   "operation": "add"
 }

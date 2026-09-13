@@ -38,7 +38,11 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-W error::DeprecationWarning"
+# jieba 0.42.1源码含历史转义序列（如"\."），其.pyc缓存冷编译时在import期发出
+# DeprecationWarning，会被上一条的error过滤器升级为SyntaxError（2026-09-11
+# WI-20260911-01 DB门禁复现）。仅对jieba模块忽略该第三方噪声；项目自身代码
+# 的DeprecationWarning仍为error（TESTING.md PMG-FR-008不降级）。
+addopts = "-W error::DeprecationWarning -W ignore::DeprecationWarning:jieba"
 markers = ["integration: requires local drill PostgreSQL/Redis"]
 
 [tool.ruff]

@@ -3,6 +3,7 @@
  *
  *   npx tsx scripts/rcl-case-library.ts audit
  *   npx tsx scripts/rcl-case-library.ts generate --storage <dir>
+ *   npx tsx scripts/rcl-case-library.ts generate-v2 --storage <dir>   （SHV2 RCL-GEN-2.0）
  *   npx tsx scripts/rcl-case-library.ts plan-replacement --storage <dir>
  *   npx tsx scripts/rcl-case-library.ts prepare-archive --storage <dir> [--pgdump <cmd>]
  *   npx tsx scripts/rcl-case-library.ts verify-archive --storage <dir> --batch-id <id>
@@ -36,6 +37,14 @@ import {
 } from "@/lib/case-governance/executor";
 import { computeSelectionReport, buildSelectionReport } from "@/lib/case-governance/archive";
 import type { GeneratedScenario } from "@/lib/case-governance/generator";
+import {
+  generateShowcaseScenariosV2,
+  buildCoverageManifestV2,
+  GENERATOR_VERSION_V2,
+  type ScenarioTemplateV2,
+  type EngineOutcomeV2,
+} from "@/lib/case-governance/generator-v2";
+import { buildCaseLibraryManifest } from "@/lib/case-governance/case-library-doc";
 import { computeJurisdictionPlan } from "@/server/modules/planning/application/jurisdiction-compute.use-case";
 import { createJurisdictionTreeService } from "@/server/modules/jurisdiction/application/tree-service";
 import { DrizzleJurisdictionReadRepository } from "@/server/modules/jurisdiction/infrastructure/drizzle/jurisdiction-read.repository";
@@ -62,7 +71,7 @@ async function main() {
   const [mode] = process.argv.slice(2);
   if (!mode) {
     process.stderr.write(
-      "用法：rcl-case-library.ts audit | generate | plan-replacement | prepare-archive | verify-archive | apply | verify\n",
+      "用法：rcl-case-library.ts audit | generate | generate-v2 | plan-replacement | prepare-archive | verify-archive | apply | verify\n",
     );
     process.exit(1);
   }
@@ -135,6 +144,79 @@ async function main() {
         coverageManifestHash: result.coverageManifest.manifestHash,
         snapshotMap: result.snapshotMap,
         generatedFile: "generated-scenarios.json",
+      });
+      break;
+    }
+    case "generate-v2": {
+      // SHV2-FR-008～016：RCL-GEN-2.0 真实生成36条V2场景，期望/断言/文案由活动快照
+      // 规划器结果确定；输出 generated-scenarios-v2.json（供文档渲染与WI-03改写计划）。
+      const storageDir = arg("--storage");
+      if (!storageDir) throw new RclExecutorError("generate-v2 需要 --storage <dir>");
+      mkdirSync(storageDir, { recursive: true });
+      const tree = createJurisdictionTreeService({ read: new DrizzleJurisdictionReadRepository() });
+      const resolveChain = async (code: string) => {
+        const nodes = await tree.resolveChain(code);
+        return nodes.map((n) => ({ code: n.code, name: n.name, level: n.level, path: n.path }));
+      };
+      const reads = new DrizzleJurisdictionPlanningReadRepository();
+      const writes = new DrizzlePlanningWriteRepository();
+      const computeExpected = async (t: ScenarioTemplateV2): Promise<EngineOutcomeV2> => {
+        const release = await reads.getActiveRelease(t.jurisdictionCode, t.asOfDate);
+        if (!release?.activeSnapshotId) {
+          throw new RclExecutorError(`地区 ${t.jurisdictionCode} ${t.asOfDate} 无active快照（SHV2-NFR-006 fail-closed）`);
+        }
+        const snap = await reads.getSnapshot(release.activeSnapshotId);
+        if (!snap) throw new RclExecutorError("快照缺失（fail-closed）");
+        const planResult = await computeJurisdictionPlan(
+          {
+            user: t.input,
+            jurisdictionCode: t.jurisdictionCode,
+            asOfDate: t.asOfDate,
+            ownerUserId: "rcl-cli-generator-v2",
+            persist: false,
+          },
+          {
+            resolveChain,
+            getActiveRelease: (code, asOfDate) => reads.getActiveRelease(code, asOfDate),
+            hasAnyRelease: (code) => reads.hasAnyRelease(code),
+            getSnapshot: (id) => reads.getSnapshot(id),
+            listOpenConflicts: (code) => new DrizzlePolicyConflictRepository().listConflicts({ status: "open", jurisdictionCode: code }),
+            savePlan: writes.savePlan.bind(writes),
+          },
+        );
+        return {
+          snapshotId: snap.snapshot.id,
+          snapshotContentHash: snap.snapshot.contentHash,
+          calc: planResult.calc,
+          plan: planResult.plan,
+          user: t.input,
+        };
+      };
+      const scenarios = await generateShowcaseScenariosV2(computeExpected);
+      const coverageManifest = buildCoverageManifestV2(scenarios);
+      const libraryManifest = buildCaseLibraryManifest(scenarios);
+      writeFileSync(
+        path.join(storageDir, "generated-scenarios-v2.json"),
+        JSON.stringify(
+          {
+            generatorVersion: GENERATOR_VERSION_V2,
+            scenarios,
+            coverageManifest,
+            snapshotBindings: libraryManifest.snapshotBindings,
+          },
+          null,
+          2,
+        ),
+      );
+      jsonOut({
+        generatorVersion: GENERATOR_VERSION_V2,
+        scenarioCount: scenarios.length,
+        shanghai: coverageManifest.shanghaiCount,
+        guangdong: coverageManifest.guangdongCount,
+        coverageManifestHash: coverageManifest.manifestHash,
+        libraryManifestHash: libraryManifest.manifestHash,
+        snapshotBindings: libraryManifest.snapshotBindings,
+        generatedFile: "generated-scenarios-v2.json",
       });
       break;
     }

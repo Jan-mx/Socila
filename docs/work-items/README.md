@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-11
+> Updated: 2026-09-13
 
 ## 用途
 
@@ -55,6 +55,10 @@ Agent提示词只在对话中交付，禁止写入Work Item正文、验收报告
 
 | Work Item | 状态 | 用途 |
 | --- | --- | --- |
+| `WI-20260913-01-shanghai-rag-runtime-closure.md` | Ready | 23份上海原件MinIO持久化、真实索引、内部检索和Web对话来源链 |
+| `WI-20260911-01-shanghai-evidence-policy-correction.md` | Reopened | ensure期间冲突对象竞态与运行时原件闭环待修复 |
+| `WI-20260911-02-rcl-gen-2-cases-docs-api-ui.md` | Ready for user testing | 36条案例V2生成、文档、API与页面；技术范围不变 |
+| `WI-20260911-03-case-rewrite-0019-isolated-acceptance.md` | Ready for user testing | 0019与V1→V2受控改写；技术范围不变，持久执行未授权 |
 | `WI-20260909-01-task34-final-integration.md` | Accepted | 任务3/4最终集成分支已以显式merge commit合入重构分支 |
 | `WI-20260907-02-task3-temporal-entry-hardening.md` | Accepted | 空黄金测试、停用地区绑定和replay三方hash已完成第二轮修复验收 |
 | `WI-20260907-03-regional-policy-case-rebuild.md` | Accepted | 地区化案例库代码、隔离演练和持久验收均已闭环 |

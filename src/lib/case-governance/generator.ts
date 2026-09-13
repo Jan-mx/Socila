@@ -10,6 +10,7 @@
  */
 import { createHash } from "node:crypto";
 import { canonicalJson } from "./hashes";
+import { DSL_EXAMPLE_COUNT } from "./dsl-examples";
 import type { ScenarioAssertion } from "./replay";
 
 export const GENERATOR_VERSION = "RCL-GEN-1.0";
@@ -356,10 +357,10 @@ export async function generateShowcaseScenarios(
   return built;
 }
 
-/** 覆盖manifest：N=唯一case数、36、42示例占位与manifestHash（RCL-AC-005/011）。 */
+/** 覆盖manifest：N=唯一case数、36、44示例占位与manifestHash（RCL-AC-005/011；SHV2起example=44）。 */
 export function buildCoverageManifest(
   scenarios: GeneratedScenario[],
-  exampleTestCount = 42,
+  exampleTestCount = DSL_EXAMPLE_COUNT,
 ): {
   caseCount: number;
   showcaseCount: number;

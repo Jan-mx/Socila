@@ -32,12 +32,37 @@ const sqlFiles = (): string[] =>
 
 const sha256 = (buf: Buffer): string => createHash("sha256").update(buf).digest("hex");
 
-/** Git blob原始字节（不经任何EOL转换）。 */
+/**
+ * Git blob原始字节（不经任何EOL转换）。
+ * 单次`git cat-file --batch`批量读取全部migration blob并缓存：完整套件并行负载下
+ * 每文件一次spawn（3个用例×20文件=60次git子进程）曾使工作树用例超过默认5秒
+ * （2026-09-12独立审查复现5243ms）；批量一次spawn消除重复扫描耗时，断言不变。
+ */
+let blobCache: Map<string, Buffer> | null = null;
 function blobBytes(file: string): Buffer {
-  return execFileSync("git", ["cat-file", "blob", `HEAD:drizzle/${file}`], {
-    cwd: ROOT,
-    maxBuffer: 128 * 1024 * 1024,
-  });
+  if (!blobCache) {
+    const files = sqlFiles();
+    const input = files.map((f) => `HEAD:drizzle/${f}\n`).join("");
+    const out = execFileSync("git", ["cat-file", "--batch"], {
+      cwd: ROOT,
+      input,
+      maxBuffer: 128 * 1024 * 1024,
+    });
+    blobCache = new Map();
+    let off = 0;
+    for (const f of files) {
+      const nl = out.indexOf(0x0a, off);
+      const header = out.subarray(off, nl).toString("utf8");
+      if (header.endsWith(" missing")) throw new Error(`git blob missing: drizzle/${f}`);
+      const size = Number(header.split(" ")[2]);
+      if (!Number.isInteger(size) || size < 0) throw new Error(`cat-file --batch头部异常：${header}`);
+      blobCache.set(f, Buffer.from(out.subarray(nl + 1, nl + 1 + size)));
+      off = nl + 1 + size + 1; // 正文后紧跟一个换行分隔符。
+    }
+  }
+  const cached = blobCache.get(file);
+  if (!cached) throw new Error(`blob未批量加载：drizzle/${file}`);
+  return cached;
 }
 
 describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
@@ -48,6 +73,8 @@ describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
     expect(text).toMatch(/drizzle\/\*\.sql\s+text\s+eol=lf/);
   });
 
+  // 全新checkout经真实git子进程写临时目录：并行单元负载下可能超过默认5秒（2026-09-11 SHV2复现5075ms），
+  // 与identity-container重载用例同策略显式30秒；断言本身仍是确定性LF/hash契约。
   it("全新checkout（显式 core.autocrlf=true）中migration SQL均为LF且hash等于Git blob", () => {
     const tmp = mkdtempSync(path.join(tmpdir(), "rcl-lf-contract-"));
     try {
@@ -65,7 +92,7 @@ describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("当前工作树migration SQL无CRLF且Drizzle读取hash与Git blob LF SHA一致", () => {
     for (const f of sqlFiles()) {
@@ -73,7 +100,7 @@ describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
       expect(content.includes(Buffer.from("\r\n")), `${f} 工作树含CRLF`).toBe(false);
       expect(sha256(content), `${f} 工作树hash != Git blob SHA`).toBe(sha256(blobBytes(f)));
     }
-  });
+  }, 30_000);
 
   it("Git blob内容本身保持LF（.gitattributes未改写0010～0018 blob）", () => {
     const files = sqlFiles();
@@ -94,16 +121,18 @@ describe("migration SQL换行契约（WI-20260907-03第四轮复审）", () => {
       const blob = blobBytes(f);
       expect(blob.includes(Buffer.from("\r\n")), `${f} blob含CRLF`).toBe(false);
     }
-  });
+  }, 30_000);
 });
 
 describe("migration journal严格单调契约（WI-20260907-03第四轮复审修复）", () => {
   const JOURNAL_PATH = path.join(ROOT, "drizzle/meta/_journal.json");
-  /** 0010～0018预期when（必须与持久账本ID 10～16、21、22的created_at一致）。 */
+  /** 0010～0019预期when（0010～0018必须与持久账本ID 10～16、21、22的created_at一致；
+   * 0019为WI-20260911-03新增审计迁移，其持久执行须另行fresh授权）。 */
   const EXPECTED_TIMES: Record<string, number> = {
     "0010": 1788560000000, "0011": 1788600000000, "0012": 1788640000000,
     "0013": 1788680000000, "0014": 1788705240000, "0015": 1788777720000,
     "0016": 1788785400000, "0017": 1788796800000, "0018": 1788796860000,
+    "0019": 1788797000000,
   };
 
   it("journal全部entry按idx严格递增（0000～0018）", () => {
@@ -129,14 +158,18 @@ describe("migration journal严格单调契约（WI-20260907-03第四轮复审修
     }
   });
 
-  it("journal单调性保证迁移在账本max=0018时整体no-op（0014不得高于0015/0016/0017）", () => {
+  it("0010～0018在持久账本（max=0018）上不重应用；journal max恰为0019", () => {
     const journal = JSON.parse(readFileSync(JOURNAL_PATH, "utf8")) as {
       entries: Array<{ tag: string; when: number }>;
     };
     const byTag: Record<string, number> = {};
     for (const e of journal.entries) byTag[e.tag.slice(0, 4)] = Number(e.when);
-    // 持久账本max created_at=0018的when（1788796860000）；任一journal when
-    // 大于它都会让migrator重新应用该迁移（旧journal的0014=1788991200000即Re-apply）。
-    expect(Math.max(...Object.values(byTag))).toBe(1788796860000);
+    // 持久账本max created_at=0018的when（1788796860000）：0010～0018的when都不得高于它
+    //（旧journal的0014=1788991200000即Re-apply事故）；0019=1788797000000是唯一高于账本
+    // max的新迁移（WI-20260911-03审计结构），对持久policyops的执行必须另行fresh授权。
+    for (const prefix of ["0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018"]) {
+      expect(byTag[prefix], `${prefix} 不得高于持久账本max`).toBeLessThanOrEqual(1788796860000);
+    }
+    expect(Math.max(...Object.values(byTag))).toBe(1788797000000);
   });
 });

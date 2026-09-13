@@ -38,6 +38,14 @@
     {
       "rule_id": "R-600-PAY-GAP-REMINDER",
       "file": "R-600-PAY-GAP-REMINDER.json"
+    },
+    {
+      "rule_id": "R-SH-UI-AMOUNT",
+      "file": "R-SH-UI-AMOUNT.json"
+    },
+    {
+      "rule_id": "R-SH-FLEX-CONTRIBUTION",
+      "file": "R-SH-FLEX-CONTRIBUTION.json"
     }
   ]
 }

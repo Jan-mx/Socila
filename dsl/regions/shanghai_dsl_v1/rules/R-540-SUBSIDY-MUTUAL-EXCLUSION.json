@@ -8,7 +8,7 @@
   "effective_from": "2024-01-01",
   "effective_to": null,
   "supersedes": [],
-  "notes": "互斥规则必须由 Admin 可配置：互斥矩阵、比较维度（净成本/养老金影响/医保连续性）、以及经办口径备注。",
+  "notes": "大龄领金人员参加企业职工基本养老保险期间不可同时享受灵活就业社保补贴及岗位补贴（官方问答2025-01-20）；补贴期满的就业困难人员身份取消（沪人社规〔2022〕8号）。",
   "inputs": [
     {
       "key": "calc.subsidy.4050_eligible",
@@ -485,6 +485,39 @@
       }
     }
   ],
-  "evidence": [],
+  "evidence": [
+    {
+      "document_id": "DOC-SH-UI-OLDER-SUBSIDY-EXCLUSION-2025",
+      "jurisdiction_code": "310000",
+      "title": "大龄领取失业保险金人员参加企业职工基本养老保险期间可否享受本市“灵活就业人员”相关社会保险补贴及岗位补贴？（上海市人力资源和社会保障局）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tlqtj_17563/20250120/t0035_1430069.html",
+      "fetched_at": "2026-09-11T03:56:23.496Z",
+      "content_sha256": "1fd7e2f2cbfa1346a98ffd3a0467792949338473bd1cb3efa32387e2f1ef0883",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-OLDER-SUBSIDY-EXCLUSION-2025/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答"
+      },
+      "excerpt": "不可以，大龄领取失业保险金人员参加企业职工基本养老保险期间不可同时享受本市“灵活就业人员”相关社会保险补贴及岗位补贴。"
+    },
+    {
+      "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "jurisdiction_code": "310000",
+      "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+      "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+      "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+      "fetched_at": "2026-09-11T04:01:44.294Z",
+      "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "paragraph",
+        "reference": "二"
+      },
+      "excerpt": "补贴所需资金从失业保险基金中列支。“就业困难人员”享受补贴期满的，取消“就业困难人员”身份。"
+    }
+  ],
   "operation": "add"
 }

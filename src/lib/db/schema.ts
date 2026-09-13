@@ -1,6 +1,7 @@
 import {
   pgTable,
   serial,
+  bigserial,
   text,
   integer,
   boolean,
@@ -312,6 +313,43 @@ export const caseArchiveEntries = pgTable("case_archive_entries", {
   caseUid: text("case_uid"),
   contentHash: text("content_hash").notNull(),
   archiveReason: text("archive_reason").notNull(),
+});
+
+// ─── V1→V2受控原位改写审计（0019，WI-20260911-03）───────────────────────────
+
+export const caseRewriteBatches = pgTable("case_rewrite_batches", {
+  id: uuid("id").primaryKey(),
+  planHash: text("plan_hash").notNull(),
+  codeSha: text("code_sha").notNull(),
+  sourceFingerprint: text("source_fingerprint").notNull(),
+  targetFingerprint: text("target_fingerprint").notNull(),
+  finalFingerprint: text("final_fingerprint").notNull(),
+  sourceGeneratorVersion: text("source_generator_version").notNull(),
+  targetGeneratorVersion: text("target_generator_version").notNull(),
+  sourceManifest: jsonb("source_manifest").notNull(),
+  sourceAttestation: text("source_attestation").notNull(),
+  snapshotBindings: jsonb("snapshot_bindings").notNull(),
+  rowCounts: jsonb("row_counts").notNull(),
+  status: text("status").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  appliedAt: timestamp("applied_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+export const caseRewriteEntries = pgTable("case_rewrite_entries", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  batchId: uuid("batch_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id").notNull(),
+  oldUid: text("old_uid"),
+  newUid: text("new_uid").notNull(),
+  oldContentHash: text("old_content_hash").notNull(),
+  newContentHash: text("new_content_hash").notNull(),
+  oldSnapshotHash: text("old_snapshot_hash"),
+  newSnapshotHash: text("new_snapshot_hash").notNull(),
+  evidenceHash: text("evidence_hash").notNull(),
+  before: jsonb("before").notNull(),
+  after: jsonb("after").notNull(),
 });
 
 // ─── Agent 物化台账（阶段06，DRF-FR-013）────────────────────────────────────

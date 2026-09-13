@@ -1,6 +1,6 @@
 {
   "rule_set_id": "RS-SHANGHAI-PLAN-V1",
-  "description": "上海社保规划主规则集（示例）",
+  "description": "上海社保规划主规则集（SHV2纠偏：含失业金额与灵活缴费规则）",
   "status": "published",
   "effective_from": "2024-01-01",
   "rules": [
@@ -19,6 +19,8 @@
     "R-400-UNEMPLOYMENT-ELIGIBILITY",
     "R-410-UNEMPLOYMENT-DURATION",
     "R-420-UI-MEDICAL-COVERAGE",
+    "R-SH-UI-AMOUNT",
+    "R-SH-FLEX-CONTRIBUTION",
     "R-500-4050-ELIGIBILITY",
     "R-510-4050-AMOUNT",
     "R-520-JOB-SUBSIDY-ELIGIBILITY",

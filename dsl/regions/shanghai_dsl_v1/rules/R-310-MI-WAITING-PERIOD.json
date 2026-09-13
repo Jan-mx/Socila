@@ -5,10 +5,10 @@
   "module": "medical_insurance",
   "status": "published",
   "priority": 310,
-  "effective_from": "2024-01-01",
-  "effective_to": null,
+  "effective_from": "2025-09-10",
+  "effective_to": "2030-09-09",
   "supersedes": [],
-  "notes": "",
+  "notes": "等待期6个月与中断不超过3个月豁免出自沪医保规〔2025〕7号（三（四））；原沪人社医发〔2012〕45号同时废止。",
   "inputs": [
     {
       "key": "calc.mi.gap_months",
@@ -205,6 +205,39 @@
       }
     }
   ],
-  "evidence": [],
+  "evidence": [
+    {
+      "document_id": "DOC-SH-MI-FLEX-WAITING-2025",
+      "jurisdiction_code": "310000",
+      "title": "上海市职工基本医疗保险办法实施细则（沪医保规〔2025〕7号）",
+      "authority": "上海市医疗保障局",
+      "official_url": "https://ybj.sh.gov.cn/gfxwj/20250905/6173c838284f43c3b4d8c8d4513364ed.html",
+      "fetched_at": "2026-09-11T03:40:06.660Z",
+      "content_sha256": "549493856745e71c69843e87abceaa722583f9829c630ae616fda6d28260e587",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MI-FLEX-WAITING-2025/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "paragraph",
+        "reference": "三（四）"
+      },
+      "excerpt": "参加本市职工医保的灵活就业人员，享受医疗保险待遇的等待期为6个月。"
+    },
+    {
+      "document_id": "DOC-SH-MI-FLEX-WAITING-2025",
+      "jurisdiction_code": "310000",
+      "title": "上海市职工基本医疗保险办法实施细则（沪医保规〔2025〕7号）",
+      "authority": "上海市医疗保障局",
+      "official_url": "https://ybj.sh.gov.cn/gfxwj/20250905/6173c838284f43c3b4d8c8d4513364ed.html",
+      "fetched_at": "2026-09-11T03:40:06.660Z",
+      "content_sha256": "549493856745e71c69843e87abceaa722583f9829c630ae616fda6d28260e587",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-MI-FLEX-WAITING-2025/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "paragraph",
+        "reference": "三（四）末段"
+      },
+      "excerpt": "在中断享受职工医保待遇或城乡居民医保待遇后的3个月内以灵活就业人员身份参加职工医保并按规定缴费的，不受待遇等待期规定限制。"
+    }
+  ],
   "operation": "add"
 }

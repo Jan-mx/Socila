@@ -8,7 +8,7 @@
  *   → verify-archive → apply（--i-am-authorized）→ verify
  *
  * 每个模式断言：真实业务输出（JSON）、正确退出码、库状态变化；并核对
- * - 最终计数 N/36/N+42（N来自manifest，不硬编码）；
+ * - 最终计数 N/36/N+44（N来自manifest，不硬编码）；
  * - showcase 沪粤18/18、男女9/9、年龄段6/6/6、就业态6/6/6；
  * - case/showcase/test 场景字段与manifest逐字节一致且非空（RCL-FR-018/AC-011）；
  * - 每个case恰一条地区回归test（RCL-FR-013）；
@@ -210,8 +210,8 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     expect(manifest.newShowcase[0].input).toBeTruthy();
     expect(manifest.newTests[0].input).toBeTruthy();
     expect(manifest.newTests[0].expected).toBeTruthy();
-    // 42条DSL示例保留（source=example）。
-    expect(manifest.exampleTests.length).toBe(42);
+    // 44条DSL示例保留（source=example；SHV2起44）。
+    expect(manifest.exampleTests.length).toBe(44);
   });
 
   cliIt("prepare-archive：真实dump+selection+manifest+pending restore，sha256sums.txt最后生成且不自包含", () => {
@@ -344,13 +344,13 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     expect(out.insertedShowcases).toBe(36);
     expect(out.insertedTests).toBe(36);
 
-    // 库状态：N/36/N+42（N=36 → 36/36/78）。
+    // 库状态：N/36/N+44（N=36 → 36/36/80）。
     const caseCount = await db.select({ n: sql<number>`count(*)::int` }).from(cases);
     const showCount = await db.select({ n: sql<number>`count(*)::int` }).from(showcaseCases);
     const testCount = await db.select({ n: sql<number>`count(*)::int` }).from(tests);
     expect(caseCount[0].n).toBe(36);
     expect(showCount[0].n).toBe(36);
-    expect(testCount[0].n).toBe(78); // 36回归 + 42示例
+    expect(testCount[0].n).toBe(80); // 36回归 + 44示例
 
     // 完整场景字段落库（RCL-FR-018/AC-011）。
     const manifest = JSON.parse(readFileSync(join(storageDir, "manifest.json"), "utf-8"));
@@ -378,7 +378,7 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     expect(newTest[0].sourceCaseUid).toBe(manifest.newTests[0].sourceCaseUid);
   });
 
-  cliIt("verify：N/36/N+42与配额（沪粤18/18、男女9/9、年龄段6/6/6、就业态6/6/6）与字段完整性", async () => {
+  cliIt("verify：N/36/N+44与配额（沪粤18/18、男女9/9、年龄段6/6/6、就业态6/6/6）与字段完整性", async () => {
     const r = runCli(["verify", "--storage", storageDir]);
     if (r.code !== 0) {
       console.log("VERIFY STDOUT FULL:", r.stdout.slice(0, 1500));
@@ -388,7 +388,7 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     const out = parseJson<{ ok: boolean; counts: { cases: number; showcase: number; tests: number }; mismatches: string[] }>(r.stdout, "verify");
     expect(out.ok).toBe(true);
     expect(out.mismatches).toEqual([]);
-    expect(out.counts).toEqual({ cases: 36, showcase: 36, tests: 78 });
+    expect(out.counts).toEqual({ cases: 36, showcase: 36, tests: 80 }); // 36回归 + 44示例（SHV2起）
 
     // 地区配额（DB直查）。
     const byRegion = await db.execute(sql`

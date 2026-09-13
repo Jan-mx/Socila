@@ -11,12 +11,12 @@
  *   （只有精确一个prepared批次匹配时才能推进），通过后批次→restore_verified
  *   （RCL-FR-005/NFR-001，第三轮复审）；
  * - generate：确定性生成36条场景并用快照规划器回填断言期望（RCL-FR-007/008/014）；
- * - plan-replacement：读取完整旧regression test行（64位非空内容hash）与42条
+ * - plan-replacement：读取完整旧regression test行（64位非空内容hash）与44条
  *   DSL example同步集合，结合完整新行构建精确manifest并输出manifestHash
  *   （RCL-FR-002/006/018）；
  * - apply：授权+事务内受控替换（executeRclApply：FOR UPDATE/applying/唯一约束
  *   +example原子同步+落库行hash核对）；
- * - verify：核对 N/36/N+42、沪粤18/18、配额、字段完整性与落库行hash逐项一致
+ * - verify：核对 N/36/N+44、沪粤18/18、配额、字段完整性与落库行hash逐项一致
  *   （RCL-AC-008/011，第三轮复审Fix 8）。
  */
 import { createHash, randomUUID } from "node:crypto";
@@ -56,7 +56,7 @@ import { generateShowcaseScenarios, buildCoverageManifest, type GeneratedScenari
 import { scoreCase } from "./scoring";
 import { classifyScenario } from "./multi-label";
 import { executeRclApply as defaultExecuteApply, type RclApplyResult } from "./apply";
-import { loadDslExampleTargets, buildExampleSync, type DslExampleTarget } from "./dsl-examples";
+import { loadDslExampleTargets, buildExampleSync, DSL_EXAMPLE_COUNT, type DslExampleTarget } from "./dsl-examples";
 import { newCaseDbRowHash, newShowcaseDbRowHash, newTestDbRowHash } from "./row-projections";
 
 export class RclExecutorError extends Error {
@@ -531,7 +531,7 @@ export interface PlanReplacementResult {
  * plan-replacement（RCL-FR-002/006/018/AC-003，第三轮复审）：
  * - 旧cases/showcase/tests按完整业务行重算规范化hash（tests为完整行，8个业务
  *   字段全部进入hash，contentHash不得为空）；
- * - 从地区DSL确定性加载42条目标example并计算保留/更新/新增/删除集合；
+ * - 从地区DSL确定性加载44条目标example并计算保留/更新/新增/删除集合；
  * - 新行contentHash按落库DB行投影计算（与apply事务内重读同一规则）；
  * - assertRclCounts显式要求exampleTestCount===42（28/49等数量不得成为合法目标）。
  */
@@ -562,7 +562,7 @@ export async function planRclReplacement(input: PlanReplacementInput): Promise<P
     contentHash: testRowContentHash(r as Record<string, unknown>),
   }));
 
-  // 42条DSL example目标与同步集合（RCL-FR-018/AC-011）。
+  // 44条DSL example目标与同步集合（RCL-FR-018/AC-011）。
   const dslTargets = loadDslExampleTargets();
   const exampleSync = buildExampleSync(exampleTestRows.rows as Array<Record<string, unknown>>, dslTargets);
   const exampleTests = dslTargets.map((t) => ({
@@ -725,7 +725,7 @@ export interface VerifyReplacementResult {
 }
 
 /**
- * verify（RCL-AC-008/011/012，第三轮复审Fix 8）：核对最终计数 N/36/N+42、
+ * verify（RCL-AC-008/011/012，第三轮复审Fix 8）：核对最终计数 N/36/N+44、
  * 沪粤18/18、配额、完整场景字段，并**按稳定UID重算落库完整行hash与manifest
  * 逐项比较**——不得只核对总数和字段非空。任一新行漂移 → ok=false。
  */
@@ -852,11 +852,11 @@ export async function verifyRclReplacement(input: VerifyReplacementInput): Promi
       }
     }
   }
-  // example必须精确42条且与manifest目标集合一致（RCL-AC-011）。
+  // example必须精确44条且与manifest目标集合一致（RCL-AC-011）。
   if (m) {
     const exampleRows = (await db.execute(sql`SELECT * FROM "tests" WHERE source = 'example' ORDER BY id`)).rows;
-    if (exampleRows.length !== 42) {
-      mismatches.push(`落库example ${exampleRows.length} ≠ 42（RCL-AC-011）`);
+    if (exampleRows.length !== DSL_EXAMPLE_COUNT) {
+      mismatches.push(`落库example ${exampleRows.length} ≠ ${DSL_EXAMPLE_COUNT}（RCL-AC-011）`);
     }
     for (const row of exampleRows) {
       const name = String((row as { name: string }).name);

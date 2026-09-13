@@ -12,6 +12,8 @@ from fastapi import FastAPI
 
 from agent.api.app import AppDeps, create_app
 from agent.config import Settings, get_settings
+from agent.rag.runtime import RagRuntime
+from agent.rag.storage import object_store_from_env
 from agent.repositories import PostgresRepositories
 from agent.security.replay import PostgresReplayGuard
 from agent.security.service_jwt import ServiceJwt
@@ -24,6 +26,10 @@ def build_deps(settings: Settings | None = None) -> AppDeps:
     # SJWT-FR-001：Secret 只来自部署环境；无效配置启动失败且不输出Secret内容。
     service_jwt = ServiceJwt(settings.service_jwt_current, settings.service_jwt_previous or None)
     repos = PostgresRepositories(settings.database_url)
+    # SHV2-FR-030：内部RAG读取面（搜索/原件）。容器经AGENT_MINIO_ENDPOINT（minio:9000）
+    # 访问S3 API；未配置endpoint时回退内存实现（仅本地装配，不提供真实对象）。
+    # SiliconFlow客户端在首次search时懒构造（服务启动不依赖外部模型凭据）。
+    rag_runtime = RagRuntime(settings.database_url, object_store_from_env())
     return AppDeps(
         repos,
         graph_runner=None,
@@ -31,6 +37,7 @@ def build_deps(settings: Settings | None = None) -> AppDeps:
         service_jwt=service_jwt,
         # SJWT-FR-008：JTI消费与业务写入同事务（agent.service_jwt_replays）。
         replay=PostgresReplayGuard(settings.database_url),
+        rag_runtime=rag_runtime,
     )
 
 

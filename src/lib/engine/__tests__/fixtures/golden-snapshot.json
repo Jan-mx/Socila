@@ -1198,7 +1198,7 @@
           }
         ],
         "matched": true,
-        "row_id": "row_1_cert_true",
+        "row_id": "row_1_cert_true_flexible",
         "rule_id": "R-500-4050-ELIGIBILITY"
       }
     ],
@@ -1214,12 +1214,12 @@
   {
     "calc": {
       "subsidy": {
-        "4050_amount_est": 750.0000000000001,
+        "4050_amount_est": 1131.9,
         "4050_eligible": true,
-        "flex_cost_est": 1500.0000000000002
+        "flex_cost_est": 2263.8
       }
     },
-    "name": "下限基数5000，比例0.3，补贴50% -> 750",
+    "name": "下限基数7546、费率0.3、补贴50% -> 1131.9",
     "plan": {},
     "rule_id": "R-510-4050-AMOUNT",
     "trace": [
@@ -1229,20 +1229,39 @@
             "path": "calc.subsidy.flex_cost_est",
             "type": "set",
             "value": {
-              "*": [
+              "/": [
                 {
-                  "var": "user.social.base_lower_amount_per_month"
-                },
-                {
-                  "+": [
+                  "floor": [
                     {
-                      "var": "params.P-SH-PENSION-RATE-FLEX"
-                    },
-                    {
-                      "var": "params.P-SH-MEDICAL-RATE-FLEX"
+                      "+": [
+                        {
+                          "*": [
+                            {
+                              "*": [
+                                {
+                                  "var": "params.P-SH-CONTRIB-BASE-LOWER"
+                                },
+                                {
+                                  "+": [
+                                    {
+                                      "var": "params.P-SH-PENSION-RATE-FLEX"
+                                    },
+                                    {
+                                      "var": "params.P-SH-MEDICAL-RATE-FLEX"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            100
+                          ]
+                        },
+                        0.5
+                      ]
                     }
                   ]
-                }
+                },
+                100
               ]
             }
           },
@@ -1250,13 +1269,32 @@
             "path": "calc.subsidy.4050_amount_est",
             "type": "set",
             "value": {
-              "*": [
+              "/": [
                 {
-                  "var": "calc.subsidy.flex_cost_est"
+                  "floor": [
+                    {
+                      "+": [
+                        {
+                          "*": [
+                            {
+                              "*": [
+                                {
+                                  "var": "calc.subsidy.flex_cost_est"
+                                },
+                                {
+                                  "var": "params.P-SH-4050-SUBSIDY-RATE"
+                                }
+                              ]
+                            },
+                            100
+                          ]
+                        },
+                        0.5
+                      ]
+                    }
+                  ]
                 },
-                {
-                  "var": "params.P-SH-4050-SUBSIDY-RATE"
-                }
+                100
               ]
             }
           }
@@ -1266,19 +1304,21 @@
         "rule_id": "R-510-4050-AMOUNT"
       }
     ],
-    "user": {
-      "social": {
-        "base_lower_amount_per_month": 5000
-      }
-    }
+    "user": {}
   },
   {
     "calc": {
+      "caveats": [
+        {
+          "caveat_id": "C-JOB-SUBSIDY-EMPLOYER",
+          "text": "岗位补贴由用人单位申请（签订1年以上劳动合同并足额缴费）；补贴期限累计一般不超过3年，期满且距法定退休年龄不足2年的可延长至退休。"
+        }
+      ],
       "subsidy": {
         "job_eligible": true
       }
     },
-    "name": "距退休30个月且就业困难 -> eligible",
+    "name": "就业困难认定且被单位吸纳 -> eligible",
     "plan": {},
     "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
     "trace": [
@@ -1288,6 +1328,13 @@
             "path": "calc.subsidy.job_eligible",
             "type": "set",
             "value": true
+          },
+          {
+            "type": "emit_caveat",
+            "value": {
+              "caveat_id": "C-JOB-SUBSIDY-EMPLOYER",
+              "text": "岗位补贴由用人单位申请（签订1年以上劳动合同并足额缴费）；补贴期限累计一般不超过3年，期满且距法定退休年龄不足2年的可延长至退休。"
+            }
           }
         ],
         "matched": true,
@@ -1296,20 +1343,22 @@
       }
     ],
     "user": {
+      "status": {
+        "employment_status": "employed"
+      },
       "subsidy": {
-        "has_employment_difficulty_cert": true,
-        "months_to_legal_retire": 30
+        "has_employment_difficulty_cert": true
       }
     }
   },
   {
     "calc": {
       "subsidy": {
-        "job_amount_est": 1345,
+        "job_amount_est": 1370,
         "job_eligible": true
       }
     },
-    "name": "最低工资2690，比例50% -> 1345",
+    "name": "最低工资2740、比例50% -> 1370",
     "plan": {},
     "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
     "trace": [
@@ -1319,13 +1368,32 @@
             "path": "calc.subsidy.job_amount_est",
             "type": "set",
             "value": {
-              "*": [
+              "/": [
                 {
-                  "var": "user.social.min_wage_amount_per_month"
+                  "floor": [
+                    {
+                      "+": [
+                        {
+                          "*": [
+                            {
+                              "*": [
+                                {
+                                  "var": "params.P-SH-MIN-WAGE"
+                                },
+                                {
+                                  "var": "params.P-SH-JOB-SUBSIDY-RATE-MINWAGE"
+                                }
+                              ]
+                            },
+                            100
+                          ]
+                        },
+                        0.5
+                      ]
+                    }
+                  ]
                 },
-                {
-                  "var": "params.P-SH-JOB-SUBSIDY-RATE-MINWAGE"
-                }
+                100
               ]
             }
           }
@@ -1335,11 +1403,7 @@
         "rule_id": "R-521-JOB-SUBSIDY-AMOUNT"
       }
     ],
-    "user": {
-      "social": {
-        "min_wage_amount_per_month": 2690
-      }
-    }
+    "user": {}
   },
   {
     "calc": {
@@ -1348,7 +1412,7 @@
       },
       "warnings": [
         {
-          "text": "如符合大龄条件，失业金期间养老最低档可能由失业基金承担；通常需要先缴后退并在退休前后办理，需按经办要求操作。",
+          "text": "符合大龄条件时，在本市以个人身份参加企业职工基本养老保险并缴费，其中按灵活就业人员最低缴费标准的部分由失业保险基金支付；须达到法定退休年龄次月起申请，按距退休不足1年内实际缴纳月数一次性支付。",
           "warning_id": "W-OLDER-UI-PENSION"
         }
       ]
@@ -1367,7 +1431,7 @@
           {
             "type": "emit_warning",
             "value": {
-              "text": "如符合大龄条件，失业金期间养老最低档可能由失业基金承担；通常需要先缴后退并在退休前后办理，需按经办要求操作。",
+              "text": "符合大龄条件时，在本市以个人身份参加企业职工基本养老保险并缴费，其中按灵活就业人员最低缴费标准的部分由失业保险基金支付；须达到法定退休年龄次月起申请，按距退休不足1年内实际缴纳月数一次性支付。",
               "warning_id": "W-OLDER-UI-PENSION"
             }
           }
@@ -1389,10 +1453,11 @@
   {
     "calc": {
       "subsidy": {
-        "4050_amount_est": 700,
+        "4050_amount_est": 1000,
         "4050_eligible": true,
-        "job_amount_est": 1200,
+        "job_amount_est": 1370,
         "job_eligible": true,
+        "older_ui_pension_fund_eligible": false,
         "selected_option": "job_subsidy"
       },
       "warnings": [
@@ -1433,16 +1498,17 @@
   {
     "calc": {
       "contribution": {
+        "pay_gap_months": 2,
         "pay_gap_needed": true
       },
       "warnings": [
         {
-          "text": "你的缴费月份包含可能需要补差的月份（常见7-8月，视社平/基数发布时间）。请关注随申办/税务通知并及时补差，避免影响后续扣费。",
+          "text": "新基数生效后存在按旧基数缴费的月份，可能需要按当期正式通知补差；请关注随申办/税务通知并及时办理，避免影响后续扣费。",
           "warning_id": "W-PAY-GAP"
         }
       ]
     },
-    "name": "缴费月份包含7 -> 需要补差提醒",
+    "name": "新基数生效后按旧基数缴费2个月 -> 需要补差提醒",
     "plan": {},
     "rule_id": "R-600-PAY-GAP-REMINDER",
     "trace": [
@@ -1454,25 +1520,208 @@
             "value": true
           },
           {
+            "path": "calc.contribution.pay_gap_months",
+            "type": "set",
+            "value": {
+              "var": "user.social.months_paid_at_old_base"
+            }
+          },
+          {
             "type": "emit_warning",
             "value": {
-              "text": "你的缴费月份包含可能需要补差的月份（常见7-8月，视社平/基数发布时间）。请关注随申办/税务通知并及时补差，避免影响后续扣费。",
+              "text": "新基数生效后存在按旧基数缴费的月份，可能需要按当期正式通知补差；请关注随申办/税务通知并及时办理，避免影响后续扣费。",
               "warning_id": "W-PAY-GAP"
             }
           }
         ],
         "matched": true,
-        "row_id": "row_2_intersects",
+        "row_id": "row_2_needed",
         "rule_id": "R-600-PAY-GAP-REMINDER"
       }
     ],
     "user": {
       "social": {
-        "paid_months_in_year": [
-          6,
-          7,
-          8
-        ]
+        "months_paid_at_old_base": 2
+      }
+    }
+  },
+  {
+    "calc": {
+      "unemployment": {
+        "benefit_stage": "1-12",
+        "eligible": true,
+        "monthly_amount_est": 2340
+      }
+    },
+    "name": "第1-12个月领取 -> 2340",
+    "plan": {},
+    "rule_id": "R-SH-UI-AMOUNT",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "path": "calc.unemployment.benefit_stage",
+            "type": "set",
+            "value": "1-12"
+          },
+          {
+            "path": "calc.unemployment.monthly_amount_est",
+            "type": "set",
+            "value": {
+              "var": "params.P-SH-UNEMPLOYMENT-BENEFIT-TIER1"
+            }
+          }
+        ],
+        "matched": true,
+        "row_id": "row_4_stage_1_12",
+        "rule_id": "R-SH-UI-AMOUNT"
+      }
+    ],
+    "user": {
+      "social": {
+        "ui_benefit_stage": "1-12"
+      }
+    }
+  },
+  {
+    "calc": {
+      "flex": {
+        "applicable": true,
+        "contrib_base": 7546,
+        "medical_monthly": 754.6,
+        "pension_monthly": 1509.2,
+        "total_monthly": 2263.8
+      }
+    },
+    "name": "按下限基数7546缴费 -> 养老1509.2/医保754.6/合计2263.8",
+    "plan": {},
+    "rule_id": "R-SH-FLEX-CONTRIBUTION",
+    "trace": [
+      {
+        "actions_executed": [
+          {
+            "path": "calc.flex.applicable",
+            "type": "set",
+            "value": true
+          },
+          {
+            "path": "calc.flex.contrib_base",
+            "type": "set",
+            "value": {
+              "var": "user.social.flex_contrib_base"
+            }
+          },
+          {
+            "path": "calc.flex.pension_monthly",
+            "type": "set",
+            "value": {
+              "/": [
+                {
+                  "floor": [
+                    {
+                      "+": [
+                        {
+                          "*": [
+                            {
+                              "*": [
+                                {
+                                  "var": "user.social.flex_contrib_base"
+                                },
+                                {
+                                  "var": "params.P-SH-PENSION-RATE-FLEX"
+                                }
+                              ]
+                            },
+                            100
+                          ]
+                        },
+                        0.5
+                      ]
+                    }
+                  ]
+                },
+                100
+              ]
+            }
+          },
+          {
+            "path": "calc.flex.medical_monthly",
+            "type": "set",
+            "value": {
+              "/": [
+                {
+                  "floor": [
+                    {
+                      "+": [
+                        {
+                          "*": [
+                            {
+                              "*": [
+                                {
+                                  "var": "user.social.flex_contrib_base"
+                                },
+                                {
+                                  "var": "params.P-SH-MEDICAL-RATE-FLEX"
+                                }
+                              ]
+                            },
+                            100
+                          ]
+                        },
+                        0.5
+                      ]
+                    }
+                  ]
+                },
+                100
+              ]
+            }
+          },
+          {
+            "path": "calc.flex.total_monthly",
+            "type": "set",
+            "value": {
+              "/": [
+                {
+                  "floor": [
+                    {
+                      "+": [
+                        {
+                          "*": [
+                            {
+                              "+": [
+                                {
+                                  "var": "calc.flex.pension_monthly"
+                                },
+                                {
+                                  "var": "calc.flex.medical_monthly"
+                                }
+                              ]
+                            },
+                            100
+                          ]
+                        },
+                        0.5
+                      ]
+                    }
+                  ]
+                },
+                100
+              ]
+            }
+          }
+        ],
+        "matched": true,
+        "row_id": "row_6_compute",
+        "rule_id": "R-SH-FLEX-CONTRIBUTION"
+      }
+    ],
+    "user": {
+      "social": {
+        "flex_contrib_base": 7546
+      },
+      "status": {
+        "employment_status": "flexible"
       }
     }
   }

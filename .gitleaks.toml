@@ -43,3 +43,40 @@ paths = [
   '''^dsl/regions/shanghai_dsl_v1/rules/R-540-SUBSIDY-MUTUAL-EXCLUSION\.json$''',
 ]
 condition = "AND"
+
+# generic-api-key规则：合成政策案例manifest的scenarioKey/token状字段值（RCL-GEN-2.0
+# 确定性场景键如"SH-female-from_1980-unemployed-UNEMPLOYMENT"，非凭据；WI-20260911-02
+# 人工核实为误报）。按"规则×路径"精确收窄，哨兵回归保证该路径上其他规则照常检测。
+[[allowlists]]
+description = "合成案例manifest场景键（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^docs/refactor/policy-ops-agent/case-library/shanghai-guangdong-v2\.manifest\.json$''',
+]
+condition = "AND"
+
+# generic-api-key规则：RAG证据同步测试的脱敏哨兵口令（"topsecret-*-9137"合成占位值，
+# 仅用于断言CLI输出不含凭据，非真实凭据；2026-09-12人工核实为误报）。按"规则×路径"
+# 精确收窄，哨兵回归保证该路径上其他规则照常检测。
+[[allowlists]]
+description = "证据同步测试脱敏哨兵口令（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^services/agent/tests/test_rag_evidence_sync\.py$''',
+]
+condition = "AND"
+
+# generic-api-key规则：rag-evidence隔离演练的合成IAM口令（"R4LimitedPass9137"仅用于
+# 演练步骤内在隔离MinIO上创建受限用户并触发AccessDenied反例，步骤finally即移除用户，
+# 非任何持久系统凭据；2026-09-13人工核实为误报）。按"规则×路径×秘密精确正则"收窄，
+# 哨兵回归保证该路径上其他规则照常检测。
+[[allowlists]]
+description = "rag-evidence演练合成IAM口令（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^scripts/rag-evidence-drill\.mjs$''',
+]
+regexes = [
+  '''^R4LimitedPass9137$''',
+]
+condition = "AND"

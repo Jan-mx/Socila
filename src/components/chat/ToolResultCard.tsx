@@ -411,7 +411,7 @@ function ScenarioCards({
 
   return (
     <div className="mt-3">
-      <p className="mb-2 text-xs font-medium text-muted-foreground">路径对比（按真实案例高频字段）</p>
+      <p className="mb-2 text-xs font-medium text-muted-foreground">路径对比（按典型场景高频字段）</p>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
         {scenarios.map((s) => {
           const recommended = s.scenario_id === recommendedId;

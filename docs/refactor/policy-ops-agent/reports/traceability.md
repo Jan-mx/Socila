@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-11
+> Updated: 2026-09-13
 
 ## 用途
 
@@ -56,6 +56,7 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 
 | Work Item | 规格 | 实现位置 | 测试路径 | 验收证据 | 状态 |
 | --- | --- | --- | --- | --- | --- |
+| WI-20260911-01（09-11 Feature上海政策纠偏与案例V2，阶段一） | SHV2-FR-001～007、SHV2-NFR-001/002/006/008、SHV2-AC-001～005 | `docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/`（23份官方原文）、`dsl/regions/shanghai_dsl_v1/`（参数包多窗口纠偏+10规则+11示例+manifest26规则集）、`src/lib/dsl/{param-windows.ts,shanghai-policy-v2.test.ts,citation-verifier.test.ts}`、`src/lib/dsl/citation-contract.test.ts`（上海纳入扫描）、`src/lib/case-governance/{dsl-examples.ts,manifest.ts,generator.ts,executor.ts}`（DSL_EXAMPLE_COUNT=44）、`src/lib/policy-materialization/{materialize.ts,shv2-shanghai-delta.integration.test.ts}`（expectedTotalCounts场景注入+AC-004测试）、`src/lib/engine/__tests__/shanghai-reclassification-drift.test.ts`（SHV2冻结基线46例） | `src/lib/dsl/shanghai-policy-v2.test.ts`（23例）、`citation-verifier.test.ts`（反例6例）、`citation-contract.test.ts`（上海100%覆盖）、`dsl-layout.test.ts`（10规则/31条目/26规则集）、`dsl-examples.test.ts`（44/沪11）、`golden.test.ts`/`golden-snapshot.test.ts`/`shanghai-reclassification-drift.test.ts`、`shv2-shanghai-delta.integration.test.ts`（隔离库上海delta隔离3例） | `docs/refactor/policy-ops-agent/reports/feature-09-11-shanghai-case-v2/acceptance-report.md` §1 | Accepted（2026-09-11） |
 | WI-20260907-02 | `docs/work-items/WI-20260907-02-task3-temporal-entry-hardening.md` | `src/server/modules/publishing/application/release-gates.ts`（空黄金测试集fail-closed）、`src/server/modules/publishing/application/jurisdiction-release.use-case.ts`（停用地区绑定+`ReleaseJurisdictionMismatchError`）、`src/app/api/admin/jurisdictions/[code]/releases/[releaseId]/route.ts`（URL地区传入用例+409映射）、`src/server/modules/planning/application/replay-plan.use-case.ts`（三方hash+`ReplaySnapshotDriftError`）、`src/app/api/plan/[id]/replay/route.ts`（409 `REPLAY_SNAPSHOT_DRIFT`）、`src/server/modules/planning/application/jurisdiction-compute.use-case.ts`（plan保存snapshotContentHash，JRP-FR-009）、`scripts/e2e-task3-setup.ts`、`src/server/modules/identity/__tests__/identity-container.test.ts`（30秒显式超时稳定化） | `release-gates.test.ts`（空集合反例）、`jurisdiction-release.use-case.test.ts`（广东URL+上海releaseId拒绝且零修改）、`replay-plan.use-case.test.ts`（三方一致/保存hash漂移/重算hash漂移/缺保存hash）、`jurisdiction-compute.use-case.test.ts`（savePlan hash断言）、`jurisdiction-compute.integration.test.ts`（跨地区停用拒绝+2026/2030广东不同快照落库）、`e2e/task3-regional.spec.ts`（JRP-AC-008 replay/JRP-AC-009跨地区停用与停用后unsupported） | `reports/feature-09-05-jurisdiction-planning/acceptance-report.md`（2026-09-09第二轮修复验收） | Accepted（2026-09-09） |
 | WI-20260907-03 | `docs/work-items/WI-20260907-03-regional-policy-case-rebuild.md` | 任务4代码、确定性案例、归档门禁及repair执行器 | Node/DB/E2E/Python/安全门禁及隔离repair演练 | 任务4验收报告§9～§11 | Accepted |
 | WI-20260907-04 | `docs/work-items/WI-20260907-04-persistent-case-library-replacement.md` | repair-forward单事务修复账本与可信归档元数据 | 12项持久验证、repair no-op、pre/post恢复40表/20 sequence | R8执行证据及2026-09-11独立复审 | Accepted |
@@ -186,3 +187,120 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | RCL-NFR-008 可审计 | 执行后12项验证（账本18条=1～16/21/22原值、批次状态、988 entries hex无重复452/36/500、36/36/78、42/36、10/5、业务表规范化hash与计划一致、verify --plan ok） | `post-state.txt`、`post-verify.json`、`repair-execution-summary.json` |
 
 - 边界：仅授权三项写入；snapshot/release/政策实体/远程库/Secret/部署零变化；未创建PR、未合并分支；临时验证容器清理；可信归档与pre/post备份未覆盖。
+
+## WI-20260911-02 RCL-GEN-2.0案例、Markdown案例库、API与UI（2026-09-11，SHV2-FR-008～016/AC-006～013）
+
+| 需求 | 实现 | 测试/证据 |
+| --- | --- | --- |
+| SHV2-FR-008 生成器版本/V2 UID | `src/lib/case-governance/generator-v2.ts`（`GENERATOR_VERSION_V2="RCL-GEN-2.0"`；`RPC/RPCT-<地区>-<场景键>-V2`；与V1并存） | `generator-v2.test.ts`（版本/UID 2例） |
+| SHV2-FR-009/AC-006 策展配额 | 上海§8.2固定轮转矩阵（能力×状态，年龄段=(能力+状态)%3、性别=(能力+状态)%2）+广东既有组合；性别×年龄×就业18个唯一组合 | `generator-v2.test.ts`配额4例（36/18/18、9/9、6/6/6、唯一组合、出生年与band一致） |
+| SHV2-FR-010/AC-007 能力一致 | 每能力显式assertionSpecs（退休3路径、养老3+1、医保4、失业4/2、灵活5/1、补贴3×3）；`eq`断言路径在引擎输出缺失→抛错；生成后断言自洽重放（`compareReplayWithAssertions`）fail-closed | `generator-v2.test.ts`能力矩阵/专属断言12例（含不适用输出、三档失业金、灵活缴费、补贴三场景、医保等待期） |
+| SHV2-FR-011/AC-008 完整生日与人物契约 | `buildInput`：36条全部birth_year/month/day/birth_date一致；女性强制female_retire_type（worker50/cadre55）；失业带年限+阶段/已领月数+on_unemployment_benefit；灵活带基数；补贴带认定+距退休月数（与引擎退休日期推导一致校验） | `generator-v2.test.ts`人物契约5例+字段缺失needs_agent反例2例 |
+| SHV2-FR-012/AC-009 可读文档 | `case-content-v2.ts`：case_text（≥200字，含合成声明/as-of/人物条件）、36条独立标题/问题/回答；能力不适用→"规则不适用"，needs_agent→"需补充字段"清单 | `generator-v2.test.ts`可读内容3例（互异、非占位、结构段） |
+| SHV2-FR-013/AC-010 合成披露 | `src/lib/showcase/labels.ts`（SYNTHETIC_CASE_LABEL/DISCLAIMER/V1占位识别/PENDING_V2_DOC_LABEL）；公开页/首页/导航/工具卡文案替换；后台"合成案例文档" | `synthetic-copy.test.ts`源码契约5例；E2E `shv2-case-copy.spec.ts` 4例 |
+| SHV2-FR-014 结构化来源 | `dsl-evidence-index.ts`（规则/参数→evidence索引；按as-of窗口+断言路径解析依赖来源，地区覆盖CN，去重排序）；`case-nature.ts` `toPolicySources`（12字段+64位hex+https校验，不完整丢弃） | `generator-v2.test.ts`来源5例（白名单、meta.json SHA/URL一致、来源-结论对应、无DOC-GD-POLICY-2026） |
+| SHV2-FR-015/AC-011 数值单源 | `case-content-v2.ts`禁算术派生、无政策常量；expected只承载引擎输出（needs_agent/conclusion_level/warnings+details/agent_questions+7命名空间剔除`_`键） | `generator-v2.test.ts`数值单源2例（36条数字全溯源、expected逐命名空间=引擎） |
+| SHV2-FR-016/AC-013 Markdown案例库 | `case-library-doc.ts`（manifest无时间戳、manifestHash正文重算；render确定性；check=manifestHash+逐案例contentHash+36/18/18+Markdown逐字节）；`scripts/rcl-case-library-v2-doc.ts`（render/--check，退出码0/2）；`scripts/rcl-case-library.ts generate-v2`（真实快照生成）；文档`docs/refactor/policy-ops-agent/case-library/shanghai-guangdong-v2.md`+`.manifest.json`（.gitattributes eol=lf） | `case-library-doc.test.ts` 10例（渲染/确定性/check漂移4反例/已提交文档通过+与内存生成逐条一致）；CLI隔离库生成后`--check`通过、篡改副本退出2 |
+| SHV2-NFR-005 API兼容 | `src/lib/showcase/case-nature.ts` `decorateShowcaseCase`（RCL-GEN-*→synthetic；其余human_curated不改写）；`/api/showcase-cases`与`/api/admin/cases`附加caseNature/policySources，既有字段原样 | `synthetic-copy.test.ts` API装饰6例（mock仓储路由2例） |
+| §8.4 广东保持 | 五类能力+as-of（2030场景2030-01-01）+广州440100+缺地市不估算+缺参needs_agent | `generator-v2.test.ts`广东5例 |
+| 确定性/快照/quality | 重复生成逐字节一致；snapshot绑定（真实库=快照ID+contentHash）；quality=scoreCase真实分解；contentHash规范化SHA-256 | `generator-v2.test.ts`标签/绑定/确定性5例 |
+
+- 门禁（2026-09-11本地新鲜）：`npm test` 80文件/829零skip；tsc退出0；eslint 0 error（既有10 warning未新增）；`npm run build`退出0；全新PG17+pgvector `test:db`（项目标准参数`--dangerouslyIgnoreUnhandledErrors`屏蔽Windows vitest worker teardown RPC竞态，测试失败仍非零退出）27文件/144零skip；agent.migrate --with-roles×2幂等；pytest -m integration 20/20零skip（补`SOCILA_TEST_DATABASE_URL`后RAG 3例不再skip）、非集成94、ruff/mypy 0问题；Chromium E2E 23/23（auth10+shv2 4+task3 5+task4 4）；scan-secrets --all 899文件零命中；Gitleaks 8.29.1完整历史96提交零发现（worktree经临时独立克隆扫描）；allowlist哨兵3场景全过；SHV2 delta集成3例（任务1）保持通过（重物化用例显式30秒超时，断言不变）。
+- 隔离环境：任务专属容器`shv2-task2-pg`（pgvector/pgvector:pg17，随机端口54955）；`shv2_e2e`库（migration+bootstrap+seed+e2e-rcl-setup快照激活与V1替换演练后generate-v2）；`shv2_drill`库（test:db/migrate/pytest）；持久policyops全程未连接未写入。
+- 已知环境事实：E2E管理员口令哈希与`scripts/db-gate-task34.mjs`内置哈希不匹配（bcrypt同盐重算确认），隔离库内将Jan口令哈希更新为与spec口令匹配的本地计算值（不写入仓库文件）。
+- 边界：无持久库写入；无快照/release持久变更；非RCL人工案例未被改写；`transcript_text`不生成（V2改写时保持NULL属WI-03）。
+
+## WI-20260911-03 0019审计迁移与受控原位改写（2026-09-11，SHV2-FR-017～025/AC-014～021）
+
+| 需求 | 实现 | 测试/证据 |
+| --- | --- | --- |
+| SHV2-FR-017 纯Schema迁移 | `drizzle/0019_case_rewrite_audit.sql`（只建审计表；journal 0019=1788797000000严格单调） | `rcl-0019-migration.integration.test.ts`幂等/列全集/CHECK/唯一/RESTRICT 4例；migration-lf契约7/7 |
+| SHV2-FR-018 精确计划 | `rewrite-v2.ts buildRewritePlan`：codeSha/来源工件指纹+attestation/前置指纹/finalFingerprint（含44 example行集与id序对齐）/3快照绑定/108条entries（整数ID、新旧UID、新旧内容hash、新旧快照hash、evidenceHash、完整before/after，日期归一化保证落盘复跑hash一致） | 单元5例（确定性/敏感性/verifyPlanBody）；CLI集成plan断言108 |
+| SHV2-FR-019 原位改写 | 人物槽位匹配（V2按§8.2矩阵重新分配能力）；`projectRewritten*Row`保留整数ID、V2 UID、case_text、真实标题/问答/来源；test last_run清空 | 单元投影3例+匹配2例；集成apply断言ID集合不变/36条V2干净case/计数36/36/80 |
+| SHV2-FR-020 完整审计 | `case_rewrite_entries` 108条before/after+hash链；批次1条applied绑定全部计划字段 | 集成断言1批次/108entries/before-after完整；演练第8步 |
+| SHV2-FR-021 原子与并发 | REPEATABLE READ+advisory xact lock+FOR UPDATE锁定108行；逐行旧hash核对→UPDATE→新hash与行体核对；COMMIT前finalFingerprint；40001重试 | 集成并发（一执行一noop）+故障注入（after_lock/after_updates/after_entries整体回滚） |
+| SHV2-FR-022 幂等 | applied+finalFingerprint+108条→noop:true；其余→`REWRITE_STATE_DRIFT`禁止补写 | 集成复跑noop/篡改drift/after恢复后noop；单元分类4例 |
+| SHV2-FR-023 持久默认拒绝 | CLI在任何连接前拒绝policyops库名（需`RCL_REWRITE_ALLOW_PERSISTENT=1`）；DIRTY/注入变量仅隔离演练 | 集成policyops反例（退出2）；单元参数守卫 |
+| SHV2-AC-020 恢复对账 | 演练post dump→第三实例pg_restore→`restore-reconcile`全表+sequence | 演练第7步OK（证据JSON） |
+
+- 门禁（2026-09-11本地新鲜）：`test:db`（全新库）29文件/156零skip；tsc/eslint/build退出0；pytest integration 20/20零skip+非集成94；Chromium E2E 23/23（V2终态分支：shv2_e2e改写planHash `fe92d7d8…` verify ok）；scan-secrets 914零命中；gitleaks全历史98提交经ADR-0009精确allowlist（哨兵通过）复扫no leaks；隔离演练9步全ok。
+- 边界：持久policyops未连接未写入；0019持久执行须另行fresh授权。
+
+## SHV2独立审查修复映射（2026-09-12，Reopened→修复交付待独立复审）
+
+| 审查需求 | 当前缺口 | 实际实现 | 测试/证据（2026-09-12本地新鲜执行） | 状态 |
+| --- | --- | --- | --- | --- |
+| SHV2-NFR-002/007 MinIO运行时原件 | Git evidence已提交，但未上传运行时MinIO，未登记/核对RAG `object_key` | `services/agent/agent/rag/evidence_sync.py`（`PolicyEvidenceSync` audit/plan/apply/verify；bucket固定`policy-originals`、键`originals/<sha256>`、桶/远程endpoint/policyops库名守卫、凭据redact）；CLI `python -m agent.rag.evidence_sync`；`scripts/rag-evidence-drill.mjs`（备份恢复对账编排） | `services/agent/tests/test_rag_evidence_sync.py` 18/18（零DB守卫7例+隔离DB集成10例+真实MinIO备份恢复1例；RED=ModuleNotFoundError）；真实23件原件演练12项全ok（audit预态23缺失→plan零写入→apply 23上传+RAG登记→verify→幂等noop→守卫反例→OBJECT_CONFLICT拒绝覆盖→pg_dump+逐对象备份→全新PG+全新MinIO恢复→恢复副本四方对账verify ok→输出零密钥；证据`rag-evidence-drill-2026-09-12T04-14-59-793Z.json`）；配置模板`runtime.env.example`默认bucket改`policy-originals` | 修复交付（待独立复审） |
+| SHV2-FR-019/020 业务hash一致性 | rewrite计划/审计有`new_content_hash`，但业务表`cases.content_hash`和`showcase_cases.content_hash`未证明同步 | `rewrite-v2.ts`：buildRewritePlan先按排除`content_hash`的投影算目标hash再写入after投影（防循环）；apply同事务UPDATE业务`content_hash`并单独核对列值；verify逐条显式读取业务`content_hash`核对；verifyPlanBody校验before/after携带业务hash且test条目无该键 | 单元RED 2例失败→GREEN 17/17（after=目标hash/防循环列值无关/verifyPlanBody三反例）；CLI集成10/10（新增：36+36业务列逐行=entry.new_content_hash、tests无content_hash列schema契约、篡改case/showcase业务hash→verify退出5、注入回滚业务hash逐行不变）；隔离演练10步全ok（最终核对业务hash漂移0/0、36/36全写入；post dump恢复副本verify ok；证据`rewrite-drill-evidence-2026-09-12T04-56-15-244Z.json`） | 修复交付（待独立复审） |
+| SHV2-NFR-008 完整Node门禁 | 完整`npm test`842/843，migration当前工作树用例默认5秒超时；单文件7/7通过 | `migration-lf.contract.test.ts`：blobBytes改为单次`git cat-file --batch`批量读取+缓存（60次git子进程→1次）；两个扫描用例加显式30秒超时（同文件既有策略）；断言零改动 | RED复现：完整套件842/843、目标用例5243ms超5s默认值；修复后单文件7/7（469ms）；标准完整`npm test`连续两次零失败零skip（见验收报告§5） | 修复交付（待独立复审） |
+| 文档事实一致性 | PRD仍含“仅完成PRD”，WI/验收报告误标最终Accepted | 本轮同步PRD、三个WI、验收报告、架构、测试、运维和PROGRESS；状态统一为“Ready for independent review”，不自行标记最终Accepted | 文档状态/分支/SHA/阻塞项一致性检查与相对链接检查 | 本次docs更新 |
+
+- 当前分支/远端（历史审查记录，2026-09-12 b5a8d13修复交付）：`codex/shanghai-case-v2`提交`b5a8d13`（f583adc为历史任务2/3交付SHA，d47dedf为审查缺口记录）；目标集成分支`refactor/policy-ops-agent-platform@0885613`未修改未合并。完整历史Gitleaks 100提交零发现（新增`test_rag_evidence_sync.py`脱敏哨兵`generic-api-key`误报经人工核实按ADR-0009登记精确allowlist，哨兵回归3场景全过）。
+- 持久边界：修复全程仅隔离数据库（容器`shv2-fix-pg`:54956、`shv2-task2-pg`:54955）与隔离MinIO（`shv2-fix-minio-a/b`:54960/54961）；生产MinIO、持久policyops、政策物化、快照/release及案例回填均需未来fresh授权。
+
+## SHV2控制契约复审修复映射（2026-09-12第二轮，本修复提交HEAD）
+
+起点`b5a8d13`（上一轮b5a8d13交付的MinIO接入/业务content_hash/Node超时修复不推翻）。f583adc为历史任务2/3交付SHA。
+
+| 复审需求 | 修复前缺口 | 实际实现 | 测试/证据 | 状态 |
+| --- | --- | --- | --- | --- |
+| apply绑定fresh授权计划 | apply可经环境开关直接执行，无计划/planHash/targetFingerprint/codeSha绑定 | `evidence_sync.py`：`build_plan`（确定性计划：schema/version、codeSha、jurisdiction、固定bucket、evidenceManifestHash、MinIO+RAG目标状态指纹与终态指纹、完整对象清单、plannedUploads/Fetches/Versions/noopObjects/conflicts、规范化planHash）；`apply(plan, plan_hash, target_fingerprint, i_am_authorized)`——写入前校验计划结构与planHash重算、HEAD==codeSha、工作树干净（RAG_EVIDENCE_ALLOW_DIRTY仅隔离演练）、evidence未漂移、MinIO+RAG状态指纹==targetFingerprint；终态→幂等noop；介于两者→TARGET_STATE_DRIFT零写入拒绝；环境开关仅作附加保护 | RED=集合期ImportError（21测试）；GREEN=35/35（授权缺失/错planHash/错指纹/codeSha不符/工作树dirty/证据漂移/对象漂移/DB漂移零写入、幂等noop、冲突不覆盖、注入后re-plan恢复、advisory锁并发无重复记录、计划输出零凭据）；演练17项全ok（证据`rag-evidence-drill-2026-09-12T08-43-47-471Z.json`，含守卫反例A-E、plan两次逐字节一致、apply、四方verify、noop、object-only、冲突拒绝+re-plan恢复、pg_dump+逐对象备份→全新库+全新MinIO恢复→恢复副本verify ok+同计划noop） | 修复交付（待独立复审） |
+| verify范围契约 | 缺数据库时verify跳过RAG检查仍可ok:true | 完整audit/plan/apply/verify必须连数据库（CLI USAGE拒绝）；缺库完整verify ok:false并逐件报告；显式`--object-only`降级模式结果带`verificationScope="object-only"`/`degraded=true`/`dbChecked=false`；完整verify逐件核对Git原件字节SHA、meta.json SHA、MinIO bucket/object_key/下载SHA、rag.fetches与rag.document_versions的object_key/content_hash及两处object_key一致 | 集成测试：缺库verify ok:false+问题指向数据库；object-only标记断言；演练object-only步与四方verify步分别断言标记 | 修复交付（待独立复审） |
+| 文档事实同步 | MinIO演练误写"10步"（证据实为12项）；f583adc/b5a8d13角色未标注；最终SHA无法自引用 | 本节及PRD/WI/PROGRESS/验收报告/OPERATIONS/TESTING同步：f583adc=历史任务2/3交付SHA、b5a8d13=本次控制修复起点、最终SHA=本修复提交HEAD（交付报告给出）；历史Reopened章节标记"历史审查记录"；演练步骤数按证据JSON如实（12项/17项/rewrite 10步） | 本文档与各文档一致性核对 | 本次docs更新 |
+
+| Chromium E2E阻塞项（门禁路径既有bug） | AUTH-US-002 reload后回复视图被预创建会话踩掉（4次稳定复现；独立playwright网络取证定位） | `ChatPageClient`将URL会话ID作为ChatPanel外部会话ID传入（URL有会话ID时面板不预创建；恢复失败重置路径不变） | 修复前完整E2E 17/23且4次复现；修复后23/23（58.6s）；独立脚本reload复现通过 | 修复交付（待独立复审） |
+
+- 持久边界：本轮全程仅隔离PostgreSQL（`shv2-ctrl-pg`:54957）与隔离MinIO（`shv2-ctrl-minio-a/b`:54962/54963，演练后清理）；持久policyops与生产MinIO未连接未写入。
+## SHV2缺桶生命周期复审修复映射（2026-09-12第三轮，本修复提交HEAD）
+
+起点`82c905b`（第二轮交付的fresh授权计划、四方verify、业务content_hash、Node超时与E2E修复不推翻）。2026-09-12只读核对生产容器socila-minio为bucketCount=0（bucketNames为空）——生产MinIO同步尚未获得授权、尚未执行，原件未进入生产MinIO，不得表述为已入库。
+
+| 复审需求 | 修复前缺口 | 实际实现 | 测试/证据 | 状态 |
+| --- | --- | --- | --- | --- |
+| 构造与只读命令零建桶（SHV2-FR-023/SHV2-NFR-006、plan/audit零写入契约） | `MinioObjectStore.__init__`在bucket缺失时调用`make_bucket`：audit/plan/verify/服务启动/健康检查构造store即隐式创建`policy-originals` | `storage.py`构造只建立连接信息；显式`bucket_exists()`（只读）/`ensure_bucket()`（仅授权apply持锁写入段；返回本次创建True/已存在False；并发创建BucketAlreadyOwnedByYou/BucketAlreadyExists幂等复查；权限/连接错误原样抛出）；`InMemoryObjectStore`同语义（`with_bucket=False`构造缺失bucket、缺桶put拒绝）；`object_store_from_env`与全部调用方核查零建桶；不新增Compose无条件初始化建桶 | RED=新增`TestBucketLifecycle`13测试，旧实现10失败（`test_store_constructor_does_not_create_bucket`实锤构造即建桶：`assert True is False`）；GREEN=48/48零skip（构造不建桶、ensure_bucket并发恰好一次创建、audit/plan/verify缺桶零写入、授权apply建桶、既有bucket兼容、object-only不建桶） | 修复交付（待独立复审） |
+| audit/verify缺桶失败关闭 | 缺桶时对象stat异常被吞→全部"对象缺失"，无明确BUCKET_MISSING语义（且构造已隐式建桶） | audit/verify先`bucket_exists()`：缺失→`BUCKET_MISSING`问题+ok=false+`bucketExists=false`，不创建bucket/不上传/不改RAG；verify的object-only同样对象层失败且scope/degraded/dbChecked标记准确 | `test_audit_fresh_minio_bucket_missing_zero_write`（含rag表零变化断言）、`test_verify_missing_bucket_fails_without_creating`（full+object-only两档）、演练audit缺桶预态步 | 修复交付（待独立复审） |
+| plan缺桶仍确定性只读且状态入指纹 | 计划无bucket状态字段；指纹不含bucket存在性，缺桶时无法表达"建桶前置态" | 计划新增`bucketExists`/`plannedBucketCreate`（两者进入planHash；targetFingerprint只绑定真实前置状态、finalFingerprint只绑定真实预期终态——`_state_fingerprint`纳入`bucketExists`真实存在性，终态恒为True；plannedBucketCreate是执行意图，不作为独立字段进入状态指纹）；缺桶时plannedBucketCreate=true、完整23件对象清单不变；同状态两次生成逐字节一致且bucket仍不存在；schema/算法版本升级`rag-evidence-sync-plan/1.1`/`RAG-EVIDENCE-SYNC-1.1`（旧计划结构校验拒绝） | `test_plan_fresh_minio_deterministic_planned_bucket_create_zero_write`、`verify_plan_structure`新增bucketExists/plannedBucketCreate布尔必填；演练plan步（缺桶）两次一致+bucket仍不存在+对象0 | 修复交付（待独立复审） |
+| bucket创建纳入fresh授权apply | 建桶发生在构造期（先于任何授权校验），fresh计划不覆盖bucket创建这一持久变化 | 建桶仅发生在apply全部校验通过（`--i-am-authorized`、计划结构、planHash、targetFingerprint、HEAD==codeSha、工作树契约、evidenceManifestHash未漂移、当前MinIO/RAG状态==计划前置指纹、endpoint/库名守卫）并取得advisory锁后的持锁事务内：`ensure_bucket()`→上传`originals/<sha256>`→登记rag.fetches/document_versions→四方verify；缺授权/错hash/错指纹/计划或状态漂移→bucket仍不存在、对象数0、RAG记录零变化；apply结果新增`bucketCreated` | `test_apply_refusals_never_create_bucket`、`test_apply_refuses_evidence_drift_without_creating_bucket`、`test_apply_refuses_db_state_drift_without_creating_bucket`、`test_authorized_apply_creates_bucket_uploads_and_verifies`、`test_reapply_same_plan_noop_after_bucket_created`、`test_concurrent_apply_single_bucket_single_records`、`test_preexisting_bucket_plan_compatible_no_recreate`、`test_conflicting_object_refused_with_bucket_present`；演练守卫反例A-D（未授权/错planHash/错指纹/plan后外部建桶漂移）零建桶、apply后恰好23对象 | 修复交付（待独立复审） |
+| 演练从缺桶起点 | 旧演练预先创建bucket，未覆盖"MinIO可达、bucket不存在"路径 | `scripts/rag-evidence-drill.mjs`17项改为缺桶起点：开始前删除隔离bucket（primary/restore）；audit缺桶预态exit4+BUCKET_MISSING；两次plan后bucket仍不存在；未授权/错hash/错指纹/外部建桶漂移全部零建桶；授权apply后bucket存在且恰好23对象；备份→全新库pg_restore+全新MinIO受控回填（恢复程序显式建桶，非evidence_sync副作用）→恢复副本verify ok+同计划noop | 证据`rag-evidence-drill-2026-09-12T12-53-58-005Z.json`17项全ok（failed=false） | 修复交付（待独立复审） |
+
+- 持久边界：本轮全程仅隔离PostgreSQL（`shv2-ctrl-pg`:54957）与隔离MinIO（`shv2-ctrl-minio-a/b`:54962/54963，演练后清理）；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；持久policyops未连接未写入；`refactor/policy-ops-agent-platform@0885613`未修改未合并；状态Ready for independent review。
+
+## SHV2第四轮复审修复映射（2026-09-13，本修复提交HEAD）
+
+起点`6bd3edc`（缺桶生命周期修复交付提交，亦为本轮开发起点；f583adc=历史任务2/3交付SHA、b5a8d13=第一轮审查修复、82c905b=fresh授权与verify范围修复）。修复链语义与fingerprint语义详见PRD §22、验收报告§8。
+
+| 复审需求 | 修复前缺口 | 实际实现 | 测试/证据 | 状态 |
+| --- | --- | --- | --- | --- |
+| MinIO对象存在性检查失败关闭（SHV2-NFR-006） | `MinioObjectStore.exists`捕获所有`S3Error`返回False：权限/凭据/服务端错误被转换为"对象缺失"，write-only权限组合下apply继续put覆盖内容寻址对象 | 只有`NoSuchKey`/`NoSuchObject`/`NoSuchBucket`返回False（minio 7.2.20真实MinIO实证：缺失对象=NoSuchKey、缺失bucket=NoSuchBucket、错误凭据=SignatureDoesNotMatch）；其余S3错误与连接/超时错误原样抛出；audit/plan/apply/verify遇错误必须失败；CLI统一脱敏 | RED：7×非"不存在"S3错误参数化+真实MinIO错误凭据+write-only降级put计数+audit/verify权限错误共11测试失败；GREEN：81/81 | 修复交付（待用户测试） |
+| bucketCreated真实创建归属 | apply在`ensure_bucket()`后固定`bucket_created=True`；外部抢先建桶时归属失实 | `bucket_created = self.store.ensure_bucket()`；外部进程在bucket_exists与ensure_bucket之间抢先建桶→报告false；授权/锁/上传/登记/verify不变 | RED：InMemory确定性竞态+真实MinIO竞态注入2测试失败（报告True）；GREEN：归属准确；演练竞态归属步ok | 修复交付（待用户测试） |
+| 拒绝路径数据库零写入证据 | 既有测试只检查bucket未创建，未完整证明rag.sources/rag.fetches/rag.document_versions零变化与对象层不变 | `TestRejectionPathsZeroWrite` 11条+`TestAccessDeniedFailsClosed`的AccessDenied路径（跨两个测试类合计12条）逐条apply前后比较三张RAG表规范化行hash+行数、bucket存在状态、MinIO对象键/字节SHA/对象数；外部漂移以漂移后基线为断言基准并单独记录；注入故障记录apply侧部分对象写入+DB整体回滚；并发恰好单写者 | 12路径测试全GREEN（含AccessDenied路径RED→GREEN）；演练9个守卫反例输出DB+对象层before/after指纹（证据`rag-evidence-drill-2026-09-12T16-47-00-452Z.json`） | 修复交付（待用户测试） |
+| 文档事实与hash语义同步 | 文档把f583adc及旧问题写成当前状态；"plannedBucketCreate进入target/finalFingerprint"表述错误 | PRD/PROGRESS/README/WI-01/验收报告/traceability/ARCHITECTURE/TESTING/OPERATIONS同步修复链语义（f583adc/b5a8d13/82c905b/6bd3edc/本修复提交HEAD）与指纹语义（planHash绑定整个计划含bucketExists与plannedBucketCreate；targetFingerprint只绑定真实前置状态；finalFingerprint只绑定真实预期终态；plannedBucketCreate是执行意图不入状态指纹） | `TestFingerprintSemantics`（bucket状态变化→planHash与targetFingerprint变化而finalFingerprint不变；plannedBucketCreate变化→planHash变化）；文档一致性核对 | 本次docs更新 |
+
+- 演练升级：`scripts/rag-evidence-drill.mjs` 17项→22项（新增codeSha不一致、dirty工作树、RAG数据库漂移、write-only权限错误经受限IAM用户真实AccessDenied、bucket创建竞态归属），22项全ok。
+- 持久边界：本轮全程仅隔离PostgreSQL（`shv2-r4-pg`:55101）与隔离MinIO（`shv2-r4-minio-a/b`:55102/55103，任务专属容器，验收后删除）；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；持久policyops未连接未写入；`refactor/policy-ops-agent-platform@0885613`未修改未合并；未创建PR、未合并main、未创建tag/Release。
+
+## SHV2运行时RAG闭环实现映射（WI-20260913-01，2026-09-13交付）
+
+| 需求 | 实现 | 测试/证据 | 状态 |
+| --- | --- | --- | --- |
+| SHV2-FR-028 / AC-022 MinIO映射 | `infra/prod/docker-compose.yml`（agent/worker显式`AGENT_MINIO_ENDPOINT=minio:9000`+`AGENT_MINIO_BUCKET=policy-originals`）；`src/lib/env/rag-runtime-config-contract.test.ts` | 契约测试5/5（9001与/login拒绝、`socila_minio-data:/data`、无第二MinIO卷、无无条件建桶）；`docker compose config --quiet`通过 | 已交付（待用户测试） |
+| SHV2-NFR-006 / AC-017 同步竞态 | `services/agent/agent/rag/evidence_sync.py`（`_verify_objects_or_conflict`三检查点：ensure后/上传后/提交前） | `tests/test_rag_evidence_sync.py` 85/85（`TestEnsureRaceConflict`、`TestEnsureRaceConflictRealMinio`、`TestPostUploadConflictCheck`、`TestPreCommitObjectCheck`三例RED→GREEN+提交前终检1例（复审P2-1修正注入点，旧实现RED））；drill竞态步骤ok | 已交付（待用户测试） |
+| SHV2-FR-029 / AC-023～025 受控索引 | `services/agent/agent/rag/evidence_index.py`（audit/plan/apply/verify/search五模式）；`agent/rag/pipeline.py`（`derived_index_complete`、`IngestService` dedup修复、空候选不rerank） | `tests/test_rag_evidence_index.py` 22/22零skip；drill真实SiliconFlow索引23/23+固定查询7546/2340/1872/1690/6个月+双通道候选+地区/日期过滤+noop+恢复副本一致 | 已交付（待用户测试） |
+| SHV2-FR-030 / AC-026 内部API | `agent/rag/runtime.py`+`agent/api/app.py`（`/internal/v1/rag/search`、`/internal/v1/rag/documents/{id}/original`）+`agent/api/main.py`懒装配 | `tests/test_rag_api.py` 11/11零skip（JWT/校验/附件头/404/502/元数据回填/广东零命中不rerank） | 已交付（待用户测试） |
+| SHV2-FR-031 / AC-027 对话来源链 | `src/lib/ai/search-policy.ts`+`src/lib/ai/tools.ts`（searchPolicy）+`src/lib/ai/prompts.ts`（规则10～12）+`src/app/api/rag/originals/[documentVersionId]/route.ts` | `src/lib/ai/__tests__/search-policy.test.ts` 8例+route测试4例；E2E `e2e/shv2-rag-chat.spec.ts` 3例（双链展示+登录态下载字节一致+无命中不编造） | 已交付（待用户测试） |
+| SHV2-NFR-007 / AC-028 恢复 | `scripts/rag-evidence-drill.mjs`（备份恢复+恢复副本索引对账）；`scripts/rcl-rewrite-drill-v2.mjs`（rewrite恢复演练） | drill 33项全ok（`rag-evidence-drill-2026-09-13T05-57-34-688Z.json`，scriptBlobSha `4edd7d8a…`=提交中脚本）；rewrite演练10步全ok（`rewrite-drill-evidence-2026-09-13T06-39-43-390Z.json`） | 已交付（待用户测试） |
+
+配套修复：`agent/rag/document_tree.py parse_html`（真实政府页面全块级提取+注释节点兼容）、`agent/rag/siliconflow.py`（Fake声明维度与实际向量长度一致）、`agent/rag/pipeline.py`（空候选不调用rerank）。
+
+- 代码起点`4da7f1a4269b99f351ef2994ac7cf6771914d0fa`；最终SHA=本任务提交HEAD（见PROGRESS对应章节回填）。
+- 持久边界：生产socila-minio（bucket=0）与持久policyops未连接未写入；隔离环境为任务专属`shv2-wi13-pg`:55110与`shv2-wi13-minio-a/b`:55111/55112。
+- 状态：**Ready for user testing**；生产同步/索引与refactor合并待用户测试后的fresh精确授权。
+
+## 当前交付复核（功能分支tip，实现主体`d32b812`，2026-09-13）
+
+| 需求 | 当前实现/证据 | 状态 |
+| --- | --- | --- |
+| SHV2-AC-022～025 | `evidence_index.py`、Compose端口契约、`rag-evidence-drill-2026-09-13T11-14-27-135Z.json`（23版本/Tree/chunks/1024维向量、固定查询、地区/日期过滤） | 隔离通过，待用户测试 |
+| SHV2-AC-026～027 | `agent/api/app.py`、Next下载代理、`searchPolicy`及对话E2E | 隔离通过，待用户测试 |
+| SHV2-AC-028 | PostgreSQL+MinIO备份恢复后四方verify、索引verify、固定查询和noop | 隔离通过，待用户测试 |
+| 生产持久化边界 | 生产MinIO bucket=0、RAG七表=0；目标分支仍`0885613`未合并 | 未授权，不执行 |

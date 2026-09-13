@@ -8,7 +8,7 @@
   "effective_from": "2024-01-01",
   "effective_to": null,
   "supersedes": [],
-  "notes": "真实4050还受年龄、参保基数下限、补贴年限等影响；建议在 Admin 中扩展细分规则。",
+  "notes": "依据沪人社规〔2022〕8号三：经认定的就业困难人员实现灵活就业并按时足额缴费的，可按规定申请社会保险补贴（有效期至2026-12-31）。",
   "inputs": [
     {
       "key": "user.subsidy.has_employment_difficulty_cert",
@@ -27,7 +27,7 @@
     "hit_policy": "first",
     "rows": [
       {
-        "row_id": "row_1_cert_true",
+        "row_id": "row_1_cert_true_flexible",
         "when": {
           "and": [
             {
@@ -39,14 +39,11 @@
               ]
             },
             {
-              "in": [
+              "==": [
                 {
                   "var": "user.status.employment_status"
                 },
-                [
-                  "unemployed",
-                  "flexible"
-                ]
+                "flexible"
               ]
             }
           ]
@@ -152,6 +149,39 @@
       }
     }
   ],
-  "evidence": [],
+  "evidence": [
+    {
+      "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "jurisdiction_code": "310000",
+      "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+      "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+      "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+      "fetched_at": "2026-09-11T04:01:44.294Z",
+      "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "paragraph",
+        "reference": "三"
+      },
+      "excerpt": "经认定的“就业困难人员”实现灵活就业并按时足额缴纳社会保险费的，可按规定申请社会保险补贴。"
+    },
+    {
+      "document_id": "DOC-SH-FLEX-SUBSIDY-CONDITIONS-2022",
+      "jurisdiction_code": "310000",
+      "title": "领取“就业困难人员”灵活就业社会保险费补贴需要符合什么条件？（上海市人力资源和社会保障局）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tcjjyyhzc_17545/20220704/t0035_1408041.html",
+      "fetched_at": "2026-09-11T03:46:54.350Z",
+      "content_sha256": "d1c46fed55d50bee2c23f77d15d5a0e5588491aedf9e4a249b4ad0416c730bb2",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-FLEX-SUBSIDY-CONDITIONS-2022/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答"
+      },
+      "excerpt": "经认定的“就业困难人员”实现灵活就业并按时足额缴纳社会保险费的，可按规定申请社会保险补贴。"
+    }
+  ],
   "operation": "add"
 }

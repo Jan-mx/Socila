@@ -1,0 +1,563 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-SH-UI-AMOUNT",
+  "name": "上海失业保险金月标准（按领取阶段与有效参数计发）",
+  "module": "unemployment_insurance",
+  "status": "published",
+  "priority": 430,
+  "effective_from": "2026-07-01",
+  "effective_to": "2028-06-30",
+  "supersedes": [],
+  "notes": "金额只能来自as-of日期有效的沪人社规三档参数；缺领取阶段、领取资格不确定或无有效参数时needs_agent，不估算。延长领取资格（期满未就业且距退休不足1年）不得由本规则推断，须经确认。",
+  "inputs": [
+    {
+      "key": "calc.unemployment.eligible",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "key": "user.social.ui_benefit_stage",
+      "type": "string",
+      "required": false,
+      "desc": "当前领取阶段：1-12 / 13-24 / extended"
+    },
+    {
+      "key": "user.social.ui_claimed_months",
+      "type": "number",
+      "required": false,
+      "desc": "本段已领取月数（用于推导1-12/13-24阶段）"
+    }
+  ],
+  "parameter_refs": [
+    {
+      "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER1",
+      "purpose": "第1-12个月失业金标准（元/月）"
+    },
+    {
+      "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER2",
+      "purpose": "第13-24个月失业金标准（元/月）"
+    },
+    {
+      "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED",
+      "purpose": "延长领取期间标准（元/月）"
+    }
+  ],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_not_eligible",
+        "when": {
+          "==": [
+            {
+              "var": "calc.unemployment.eligible"
+            },
+            false
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.benefit_stage",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": 0
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_eligibility_unknown",
+        "when": {
+          "==": [
+            {
+              "var": "calc.unemployment.eligible"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.benefit_stage",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_params_missing",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "or": [
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-UNEMPLOYMENT-BENEFIT-TIER1"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-UNEMPLOYMENT-BENEFIT-TIER2"
+                    },
+                    null
+                  ]
+                },
+                {
+                  "==": [
+                    {
+                      "var": "params.P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED"
+                    },
+                    null
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.benefit_stage",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_warning",
+              "value": {
+                "warning_id": "W-UI-AMOUNT-PARAM-MISSING",
+                "text": "当前日期没有有效的失业保险金标准参数，无法估算月标准。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_4_stage_1_12",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.ui_benefit_stage"
+                },
+                "1-12"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.benefit_stage",
+              "value": "1-12"
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": {
+                "var": "params.P-SH-UNEMPLOYMENT-BENEFIT-TIER1"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_5_stage_13_24",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.ui_benefit_stage"
+                },
+                "13-24"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.benefit_stage",
+              "value": "13-24"
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": {
+                "var": "params.P-SH-UNEMPLOYMENT-BENEFIT-TIER2"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_6_stage_extended",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.ui_benefit_stage"
+                },
+                "extended"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.benefit_stage",
+              "value": "extended"
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": {
+                "var": "params.P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_7_derive_1_12",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.ui_benefit_stage"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.ui_claimed_months"
+                },
+                null
+              ]
+            },
+            {
+              "<": [
+                {
+                  "var": "user.social.ui_claimed_months"
+                },
+                12
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.benefit_stage",
+              "value": "1-12"
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": {
+                "var": "params.P-SH-UNEMPLOYMENT-BENEFIT-TIER1"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_8_derive_13_24",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.ui_benefit_stage"
+                },
+                null
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.ui_claimed_months"
+                },
+                null
+              ]
+            },
+            {
+              ">=": [
+                {
+                  "var": "user.social.ui_claimed_months"
+                },
+                12
+              ]
+            },
+            {
+              "<": [
+                {
+                  "var": "user.social.ui_claimed_months"
+                },
+                24
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.benefit_stage",
+              "value": "13-24"
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": {
+                "var": "params.P-SH-UNEMPLOYMENT-BENEFIT-TIER2"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_9_missing_stage",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.ui_benefit_stage"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.benefit_stage",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.monthly_amount_est",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-UI-STAGE",
+                "text": "请确认当前失业保险金领取阶段（第1-12个月/第13-24个月/延长领取）或本段已领取月数；已领满24个月的延长领取资格需经办确认。",
+                "field": "user.social.ui_benefit_stage"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.unemployment.benefit_stage",
+      "type": "string"
+    },
+    {
+      "key": "calc.unemployment.monthly_amount_est",
+      "type": "number"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.warnings",
+      "type": "array"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "第1-12个月领取 -> 2340",
+      "input": {
+        "user": {
+          "social": {
+            "ui_benefit_stage": "1-12"
+          }
+        },
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        },
+        "params": {
+          "P-SH-UNEMPLOYMENT-BENEFIT-TIER1": 2340,
+          "P-SH-UNEMPLOYMENT-BENEFIT-TIER2": 1872,
+          "P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED": 1690
+        }
+      },
+      "expected": {
+        "calc": {
+          "unemployment": {
+            "benefit_stage": "1-12",
+            "monthly_amount_est": 2340
+          }
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "document_id": "DOC-SH-UI-BENEFIT-2026",
+      "jurisdiction_code": "310000",
+      "title": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知（沪人社规〔2026〕7号）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20260702/t0035_1442080.html",
+      "fetched_at": "2026-09-11T03:39:47.468Z",
+      "content_sha256": "47ea8304b41063734aaa1321a5d78b88f983ae488ceb1e83701e736c80a96d09",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-BENEFIT-2026/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "paragraph",
+        "reference": "一"
+      },
+      "excerpt": "（一）第1-12个月领取失业保险金的失业人员，失业保险金发放标准为2340元/月；"
+    },
+    {
+      "document_id": "DOC-SH-UI-CLAIM-RULES-2026",
+      "jurisdiction_code": "310000",
+      "title": "上海市失业保险金申领发放实施办法（沪人社规〔2026〕18号）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tshbx_17729/20260812/t0035_1443067.html",
+      "fetched_at": "2026-09-11T03:49:50.770Z",
+      "content_sha256": "c53260044ae652bb6024c6d20de2fa0354c0d21adb64676df1e35c957499ec9e",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-CLAIM-RULES-2026/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "paragraph",
+        "reference": "六"
+      },
+      "excerpt": "失业人员每月领取失业保险金的标准最高不得超过本市最低工资标准，最低不得低于本市最低生活保障标准。第1-12个月按实际支付标准，第13-24个月按第1-12个月实际支付标准的80%支付"
+    },
+    {
+      "document_id": "DOC-SH-UI-EXTENDED-CONDITIONS-2026",
+      "jurisdiction_code": "310000",
+      "title": "延长领取失业保险金需要符合什么条件？需要个人申请吗？（上海市人力资源和社会保障局）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tlqtj_17563/20260817/t0035_1443151.html",
+      "fetched_at": "2026-09-11T03:56:28.613Z",
+      "content_sha256": "d36d41d6cc51454f0177baf28be52dc9e5039f1d97c3b857d4cbd5416f3318b1",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-UI-EXTENDED-CONDITIONS-2026/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答"
+      },
+      "excerpt": "自2026年8月16日起，个人领取失业保险金期满时仍未就业且距离法定退休年龄不足1年的，可延长领取失业保险金直至法定退休年龄。"
+    }
+  ],
+  "operation": "add",
+  "target_business_key": null
+}

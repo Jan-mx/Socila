@@ -85,7 +85,7 @@ describe("discoverRegionDsl（SDL-FR-002/003/004）", () => {
     expect(shanghai.manifest.params_file).toBe("params/policy_params_shanghai_base.json");
     expect(shanghai.manifest.rule_set_file).toBe("rule_sets/rule_set_shanghai_plan_v1.json");
     expect(shanghai.manifest.tests_file).toBe("tests/rule_examples_as_tests.json");
-    expect(shanghai.ruleFiles).toHaveLength(8);
+    expect(shanghai.ruleFiles).toHaveLength(10);
 
     const cn = regions.find((r) => r.manifest.region_slug === "cn")!;
     expect(cn).toBeTruthy();

@@ -89,11 +89,11 @@ describe("上海地区目录 dsl/regions/shanghai_dsl_v1（SDL-FR-002/003）", (
     ).toBe(true);
   });
 
-  it("8条上海地方规则文件全部携带SOCILA-DSL-1.0且显式add（NRP-FR-007；16条国家规则迁入CN）", () => {
+  it("10条上海地方规则文件全部携带SOCILA-DSL-1.0且显式add（NRP-FR007；SHV2新增失业金额与灵活缴费规则；16条国家规则迁入CN）", () => {
     const files = readdirSync(path.join(REGION_DIR, "rules")).filter((f) =>
       f.endsWith(".json"),
     );
-    expect(files).toHaveLength(8);
+    expect(files).toHaveLength(10);
     for (const f of files) {
       const rule = JSON.parse(
         readFileSync(path.join(REGION_DIR, "rules", f), "utf8"),
@@ -103,7 +103,7 @@ describe("上海地区目录 dsl/regions/shanghai_dsl_v1（SDL-FR-002/003）", (
     }
   });
 
-  it("参数包SHANGHAI_BASE含27个参数（25标量+2表；国家表迁入CN、失业期限表为显式replace）", () => {
+  it("参数包SHANGHAI_BASE含31个条目（30标量窗口+1表；SHV2多窗口历史保留；失业期限表为显式replace）", () => {
     const pack = JSON.parse(
       readFileSync(
         path.join(REGION_DIR, "params/policy_params_shanghai_base.json"),
@@ -119,7 +119,7 @@ describe("上海地区目录 dsl/regions/shanghai_dsl_v1（SDL-FR-002/003）", (
       }>;
     };
     expect(pack.policy_pack_id).toBe("SHANGHAI_BASE");
-    expect(pack.params.length + pack.tables.length).toBe(27);
+    expect(pack.params.length + pack.tables.length).toBe(31);
     // 国家表已迁出。
     const ids = [...pack.params, ...pack.tables].map((p) => p.param_id);
     expect(ids).not.toContain("T-RETIREMENT-AGE-LOOKUP");
@@ -132,7 +132,7 @@ describe("上海地区目录 dsl/regions/shanghai_dsl_v1（SDL-FR-002/003）", (
     expect(uiTable?.target_business_key).toBe("T-UNEMPLOYMENT-DURATION-BY-YEARS");
   });
 
-  it("规则集RS-SHANGHAI-PLAN-V1覆盖24个业务键（16国家继承+8上海地方，NRP-FR-006）", () => {
+  it("规则集RS-SHANGHAI-PLAN-V1覆盖26个业务键（16国家继承+10上海地方，NRP-FR-006；SHV2新增2条）", () => {
     const ruleSet = JSON.parse(
       readFileSync(
         path.join(REGION_DIR, "rule_sets/rule_set_shanghai_plan_v1.json"),
@@ -144,7 +144,7 @@ describe("上海地区目录 dsl/regions/shanghai_dsl_v1（SDL-FR-002/003）", (
     const shFiles = readdirSync(path.join(REGION_DIR, "rules"))
       .filter((f) => f.endsWith(".json"))
       .map((f) => f.replace(/\.json$/, ""));
-    expect(ruleSet.rules).toHaveLength(24);
+    expect(ruleSet.rules).toHaveLength(26);
     for (const f of shFiles) expect(ruleSet.rules).toContain(f);
     const cnManifest = JSON.parse(
       readFileSync(path.join(CN_DIR, "rules_manifest.json"), "utf8"),

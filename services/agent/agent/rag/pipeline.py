@@ -48,6 +48,25 @@ def tree_to_markdown(tree: TreeNode) -> str:
     return "\n\n".join(lines)
 
 
+def document_title_from_tree(tree: TreeNode) -> str:
+    """Return the first trustworthy title candidate parsed from the source document.
+
+    Structural headings are preferred; documents without headings fall back to the first
+    nonblank parsed block so normal text ingestion can still carry non-invented provenance.
+    """
+    nodes: list[TreeNode] = [tree]
+    fallback = ""
+    while nodes:
+        node = nodes.pop(0)
+        text = node.text.strip()
+        if text and not fallback:
+            fallback = text
+        if text and node.type in ("document", "chapter", "section"):
+            return text
+        nodes[0:0] = node.children
+    return fallback
+
+
 @dataclass
 class IngestResult:
     document_version_id: str
@@ -56,6 +75,25 @@ class IngestResult:
     status: str
     chunk_count: int = 0
     warnings: list[str] = field(default_factory=list)
+
+
+def deduplicate_chunks(chunks: list[Any]) -> list[Any]:
+    """Keep one canonical row per stable chunk ID before embedding or persistence."""
+    unique: dict[str, Any] = {}
+    for chunk in chunks:
+        previous = unique.get(chunk.chunk_id)
+        if previous is not None:
+            if previous != chunk:
+                raise ValueError(f"CHUNK_ID_CONFLICT: {chunk.chunk_id}")
+            continue
+        unique[chunk.chunk_id] = chunk
+    return list(unique.values())
+
+
+def fts_input_for_chunk_text(text: str) -> str:
+    import jieba
+
+    return " ".join(jieba.cut_for_search(text))
 
 
 class IngestService:
@@ -81,16 +119,32 @@ class IngestService:
         conn = self._conn()
         try:
             existing = conn.execute(
-                "SELECT id FROM rag.document_versions WHERE content_hash=%s", (result.content_hash,)
+                "SELECT id, status FROM rag.document_versions WHERE content_hash=%s", (result.content_hash,)
             ).fetchone()
             if existing:
+                # WI-20260913-01任务2：dedup命中downloaded/parsed版本时不得返回伪
+                # indexed——只有派生索引完整（tree+chunks+embeddings齐全且状态indexed）
+                # 才可返回indexed，否则如实返回当前状态（由受控evidence_index补齐）。
+                version_id = str(existing[0])
+                status = str(existing[1] or "")
+                complete = derived_index_complete(conn, version_id)
                 conn.close()
                 return IngestResult(
-                    document_version_id=str(existing[0]),
+                    document_version_id=version_id,
                     content_hash=result.content_hash,
                     deduplicated=True,
-                    status="indexed",
+                    status="indexed" if complete else (status if status in ("downloaded", "parsed") else "incomplete"),
                 )
+
+            source = conn.execute(
+                "SELECT name, jurisdiction_code FROM rag.sources WHERE id=%s",
+                (source_id,),
+            ).fetchone()
+            if source is None:
+                raise ValueError(f"SOURCE_NOT_FOUND: {source_id}")
+            authority = str(source[0] or "").strip()
+            jurisdiction_code = str(source[1] or "").strip() or None
+            official_url = str(result.final_url or result.url or "").strip()
 
             object_key = f"originals/{result.content_hash}"
             self._store.put(object_key, result.content, result.mime)
@@ -101,26 +155,48 @@ class IngestService:
                  result.mime, json.dumps(result.response_headers), result.redirects),
             )
             version_id = conn.execute(
-                """INSERT INTO rag.document_versions (content_hash, source_id, mime, object_key, status, pipeline_version)
-                   VALUES (%s,%s,%s,%s,'downloaded',%s) RETURNING id""",
-                (result.content_hash, source_id, result.mime, object_key, "rag-parse-v1"),
+                """INSERT INTO rag.document_versions
+                   (content_hash, source_id, mime, object_key, status, pipeline_version,
+                    jurisdiction_code, official_url)
+                   VALUES (%s,%s,%s,%s,'downloaded',%s,%s,%s) RETURNING id""",
+                (
+                    result.content_hash,
+                    source_id,
+                    result.mime,
+                    object_key,
+                    "rag-parse-v1",
+                    jurisdiction_code,
+                    official_url or None,
+                ),
             ).fetchone()[0]
 
             parsed = parse_by_mime(result.mime, result.final_url, result.content)
             markdown = tree_to_markdown(parsed.tree)
+            title = document_title_from_tree(parsed.tree)
             conn.execute(
                 """INSERT INTO rag.document_trees (document_version_id, tree, markdown, pipeline_version)
                    VALUES (%s,%s,%s,%s)""",
                 (version_id, json.dumps(parsed.tree.to_dict(), ensure_ascii=False), markdown, parsed.pipeline_version),
             )
-            conn.execute("UPDATE rag.document_versions SET status='parsed' WHERE id=%s", (version_id,))
+            conn.execute(
+                "UPDATE rag.document_versions SET status='parsed', title=%s, authority=%s, "
+                "jurisdiction_code=%s, official_url=%s WHERE id=%s",
+                (title or None, authority or None, jurisdiction_code, official_url or None, version_id),
+            )
             conn.commit()
 
-            chunks = chunk_document(parsed.tree, str(version_id))
-            import jieba
+            chunks = deduplicate_chunks(chunk_document(parsed.tree, str(version_id)))
 
-            for chunk in chunks:
-                tokenized = " ".join(jieba.cut_for_search(chunk.text))
+            vectors: list[list[float]] = []
+            for start in range(0, len(chunks), 32):
+                embedded = self._client.embed([c.text for c in chunks[start:start + 32]])
+                if embedded["dimensions"] != 1024 or any(len(v) != 1024 for v in embedded["_vectors"]):
+                    raise ValueError("EMBEDDING_DIMENSION_MISMATCH: expected actual 1024-dimensional vectors")
+                vectors.extend(embedded["_vectors"])
+            if not chunks or len(chunks) != len(vectors):
+                raise ValueError("EMBEDDING_COUNT_MISMATCH")
+            for chunk, vector in zip(chunks, vectors, strict=True):
+                tokenized = fts_input_for_chunk_text(chunk.text)
                 conn.execute(
                     """INSERT INTO rag.chunks (id, document_version_id, parent_chunk_id, path, text, token_count, meta, fts)
                        VALUES (%s,%s,%s,%s,%s,%s,%s, to_tsvector('simple', %s))
@@ -128,15 +204,27 @@ class IngestService:
                     (chunk.chunk_id, version_id, chunk.parent_chunk_id, chunk.path, chunk.text,
                      chunk.token_count, json.dumps(chunk.meta, ensure_ascii=False), tokenized),
                 )
-            conn.execute("UPDATE rag.document_versions SET status='indexed' WHERE id=%s", (version_id,))
+                conn.execute(
+                    "INSERT INTO rag.embeddings (chunk_id, model, dimensions, index_version, embedding) "
+                    "VALUES (%s,%s,%s,%s,%s::vector)",
+                    (chunk.chunk_id, self._client.embedding_model, 1024, self._client.index_version,
+                     "[" + ",".join(repr(float(x)) for x in vector) + "]"),
+                )
+            runtime_ready = bool(title and authority and official_url)
+            final_status = "indexed" if runtime_ready else "parsed"
+            conn.execute("UPDATE rag.document_versions SET status=%s WHERE id=%s", (final_status, version_id))
             conn.commit()
             return IngestResult(
                 document_version_id=str(version_id),
                 content_hash=result.content_hash,
                 deduplicated=False,
-                status="indexed",
+                status=final_status,
                 chunk_count=len(chunks),
-                warnings=parsed.warnings,
+                warnings=(
+                    parsed.warnings
+                    if runtime_ready
+                    else [*parsed.warnings, "PROVENANCE_INCOMPLETE: document remains parsed and is not runtime-searchable"]
+                ),
             )
         finally:
             conn.close()
@@ -229,8 +317,22 @@ class RetrievalService:
                     "path": row[4],
                 }
 
-        # rerank（Fake/真实均可）。
+        # rerank（Fake/真实均可）；无候选时不得以空文档列表调用rerank（WI-20260913-01任务3：
+        # 真实rerank API对空documents可能报错，且空候选语义下直接返回空hits）。
         ordered_ids = sorted(rrf, key=lambda k: -rrf[k])[: max(top_k * 3, 10)]
+        if not ordered_ids:
+            conn = self._conn()
+            try:
+                conn.execute(
+                    """INSERT INTO rag.retrieval_audit (query, jurisdiction_code, as_of_date, top_k, candidate_count, result_ids, index_version)
+                       VALUES (%s,%s,%s,%s,0,'[]'::jsonb,%s)""",
+                    (query, jurisdiction_code, as_of_date, top_k, self._client.index_version),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            return []
+
         reranked = self._client.rerank(query, [detail[i]["text"] for i in ordered_ids], top_n=top_k)
         min_score = float(os.environ.get("RAG_RERANK_MIN_SCORE", "0.2"))
         reranked = [r for r in reranked if float(r["relevance_score"]) >= min_score]
@@ -276,6 +378,26 @@ class RetrievalService:
         finally:
             conn.close()
         return hits
+
+
+def derived_index_complete(conn: Any, document_version_id: str) -> bool:
+    """派生索引完整性（WI-20260913-01任务2）：tree存在、chunks>0、embeddings数量
+    等于chunks且向量非空、版本状态为indexed。任一不满足即不完整——调用方不得
+    把downloaded/parsed版本报告为伪indexed。"""
+    row = conn.execute(
+        """SELECT
+             (SELECT status FROM rag.document_versions WHERE id=%s),
+             EXISTS(SELECT 1 FROM rag.document_trees WHERE document_version_id=%s),
+             (SELECT count(*) FROM rag.chunks WHERE document_version_id=%s),
+             (SELECT count(*) FROM rag.embeddings e JOIN rag.chunks c ON c.id=e.chunk_id
+                WHERE c.document_version_id=%s AND e.embedding IS NOT NULL)
+           """,
+        (document_version_id, document_version_id, document_version_id, document_version_id),
+    ).fetchone()
+    if row is None:
+        return False
+    status, tree, chunks, embeddings = row[0], bool(row[1]), int(row[2]), int(row[3])
+    return status == "indexed" and tree and chunks > 0 and embeddings == chunks
 
 
 def content_hash_of(content: bytes) -> str:
