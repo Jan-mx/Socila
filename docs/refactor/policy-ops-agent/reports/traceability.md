@@ -319,3 +319,19 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 - 生产同步plan：`backup/pre-shanghai-rag-20260913-201709/sync-plan.json`（planHash `6751f812908157f688bf8416808a59ff14d3a0920f1bcf747d89d9996a49392a`、target `0de35927f519a6bccbfb2ebac77b0d18c8a7735da0c54fa589aea21f43025371`、final `6ff9444f74b376d2db22a09bb095a21cd27d30d10c9c4db707eedce6c7bd8599`）。
 - 生产索引plan：`backup/rag-exec-20260913/index-plan.json`（planHash `2f73789603feaa70b54365bbee5f161b9977ffaee029064b6e25cb0f4d85570b`、target `b87228f74c2cba409427274228d7c6f64a51ea9dbee0cc4c31831e799907896c`、final `3fae7bdd7256c54cde2e3b39abfef8b4538047f7fc0af0f4c85fcbdd942c3beb`、manifestHash `58e85966d0aa6d745144004b91a97bc8bfd419c774b1a6e723c36fbeb1681549`）。
 - 状态：**生产同步与索引完成，等待用户人工测试**；Feature最终Accepted待用户测试确认。
+
+## UAT阻断修复映射（2026-09-14，提交39fbd00）
+
+| 需求/阻断 | 修复与证据 | 状态 |
+| --- | --- | --- |
+| DeepSeek强制工具调用（thinking 400） | 探测矩阵（v4.1-flash账号不可用400；deepseek-flash/v4-flash默认thinking强制tool_choice 400、thinking disabled 200）→保留模型+`withDeepSeekCompat`适配器（仅显式tool_choice注入）→生产政策问题step_count=3、searchPolicy执行、日志零thinking错误；单测10/10 | 生产修复✓ |
+| AUTH-NFR-003登录限流5分钟 | 常量收口`login-rate-limits.ts`+页面文案+PRD同步；可控时钟单测7/7；生产登录页渲染「请求频繁，请五分钟后再尝试。」✓ | 生产达成✓ |
+| 密码重置连续语义 | 集成测试（全新PG17）9/9：全语义+连续重置+仅最后临时密码可登录+改密后清除+审计；管理员页二次重置提示 | 自动化证明✓，人工流程待用户测试 |
+| provenance门禁误伤（新发现） | URL提取器全角/半角括号终止符+输出门禁人设句段豁免（数量化事实/官方引用仍门禁）；单测13/13 | 生产修复✓ |
+| e2e套件登录限流兼容（新发现） | `e2e/api-auth.ts` API登录前置；auth.spec保留UI专测 | E2E 28/28✓ |
+| agent外网出口（新发现阻塞） | 生产compose `socila_internal=internal:true`，agent无外网路由→api.siliconflow.cn不可达→检索500失败关闭→兜底答复；修复需变更agent网络并重建（触碰保护边界） | **等待用户显式授权** |
+
+- 生产部署：`web:shv2-39fbd00`=`web:latest`（5ca9a230c98f）仅重建socila-web（healthy）；回退标签`web:rollback-pre-a04946e`保留；agent/worker/beat/postgres/minio/redis与数据卷未触碰。
+- 生产终态不变：23对象/185 chunks/185 embeddings/sources=2/fetches=23/versions=23全部indexed；retrieval_audit=6（均为宿主机固定查询记录）。
+- 边界：未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；worktree与功能分支保留。
+- 状态：**代码/部署完成；政策问答完整链路等待agent网络变更授权后复验；其余待用户人工测试**。

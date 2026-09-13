@@ -424,3 +424,20 @@ rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-
 7. 运行证据仅存gitignored `backup/rag-exec-20260913/`与`backup/post-shanghai-rag-20260913-233844/`（运行器、apply/verify/查询JSON、计划文件、对象备份、dump），不进入版本库；不提交dump、对象备份、凭据或计划JSON。
 
 状态更新：生产同步与索引**已完成**，进入用户人工测试；Feature最终Accepted仍待用户测试确认。未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release。
+
+### 10.8 UAT阻断修复与生产Web更新（2026-09-14，提交39fbd00）
+
+| 阻断项 | 修复 | 生产验证 |
+| --- | --- | --- |
+| 强制tool_choice触发DeepSeek thinking 400 | 先探测（v4.1-flash账号不可用；deepseek-flash与v4-flash行为一致）→保留模型+`withDeepSeekCompat`适配器（仅DeepSeek/chat/completions+显式tool_choice注入thinking disabled） | 生产政策问题step_count=3、searchPolicy实际执行、日志无thinking错误✓ |
+| 登录限流15分钟窗口 | 窗口5分钟（门槛不变）+文案「请求频繁，请五分钟后再尝试。」+常量收口+PRD AUTH-NFR-003同步+可控时钟单测 | 登录页渲染新文案✓；限流单测7/7 |
+| 密码重置连续语义缺自动化证明 | 集成测试2例（全新PG17）+管理员页二次重置提示 | 9/9通过（hash变化/auth_version/must_change_password/临时密码过期/审计/仅最后临时密码可登录/改密后清除） |
+| （新发现）provenance门禁全角括号误判 | 提取器终止符补全（`（`/`(`/`：`/`？`/`！`）+测试 | 生产带链接回复正常渲染✓ |
+| （新发现）输出门禁能力自述误伤 | 人设/服务性句段豁免（数量化事实/官方引用仍门禁）+测试 | 普通对话384字符真实回复✓ |
+| （新发现）e2e套件超登录页IP限流 | 非auth-spec登录前置API化（e2e/api-auth.ts） | E2E 28/28✓ |
+
+**部署后九项验证**：①web healthy（新镜像`web:shv2-39fbd00`=`web:latest` 5ca9a230c98f，回退标签`web:rollback-pre-a04946e`保留）✓；②普通对话✓；③searchPolicy实际调用✓；④带来源回答**阻塞**；⑤无thinking错误✓；⑥retrieval_audit增加**阻塞**；⑦23对象/185 chunks/185 embeddings不变✓；⑧限流5分钟文案✓；⑨临时密码改密流程留待人工测试。
+
+**④⑥阻塞根因（需用户决策）**：生产compose将agent仅置于`internal:true`网络（无外网路由），运行期查询嵌入调用api.siliconflow.cn必然失败（DNS/路由均不可达）→检索500失败关闭→兜底答复。修复需变更agent网络并重建agent容器，触碰「不得重建或修改socila-agent」边界，已停止等待用户显式授权。
+
+门禁数字详见TESTING.md；运行证据（探测矩阵JSON、apply/verify结果、E2E日志）在gitignored `backup/rag-exec-20260913/`与test-results。状态：**等待agent网络变更授权 + 用户人工测试**。

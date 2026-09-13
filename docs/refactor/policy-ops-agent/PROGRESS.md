@@ -648,3 +648,15 @@
 - 执行后备份与恢复：`backup/post-shanghai-rag-20260913-233844/`（policyops.dump -Fc + 23对象逐字节备份与SHA清单）；全新`shv2-postrest-pg`:55432（policyops_restore）+全新`shv2-postrest-minio`:19000恢复后，源/副本RAG计数一致，四方verify、索引verify与六项固定查询全部通过（pg_restore仅agent_app角色GRANT 9条报错，属全新实例预期）。
 - 边界：未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；运行证据（计划JSON、apply/verify结果、对象备份、dump）仅存gitignored `backup/`，不进入版本库；`F:\Socila-shanghai-case-v2` worktree保留。
 - 状态：**生产同步与索引完成，等待用户人工测试**（用户测试通过前不合并不标记Feature最终Accepted）。
+
+## 2026-09-14 UAT阻断修复与生产Web更新（提交39fbd00）
+
+- **任务一（先探测后决策）**：脱敏探测矩阵（生产Key）实证 `deepseek-v4.1-flash` 账号不可用（400+不在/models）、`deepseek-flash` 与 `deepseek-v4-flash` 行为一致——默认thinking下强制tool_choice 400（复现生产错误），`thinking={type:"disabled"}` 后恢复200工具调用。按固定规则**保留模型 deepseek-v4-flash**（OPENAI_MODEL与.env.example不变），新增 `withDeepSeekCompat` fetch适配器（仅DeepSeek+/chat/completions+显式tool_choice注入thinking disabled；普通对话与auto保持默认thinking；零日志）；首步强制searchPolicy未动。TDD 10/10。
+- **任务二**：登录限流窗口15→5分钟（20/IP、5/IP+规范化用户名门槛不变），常量收口+页面文案「请求频繁，请五分钟后再尝试。」+PRD AUTH-NFR-003同步+可控时钟单测7例。
+- **任务三**：管理员连续重置语义集成测试（PG17全新库9/9）+管理员页二次重置提示文案。
+- **同链路缺陷修复**：①provenance门禁URL提取器全角括号终止符（真实带链接回复曾被误替换为兜底）；②输出门禁人设/能力句段豁免（普通祝福/寒暄曾被整段替换，数量化事实仍门禁）；③e2e登录前置API化（登录页IP限流20次/5分钟为产品契约，套件总量超限；auth.spec保留UI专测）。
+- **门禁（全部本地新鲜执行）**：探测矩阵✓；DeepSeek聚焦10/10；限流7/7；密码集成（全新PG17）9/9；npm test 87文件/896用例零失败零skip；tsc 0；eslint 0 error（7条既有warning）；build退出0；Chromium E2E 28/28；pytest 137+ruff 0+mypy(agent) 0；citation/RAG契约28/28；案例库--check ok（manifestHash `c974157d…`）；scan-secrets --all 948文件零命中；git diff --check通过；独立复审PASS（无Critical/P1/P2，7条P3已闭环5条、2条备案）。
+- **生产部署**：保留回退标签 `web:rollback-pre-a04946e`；从39fbd00构建 `web:shv2-39fbd00`=`web:latest`（5ca9a230c98f）仅重建 socila-web（healthy）；agent/worker/beat/postgres/minio/redis与数据卷未触碰；`.env`/`.env.example`未改模型（探测实证当前模型+适配器可用）。
+- **部署后验证**：①healthy✓ ②普通对话✓（384字符真实回复）③searchPolicy实际调用✓（step_count=3）⑤无thinking错误✓ ⑦23对象/185 chunks/185 embeddings不变✓ ⑧限流5分钟文案✓；**④⑥阻塞**：生产compose将agent仅置于`internal:true`网络（无外网路由），查询嵌入调用api.siliconflow.cn必然DNS失败→检索500失败关闭→兜底答复。该缺陷与LLM代码无关，修复需变更agent网络（触碰「不得重建或修改socila-agent」边界），已停止等待用户显式授权。
+- 边界：未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；`F:\Socila-shanghai-case-v2` worktree与功能分支保留。
+- 状态：**等待用户对agent网络变更授权 + 人工测试**。

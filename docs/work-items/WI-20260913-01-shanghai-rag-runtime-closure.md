@@ -159,3 +159,39 @@ Web下载必须要求登录并代理Agent原件流；不得返回MinIO内部地�
 ### 边界与状态
 
 未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；`F:\Socila-shanghai-case-v2` worktree保留待用户测试确认。状态：**生产同步与索引完成，等待用户人工测试**（09-11 Feature最终Accepted仍待用户测试）。
+
+## UAT阻断修复记录（2026-09-14；提交39fbd00「fix: 修复DeepSeek工具调用与登录限流」）
+
+### 任务一：DeepSeek强制工具调用（先探测后决策）
+
+- **脱敏探测矩阵**（生产Key，仅记录模型ID/HTTP状态/错误code/内容与工具调用标志）：
+  - `GET /models` → 200，仅 `deepseek-flash`、`deepseek-v4-pro`；
+  - `deepseek-v4.1-flash`：全部5场景400（账号不支持该模型ID，且不在/models）→ 按决策规则禁止使用；
+  - `deepseek-flash` 与 `deepseek-v4-flash`（当前别名）行为一致：普通对话200（默认thinking开）、tools+auto 200并发起searchPolicy调用、**强制tool_choice（默认thinking）400 "Thinking mode does not support this tool_choice"（复现生产错误）**、显式 `thinking={type:"disabled"}`+强制工具→200并正确返回工具调用。
+- **决策**：v4.1-flash不可用→跳过；可用模型在默认thinking下均拒绝强制tool_choice→保留实际可用模型 `deepseek-v4-flash`（不变更OPENAI_MODEL），新增 `src/lib/ai/deepseek-compat.ts` 的 `withDeepSeekCompat` fetch适配器：仅匹配DeepSeek模型+/chat/completions、仅修改JSON body、仅显式tool_choice时注入 `thinking={type:"disabled"}`；普通对话/auto/其他Provider/非JSON原样转发；零日志、Authorization透传。`agent.ts` 经 `createOpenAI({fetch})` 接入。**首步强制searchPolicy保留，未改为auto**；普通对话保持默认thinking。
+- TDD：RED=模拟DeepSeek上游（默认thinking+强制tool_choice→400）在无适配器时复现生产错误；GREEN=适配器10/10（注入/幂等/auto不动/非DeepSeek不动/非chat端点不动/非JSON透传/头透传/零日志/AI SDK两种tool_choice对象形态）。
+
+### 任务二：登录限流窗口15→5分钟
+
+- 常量收口 `src/lib/auth/login-rate-limits.ts`（IP 20/5min登录页层；IP+规范化用户名 5/5min authorize层；次数门槛不变）；登录页文案精确改为「请求频繁，请五分钟后再尝试。」；PRD AUTH-NFR-003同步。
+- 可控时钟单测7例：IP第20允许/21拒绝、用户名第5允许/6拒绝、4分59秒仍拒、满5分钟恢复、用户名bucket隔离、全IP上限有效、文案精确匹配。
+
+### 任务三：管理员重置连续语义（自动化证明）
+
+- 集成测试（全新PG17，9/9）新增2例：重置全语义（bcrypt hash变化、auth_version递增、must_change_password=true、temporary_password_expires_at非空、auth.password_reset_by_admin审计、明文不入库）；连续两次重置后仅最后一次临时密码可登录，改密后must_change_password=false、temporary_password_expires_at=NULL、auth_version再递增、新密码可登录、auth.password_changed审计。
+- 管理员页确认框与临时密码展示处补充：「再次重置会立即使上一次临时密码及用户当前密码失效，请只把最后一次生成的临时密码交给用户。」
+
+### 部署验证发现的同链路缺陷（一并修复）
+
+1. **provenance门禁URL提取器**：纯文本提取把全角括号补充说明粘进归档路径（`/api/rag/originals/xxx（登录后可下载）`），`onlyApprovedLinks`精确匹配失败→真实带链接回复被整段替换为兜底。修复：`（`（及`(`、全角`：？！`）加入终止符；新增测试。
+2. **输出门禁能力自述误伤**：`requiresPolicyOutputProvenance` 把助手人设/能力句段（“我是社保规划助手，主要帮你做……补贴测算”）判为无来源政策事实，普通祝福/寒暄回复被整段替换。修复：人设/服务性句段豁免（句段含数量化事实数字+单位/文号或官方来源引用时仍门禁）；新增3断言。
+3. **e2e套件登录限流兼容**：登录页IP限流20次/5分钟为产品契约，套件UI登录提交总数已超阈值；非auth-spec的登录前置改走NextAuth callback API（`e2e/api-auth.ts`，共享Cookie、断言302重定向不含error=）；auth.spec保留UI登录与限流页面专测；5分钟窗口契约由 `rate-limit.test.ts`（可控时钟）覆盖。
+
+### 生产部署与验证（仅重建socila-web）
+
+- 旧web镜像保留回退标签 `web:rollback-pre-a04946e`（=a06969d3ab29，即shv2-da95159）；新镜像 `web:shv2-39fbd00`= `web:latest`（5ca9a230c98f）从干净HEAD 39fbd00构建；仅重建 socila-web（healthy）。agent/worker/beat/postgres/minio/redis与数据卷均未触碰；`.env`未改（模型保留deepseek-v4-flash）；`.env.example`值为实证可用模型ID。
+- 部署后验证：①web healthy✓；②普通对话正常返回✓（384字符真实回复，能力自述不再误替换）；③政策问题实际调用searchPolicy✓（step_count=3，工具执行）；④回答含标题/机关/官网/归档链接 **未达成——阻塞**（见下）；⑤web/agent日志无 "Thinking mode does not support this tool_choice"✓（原阻断已消除）；⑥retrieval_audit未增加（同④阻塞）；⑦MinIO 23对象、185 chunks、185 embeddings不变✓；⑧登录页限流提示为5分钟文案✓；⑨最后一次临时密码完整改密流程留待用户人工测试。
+
+### 遗留阻断（需用户决策；本次未越权处理）
+
+生产 compose 将 agent 仅置于 `internal:true` 网络（无外网路由）：运行期检索的查询嵌入必须调用 api.siliconflow.cn，当前必然 `Temporary failure in name resolution`/`Network is unreachable` → `/internal/v1/rag/search` 500 → 工具失败关闭→兜底答复。即④⑥两项在任何代码修复之外、必须由基础设施变更解决（如 agent 增加edge网络附着或新增受控egress网络后重建agent容器）。该变更触碰「不得重建或修改socila-agent」边界，等待用户显式授权后另行执行。

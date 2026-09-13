@@ -339,3 +339,13 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 
 - 最新真实SiliconFlow隔离演练证据：`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T11-14-27-135Z.json`；同步、索引、固定检索、恢复和幂等均通过，证据由当前提交脚本和干净工作树生成。
 - 生产MinIO仍为bucket=0、RAG七表仍为0；生产写入前必须重新生成并授权当次`codeSha/planHash/targetFingerprint/写集合`，历史隔离数字不能替代生产验收。
+
+## 2026-09-14 UAT阻断修复测试记录（提交39fbd00）
+
+- **DeepSeek兼容聚焦**（`src/lib/ai/__tests__/deepseek-compat.test.ts`）10/10：RED=模拟探测实证的上游行为（默认thinking+强制tool_choice→400 "Thinking mode does not support this tool_choice"）；GREEN=注入/幂等/auto不动/普通不动/非DeepSeek不动/非chat端点不动/非JSON透传/Authorization透传/零日志/两种对象形态。
+- **登录限流**（`src/lib/security/__tests__/rate-limit.test.ts`）7/7（vi.setSystemTime可控时钟）：IP第20允许21拒绝、用户名第5允许6拒绝、4分59秒仍拒/满5分钟恢复、用户名隔离、全IP上限、文案精确匹配、窗口常量契约。
+- **密码重置集成**（`identity-repository.integration.test.ts`，全新PG17）9/9：新增重置全语义与连续重置（仅最后临时密码可登录→改密→新密码可登录→auth.password_changed审计）2例。
+- **provenance门禁**（`policy-provenance-enforcement.test.ts`）13/13：新增全角括号补充说明（“（登录后可下载）”）不误判、能力自述句段豁免（含数量化事实仍门禁反例）。
+- **探测矩阵证据**（脱敏，生产Key）：v4.1-flash=400/不在models；deepseek-flash与v4-flash：plain 200、auto 200（工具调用）、强制默认thinking 400、强制+thinking disabled 200。
+- **全套门禁**：npm test 87文件/896零失败零skip；tsc 0；eslint 0 error（7条既有warning）；build退出0；Chromium E2E 28/28；pytest 137；ruff 0；mypy(agent) 0（36文件）；citation/RAG契约28/28；案例库--check ok；scan-secrets --all 948零命中；git diff --check通过。mypy全仓扫描在 `scripts/neon_drill.py`/`scripts/validate_siliconflow.py` 存在19条既有类型错误（历史遗留、非本门禁口径 `uv run mypy agent` 范围，本次未触碰）。
+- **e2e登录前置API化说明**：登录页IP限流20次/5分钟为产品契约；非auth-spec的登录前置统一走 `e2e/api-auth.ts`（NextAuth callback，断言302目标不含error=），auth.spec保留登录页UI流程专测；5分钟窗口契约由rate-limit单测覆盖。
