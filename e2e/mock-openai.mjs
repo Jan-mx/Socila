@@ -75,14 +75,22 @@ const server = createServer((req, res) => {
                 parentText: "上海市失业保险金支付标准",
                 path: "/document/paragraph",
                 score: 0.93,
-                sourceName: "上海市人力资源和社会保障局",
+                documentTitle: "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知",
+                authority: "上海市人力资源和社会保障局",
+                sourceName: "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知",
                 officialUrl: MOCK_OFFICIAL_URL,
                 contentSha256: "e".repeat(64),
                 mime: "text/html",
               },
             ];
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ hits, candidateCount: hits.length }));
+      res.end(JSON.stringify({
+        hits,
+        candidateCount: hits.length,
+        reliableHitCount: hits.length,
+        noReliableHits: hits.length === 0,
+        relevanceThreshold: 0.2,
+      }));
     });
     return;
   }
@@ -144,6 +152,31 @@ const server = createServer((req, res) => {
       const lastUserIndex = messages.lastIndexOf(lastUser);
       const toolMessage = messages.slice(lastUserIndex + 1).find((m) => m?.role === "tool");
 
+      // 负向模型A：明知是政策事实问题却跳过工具并直接输出数字/伪造URL。
+      // 服务端来源门禁必须缓存并替换整段文本，不能让首个token泄漏到浏览器。
+      if (!toolMessage && lastUserText.includes("跳过检索负向测试")) {
+        const unsafeReply =
+          "上海失业保险金标准为9999元。官网原文：https://example.com/invented-policy";
+        if (stream) {
+          res.writeHead(200, {
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+            connection: "keep-alive",
+          });
+          res.write(`data: ${JSON.stringify(sseChunk(id, created, unsafeReply, null))}\n\n`);
+          res.write(`data: ${JSON.stringify(sseChunk(id, created, null, "stop"))}\n\n`);
+          res.write("data: [DONE]\n\n");
+          res.end();
+        } else {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            id, object: "chat.completion", created, model: "e2e-mock-model",
+            choices: [{ index: 0, message: { role: "assistant", content: unsafeReply }, finish_reason: "stop" }],
+          }));
+        }
+        return;
+      }
+
       const searchTrigger = lastUserText.includes("失业保险金标准")
         ? "上海市失业保险金标准是多少"
         : lastUserText.includes("生育津贴")
@@ -151,10 +184,16 @@ const server = createServer((req, res) => {
           : null;
 
       if (!toolMessage && searchTrigger !== null) {
+        const systemText = messages
+          .filter((m) => m?.role === "system")
+          .map((m) => String(m?.content ?? ""))
+          .join("\n");
+        const injectedDate = systemText.match(/当前服务器日期：(\d{4}-\d{2}-\d{2})/)?.[1]
+          ?? new Date().toISOString().slice(0, 10);
         const toolCallArguments = JSON.stringify({
           query: searchTrigger,
           jurisdiction_code: "310000",
-          as_of_date: "2026-09-01",
+          as_of_date: injectedDate,
           top_k: 5,
         });
         if (stream) {
@@ -258,9 +297,10 @@ const server = createServer((req, res) => {
         let reply;
         if (toolOutput?.success && hits.length > 0) {
           const hit = hits[0];
-          reply =
-            `根据官方政策原文：${hit.text}官网原文：${hit.officialUrl}；` +
-            `归档原件：${hit.originalDownloadPath}（登录后可下载）。`;
+          reply = lastUserText.includes("伪造链接负向测试")
+            ? "上海失业金标准为9999元。官网原文：https://example.com/fake；归档原件：/api/rag/originals/22222222-2222-4222-8222-222222222222"
+            : `根据${hit.authority}发布的《${hit.documentTitle}》：${hit.text}官网原文：${hit.officialUrl}；` +
+              `归档原件：${hit.originalDownloadPath}（登录后可下载）。`;
         } else if (toolOutput?.success) {
           reply = "未在官方原文库中检索到可靠依据，请咨询12333或当地社保窗口。";
         } else {

@@ -33,16 +33,17 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .evidence_sync import EVIDENCE_BUCKET, canonical_json, classify_target_state, git_head, redact
 from .siliconflow import SiliconFlowClient
 from .storage import ObjectStore
 
-INDEX_ALGORITHM_VERSION = "RAG-EVIDENCE-INDEX-1.0"
-INDEX_PLAN_SCHEMA = "rag-evidence-index-plan/1.0"
+INDEX_ALGORITHM_VERSION = "RAG-EVIDENCE-INDEX-2.0"
+INDEX_PLAN_SCHEMA = "rag-evidence-index-plan/2.0"
 EMBEDDING_MODEL = "BAAI/bge-m3"
 EMBEDDING_DIMENSIONS = 1024
 PARSE_PIPELINE_VERSION = "rag-parse-v1"
@@ -82,6 +83,76 @@ def sha256_bytes(content: bytes) -> str:
 
 def canonical_sha256(value: Any) -> str:
     return sha256_bytes(canonical_json(value).encode("utf-8"))
+
+
+def load_index_manifest() -> list[dict[str, Any]]:
+    """Packaged, Git-bound scope; never discover authorized scope from database rows."""
+    body = json.loads(Path(__file__).with_name("shanghai_index_manifest.json").read_text(encoding="utf-8"))
+    docs = body["documents"]
+    if len(docs) != 23 or len({d["contentHash"] for d in docs}) != 23:
+        raise EvidenceIndexError("MANIFEST_INVALID", "上海索引清单必须恰好包含23个唯一原件")
+    required = {
+        "documentId", "contentHash", "objectKey", "mime", "title", "authority",
+        "jurisdictionCode", "effectiveFrom", "effectiveTo", "officialUrl",
+    }
+    for doc in docs:
+        if set(doc) != required:
+            raise EvidenceIndexError("MANIFEST_INVALID", "上海索引清单字段集合不完整")
+        official = urlparse(str(doc["officialUrl"]))
+        host = (official.hostname or "").lower()
+        if (
+            doc["objectKey"] != f"originals/{doc['contentHash']}"
+            or not str(doc["title"]).strip()
+            or not str(doc["authority"]).strip()
+            or official.scheme != "https"
+            or not (host == "gov.cn" or host.endswith(".gov.cn"))
+        ):
+            raise EvidenceIndexError("MANIFEST_INVALID", f"上海索引清单来源字段非法：{doc['documentId']}")
+    return docs
+
+
+def _chunk_projection(chunk: Any) -> list[Any]:
+    return [chunk.chunk_id, chunk.parent_chunk_id, chunk.path, chunk.text, chunk.token_count, chunk.meta]
+
+
+def _derived_rows(conn: Any, version_id: str) -> tuple[dict[str, Any], list[Any], Any]:
+    tree = conn.execute(
+        "SELECT tree, markdown, pipeline_version FROM rag.document_trees WHERE document_version_id=%s", (version_id,),
+    ).fetchone()
+    chunks = conn.execute(
+        "SELECT id, parent_chunk_id, path, text, token_count, meta, fts::text FROM rag.chunks "
+        "WHERE document_version_id=%s ORDER BY id", (version_id,),
+    ).fetchall()
+    vectors = conn.execute(
+        "SELECT e.chunk_id, e.model, e.dimensions, e.index_version, e.embedding::text, vector_dims(e.embedding) "
+        "FROM rag.embeddings e JOIN rag.chunks c ON c.id=e.chunk_id "
+        "WHERE c.document_version_id=%s ORDER BY e.chunk_id", (version_id,),
+    ).fetchall()
+    receipt = conn.execute(
+        "SELECT structural_hash, vector_hash, embedding_count, model, dimensions, index_version "
+        "FROM rag.index_receipts WHERE document_version_id=%s", (version_id,),
+    ).fetchone()
+    # Canonical ordering must not depend on the database's locale/collation.
+    return {"tree": list(tree) if tree else None, "chunks": sorted([list(c) for c in chunks], key=lambda c: c[0])}, sorted(vectors, key=lambda v: v[0]), receipt
+
+
+def _bind_expected_fts(conn: Any, chunks: list[Any], structural: dict[str, Any]) -> dict[str, Any]:
+    from .pipeline import fts_input_for_chunk_text
+
+    fts_rows = conn.execute(
+        "SELECT to_tsvector('simple', value)::text "
+        "FROM unnest(%s::text[]) WITH ORDINALITY AS tokenized(value, position) ORDER BY position",
+        ([fts_input_for_chunk_text(chunk.text) for chunk in chunks],),
+    ).fetchall()
+    if len(fts_rows) != len(chunks):
+        raise EvidenceIndexError("FTS_COUNT_MISMATCH", "chunk与FTS投影数量不一致")
+    return {
+        "tree": structural["tree"],
+        "chunks": sorted(
+            ([*_chunk_projection(chunk), fts_row[0]] for chunk, fts_row in zip(chunks, fts_rows, strict=True)),
+            key=lambda chunk: chunk[0],
+        ),
+    }
 
 
 def plan_hash_of(plan: dict[str, Any]) -> str:
@@ -141,6 +212,10 @@ class IndexDoc:
     chunk_count: int = 0
     embedding_count: int = 0
     bad_embedding_count: int = 0
+    manifest: dict[str, Any] = field(default_factory=dict)
+    actual: dict[str, Any] = field(default_factory=dict)
+    expected: dict[str, Any] = field(default_factory=dict)
+    integrity_valid: bool = False
 
     @property
     def derived_complete(self) -> bool:
@@ -150,6 +225,7 @@ class IndexDoc:
             and self.chunk_count > 0
             and self.embedding_count == self.chunk_count
             and self.bad_embedding_count == 0
+            and self.integrity_valid
         )
 
 
@@ -189,6 +265,29 @@ def verify_index_plan_structure(plan: dict[str, Any]) -> list[str]:
     for key in ("plannedIndex", "noopDocuments", "conflicts", "writeSet"):
         if not isinstance(plan.get(key), list):
             problems.append(f"{key}缺失（需列表）")
+    if not problems and isinstance(documents, list):
+        by_id = {d["documentVersionId"]: d for d in documents}
+        planned = plan["plannedIndex"]
+        noop = plan["noopDocuments"]
+        writes = plan["writeSet"]
+        if (plan.get("documentCount") != len(documents)
+                or len(planned) != len(set(planned)) or len(noop) != len(set(noop))
+                or set(planned) & set(noop) or set(planned + noop) != set(by_id)
+                or len(writes) != len(planned)):
+            problems.append("documents/plannedIndex/noopDocuments/writeSet集合不一致")
+        elif any(w != by_id[vid].get("expected") for vid, w in zip(planned, writes, strict=True)):
+            problems.append("writeSet必须逐项等于documents的预期写入内容")
+        elif [d["documentVersionId"] for d in documents if not d.get("derivedComplete")] != planned:
+            problems.append("plannedIndex必须恰好覆盖未完成的documents")
+        if plan.get("manifestHash") != canonical_sha256(load_index_manifest()):
+            problems.append("manifestHash不匹配固定上海清单")
+        for document in documents:
+            expected = document.get("expected")
+            if not isinstance(expected, dict) or any(
+                document.get(key) != expected.get(key) for key in ("documentVersionId", "contentHash")
+            ):
+                problems.append("documents身份与预期写集合不一致")
+                break
     return problems
 
 
@@ -234,98 +333,142 @@ class PolicyEvidenceIndex:
 
     # ── 枚举与派生状态（只读）────────────────────────────────────────────────
 
+    def _prepare(self, doc: IndexDoc) -> tuple[Any, str, list[Any], dict[str, Any]]:
+        from .chunker import chunk_document
+        from .document_tree import parse_by_mime
+        from .pipeline import deduplicate_chunks, tree_to_markdown
+
+        content = self.store.get(doc.manifest["objectKey"])
+        if sha256_bytes(content) != doc.manifest["contentHash"]:
+            raise EvidenceIndexError("OBJECT_CONFLICT", doc.manifest["objectKey"])
+        parsed = parse_by_mime(doc.manifest["mime"], doc.manifest["objectKey"], content)
+        markdown = tree_to_markdown(parsed.tree)
+        try:
+            chunks = deduplicate_chunks(chunk_document(parsed.tree, doc.version_id, parsed.pipeline_version))
+        except ValueError as exc:
+            raise EvidenceIndexError("CHUNK_ID_CONFLICT", str(exc)) from exc
+        if not chunks:
+            raise EvidenceIndexError("EMPTY_CHUNKS", doc.object_key)
+        structural = {
+            "tree": [parsed.tree.to_dict(), markdown, parsed.pipeline_version],
+            "chunks": sorted((_chunk_projection(chunk) for chunk in chunks), key=lambda chunk: chunk[0]),
+        }
+        return parsed, markdown, chunks, structural
+
     def collect(self) -> list[IndexDoc]:
         import psycopg
 
-        with psycopg.connect(self.database_url) as conn:
-            rows = conn.execute(
-                "SELECT id, content_hash, object_key, mime, status, jurisdiction_code "
-                "FROM rag.document_versions ORDER BY content_hash"
-            ).fetchall()
-        if not rows:
-            raise EvidenceIndexError("NO_DOCUMENT_VERSIONS", "rag.document_versions为空：先执行evidence_sync apply登记原件")
+        manifest = load_index_manifest()
+        by_hash = {entry["contentHash"]: entry for entry in manifest}
         bucket_exists = self.store.bucket_exists()
         docs: list[IndexDoc] = []
-        for version_id, content_hash, object_key, mime, status, jurisdiction in rows:
-            object_exists = False
-            object_sha_matches: bool | None = None
-            if bucket_exists:
-                object_exists = self.store.exists(object_key)
-                object_sha_matches = (
-                    sha256_bytes(self.store.get(object_key)) == content_hash if object_exists else None
+        with psycopg.connect(self.database_url) as conn:
+            rows = conn.execute(
+                "SELECT dv.id, dv.content_hash, dv.object_key, dv.mime, dv.status, dv.jurisdiction_code, "
+                "dv.document_id, dv.title, dv.authority, dv.effective_from::text, dv.effective_to::text, "
+                "dv.official_url, s.jurisdiction_code, dv.source_id, s.entry_url, s.name, dv.pipeline_version, "
+                "COALESCE((SELECT jsonb_agg(COALESCE(f.final_url, f.url) ORDER BY f.id) FROM rag.fetches f "
+                "WHERE f.source_id=dv.source_id AND f.content_hash=dv.content_hash "
+                "AND f.object_key=dv.object_key), '[]'::jsonb) "
+                "FROM rag.document_versions dv JOIN rag.sources s ON s.id=dv.source_id "
+                "WHERE dv.content_hash = ANY(%s) ORDER BY dv.content_hash", (list(by_hash),),
+            ).fetchall()
+            if len(rows) != len(manifest):
+                raise EvidenceIndexError("MANIFEST_SCOPE_MISSING", "固定清单版本不完整：先执行evidence_sync登记全部原件")
+            for row in rows:
+                vid, content_hash, key, mime, status, jurisdiction = row[:6]
+                entry = by_hash[content_hash]
+                exists = bucket_exists and self.store.exists(entry["objectKey"])
+                object_sha = sha256_bytes(self.store.get(entry["objectKey"])) if exists else None
+                doc = IndexDoc(str(vid), content_hash, key, mime, status, jurisdiction,
+                               object_exists=exists, object_sha_matches=object_sha == content_hash,
+                               manifest=entry)
+                structural, vectors, receipt = _derived_rows(conn, str(vid))
+                provenance = {
+                    "documentId": row[6], "title": row[7], "authority": row[8],
+                    "effectiveFrom": row[9], "effectiveTo": row[10],
+                    "officialUrl": row[11], "jurisdictionCode": jurisdiction,
+                    "sourceJurisdictionCode": row[12],
+                }
+                expected_provenance = {k: entry[k] for k in (
+                    "documentId", "title", "authority", "effectiveFrom", "effectiveTo", "officialUrl",
+                    "jurisdictionCode",
+                )}
+                expected_provenance["sourceJurisdictionCode"] = entry["jurisdictionCode"]
+                fetch_selected_urls = list(row[17] or [])
+                doc.tree_exists = structural["tree"] is not None
+                doc.chunk_count = len(structural["chunks"])
+                doc.embedding_count = len(vectors)
+                doc.bad_embedding_count = sum(
+                    1 for v in vectors if list(v[1:4]) != [EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, INDEX_VERSION]
+                    or v[4] is None or v[5] != EMBEDDING_DIMENSIONS
                 )
-            tree_exists = False
-            chunk_count = 0
-            embedding_count = 0
-            bad_embedding_count = 0
-            with psycopg.connect(self.database_url) as conn:
-                row = conn.execute(
-                    """SELECT
-                         EXISTS(SELECT 1 FROM rag.document_trees WHERE document_version_id=%s),
-                         (SELECT count(*) FROM rag.chunks WHERE document_version_id=%s),
-                         (SELECT count(*) FROM rag.embeddings e JOIN rag.chunks c ON c.id=e.chunk_id
-                           WHERE c.document_version_id=%s),
-                         (SELECT count(*) FROM rag.embeddings e JOIN rag.chunks c ON c.id=e.chunk_id
-                           WHERE c.document_version_id=%s
-                             AND (e.model<>%s OR e.dimensions<>%s OR e.index_version<>%s OR e.embedding IS NULL))
-                       """,
-                    (version_id, version_id, version_id, version_id, EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, INDEX_VERSION),
-                ).fetchone()
-            if row is not None:
-                tree_exists, chunk_count, embedding_count, bad_embedding_count = (
-                    bool(row[0]),
-                    int(row[1]),
-                    int(row[2]),
-                    int(row[3]),
+                structural_hash = canonical_sha256(structural)
+                vector_hash = canonical_sha256([list(v) for v in vectors])
+                expected_structural_hash = None
+                expected_structure: dict[str, Any] = {"tree": None, "chunks": []}
+                if object_sha == content_hash:
+                    _, _, expected_chunks, expected_base = self._prepare(doc)
+                    expected_structure = _bind_expected_fts(conn, expected_chunks, expected_base)
+                    expected_structural_hash = canonical_sha256(expected_structure)
+                expected_receipt = [
+                    expected_structural_hash, vector_hash, doc.chunk_count,
+                    EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, INDEX_VERSION,
+                ]
+                doc.integrity_valid = (
+                    provenance == expected_provenance and key == entry["objectKey"] and mime == entry["mime"]
+                    and fetch_selected_urls == [entry["officialUrl"]]
+                    and object_sha == content_hash and structural_hash == expected_structural_hash
+                    and receipt is not None and list(receipt) == expected_receipt
+                    and row[16] == PARSE_PIPELINE_VERSION
                 )
-            docs.append(
-                IndexDoc(
-                    version_id=str(version_id),
-                    content_hash=content_hash,
-                    object_key=object_key,
-                    mime=mime,
-                    status=status,
-                    jurisdiction_code=jurisdiction,
-                    object_exists=object_exists,
-                    object_sha_matches=object_sha_matches,
-                    tree_exists=tree_exists,
-                    chunk_count=chunk_count,
-                    embedding_count=embedding_count,
-                    bad_embedding_count=bad_embedding_count,
-                )
-            )
+                doc.actual = {
+                    "documentVersionId": str(vid), "contentHash": content_hash, "objectKey": key,
+                    "mime": mime, "status": status, "provenance": provenance,
+                    "sourceId": row[13], "sourceUrl": row[14], "sourceName": row[15],
+                    "fetchSelectedUrls": fetch_selected_urls,
+                    "pipelineVersion": row[16], "objectExists": exists, "objectSha": object_sha,
+                    "structuralHash": structural_hash, "vectorHash": vector_hash,
+                    "chunkCount": doc.chunk_count, "embeddingCount": doc.embedding_count,
+                    "badEmbeddingCount": doc.bad_embedding_count,
+                    "receipt": list(receipt) if receipt else None,
+                }
+                doc.expected = {
+                    "documentVersionId": str(vid), "contentHash": content_hash, "objectKey": entry["objectKey"],
+                    "mime": entry["mime"], "status": "indexed", "provenance": expected_provenance,
+                    "sourceId": row[13], "sourceUrl": row[14], "sourceName": row[15],
+                    "fetchSelectedUrls": [entry["officialUrl"]],
+                    "pipelineVersion": PARSE_PIPELINE_VERSION, "objectExists": True, "objectSha": content_hash,
+                    "structuralHash": expected_structural_hash,
+                    "treeHash": canonical_sha256(expected_structure["tree"][0]) if expected_structure["tree"] else None,
+                    "markdownHash": canonical_sha256(expected_structure["tree"][1]) if expected_structure["tree"] else None,
+                    "chunkCount": len(expected_structure["chunks"]),
+                    "chunkManifest": [{
+                        "chunkId": c[0], "parentChunkId": c[1], "pathHash": canonical_sha256(c[2]),
+                        "textHash": canonical_sha256(c[3]), "tokenCount": c[4], "metaHash": canonical_sha256(c[5]),
+                        "ftsHash": canonical_sha256(c[6]),
+                    } for c in expected_structure["chunks"]],
+                    "embeddingModel": EMBEDDING_MODEL, "embeddingDimensions": EMBEDDING_DIMENSIONS,
+                    "indexVersion": INDEX_VERSION, "receiptValidated": True,
+                }
+                docs.append(doc)
         return docs
 
     def _bucket_state(self) -> bool:
         return self.store.bucket_exists()
 
     def _state_entries(self, docs: list[IndexDoc], *, force_complete: bool) -> list[dict[str, Any]]:
-        entries = []
-        for doc in sorted(docs, key=lambda d: d.content_hash):
-            entries.append(
-                {
-                    "documentVersionId": doc.version_id,
-                    "contentHash": doc.content_hash,
-                    "objectKey": doc.object_key,
-                    "indexedComplete": True if force_complete else doc.derived_complete,
-                }
-            )
-        return entries
+        return [d.expected if force_complete else d.actual for d in sorted(docs, key=lambda d: d.content_hash)]
 
     def _state_fingerprint(self, docs: list[IndexDoc], *, force_complete: bool, bucket_exists: bool) -> str:
-        """派生状态指纹：bucket存在性+模型/维度/indexVersion+每版本完整性的规范化hash。
-        force_complete=False→当前真实状态（计划targetFingerprint）；
-        force_complete=True→计划执行后的期望终态（计划finalFingerprint）。"""
-        return canonical_sha256(
-            {
-                "bucket": self.bucket,
-                "bucketExists": bucket_exists,
-                "embeddingModel": EMBEDDING_MODEL,
-                "embeddingDimensions": EMBEDDING_DIMENSIONS,
-                "indexVersion": INDEX_VERSION,
-                "docs": self._state_entries(docs, force_complete=force_complete),
-            }
-        )
+        # The final commitment describes deterministic structure + valid receipt, not unknown model bytes.
+        # target/applied fingerprints include the actual stored-vector hash and receipt.
+        return canonical_sha256({
+            "bucket": self.bucket, "bucketExists": bucket_exists,
+            "manifestHash": canonical_sha256(load_index_manifest()),
+            "embeddingModel": EMBEDDING_MODEL, "embeddingDimensions": EMBEDDING_DIMENSIONS,
+            "indexVersion": INDEX_VERSION, "docs": self._state_entries(docs, force_complete=force_complete),
+        })
 
     # ── audit / verify（只读对账）────────────────────────────────────────────
 
@@ -342,6 +485,13 @@ class PolicyEvidenceIndex:
                 problems.append(f"OBJECT_MISSING: {doc.object_key}（{doc.content_hash[:12]}…）")
             elif doc.object_sha_matches is not True:
                 problems.append(f"OBJECT_CONFLICT: {doc.object_key} 对象SHA与document_versions.content_hash不一致")
+            if (
+                doc.actual["provenance"]["officialUrl"] != doc.manifest["officialUrl"]
+                or doc.actual["fetchSelectedUrls"] != [doc.manifest["officialUrl"]]
+            ):
+                problems.append(
+                    f"OFFICIAL_URL_DRIFT: {doc.content_hash[:12]}… 必须精确匹配固定清单URL"
+                )
             if not doc.derived_complete:
                 problems.append(
                     f"{doc.content_hash[:12]}…: 派生索引不完整"
@@ -357,6 +507,7 @@ class PolicyEvidenceIndex:
             "indexVersion": INDEX_VERSION,
             "documentCount": len(docs),
             "completeCount": sum(1 for d in docs if d.derived_complete),
+            "stateFingerprint": self._state_fingerprint(docs, force_complete=False, bucket_exists=bucket_exists),
             "ok": not problems,
             "problems": problems,
             "documents": [
@@ -374,6 +525,11 @@ class PolicyEvidenceIndex:
                     "embeddingCount": d.embedding_count,
                     "badEmbeddingCount": d.bad_embedding_count,
                     "derivedComplete": d.derived_complete,
+                    "provenance": d.actual["provenance"],
+                    "fetchSelectedUrls": d.actual["fetchSelectedUrls"],
+                    "structuralHash": d.actual["structuralHash"],
+                    "vectorHash": d.actual["vectorHash"],
+                    "receiptHash": canonical_sha256(d.actual["receipt"]) if d.actual["receipt"] else None,
                 }
                 for d in docs
             ],
@@ -394,6 +550,19 @@ class PolicyEvidenceIndex:
         """确定性计划：同状态重复生成逐字节一致。对象缺失/SHA不一致/缺bucket时
         失败关闭（零写入）——索引要求同步终态已达成。"""
         docs = self.collect()
+        if any(d.status not in ("downloaded", "parsed", "indexed") for d in docs):
+            raise EvidenceIndexError("INDEX_STATUS_REFUSED", "仅downloaded/parsed/indexed版本允许受控索引")
+        if any(d.actual["provenance"]["sourceJurisdictionCode"] != d.manifest["jurisdictionCode"] for d in docs):
+            raise EvidenceIndexError("SOURCE_PROVENANCE_CONFLICT", "来源地区与固定清单不一致；索引无权改写来源")
+        url_conflicts = [
+            d for d in docs if d.actual["fetchSelectedUrls"] != [d.manifest["officialUrl"]]
+        ]
+        if url_conflicts:
+            raise EvidenceIndexError(
+                "FETCH_URL_CONFLICT",
+                "rag.fetches选定URL与固定清单不一致："
+                + "；".join(d.content_hash[:12] + "…" for d in url_conflicts),
+            )
         head = git_head()
         bucket_exists = self._bucket_state()
         if not bucket_exists:
@@ -429,21 +598,13 @@ class PolicyEvidenceIndex:
                 "chunkCount": d.chunk_count,
                 "embeddingCount": d.embedding_count,
                 "derivedComplete": d.derived_complete,
+                "officialUrl": d.actual["provenance"]["officialUrl"],
+                "fetchSelectedUrls": d.actual["fetchSelectedUrls"],
+                "expected": d.expected,
             }
             for d in docs
         ]
-        write_set = [
-            {
-                "documentVersionId": d.version_id,
-                "objectKey": d.object_key,
-                "contentHash": d.content_hash,
-                "mime": d.mime,
-                "embeddingModel": EMBEDDING_MODEL,
-                "embeddingDimensions": EMBEDDING_DIMENSIONS,
-                "indexVersion": INDEX_VERSION,
-            }
-            for d in planned
-        ]
+        write_set = [d.expected for d in planned]
         body: dict[str, Any] = {
             "schema": INDEX_PLAN_SCHEMA,
             "algorithmVersion": INDEX_ALGORITHM_VERSION,
@@ -452,6 +613,8 @@ class PolicyEvidenceIndex:
             "embeddingModel": EMBEDDING_MODEL,
             "embeddingDimensions": EMBEDDING_DIMENSIONS,
             "indexVersion": INDEX_VERSION,
+            "manifestHash": canonical_sha256(load_index_manifest()),
+            "finalFingerprintScope": "deterministic-structure-and-validated-receipt",
             "targetFingerprint": self._state_fingerprint(docs, force_complete=False, bucket_exists=bucket_exists),
             "finalFingerprint": self._state_fingerprint(docs, force_complete=True, bucket_exists=True),
             "documentCount": len(docs),
@@ -514,8 +677,14 @@ class PolicyEvidenceIndex:
             conn.execute("SELECT pg_advisory_lock(%s)", (ADVISORY_LOCK_KEY,))
             docs = self.collect()
             planned_ids = {d for d in plan.get("plannedIndex", []) if isinstance(d, str)}
+            if self._state_fingerprint(docs, force_complete=True, bucket_exists=True) != plan["finalFingerprint"]:
+                raise EvidenceIndexError("PLAN_INVALID", "finalFingerprint与固定清单预期结构不一致")
             current = self._state_fingerprint(docs, force_complete=False, bucket_exists=True)
             state = classify_index_state(current, plan["targetFingerprint"], plan["finalFingerprint"])
+            if all(d.derived_complete for d in docs) and self._state_fingerprint(
+                docs, force_complete=True, bucket_exists=True
+            ) == plan["finalFingerprint"]:
+                state = "noop"
             if state == "noop":
                 conn.execute("SELECT pg_advisory_unlock(%s)", (ADVISORY_LOCK_KEY,))
                 report = self.verify()
@@ -528,6 +697,7 @@ class PolicyEvidenceIndex:
                     "planHash": plan["planHash"],
                     "indexedVersions": [],
                     "verified": True,
+                    "appliedFingerprint": current,
                 }
             if state == "drift":
                 raise EvidenceIndexError(
@@ -536,6 +706,25 @@ class PolicyEvidenceIndex:
                     "也非终态（零写入拒绝；部分完成后必须重新plan）",
                 )
             # pending：逐文档独立事务索引（会话锁内串行化）。
+            expected_documents = {d.version_id: d.expected for d in docs}
+            if (any(d.status not in ("downloaded", "parsed", "indexed") for d in docs)
+                    or {d["documentVersionId"]: d["expected"] for d in plan["documents"]} != expected_documents
+                    or plan["plannedIndex"] != [d.version_id for d in docs if not d.derived_complete]):
+                raise EvidenceIndexError("PLAN_INVALID", "计划写集合与当前固定清单派生结果不一致")
+            actual_documents = {d.version_id: d for d in docs}
+            for projected in plan["documents"]:
+                actual_doc = actual_documents[projected["documentVersionId"]]
+                current_projection = {
+                    "objectKey": actual_doc.object_key, "mime": actual_doc.mime, "status": actual_doc.status,
+                    "jurisdictionCode": actual_doc.jurisdiction_code, "objectExists": actual_doc.object_exists,
+                    "objectShaMatches": actual_doc.object_sha_matches, "treeExists": actual_doc.tree_exists,
+                    "chunkCount": actual_doc.chunk_count, "embeddingCount": actual_doc.embedding_count,
+                    "derivedComplete": actual_doc.derived_complete,
+                    "officialUrl": actual_doc.actual["provenance"]["officialUrl"],
+                    "fetchSelectedUrls": actual_doc.actual["fetchSelectedUrls"],
+                }
+                if any(projected.get(key) != value for key, value in current_projection.items()):
+                    raise EvidenceIndexError("PLAN_INVALID", "documents当前状态投影与授权前置状态不一致")
             by_id = {d.version_id: d for d in docs}
             indexed_versions: list[str] = []
             for doc_id in plan["plannedIndex"]:
@@ -569,6 +758,7 @@ class PolicyEvidenceIndex:
             "planHash": plan["planHash"],
             "indexedVersions": indexed_versions,
             "verified": True,
+            "appliedFingerprint": self._state_fingerprint(self.collect(), force_complete=False, bucket_exists=True),
         }
 
     # ── 单文档索引（独立事务：清理旧派生行→tree/chunks/embeddings→indexed）────
@@ -576,28 +766,15 @@ class PolicyEvidenceIndex:
     def _index_single_document(self, doc: IndexDoc, conn: Any) -> None:
         """从MinIO读原件并复核SHA→解析→分片→嵌入→单事务写入并标记indexed。
         任一步失败由调用方的conn.transaction()回滚当前文档（此前文档保持已提交）。"""
-        content = self.store.get(doc.object_key)
-        actual_sha = sha256_bytes(content)
-        if actual_sha != doc.content_hash:
-            raise EvidenceIndexError(
-                "OBJECT_CONFLICT",
-                f"{doc.object_key}: MinIO对象SHA漂移：{actual_sha} ≠ {doc.content_hash}（失败关闭，不索引漂移对象）",
-            )
-        from .chunker import chunk_document
-        from .document_tree import parse_by_mime
-        from .pipeline import tree_to_markdown
-
-        parsed = parse_by_mime(doc.mime, doc.object_key, content)
-        markdown = tree_to_markdown(parsed.tree)
-        chunks = chunk_document(parsed.tree, doc.version_id, parsed.pipeline_version)
-        if not chunks:
-            raise EvidenceIndexError("EMPTY_CHUNKS", f"{doc.object_key}: 分片结果为空（拒绝标记indexed）")
+        parsed, markdown, chunks, structural = self._prepare(doc)
         # 嵌入（批次调用真实/Fake客户端）：维度必须等于声明的1024，否则失败关闭。
         vectors: list[list[float]] = []
         for start in range(0, len(chunks), _EMBED_BATCH):
             batch = [c.text for c in chunks[start : start + _EMBED_BATCH]]
             result = self.client.embed(batch)
-            if result["dimensions"] != EMBEDDING_DIMENSIONS:
+            if result["dimensions"] != EMBEDDING_DIMENSIONS or any(
+                len(vector) != EMBEDDING_DIMENSIONS for vector in result["_vectors"]
+            ):
                 raise EvidenceIndexError(
                     "EMBEDDING_DIMENSION_MISMATCH",
                     f"{doc.object_key}: 嵌入维度{result['dimensions']} ≠ {EMBEDDING_DIMENSIONS}",
@@ -608,9 +785,40 @@ class PolicyEvidenceIndex:
                 "EMBEDDING_COUNT_MISMATCH",
                 f"{doc.object_key}: 嵌入数量{len(vectors)} ≠ chunks数量{len(chunks)}",
             )
-        import jieba
+        structural = _bind_expected_fts(conn, chunks, structural)
+        if canonical_sha256(structural) != doc.expected["structuralHash"]:
+            raise EvidenceIndexError("INDEX_STATE_DRIFT", "解析结果与计划不一致")
+        from .pipeline import fts_input_for_chunk_text
 
         with conn.transaction():
+            locked = conn.execute(
+                "SELECT dv.status, dv.content_hash, dv.object_key, dv.mime, dv.jurisdiction_code, dv.document_id, "
+                "dv.title, dv.authority, dv.effective_from::text, dv.effective_to::text, dv.pipeline_version, "
+                "dv.official_url, dv.source_id, s.jurisdiction_code, s.entry_url, s.name FROM rag.document_versions dv "
+                "JOIN rag.sources s ON s.id=dv.source_id WHERE dv.id=%s FOR UPDATE OF dv,s", (doc.version_id,),
+            ).fetchone()
+            previous = doc.actual
+            provenance = previous["provenance"]
+            expected_row = [previous[k] for k in ("status", "contentHash", "objectKey", "mime")]
+            expected_row += [provenance[k] for k in (
+                "jurisdictionCode", "documentId", "title", "authority", "effectiveFrom", "effectiveTo",
+            )]
+            expected_row += [previous["pipelineVersion"], provenance["officialUrl"], previous["sourceId"],
+                             provenance["sourceJurisdictionCode"],
+                             previous["sourceUrl"], previous["sourceName"]]
+            locked_fetches = conn.execute(
+                "SELECT COALESCE(final_url, url) FROM rag.fetches "
+                "WHERE source_id=%s AND content_hash=%s AND object_key=%s ORDER BY id FOR SHARE",
+                (previous["sourceId"], doc.content_hash, doc.object_key),
+            ).fetchall()
+            before_structural, before_vectors, before_receipt = _derived_rows(conn, doc.version_id)
+            if (locked is None or list(locked) != expected_row
+                    or [row[0] for row in locked_fetches] != previous["fetchSelectedUrls"]
+                    or previous["fetchSelectedUrls"] != [doc.manifest["officialUrl"]]
+                    or canonical_sha256(before_structural) != previous["structuralHash"]
+                    or canonical_sha256([list(v) for v in before_vectors]) != previous["vectorHash"]
+                    or (list(before_receipt) if before_receipt else None) != previous["receipt"]):
+                raise EvidenceIndexError("INDEX_STATE_DRIFT", "单文档写入前状态已漂移")
             # 清理该版本旧派生数据（重索引幂等），写入tree/chunks/embeddings后推进状态。
             conn.execute(
                 "DELETE FROM rag.embeddings e USING rag.chunks c WHERE e.chunk_id=c.id AND c.document_version_id=%s",
@@ -623,11 +831,11 @@ class PolicyEvidenceIndex:
                 (doc.version_id, json.dumps(parsed.tree.to_dict(), ensure_ascii=False), markdown, parsed.pipeline_version),
             )
             for chunk, vector in zip(chunks, vectors, strict=True):
-                tokenized = " ".join(jieba.cut_for_search(chunk.text))
+                tokenized = fts_input_for_chunk_text(chunk.text)
                 conn.execute(
                     """INSERT INTO rag.chunks (id, document_version_id, parent_chunk_id, path, text, token_count, meta, fts)
                        VALUES (%s,%s,%s,%s,%s,%s,%s, to_tsvector('simple', %s))
-                       ON CONFLICT (id) DO NOTHING""",
+                       """,
                     (
                         chunk.chunk_id,
                         doc.version_id,
@@ -643,19 +851,38 @@ class PolicyEvidenceIndex:
                 conn.execute(
                     """INSERT INTO rag.embeddings (chunk_id, model, dimensions, index_version, embedding)
                        VALUES (%s,%s,%s,%s,%s::vector)
-                       ON CONFLICT (chunk_id) DO NOTHING""",
+                       """,
                     (chunk.chunk_id, EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, INDEX_VERSION, vector_literal),
                 )
+            entry = doc.manifest
+            stored_structural, stored_vectors, _ = _derived_rows(conn, doc.version_id)
+            if canonical_sha256(stored_structural) != doc.expected["structuralHash"]:
+                raise EvidenceIndexError("INDEX_WRITE_MISMATCH", "派生写集合不一致")
+            conn.execute(
+                "INSERT INTO rag.index_receipts (document_version_id, structural_hash, vector_hash, "
+                "embedding_count, model, dimensions, index_version) VALUES (%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (document_version_id) DO UPDATE SET structural_hash=excluded.structural_hash, "
+                "vector_hash=excluded.vector_hash, embedding_count=excluded.embedding_count, model=excluded.model, "
+                "dimensions=excluded.dimensions, index_version=excluded.index_version, created_at=now()",
+                (doc.version_id, canonical_sha256(stored_structural), canonical_sha256([list(v) for v in stored_vectors]),
+                 len(stored_vectors), EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, INDEX_VERSION),
+            )
             updated = conn.execute(
-                "UPDATE rag.document_versions SET status='indexed', updated_at=now(), pipeline_version=%s "
-                "WHERE id=%s AND status IN ('downloaded','parsed') RETURNING id",
-                (PARSE_PIPELINE_VERSION, doc.version_id),
+                "UPDATE rag.document_versions SET status='indexed', updated_at=now(), pipeline_version=%s, "
+                "document_id=%s, title=%s, authority=%s, jurisdiction_code=%s, effective_from=%s, effective_to=%s, "
+                "official_url=%s, mime=%s, object_key=%s "
+                "WHERE id=%s AND status IN ('downloaded','parsed','indexed') RETURNING id",
+                (PARSE_PIPELINE_VERSION, entry["documentId"], entry["title"], entry["authority"],
+                 entry["jurisdictionCode"], entry["effectiveFrom"], entry["effectiveTo"], entry["officialUrl"],
+                 entry["mime"], entry["objectKey"], doc.version_id),
             ).fetchone()
             if updated is None:
                 raise EvidenceIndexError(
                     "INDEX_STATE_DRIFT",
                     f"{doc.object_key}: document version状态不允许推进indexed（失败关闭）",
                 )
+            if sha256_bytes(self.store.get(entry["objectKey"])) != entry["contentHash"]:
+                raise EvidenceIndexError("OBJECT_CONFLICT", "提交前原件SHA漂移")
 
     # ── search（检索冒烟）────────────────────────────────────────────────────
 

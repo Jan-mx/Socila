@@ -12,7 +12,10 @@
 
 from __future__ import annotations
 
+import math
+import os
 from typing import Any
+from urllib.parse import urlparse
 
 from .pipeline import RetrievalService
 from .siliconflow import SiliconFlowClient
@@ -57,24 +60,64 @@ class RagRuntime:
             self._client = SiliconFlowClient()
         return self._client
 
+    @staticmethod
+    def _relevance_threshold() -> float:
+        raw = os.environ.get("RAG_RUNTIME_MIN_RELEVANCE", "0.2")
+        try:
+            value = float(raw)
+        except ValueError as err:
+            raise RagRuntimeError("RELEVANCE_CONFIG_INVALID", "运行时相关性阈值不是数字") from err
+        if not math.isfinite(value) or not 0 <= value <= 1:
+            raise RagRuntimeError("RELEVANCE_CONFIG_INVALID", "运行时相关性阈值必须位于0到1")
+        return value
+
+    @staticmethod
+    def _empty_search_result(candidate_count: int, threshold: float) -> dict[str, Any]:
+        return {
+            "hits": [],
+            "candidateCount": candidate_count,
+            "reliableHitCount": 0,
+            "noReliableHits": True,
+            "relevanceThreshold": threshold,
+        }
+
+    @staticmethod
+    def _official_url_is_bound(content_hash: str, official_url: str, fetch_urls: list[str]) -> bool:
+        """Require the selected fetch URL to equal the version binding exactly.
+
+        For the controlled Shanghai corpus the packaged manifest is the immutable authority,
+        so changing both database fields to a different government page still fails closed.
+        """
+        if fetch_urls != [official_url]:
+            return False
+        from .evidence_index import load_index_manifest
+
+        manifest_url = next(
+            (doc["officialUrl"] for doc in load_index_manifest() if doc["contentHash"] == content_hash),
+            None,
+        )
+        return manifest_url is None or official_url == manifest_url
+
     def search(self, query: str, jurisdiction_code: str, as_of_date: str, top_k: int = 5) -> dict[str, Any]:
         """混合检索并回填来源元数据。无候选时返回空hits（不调用空文档rerank）。"""
         service = RetrievalService(self._url, self._search_client())
-        hits = service.search(query, jurisdiction_code, as_of_date, top_k)
+        raw_hits = service.search(query, jurisdiction_code, as_of_date, top_k)
+        threshold = self._relevance_threshold()
+        hits = [hit for hit in raw_hits if math.isfinite(float(hit.score)) and float(hit.score) >= threshold]
         if not hits:
-            return {"hits": [], "candidateCount": 0}
+            return self._empty_search_result(len(raw_hits), threshold)
         import psycopg
 
         version_ids = [h.document_version_id for h in hits]
         metadata: dict[str, dict[str, Any]] = {}
         with psycopg.connect(self._url) as conn:
             rows = conn.execute(
-                """SELECT dv.id, dv.content_hash, dv.mime, s.name,
-                          (SELECT f.url FROM rag.fetches f
-                            WHERE f.content_hash = dv.content_hash AND f.object_key = dv.object_key
-                            ORDER BY f.id LIMIT 1) AS official_url
+                """SELECT dv.id, dv.content_hash, dv.mime, dv.title, dv.authority,
+                          dv.official_url,
+                          COALESCE((SELECT jsonb_agg(COALESCE(f.final_url, f.url) ORDER BY f.id)
+                            FROM rag.fetches f WHERE f.source_id=dv.source_id
+                              AND f.content_hash=dv.content_hash AND f.object_key=dv.object_key), '[]'::jsonb)
                    FROM rag.document_versions dv
-                   JOIN rag.sources s ON s.id = dv.source_id
                    WHERE dv.id = ANY(%s) AND dv.status = 'indexed'""",
                 (version_ids,),
             ).fetchall()
@@ -82,8 +125,10 @@ class RagRuntime:
             metadata[str(row[0])] = {
                 "contentSha256": row[1],
                 "mime": row[2],
-                "sourceName": row[3],
-                "officialUrl": row[4],
+                "documentTitle": row[3],
+                "authority": row[4],
+                "officialUrl": row[5],
+                "fetchSelectedUrls": list(row[6] or []),
             }
         out: list[dict[str, Any]] = []
         for hit in hits:
@@ -94,6 +139,21 @@ class RagRuntime:
                     "HIT_METADATA_MISSING",
                     f"命中版本元数据缺失（documentVersionId={hit.document_version_id}）",
                 )
+            official = str(meta["officialUrl"] or "").strip()
+            official_host = (urlparse(official).hostname or "").lower()
+            if (
+                not str(meta["documentTitle"] or "").strip()
+                or not str(meta["authority"] or "").strip()
+                or urlparse(official).scheme != "https"
+                or not (official_host == "gov.cn" or official_host.endswith(".gov.cn"))
+                or not self._official_url_is_bound(
+                    str(meta["contentSha256"]), official, meta["fetchSelectedUrls"]
+                )
+            ):
+                raise RagRuntimeError(
+                    "HIT_METADATA_MISSING",
+                    f"命中版本缺少可信标题、发布机关或官网链接（documentVersionId={hit.document_version_id}）",
+                )
             out.append(
                 {
                     "chunkId": hit.chunk_id,
@@ -102,13 +162,22 @@ class RagRuntime:
                     "parentText": hit.parent_text,
                     "path": hit.citation.get("path") if isinstance(hit.citation, dict) else None,
                     "score": hit.score,
-                    "sourceName": meta["sourceName"],
-                    "officialUrl": meta["officialUrl"],
+                    "documentTitle": str(meta["documentTitle"]).strip(),
+                    "authority": str(meta["authority"]).strip(),
+                    # 兼容旧Web调用方；值必须是实际标题，不能再返回站点占位名。
+                    "sourceName": str(meta["documentTitle"]).strip(),
+                    "officialUrl": official,
                     "contentSha256": meta["contentSha256"],
                     "mime": meta["mime"],
                 }
             )
-        return {"hits": out, "candidateCount": len(out)}
+        return {
+            "hits": out,
+            "candidateCount": len(raw_hits),
+            "reliableHitCount": len(out),
+            "noReliableHits": len(out) == 0,
+            "relevanceThreshold": threshold,
+        }
 
     def original(self, document_version_id: str) -> dict[str, Any]:
         """读取登记原件：未知版本404；对象缺失或SHA漂移失败关闭；
@@ -126,15 +195,22 @@ class RagRuntime:
         with psycopg.connect(self._url) as conn:
             row = conn.execute(
                 """SELECT dv.object_key, dv.content_hash, dv.mime, dv.status,
-                          (SELECT f.url FROM rag.fetches f
-                            WHERE f.content_hash = dv.content_hash AND f.object_key = dv.object_key
-                            ORDER BY f.id LIMIT 1) AS official_url
+                          dv.official_url,
+                          COALESCE((SELECT jsonb_agg(COALESCE(f.final_url, f.url) ORDER BY f.id)
+                            FROM rag.fetches f WHERE f.source_id=dv.source_id
+                              AND f.content_hash=dv.content_hash AND f.object_key=dv.object_key), '[]'::jsonb)
                    FROM rag.document_versions dv WHERE dv.id = %s""",
                 (document_version_id,),
             ).fetchone()
         if row is None:
             raise RagRuntimeError("DOCUMENT_NOT_FOUND", f"document version不存在：{document_version_id}")
         object_key, content_hash, mime, status, official_url = row[0], row[1], row[2], row[3], row[4]
+        official_url = str(official_url or "").strip()
+        if not self._official_url_is_bound(content_hash, official_url, list(row[5] or [])):
+            raise RagRuntimeError(
+                "DOCUMENT_PROVENANCE_DRIFT",
+                f"document version官网链接与绑定来源不一致：{document_version_id}",
+            )
         if not self._store.exists(object_key):
             raise RagRuntimeError("OBJECT_MISSING", f"登记对象缺失（失败关闭）：{object_key}")
         content = self._store.get(object_key)

@@ -28,7 +28,9 @@ const agentHit = {
   parentText: "上海市失业保险金支付标准",
   path: "/document/paragraph",
   score: 0.9,
-  sourceName: "rsj.sh.gov.cn 官方政策原件",
+  documentTitle: "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知",
+  authority: "上海市人力资源和社会保障局",
+  sourceName: "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知",
   officialUrl: "https://rsj.sh.gov.cn/t1.html",
   contentSha256: "a".repeat(64),
   mime: "text/html",
@@ -44,6 +46,16 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
+  });
+}
+
+function ragResponse(hits: unknown[]): Response {
+  return jsonResponse({
+    hits,
+    candidateCount: hits.length,
+    reliableHitCount: hits.length,
+    noReliableHits: hits.length === 0,
+    relevanceThreshold: 0.2,
   });
 }
 
@@ -75,6 +87,15 @@ describe("searchPolicy 输入Schema契约", () => {
         as_of_date: "2026-13-45",
       }).success,
     ).toBe(false);
+    for (const impossible of ["2026-02-30", "2026-04-31"]) {
+      expect(
+        searchPolicySchema.safeParse({
+          query: "q",
+          jurisdiction_code: "310000",
+          as_of_date: impossible,
+        }).success,
+      ).toBe(false);
+    }
     expect(
       searchPolicySchema.safeParse({
         query: "q",
@@ -92,13 +113,13 @@ describe("searchPolicy 执行契约", () => {
     __setSearchPolicyFetcherForTest(fetcher as unknown as typeof fetch);
     const mismatch = await executeSearchPolicy(
       { query: "失业金", jurisdiction_code: "440000", as_of_date: "2026-09-01", top_k: 5 },
-      { confirmedJurisdictionCode: "310000" },
+      { confirmedJurisdictionCode: "310000", currentDate: "2026-09-01" },
     );
     if (mismatch.success) throw new Error("地区不一致必须失败");
     expect(mismatch.error).toContain("JURISDICTION");
     const unconfirmed = await executeSearchPolicy(
       { query: "失业金", jurisdiction_code: "310000", as_of_date: "2026-09-01", top_k: 5 },
-      {},
+      { currentDate: "2026-09-01" },
     );
     expect(unconfirmed.success).toBe(false);
     expect(fetcher).not.toHaveBeenCalled();
@@ -115,12 +136,12 @@ describe("searchPolicy 执行契约", () => {
         as_of_date: "2026-09-01",
         top_k: 5,
       });
-      return jsonResponse({ hits: [agentHit], candidateCount: 1 });
+      return ragResponse([agentHit]);
     });
     __setSearchPolicyFetcherForTest(fetcher as unknown as typeof fetch);
     const result = await executeSearchPolicy(
       { query: "失业金标准", jurisdiction_code: "310000", as_of_date: "2026-09-01", top_k: 5 },
-      { confirmedJurisdictionCode: "310000" },
+      { confirmedJurisdictionCode: "310000", currentDate: "2026-09-01" },
     );
     expect(result.success).toBe(true);
     if (result.success) {
@@ -130,17 +151,19 @@ describe("searchPolicy 执行契约", () => {
         `/api/rag/originals/${agentHit.documentVersionId}`,
       );
       expect(hit.officialUrl).toBe(agentHit.officialUrl);
+      expect(hit.documentTitle).toBe(agentHit.documentTitle);
+      expect(hit.authority).toBe(agentHit.authority);
       expect(hit.text).toContain("2340");
     }
   });
 
   it("无可靠命中时返回空hits并标记noReliableHits，不编造链接", async () => {
     vi.stubEnv("AGENT_SERVICE_JWT_CURRENT", TEST_JWT_SECRET);
-    const fetcher = vi.fn(async () => jsonResponse({ hits: [], candidateCount: 0 }));
+    const fetcher = vi.fn(async () => ragResponse([]));
     __setSearchPolicyFetcherForTest(fetcher as unknown as typeof fetch);
     const result = await executeSearchPolicy(
       { query: "四川生育津贴", jurisdiction_code: "310000", as_of_date: "2026-09-01", top_k: 5 },
-      { confirmedJurisdictionCode: "310000" },
+      { confirmedJurisdictionCode: "310000", currentDate: "2026-09-01" },
     );
     expect(result.success).toBe(true);
     if (result.success) {
@@ -155,7 +178,7 @@ describe("searchPolicy 执行契约", () => {
       __setSearchPolicyFetcherForTest(fetcher as unknown as typeof fetch);
       const result = await executeSearchPolicy(
         { query: "q", jurisdiction_code: "310000", as_of_date: "2026-09-01", top_k: 5 },
-        { confirmedJurisdictionCode: "310000" },
+        { confirmedJurisdictionCode: "310000", currentDate: "2026-09-01" },
       );
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -171,9 +194,44 @@ describe("searchPolicy 执行契约", () => {
     __setSearchPolicyFetcherForTest(fetcher as unknown as typeof fetch);
     const result = await executeSearchPolicy(
       { query: "q", jurisdiction_code: "310000", as_of_date: "2026-09-01", top_k: 5 },
-      { confirmedJurisdictionCode: "310000" },
+      { confirmedJurisdictionCode: "310000", currentDate: "2026-09-01" },
     );
     expect(result.success).toBe(false);
+  });
+
+  it("缺少服务端当前日期或模型提交其他日期时拒绝且不调用Agent", async () => {
+    const fetcher = vi.fn();
+    __setSearchPolicyFetcherForTest(fetcher as unknown as typeof fetch);
+    const missing = await executeSearchPolicy(
+      { query: "失业金", jurisdiction_code: "310000", as_of_date: "2026-09-01", top_k: 5 },
+      { confirmedJurisdictionCode: "310000" },
+    );
+    const mismatch = await executeSearchPolicy(
+      { query: "失业金", jurisdiction_code: "310000", as_of_date: "2026-09-01", top_k: 5 },
+      { confirmedJurisdictionCode: "310000", currentDate: "2026-09-13" },
+    );
+    expect(missing.success).toBe(false);
+    expect(mismatch.success).toBe(false);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("Agent命中缺少真实标题/机关或官网URL不属于政府域名时失败关闭", async () => {
+    vi.stubEnv("AGENT_SERVICE_JWT_CURRENT", TEST_JWT_SECRET);
+    for (const badHit of [
+      { ...agentHit, documentTitle: "" },
+      { ...agentHit, authority: "" },
+      { ...agentHit, officialUrl: "https://example.com/invented" },
+    ]) {
+      __setSearchPolicyFetcherForTest(
+        vi.fn(async () => ragResponse([badHit])) as unknown as typeof fetch,
+      );
+      const result = await executeSearchPolicy(
+        { query: "q", jurisdiction_code: "310000", as_of_date: "2026-09-13", top_k: 5 },
+        { confirmedJurisdictionCode: "310000", currentDate: "2026-09-13" },
+      );
+      expect(result.success).toBe(false);
+      expect(result.hits).toEqual([]);
+    }
   });
 });
 

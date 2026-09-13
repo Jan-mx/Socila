@@ -293,8 +293,16 @@ class TestControlledSync:
                 "SELECT id FROM rag.sources WHERE domain='rsj.sh.gov.cn' AND jurisdiction_code='310000'"
             ).fetchone()
         assert fetch is not None and fetch[1] == SHA
-        assert version is not None and version[0] == key and version[1] == SHA
+        assert version is not None and version[0] == key and version[1] == SHA and version[2] == "downloaded"
         assert source is not None
+        with connect(DRILL, autocommit=True) as conn:
+            derived = conn.execute(
+                """SELECT
+                     (SELECT count(*) FROM rag.document_trees),
+                     (SELECT count(*) FROM rag.chunks),
+                     (SELECT count(*) FROM rag.embeddings)"""
+            ).fetchone()
+        assert derived == (0, 0, 0), "sync只登记downloaded版本，不得提前产生可检索派生数据"
         # fetches.object_key与document_versions.object_key相同；清单不含凭据。
         assert result["manifest"][0]["objectKey"] == key
         assert "password" not in json.dumps(result).lower()
@@ -1306,8 +1314,9 @@ class TestFingerprintSemantics:
 # ── 第五轮修复（WI-20260913-01任务1）：ensure期间冲突对象竞态 ─────────────────
 # 缺口：外部进程在bucket_exists与ensure_bucket之间创建bucket并写入错误同键对象时，
 # 现实现把该对象计为noop并提交RAG登记，事务外verify才发现SHA不符——违反SHV2-NFR-006。
-# 闭环：ensure后、上传后、数据库提交前重验全部目标对象字节SHA；任一错误→
-# OBJECT_CONFLICT且RAG三表前后指纹一致（零写入）。
+# 闭环：ensure后、上传后、数据库提交前重验全部目标对象字节SHA；提交前错误→
+# OBJECT_CONFLICT且RAG三表前后指纹一致。最后一次读取后的外部篡改属于提交后
+# repair-required补偿路径，不能声称跨存储零写入。
 
 
 class _EnsureRaceConflictStore(InMemoryObjectStore):
@@ -1476,6 +1485,340 @@ class TestPreCommitObjectCheck:
         assert ei.value.code == "OBJECT_CONFLICT", f"期望OBJECT_CONFLICT，实际{ei.value.code}"
         assert "同键对象内容与原件不一致" in str(ei.value), "错误必须来自提交前终检（_verify_objects_or_conflict）而非既有冲突检查"
         assert _rag_db_fingerprint() == before, "提交前对象篡改必须整体回滚（RAG零写入）"
+
+
+class _CorruptAfterPrecommitReadStore(InMemoryObjectStore):
+    """终检读到正确字节后立即模拟外部管理员改写。
+
+    对fresh上传的一份原件，apply内上传后检查是第1次get，提交前终检是第2次get；
+    第2次get仍返回正确字节，但在返回后把对象改坏，因此数据库事务能够提交，随后
+    post-commit verify才会观察到跨存储漂移。
+    """
+
+    def __init__(self, key: str) -> None:
+        super().__init__()
+        self._key = key
+        self._gets = 0
+
+    def get(self, key: str) -> bytes:
+        content = super().get(key)
+        if key == self._key:
+            self._gets += 1
+            if self._gets == 2:
+                self._objects[key] = OTHER_BYTES
+        return content
+
+
+class _FailPostcommitReadStore(InMemoryObjectStore):
+    """前两次对象读取成功，post-commit verify的第3次读取抛出存储错误。"""
+
+    def __init__(self, key: str) -> None:
+        super().__init__()
+        self._key = key
+        self._gets = 0
+
+    def get(self, key: str) -> bytes:
+        if key == self._key:
+            self._gets += 1
+            if self._gets == 3:
+                raise ConnectionError("post-commit object read unavailable")
+        return super().get(key)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
+class TestPostCommitObjectTampering:
+    """提交边界外的对象篡改不能伪装成事务回滚；pending门禁必须保持不可索引。"""
+
+    def test_post_commit_verify_failure_returns_repair_required_and_blocks_index(self, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        monkeypatch.setenv("RAG_INDEX_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        key = f"originals/{SHA}"
+        store = _CorruptAfterPrecommitReadStore(key)
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=None, database_url=DRILL)
+        plan = sync.build_plan()
+
+        result = sync.apply(
+            plan,
+            plan_hash=plan["planHash"],
+            target_fingerprint=plan["targetFingerprint"],
+            i_am_authorized=True,
+        )
+
+        assert result["state"] == "repair_required"
+        assert result["repairRequired"] is True
+        assert result["metadataCommitted"] is True
+        assert result["applied"] is True
+        assert result["verified"] is False
+        assert any("SHA" in problem or "漂移" in problem for problem in result["problems"])
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            version = conn.execute(
+                "SELECT status, error FROM rag.document_versions WHERE content_hash=%s", (SHA,)
+            ).fetchone()
+        assert version is not None and version[0] == "needs_correction", "补偿状态必须阻断indexed推进"
+        assert str(version[1]).startswith("SYNC_VERIFICATION_PENDING:"), "失败后必须保留提交时的阻断marker"
+        assert result["affectedVersionIds"], "repair结果必须列出被补偿阻断的已提交版本"
+
+        assert version[0] not in ("downloaded", "parsed"), "repair版本不得处于索引允许推进的状态"
+
+    def test_post_commit_verify_exception_also_returns_repair_required(self, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        key = f"originals/{SHA}"
+        store = _FailPostcommitReadStore(key)
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=None, database_url=DRILL)
+        plan = sync.build_plan()
+
+        result = sync.apply(
+            plan,
+            plan_hash=plan["planHash"],
+            target_fingerprint=plan["targetFingerprint"],
+            i_am_authorized=True,
+        )
+
+        assert result["code"] == "SYNC_REPAIR_REQUIRED"
+        assert result["metadataCommitted"] is True and result["indexingBlocked"] is True
+        assert result["verified"] is False
+        assert any("post-commit verify raised ConnectionError" in problem for problem in result["problems"])
+
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            version = conn.execute(
+                "SELECT status, error FROM rag.document_versions WHERE content_hash=%s", (SHA,)
+            ).fetchone()
+        assert version is not None and version[0] == "needs_correction"
+        assert str(version[1]).startswith("SYNC_VERIFICATION_PENDING:")
+
+    def test_promotion_failure_keeps_pending_rows_blocked_and_returns_repair_required(self, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        _two_doc_evidence(evidence_env["evidence_root"])
+        store = InMemoryObjectStore()
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=None, database_url=DRILL)
+        plan = sync.build_plan()
+
+        result = sync.apply(
+            plan,
+            plan_hash=plan["planHash"],
+            target_fingerprint=plan["targetFingerprint"],
+            i_am_authorized=True,
+            inject_failure_at="promotion",
+        )
+
+        assert result["code"] == "SYNC_REPAIR_REQUIRED"
+        assert result["verified"] is False and result["indexingBlocked"] is True
+        assert any("promotion" in problem.lower() for problem in result["problems"])
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            versions = conn.execute(
+                "SELECT status, error FROM rag.document_versions ORDER BY content_hash"
+            ).fetchall()
+        assert len(versions) == 3
+        assert all(row[0] == "needs_correction" for row in versions), "晋级首行后失败必须整体回滚，无部分eligible"
+        assert all(str(row[1]).startswith("SYNC_VERIFICATION_PENDING:") for row in versions)
+
+    def test_optimistic_noop_verify_race_returns_repair_and_blocks_existing_version(
+        self, evidence_env, monkeypatch
+    ):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        key = f"originals/{SHA}"
+        store = InMemoryObjectStore()
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=None, database_url=DRILL)
+        plan = sync.build_plan()
+        first = sync.apply(
+            plan,
+            plan_hash=plan["planHash"],
+            target_fingerprint=plan["targetFingerprint"],
+            i_am_authorized=True,
+        )
+        assert first["verified"] is True
+        original_verify = sync.verify
+
+        def corrupt_then_verify(*args, **kwargs):
+            store._objects[key] = OTHER_BYTES
+            return original_verify(*args, **kwargs)
+
+        monkeypatch.setattr(sync, "verify", corrupt_then_verify)
+        result = sync.apply(
+            plan,
+            plan_hash=plan["planHash"],
+            target_fingerprint=plan["targetFingerprint"],
+            i_am_authorized=True,
+        )
+        assert result["code"] == "SYNC_REPAIR_REQUIRED"
+        assert result["noop"] is True and result["metadataCommitted"] is True
+        assert result["affectedVersionIds"]
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            status = conn.execute(
+                "SELECT status FROM rag.document_versions WHERE content_hash=%s", (SHA,)
+            ).fetchone()
+        assert status == ("needs_correction",)
+
+    def test_locked_noop_verify_race_uses_same_repair_path(self, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        key = f"originals/{SHA}"
+        store = InMemoryObjectStore()
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=None, database_url=DRILL)
+        plan = sync.build_plan()
+        first = sync.apply(
+            plan,
+            plan_hash=plan["planHash"],
+            target_fingerprint=plan["targetFingerprint"],
+            i_am_authorized=True,
+        )
+        assert first["verified"] is True
+
+        # 模拟乐观读取仍看到计划前态，而锁内重读已看到另一执行者提交的终态。
+        original_fingerprint = sync._state_fingerprint
+        calls = 0
+
+        def stale_then_current(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return plan["targetFingerprint"]
+            return original_fingerprint(*args, **kwargs)
+
+        original_verify = sync.verify
+
+        def corrupt_then_verify(*args, **kwargs):
+            store._objects[key] = OTHER_BYTES
+            return original_verify(*args, **kwargs)
+
+        monkeypatch.setattr(sync, "_state_fingerprint", stale_then_current)
+        monkeypatch.setattr(sync, "verify", corrupt_then_verify)
+        result = sync.apply(
+            plan,
+            plan_hash=plan["planHash"],
+            target_fingerprint=plan["targetFingerprint"],
+            i_am_authorized=True,
+        )
+        assert result["code"] == "SYNC_REPAIR_REQUIRED"
+        assert result["noop"] is True and result["verified"] is False
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            status = conn.execute(
+                "SELECT status FROM rag.document_versions WHERE content_hash=%s", (SHA,)
+            ).fetchone()
+        assert status == ("needs_correction",)
+
+    def test_cli_connection_loss_during_promotion_keeps_stable_repair_json_exit4(
+        self, evidence_env, tmp_path, monkeypatch, capsys
+    ):
+        """promotion使连接失效时，unlock清理错误不得覆盖已构造的repair结果。"""
+        from agent.rag import evidence_sync as es
+
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        store = InMemoryObjectStore()
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=None, database_url=DRILL)
+        plan = sync.build_plan()
+        plan_file = tmp_path / "sync-plan.json"
+        plan_file.write_text(json.dumps(plan), encoding="utf-8")
+        monkeypatch.setattr(es, "_build_store", lambda *_args: store)
+
+        def close_connection_then_fail(self, manifest, *, conn, inject_failure=False):
+            del self, manifest, inject_failure
+            conn.close()
+            raise ConnectionError("promotion connection lost")
+
+        monkeypatch.setattr(PolicyEvidenceSync, "_promote_verified_versions", close_connection_then_fail)
+        rc = es.main(
+            [
+                "apply",
+                "--evidence-dir",
+                str(evidence_env["evidence_root"]),
+                "--database-url",
+                DRILL,
+                "--plan-file",
+                str(plan_file),
+                "--plan-hash",
+                plan["planHash"],
+                "--target-fingerprint",
+                plan["targetFingerprint"],
+                "--i-am-authorized",
+            ]
+        )
+
+        captured = capsys.readouterr()
+        assert rc == 4
+        payload = json.loads(captured.out)
+        assert payload["code"] == "SYNC_REPAIR_REQUIRED"
+        assert payload["verified"] is False and payload["indexingBlocked"] is True
+        assert any("promotion connection lost" in problem for problem in payload["problems"])
+        assert "UNEXPECTED" not in captured.err
+
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            version = conn.execute(
+                "SELECT status, error FROM rag.document_versions WHERE content_hash=%s", (SHA,)
+            ).fetchone()
+        assert version is not None and version[0] == "needs_correction"
+        assert str(version[1]).startswith("SYNC_VERIFICATION_PENDING:")
+
+
+def test_cli_apply_repair_required_returns_stable_nonzero_exit(tmp_path, monkeypatch, capsys):
+    """CLI必须输出repair状态并以非零退出，不能把已提交但待修复的apply报告为成功。"""
+    from agent.rag import evidence_sync as es
+
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        es,
+        "parse_sync_args",
+        lambda _argv: {
+            "mode": "apply",
+            "bucket": EVIDENCE_BUCKET,
+            "endpoint": None,
+            "evidence_dir": str(tmp_path),
+            "dsl_root": None,
+            "database_url": "postgresql://example.invalid/test",
+            "jurisdiction": "310000",
+            "out": None,
+            "plan_file": str(plan_file),
+            "plan_hash": "a" * 64,
+            "target_fingerprint": "b" * 64,
+            "i_am_authorized": True,
+            "object_only": False,
+        },
+    )
+    monkeypatch.setattr(es, "_build_store", lambda *_args: object())
+
+    class _RepairSync:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def apply(self, *_args, **_kwargs):
+            return {
+                "mode": "apply",
+                "state": "repair_required",
+                "code": "SYNC_REPAIR_REQUIRED",
+                "applied": True,
+                "metadataCommitted": True,
+                "repairRequired": True,
+                "indexingBlocked": True,
+                "affectedVersionIds": ["00000000-0000-0000-0000-000000000001"],
+                "verified": False,
+                "problems": ["object SHA drift"],
+            }
+
+    monkeypatch.setattr(es, "PolicyEvidenceSync", _RepairSync)
+
+    assert es.main([]) == 4
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["code"] == "SYNC_REPAIR_REQUIRED"
+    assert payload["metadataCommitted"] is True
 
 
 @pytest.mark.integration

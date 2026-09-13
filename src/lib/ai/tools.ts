@@ -398,8 +398,16 @@ export const searchPolicySchema = z.object({
   as_of_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须是 YYYY-MM-DD")
-    .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)), "必须是真实日历日期")
-    .describe("政策有效期判定日期（YYYY-MM-DD），通常使用当前日期"),
+    .refine((value) => {
+      const [year, month, day] = value.split("-").map(Number);
+      const parsed = new Date(Date.UTC(year, month - 1, day));
+      return (
+        parsed.getUTCFullYear() === year &&
+        parsed.getUTCMonth() === month - 1 &&
+        parsed.getUTCDate() === day
+      );
+    }, "必须是真实日历日期")
+    .describe("政策有效期判定日期（YYYY-MM-DD），必须使用系统提示中注入的当前服务器日期"),
   top_k: z
     .number()
     .int()
@@ -421,12 +429,13 @@ export const searchPolicyTool = tool<
   inputSchema: zodSchema(searchPolicySchema),
   execute: (params: SearchPolicyInput, options?: { experimental_context?: unknown }) => {
     const ctx = options?.experimental_context as
-      | { confirmedJurisdictionCode?: unknown; ownerUserId?: unknown }
+      | { confirmedJurisdictionCode?: unknown; ownerUserId?: unknown; currentDate?: unknown }
       | undefined;
     return executeSearchPolicy(params, {
       confirmedJurisdictionCode:
         typeof ctx?.confirmedJurisdictionCode === "string" ? ctx.confirmedJurisdictionCode : undefined,
       ownerUserId: typeof ctx?.ownerUserId === "string" ? ctx.ownerUserId : undefined,
+      currentDate: typeof ctx?.currentDate === "string" ? ctx.currentDate : undefined,
     });
   },
 });

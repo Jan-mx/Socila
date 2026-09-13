@@ -16,8 +16,13 @@ export interface SearchPolicyHit {
   parentText: string | null;
   path: string | null;
   score: number;
+  /** 索引清单写入document_versions的真实文件标题。 */
+  documentTitle: string;
+  /** 索引清单写入document_versions的真实发布机关。 */
+  authority: string;
+  /** 向后兼容字段；服务端固定为documentTitle，禁止再以站点名冒充标题。 */
   sourceName: string;
-  officialUrl: string | null;
+  officialUrl: string;
   contentSha256: string;
   mime: string;
   /** 登录态归档原件下载路径（Web代理，非MinIO直链）。 */
@@ -31,6 +36,8 @@ export type SearchPolicyResult =
 export interface SearchPolicyToolContext {
   confirmedJurisdictionCode?: string;
   ownerUserId?: string;
+  /** 由Chat Route一次性注入的服务器日期；模型不得自行选择。 */
+  currentDate?: string;
 }
 
 /** 测试接缝：注入fetch替身（默认使用全局fetch）。 */
@@ -53,10 +60,44 @@ function agentBaseUrl(): string {
 export function mapSearchHits(
   hits: Array<Omit<SearchPolicyHit, "originalDownloadPath">>,
 ): SearchPolicyHit[] {
-  return hits.map((hit) => ({
-    ...hit,
-    originalDownloadPath: `/api/rag/originals/${hit.documentVersionId}`,
-  }));
+  return hits.map((hit) => {
+    if (
+      !UUID_PATTERN.test(hit.documentVersionId) ||
+      !nonEmpty(hit.documentTitle) ||
+      !nonEmpty(hit.authority) ||
+      !isApprovedOfficialUrl(hit.officialUrl) ||
+      !/^[0-9a-f]{64}$/i.test(hit.contentSha256) ||
+      !nonEmpty(hit.mime) ||
+      !Number.isFinite(hit.score)
+    ) {
+      throw new Error("SEARCH_POLICY_PROVENANCE_INVALID");
+    }
+    return {
+      ...hit,
+      documentTitle: hit.documentTitle.trim(),
+      authority: hit.authority.trim(),
+      sourceName: hit.documentTitle.trim(),
+      originalDownloadPath: `/api/rag/originals/${hit.documentVersionId}`,
+    };
+  });
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function nonEmpty(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/** 运行时只接受HTTPS政府官网；归档链接始终由本地documentVersionId构造。 */
+export function isApprovedOfficialUrl(value: unknown): value is string {
+  if (!nonEmpty(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && (url.hostname === "gov.cn" || url.hostname.endsWith(".gov.cn"));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -81,6 +122,22 @@ export async function executeSearchPolicy(
       success: false,
       error:
         "JURISDICTION_CONTEXT_MISMATCH: 请求地区与会话已确认地区不一致，请先确认或切换地区",
+      hits: [],
+      noReliableHits: true,
+    };
+  }
+  if (!context.currentDate) {
+    return {
+      success: false,
+      error: "CURRENT_DATE_REQUIRED: 服务端未提供当前日期，拒绝由模型猜测政策有效期",
+      hits: [],
+      noReliableHits: true,
+    };
+  }
+  if (params.as_of_date !== context.currentDate) {
+    return {
+      success: false,
+      error: "AS_OF_DATE_CONTEXT_MISMATCH: 检索日期必须等于服务端注入的当前日期",
       hits: [],
       noReliableHits: true,
     };
@@ -114,8 +171,23 @@ export async function executeSearchPolicy(
         noReliableHits: true,
       };
     }
-    const data = (await response.json()) as { hits?: Array<Omit<SearchPolicyHit, "originalDownloadPath">> };
-    const hits = mapSearchHits(Array.isArray(data.hits) ? data.hits : []);
+    const data = (await response.json()) as {
+      hits?: Array<Omit<SearchPolicyHit, "originalDownloadPath">>;
+      reliableHitCount?: number;
+      noReliableHits?: boolean;
+      relevanceThreshold?: number;
+    };
+    const rawHits = Array.isArray(data.hits) ? data.hits : [];
+    if (
+      typeof data.noReliableHits !== "boolean" ||
+      data.noReliableHits !== (rawHits.length === 0) ||
+      data.reliableHitCount !== rawHits.length ||
+      typeof data.relevanceThreshold !== "number" ||
+      !Number.isFinite(data.relevanceThreshold)
+    ) {
+      throw new Error("SEARCH_POLICY_RELEVANCE_CONTRACT_INVALID");
+    }
+    const hits = mapSearchHits(rawHits);
     return { success: true, hits, noReliableHits: hits.length === 0 };
   } catch {
     return {

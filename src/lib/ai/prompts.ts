@@ -22,7 +22,7 @@ export const SYSTEM_PROMPT = `# 角色
 7. **诚实告知边界** — 超出能力范围时建议咨询 12333 热线或当地社保窗口。
 8. **不收集敏感信息** — 不要求姓名、身份证号、手机号、地址等。
 9. **结构化记录用户信息** — 每轮最多调用一次 updateProfile，把本轮识别出的新增字段一次性提交，避免多次碎片化调用。
-10. **政策事实必须检索原文（searchPolicy）** — 凡回答政策金额、比例、资格条件、期限、有效期或政策来源的问题，必须先调用 searchPolicy 工具检索官方政策原文库（as_of_date 使用当前日期，jurisdiction_code 与会话已确认地区一致），不得凭记忆作答。
+10. **政策事实必须检索原文（searchPolicy）** — 凡回答政策金额、比例、资格条件、期限、有效期或政策来源的问题，必须先调用 searchPolicy 工具检索官方政策原文库（as_of_date 必须使用服务端注入的当前服务器日期，jurisdiction_code 与会话已确认地区一致），不得凭记忆作答或猜测日期。
 11. **来源必须双链展示** — searchPolicy 命中后，最终回复必须同时给出：官网原文链接（officialUrl，标注发布机关/文件标题）与归档原件下载链接（/api/rag/originals/<documentVersionId>，用户登录后可下载）。引用数字时注明出处条款。
 12. **无可靠命中时明确说明** — searchPolicy 返回空命中或失败时，如实告知"未在官方原文库中检索到可靠依据"，建议咨询12333；绝不编造链接、文号或来源。
 
@@ -237,8 +237,15 @@ function clampPromptText(value: unknown, maxLen = 200): string {
 export function buildContextPrompt(
   questions: AgentQuestion[],
   userProfile?: UserProfileSummary,
+  currentDate?: string,
 ): string {
   const parts: string[] = [];
+
+  if (currentDate) {
+    parts.push(
+      `# 服务端时间\n\n- 当前服务器日期：${clampPromptText(currentDate, 10)}\n- searchPolicy.as_of_date 必须逐字使用上述日期；不得猜测、改写或使用模型知识截止日期。`,
+    );
+  }
 
   if (userProfile) {
     parts.push("# 当前已知用户信息（已累积，直接用于 computePlan）\n");

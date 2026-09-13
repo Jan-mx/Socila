@@ -32,7 +32,13 @@ Git审计夹具中的政策原件（original.html/附件 + meta.json + DSL evide
   连接失败、超时、服务端错误及其他未知错误原样抛出（audit/plan/apply/verify必须失败，
   不得转换为"对象缺失"；write-only权限组合下apply在exists处失败且绝不put）；
 - 幂等：对象已存在且SHA一致→no-op；内容不一致→拒绝覆盖（OBJECT_CONFLICT）；
-  并发apply经advisory xact锁串行化并在锁内复查，不产生重复rag记录；
+  并发apply经session advisory锁串行化并在锁内复查，不产生重复rag记录；
+- **跨存储提交边界**：同步只创建`downloaded`版本，不生成派生索引，因而正常同步终态
+  不可检索；ensure后、上传后与PostgreSQL提交前均重验对象，提交前失败回滚RAG事务；
+  MinIO不参与PostgreSQL事务，外部管理员若在最后一次读取后篡改对象，提交后verify失败
+  必须返回`SYNC_REPAIR_REQUIRED`；本批版本在登记事务中先以`needs_correction`和pending
+  marker提交，post-commit verify通过后才原子晋级，失败时天然保持索引阻断；不得把已提交
+  元数据描述为回滚或跨存储零写入；
 - 防误写：bucket非`policy-originals`拒绝；非本机MinIO endpoint默认拒绝（需
   RAG_EVIDENCE_ALLOW_REMOTE=1）；目标库名为`policyops`默认拒绝（需
   RAG_EVIDENCE_ALLOW_PERSISTENT=1）；
@@ -46,6 +52,7 @@ extracted-text.txt）。
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -59,8 +66,10 @@ from typing import Any
 EVIDENCE_BUCKET = "policy-originals"
 OBJECT_PREFIX = "originals/"
 PIPELINE_VERSION = "rag-evidence-sync-1.0"
-EVIDENCE_SYNC_ALGORITHM_VERSION = "RAG-EVIDENCE-SYNC-1.1"
-PLAN_SCHEMA = "rag-evidence-sync-plan/1.1"
+EVIDENCE_SYNC_ALGORITHM_VERSION = "RAG-EVIDENCE-SYNC-1.2"
+PLAN_SCHEMA = "rag-evidence-sync-plan/1.2"
+SYNC_REPAIR_REQUIRED = "SYNC_REPAIR_REQUIRED"
+SYNC_VERIFICATION_PENDING = "SYNC_VERIFICATION_PENDING"
 _PERSISTENT_DB = "policyops"
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
 _MODES = ("audit", "plan", "apply", "verify")
@@ -411,13 +420,19 @@ class PolicyEvidenceSync:
                 (doc.object_key, doc.sha256),
             ).fetchone()
             version = conn.execute(
-                "SELECT id, object_key, status FROM rag.document_versions WHERE content_hash=%s",
+                "SELECT id, object_key, status, error FROM rag.document_versions WHERE content_hash=%s",
                 (doc.sha256,),
             ).fetchone()
             state[doc.doc_id] = {
                 "fetchRecorded": fetch is not None,
                 "versionRecorded": version is not None,
+                "versionId": str(version[0]) if version else None,
                 "versionObjectKey": version[1] if version else None,
+                "syncVerificationBlocked": bool(
+                    version
+                    and version[2] == "needs_correction"
+                    and str(version[3] or "").startswith((SYNC_REPAIR_REQUIRED, SYNC_VERIFICATION_PENDING))
+                ),
             }
         return state
 
@@ -437,6 +452,7 @@ class PolicyEvidenceSync:
                 obj_exists, obj_match = True, True
                 fetch_rec, version_rec = True, True
                 version_key: str | None = doc.object_key
+                sync_verification_blocked = False
             else:
                 obj_exists = self.store.exists(doc.object_key) if bucket_flag else False
                 obj_match = obj_exists and sha256_bytes(self.store.get(doc.object_key)) == doc.sha256
@@ -444,6 +460,7 @@ class PolicyEvidenceSync:
                 fetch_rec = bool(st.get("fetchRecorded"))
                 version_rec = bool(st.get("versionRecorded"))
                 version_key = st.get("versionObjectKey")
+                sync_verification_blocked = bool(st.get("syncVerificationBlocked"))
             entries.append(
                 {
                     "docId": doc.doc_id,
@@ -454,6 +471,7 @@ class PolicyEvidenceSync:
                     "fetchRecorded": fetch_rec,
                     "versionRecorded": version_rec,
                     "versionObjectKey": version_key,
+                    "syncVerificationBlocked": sync_verification_blocked,
                 }
             )
         return _canonical_sha256(
@@ -486,6 +504,8 @@ class PolicyEvidenceSync:
                 problems.append(f"{doc.doc_id}: rag.document_versions记录缺失（content_hash={doc.sha256}）")
             elif st["versionObjectKey"] != doc.object_key:
                 problems.append(f"{doc.doc_id}: document_versions.object_key不一致：{st['versionObjectKey']} ≠ {doc.object_key}")
+            if st["syncVerificationBlocked"]:
+                problems.append(f"{doc.doc_id}: {SYNC_REPAIR_REQUIRED}（上次同步提交后校验失败，需repair后才可索引）")
         return {
             "mode": "audit",
             "bucket": self.bucket,
@@ -579,101 +599,165 @@ class PolicyEvidenceSync:
             )
         current = self._state_fingerprint(docs, assume_applied=False)
         state = classify_target_state(current, plan["targetFingerprint"], plan["finalFingerprint"])
-        if state == "noop":
-            report = self.verify()
-            if not report["ok"]:
-                raise EvidenceSyncError("APPLY_VERIFY_FAILED", "noop终态verify未通过：" + "；".join(report["problems"][:5]))
-            return {
-                "mode": "apply",
-                "applied": False,
-                "noop": True,
-                "planHash": plan["planHash"],
-                "bucketCreated": False,
-                "uploaded": 0,
-                "noopObjects": len(docs),
-                "fetches": 0,
-                "versions": 0,
-                "manifest": [],
-                "verified": True,
-            }
 
         # pending或乐观drift都进入持锁段：advisory锁串行化并发apply后重分类——
-        # 另一apply的中间态（对象已上传、登记未提交）在锁内表现为终态→noop，而非误判漂移；
-        # 锁内仍为漂移→零写入拒绝。上传与RAG登记在同一持锁事务内完成。
+        # 即使乐观读取为noop也必须锁内复核，并把精确版本先提交为不可索引的pending状态；
+        # 另一apply已经完成的终态在锁内表现为noop，而非误判漂移；
+        # 锁内仍为漂移→零写入拒绝。锁协调对象写与RAG登记，但MinIO不参与PostgreSQL事务，
+        # 因此外部管理员在最后一次对象读取后仍可制造跨存储漂移，不能宣称绝对原子性。
         import psycopg
 
         assert self.database_url is not None
-        with psycopg.connect(self.database_url) as conn, conn.transaction():
-            conn.execute("SELECT pg_advisory_xact_lock(%s)", (ADVISORY_LOCK_KEY,))
-            locked_current = self._state_fingerprint(docs, assume_applied=False, conn=conn)
-            state = classify_target_state(locked_current, plan["targetFingerprint"], plan["finalFingerprint"])
-            if state == "drift":
-                raise EvidenceSyncError(
-                    "TARGET_STATE_DRIFT",
-                    f"MinIO/RAG目标状态在plan后漂移：现{locked_current[:16]}… 既非计划前置{plan['targetFingerprint'][:16]}…也非终态（零写入拒绝，请重新plan）",
-                )
-            if state == "noop":
+        bucket_created = False
+        uploaded = 0
+        noop = 0
+        new_fetches = 0
+        new_versions = 0
+        manifest: list[dict[str, Any]] = []
+        was_noop = state == "noop"  # 仅作乐观观测；锁内分类始终为权威结果。
+        with psycopg.connect(self.database_url, autocommit=True) as conn:
+            conn.execute("SELECT pg_advisory_lock(%s)", (ADVISORY_LOCK_KEY,))
+            try:
+                with conn.transaction():
+                    locked_current = self._state_fingerprint(docs, assume_applied=False, conn=conn)
+                    state = classify_target_state(
+                        locked_current, plan["targetFingerprint"], plan["finalFingerprint"]
+                    )
+                    if state == "drift":
+                        raise EvidenceSyncError(
+                            "TARGET_STATE_DRIFT",
+                            f"MinIO/RAG目标状态在plan后漂移：现{locked_current[:16]}… 既非计划前置"
+                            f"{plan['targetFingerprint'][:16]}…也非终态（零写入拒绝，请重新plan）",
+                        )
+                    if state == "noop":
+                        was_noop = True
+                        noop = len(docs)
+                        self._verify_objects_or_conflict(docs, require_present=True)
+                    else:
+                        was_noop = False
+                        conflicts = [
+                            o
+                            for o in self._object_states(docs)
+                            if o["objectExists"] and o["objectShaMatches"] is not True
+                        ]
+                        if conflicts:
+                            raise EvidenceSyncError(
+                                "OBJECT_CONFLICT",
+                                "MinIO已存在同键不同内容对象，禁止覆盖："
+                                + "；".join(f"{o['docId']}:{o['objectKey']}" for o in conflicts),
+                            )
+                        if not self.store.bucket_exists():
+                            if not plan.get("plannedBucketCreate"):
+                                raise EvidenceSyncError(
+                                    "TARGET_STATE_DRIFT",
+                                    f"bucket {self.bucket}缺失但计划未声明plannedBucketCreate："
+                                    "计划与MinIO状态不一致（重新plan）",
+                                )
+                            bucket_created = self.store.ensure_bucket()
+                        self._verify_objects_or_conflict(docs, require_present=False)
+                        for doc in docs:
+                            if self.store.exists(doc.object_key):
+                                noop += 1
+                            else:
+                                self.store.put(doc.object_key, doc.artifact.read_bytes(), doc.mime)
+                                uploaded += 1
+                        self._verify_objects_or_conflict(docs, require_present=True)
+                        if inject_failure_at == "after_uploads":
+                            raise EvidenceSyncError(
+                                "INJECTED_FAILURE", "演练注入：after_uploads（对象已上传、RAG未登记）"
+                            )
+
+                    # 新登记与两种noop都先提交needs_correction pending门禁；提交时不存在
+                    # 本批可索引版本。session advisory锁持续覆盖post-commit verify与晋级。
+                    manifest, new_fetches, new_versions = self._register(
+                        docs, conn=conn, verification_plan_hash=plan["planHash"]
+                    )
+                    self._verify_objects_or_conflict(docs, require_present=True)
+
+                affected_version_ids = sorted(str(entry["documentVersionId"]) for entry in manifest)
+                try:
+                    report = self.verify(allowed_pending_version_ids=set(affected_version_ids))
+                except Exception as err:
+                    report = {
+                        "ok": False,
+                        "problems": [
+                            f"post-commit verify raised {type(err).__name__}: {redact(str(err))[:500]}"
+                        ],
+                    }
+                if not report["ok"]:
+                    return self._repair_required_result(
+                        plan=plan,
+                        was_noop=was_noop,
+                        bucket_created=bucket_created,
+                        uploaded=uploaded,
+                        noop=noop,
+                        new_fetches=new_fetches,
+                        new_versions=new_versions,
+                        manifest=manifest,
+                        problems=report["problems"],
+                    )
+                try:
+                    self._promote_verified_versions(
+                        manifest, conn=conn, inject_failure=inject_failure_at == "promotion"
+                    )
+                except Exception as err:
+                    return self._repair_required_result(
+                        plan=plan,
+                        was_noop=was_noop,
+                        bucket_created=bucket_created,
+                        uploaded=uploaded,
+                        noop=noop,
+                        new_fetches=new_fetches,
+                        new_versions=new_versions,
+                        manifest=manifest,
+                        problems=[
+                            f"post-commit promotion raised {type(err).__name__}: {redact(str(err))[:500]}"
+                        ],
+                    )
                 return {
                     "mode": "apply",
-                    "applied": False,
-                    "noop": True,
+                    "state": "noop" if was_noop else "applied",
+                    "applied": not was_noop,
+                    "noop": was_noop,
                     "planHash": plan["planHash"],
-                    "bucketCreated": False,
-                    "uploaded": 0,
-                    "noopObjects": len(docs),
-                    "fetches": 0,
-                    "versions": 0,
-                    "manifest": [],
+                    "bucketCreated": bucket_created,
+                    "uploaded": uploaded,
+                    "noopObjects": noop,
+                    "fetches": new_fetches,
+                    "versions": new_versions,
+                    "manifest": manifest,
+                    "affectedVersionIds": affected_version_ids,
                     "verified": True,
                 }
-            # pending：冲突对象先拒绝（禁止覆盖），再显式建桶（仅授权写入段）+幂等上传+登记。
-            conflicts = [o for o in self._object_states(docs) if o["objectExists"] and o["objectShaMatches"] is not True]
-            if conflicts:
-                raise EvidenceSyncError(
-                    "OBJECT_CONFLICT",
-                    "MinIO已存在同键不同内容对象，禁止覆盖：" + "；".join(f"{o['docId']}:{o['objectKey']}" for o in conflicts),
-                )
-            # 缺桶生命周期：bucket创建发生在全部fresh授权校验通过并取得advisory锁之后的
-            # 显式ensure_bucket写入段；计划未声明plannedBucketCreate而bucket缺失属状态漂移。
-            # 真实创建归属：外部进程可能在bucket_exists与ensure_bucket之间抢先建桶，
-            # 此时ensure_bucket返回False——本次apply必须如实报告bucketCreated=false，
-            # 且不影响授权校验、advisory锁、对象上传、RAG登记与最终verify。
-            bucket_created = False
-            if not self.store.bucket_exists():
-                if not plan.get("plannedBucketCreate"):
-                    raise EvidenceSyncError(
-                        "TARGET_STATE_DRIFT",
-                        f"bucket {self.bucket}缺失但计划未声明plannedBucketCreate：计划与MinIO状态不一致（重新plan）",
-                    )
-                bucket_created = self.store.ensure_bucket()
-            # 竞态修复检查点1（WI-20260913-01任务1）：ensure后重新枚举全部目标对象并
-            # 下载核对SHA——外部进程可能在bucket_exists与ensure_bucket之间创建bucket并
-            # 写入错误同键对象；此处拦截后上传段尚未执行、RAG登记尚未写入（零写入拒绝）。
-            self._verify_objects_or_conflict(docs, require_present=False)
-            uploaded = 0
-            noop = 0
-            for doc in docs:
-                if self.store.exists(doc.object_key):
-                    noop += 1
-                else:
-                    self.store.put(doc.object_key, doc.artifact.read_bytes(), doc.mime)
-                    uploaded += 1
-            # 竞态修复检查点2：上传完成后、RAG登记前再次核对全部对象（对象必须存在
-            # 且SHA一致）——上传窗口内的外部写入不得计为noop并提交RAG登记。
-            self._verify_objects_or_conflict(docs, require_present=True)
-            if inject_failure_at == "after_uploads":
-                raise EvidenceSyncError("INJECTED_FAILURE", "演练注入：after_uploads（对象已上传、RAG未登记）")
-            manifest, new_fetches, new_versions = self._register(docs, conn=conn)
-            # 竞态修复检查点3：数据库事务提交前最终对象完整性检查——任一对象缺失或
-            # SHA漂移即抛出，当前事务整体回滚（rag.sources/fetches/document_versions零写入）。
-            self._verify_objects_or_conflict(docs, require_present=True)
-        report = self.verify()
-        if not report["ok"]:
-            raise EvidenceSyncError("APPLY_VERIFY_FAILED", "apply后verify未通过：" + "；".join(report["problems"][:5]))
+            finally:
+                # 清理不得覆盖已构造的SYNC_REPAIR_REQUIRED结果。连接失效时PostgreSQL会在
+                # session关闭时自动释放advisory lock；显式unlock仅是正常路径优化。
+                with contextlib.suppress(Exception):
+                    conn.execute("SELECT pg_advisory_unlock(%s)", (ADVISORY_LOCK_KEY,))
+
+    def _repair_required_result(
+        self,
+        *,
+        plan: dict[str, Any],
+        was_noop: bool,
+        bucket_created: bool,
+        uploaded: int,
+        noop: int,
+        new_fetches: int,
+        new_versions: int,
+        manifest: list[dict[str, Any]],
+        problems: list[str],
+    ) -> dict[str, Any]:
+        """返回稳定repair状态；版本已在前一事务中以needs_correction提交并保持阻断。"""
         return {
             "mode": "apply",
-            "applied": True,
-            "noop": False,
+            "state": "repair_required",
+            "code": SYNC_REPAIR_REQUIRED,
+            "applied": not was_noop,
+            "noop": was_noop,
+            "metadataCommitted": True,
+            "repairRequired": True,
+            "indexingBlocked": True,
             "planHash": plan["planHash"],
             "bucketCreated": bucket_created,
             "uploaded": uploaded,
@@ -681,8 +765,41 @@ class PolicyEvidenceSync:
             "fetches": new_fetches,
             "versions": new_versions,
             "manifest": manifest,
-            "verified": True,
+            "affectedVersionIds": sorted(str(entry["documentVersionId"]) for entry in manifest),
+            "verified": False,
+            "problems": problems,
         }
+
+    def _promote_verified_versions(
+        self, manifest: list[dict[str, Any]], *, conn: Any, inject_failure: bool = False
+    ) -> None:
+        """仅在post-commit对象/数据库核验成功后，原子晋级精确pending版本。
+
+        任一行缺失或marker不符会使整个晋级事务回滚；所有行继续保持needs_correction，
+        因而晋级失败也不会留下部分index-eligible状态。
+        """
+        with conn.transaction():
+            for index, entry in enumerate(manifest):
+                version_id = str(entry["documentVersionId"])
+                marker = str(entry["verificationMarker"])
+                promote_status = str(entry["promotionStatus"])
+                updated = conn.execute(
+                    """UPDATE rag.document_versions
+                       SET status=%s, error=NULL, updated_at=now()
+                       WHERE id=%s AND status='needs_correction' AND error=%s
+                       RETURNING id""",
+                    (promote_status, version_id, marker),
+                ).fetchone()
+                if updated is None:
+                    raise EvidenceSyncError(
+                        "SYNC_PROMOTION_FAILED",
+                        f"版本{version_id} pending marker漂移，拒绝部分晋级",
+                    )
+                if inject_failure and index == 0:
+                    raise EvidenceSyncError(
+                        "INJECTED_FAILURE",
+                        "演练注入：promotion首行UPDATE后失败（晋级事务必须整体回滚）",
+                    )
 
     def _verify_objects_or_conflict(self, docs: list[SyncDoc], *, require_present: bool) -> None:
         """竞态修复（WI-20260913-01任务1）：枚举全部目标对象并下载核对字节SHA。
@@ -709,15 +826,16 @@ class PolicyEvidenceSync:
                 "上传段完成后目标对象缺失（外部删除或上传未生效）：" + "；".join(missing),
             )
 
-    def _register(self, docs: list[SyncDoc], conn: Any = None) -> tuple[list[dict[str, Any]], int, int]:
+    def _register(
+        self, docs: list[SyncDoc], conn: Any = None, *, verification_plan_hash: str
+    ) -> tuple[list[dict[str, Any]], int, int]:
         import psycopg
 
         if conn is None:
             assert self.database_url is not None, "apply已校验database_url"
             with psycopg.connect(self.database_url) as owned, owned.transaction():
-                return self._register(docs, conn=owned)
-        # 任务专属advisory锁：并发apply串行化，锁内复查避免重复rag记录。
-        conn.execute("SELECT pg_advisory_xact_lock(%s)", (ADVISORY_LOCK_KEY,))
+                return self._register(docs, conn=owned, verification_plan_hash=verification_plan_hash)
+        # apply持有覆盖登记、post-commit verify与晋级的session advisory锁。
         manifest: list[dict[str, Any]] = []
         new_fetches = 0
         new_versions = 0
@@ -765,14 +883,25 @@ class PolicyEvidenceSync:
                 new_fetches += 1
             assert fetch is not None
             version = conn.execute(
-                "SELECT id, object_key FROM rag.document_versions WHERE content_hash=%s",
+                "SELECT id, object_key, status, error FROM rag.document_versions WHERE content_hash=%s FOR UPDATE",
                 (doc.sha256,),
             ).fetchone()
             if version is None:
+                marker = f"{SYNC_VERIFICATION_PENDING}:{verification_plan_hash}:downloaded"
                 version = conn.execute(
-                    """INSERT INTO rag.document_versions (content_hash, source_id, mime, object_key, status, pipeline_version, jurisdiction_code)
-                       VALUES (%s,%s,%s,%s,'downloaded',%s,%s) RETURNING id, object_key""",
-                    (doc.sha256, source_id, doc.mime, doc.object_key, PIPELINE_VERSION, self.jurisdiction),
+                    """INSERT INTO rag.document_versions
+                         (content_hash, source_id, mime, object_key, status, pipeline_version, jurisdiction_code, error)
+                       VALUES (%s,%s,%s,%s,'needs_correction',%s,%s,%s)
+                       RETURNING id, object_key, status, error""",
+                    (
+                        doc.sha256,
+                        source_id,
+                        doc.mime,
+                        doc.object_key,
+                        PIPELINE_VERSION,
+                        self.jurisdiction,
+                        marker,
+                    ),
                 ).fetchone()
                 new_versions += 1
             assert version is not None
@@ -781,6 +910,35 @@ class PolicyEvidenceSync:
                     "VERSION_OBJECT_KEY_CONFLICT",
                     f"{doc.doc_id}: document_versions.object_key已存在且指向其他对象（{version[1]}）",
                 )
+            prior_status = str(version[2])
+            prior_error = str(version[3] or "")
+            if prior_status == "needs_correction":
+                if prior_error.startswith(SYNC_VERIFICATION_PENDING):
+                    suffix = prior_error.rsplit(":", 1)[-1]
+                    promotion_status = suffix if suffix in ("downloaded", "parsed", "indexed") else "downloaded"
+                elif prior_error.startswith(SYNC_REPAIR_REQUIRED):
+                    promotion_status = "downloaded"
+                else:
+                    raise EvidenceSyncError(
+                        "VERSION_STATUS_CONFLICT",
+                        f"{doc.doc_id}: needs_correction不属于同步verification marker，拒绝自动覆盖",
+                    )
+            elif prior_status in ("downloaded", "parsed", "indexed"):
+                promotion_status = prior_status
+            else:
+                raise EvidenceSyncError(
+                    "VERSION_STATUS_CONFLICT",
+                    f"{doc.doc_id}: document version状态{prior_status!r}不允许同步verification gate",
+                )
+            marker = f"{SYNC_VERIFICATION_PENDING}:{verification_plan_hash}:{promotion_status}"
+            gated = conn.execute(
+                """UPDATE rag.document_versions
+                   SET status='needs_correction', error=%s, updated_at=now()
+                   WHERE id=%s RETURNING id""",
+                (marker, version[0]),
+            ).fetchone()
+            if gated is None:
+                raise EvidenceSyncError("SYNC_GATE_FAILED", f"{doc.doc_id}: 无法提交verification pending门禁")
             manifest.append(
                 {
                     "docId": doc.doc_id,
@@ -793,13 +951,17 @@ class PolicyEvidenceSync:
                     "sourceId": source_id,
                     "fetchId": int(fetch[0]),
                     "documentVersionId": str(version[0]),
+                    "verificationMarker": marker,
+                    "promotionStatus": promotion_status,
                 }
             )
         return manifest, new_fetches, new_versions
 
     # ── verify：范围契约 + 逐对象下载重算SHA + 数据库记录核对 ─────────────────
 
-    def verify(self, object_only: bool = False) -> dict[str, Any]:
+    def verify(
+        self, object_only: bool = False, *, allowed_pending_version_ids: set[str] | None = None
+    ) -> dict[str, Any]:
         """object_only=False（默认）：完整四方verify——Git原件/meta/DSL已在collect固化，
         此处核对MinIO对象下载SHA与rag.fetches/rag.document_versions记录；缺少数据库时
         必须失败（不得返回ok:true）。object_only=True：显式降级为仅对象层，
@@ -832,7 +994,7 @@ class PolicyEvidenceSync:
 
                 with psycopg.connect(self.database_url) as conn:
                     version = conn.execute(
-                        "SELECT object_key, content_hash, status FROM rag.document_versions WHERE content_hash=%s",
+                        "SELECT id, object_key, content_hash, status, error FROM rag.document_versions WHERE content_hash=%s",
                         (doc.sha256,),
                     ).fetchone()
                     fetch = conn.execute(
@@ -848,10 +1010,21 @@ class PolicyEvidenceSync:
                 if version is None:
                     problems.append(f"{doc.doc_id}: rag.document_versions记录缺失（content_hash={doc.sha256}）")
                 else:
-                    if version[0] != key:
-                        problems.append(f"{doc.doc_id}: document_versions.object_key不一致：{version[0]} ≠ {key}")
-                    if version[1] != doc.sha256:
-                        problems.append(f"{doc.doc_id}: 数据库content_hash漂移：{version[1]} ≠ 对象SHA {doc.sha256}")
+                    version_id = str(version[0])
+                    if version[1] != key:
+                        problems.append(f"{doc.doc_id}: document_versions.object_key不一致：{version[1]} ≠ {key}")
+                    if version[2] != doc.sha256:
+                        problems.append(f"{doc.doc_id}: 数据库content_hash漂移：{version[2]} ≠ 对象SHA {doc.sha256}")
+                    status = str(version[3])
+                    error = str(version[4] or "")
+                    pending_allowed = bool(
+                        allowed_pending_version_ids
+                        and version_id in allowed_pending_version_ids
+                        and status == "needs_correction"
+                        and error.startswith(SYNC_VERIFICATION_PENDING)
+                    )
+                    if status == "needs_correction" and not pending_allowed:
+                        problems.append(f"{doc.doc_id}: {SYNC_REPAIR_REQUIRED}（同步verification未完成，索引已阻断）")
                 if fetch is None:
                     problems.append(f"{doc.doc_id}: rag.fetches记录缺失（object_key={key}）")
                 if cross and cross[0]:
@@ -1010,7 +1183,7 @@ def main(argv: list[str] | None = None) -> int:
                 i_am_authorized=args["i_am_authorized"],
             )
             emit(result)
-            return 0
+            return 4 if result.get("repairRequired") is True else 0
         report = sync.verify(object_only=args["object_only"])
         emit(report)
         return 0 if report["ok"] else 5

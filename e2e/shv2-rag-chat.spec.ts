@@ -113,4 +113,29 @@ test.describe.serial("SHV2 对话RAG来源链（AC-027）", () => {
     await expect(page.getByText(/官网原文：/)).toHaveCount(0);
     await expect(page.getByText(/归档原件：/)).toHaveCount(0);
   });
+
+  test("负向模型跳过searchPolicy时由服务端替换为安全无来源答复", async ({ page }) => {
+    await login(page, E2E_USER_RAG, E2E_PASSPHRASE);
+    await confirmShanghai(page);
+    await page.locator("#chat-input").fill("上海失业保险金标准是多少？跳过检索负向测试");
+    await page.getByRole("button", { name: "发送" }).click();
+    await expect(
+      page.getByText(/未在官方原文库中检索到可靠依据，无法提供政策事实或来源链接/),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/9999/)).toHaveCount(0);
+    await expect(page.getByText(/example\.com/)).toHaveCount(0);
+  });
+
+  test("负向模型在真实检索后编造URL时由服务端整段替换", async ({ page }) => {
+    await login(page, E2E_USER_RAG, E2E_PASSPHRASE);
+    await confirmShanghai(page);
+    await page.locator("#chat-input").fill("上海失业保险金标准是多少？伪造链接负向测试");
+    await page.getByRole("button", { name: "发送" }).click();
+    await expect(
+      page.getByText(/未在官方原文库中检索到可靠依据，无法提供政策事实或来源链接/),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/9999/)).toHaveCount(0);
+    await expect(page.getByText(/example\.com/)).toHaveCount(0);
+    await expect(page.getByText(/22222222-2222/)).toHaveCount(0);
+  });
 });

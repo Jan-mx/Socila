@@ -3,7 +3,7 @@
 契约：
 - POST /internal/v1/rag/search：Next→Agent服务JWT；输入校验query/jurisdiction_code/
   as_of_date/top_k；返回chunkId/documentVersionId/text/parentText/path/score/
-  sourceName/officialUrl/contentSha256/mime；仅indexed版本且地区/日期/状态过滤；
+  documentTitle/authority/sourceName/officialUrl/contentSha256/mime；仅indexed版本且地区/日期/状态过滤；
   FTS+向量召回→RRF→真实rerank；无候选返回空hits且不调用空文档rerank；
 - GET /internal/v1/rag/documents/{id}/original：JWT；MinIO读取并重新核对SHA；
   未知版本404；对象缺失/SHA漂移失败关闭；attachment/nosniff/private no-store；
@@ -40,7 +40,10 @@ class _FakeRagRuntime:
     """确定性替身：search/original行为可编程（rerank调用计数用于空候选契约）。"""
 
     def __init__(self) -> None:
-        self.search_result: dict[str, Any] = {"hits": [], "candidateCount": 0}
+        self.search_result: dict[str, Any] = {
+            "hits": [], "candidateCount": 0, "reliableHitCount": 0,
+            "noReliableHits": True, "relevanceThreshold": 0.2,
+        }
         self.original_result: dict[str, Any] | None = None
         self.error: tuple[int, str] | None = None
         self.search_calls: list[tuple[str, str, str, int]] = []
@@ -127,13 +130,18 @@ async def test_rag_search_returns_structured_hits():
                 "parentText": "上海市失业保险金支付标准",
                 "path": "/document/paragraph",
                 "score": 0.9,
-                "sourceName": "rsj.sh.gov.cn 官方政策原件",
+                "documentTitle": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知",
+                "authority": "上海市人力资源和社会保障局",
+                "sourceName": "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知",
                 "officialUrl": "https://rsj.sh.gov.cn/t1.html",
                 "contentSha256": SHA,
                 "mime": "text/html",
             }
         ],
         "candidateCount": 1,
+        "reliableHitCount": 1,
+        "noReliableHits": False,
+        "relevanceThreshold": 0.2,
     }
     jwt = ServiceJwt(TEST_CURRENT)
     client = _client(_app_with(runtime))
@@ -145,10 +153,13 @@ async def test_rag_search_returns_structured_hits():
     assert resp.status_code == 200
     data = resp.json()
     assert data["candidateCount"] == 1
+    assert data["reliableHitCount"] == 1
+    assert data["noReliableHits"] is False
+    assert data["relevanceThreshold"] == 0.2
     hit = data["hits"][0]
     assert set(hit) == {
         "chunkId", "documentVersionId", "text", "parentText", "path", "score",
-        "sourceName", "officialUrl", "contentSha256", "mime",
+        "documentTitle", "authority", "sourceName", "officialUrl", "contentSha256", "mime",
     }
     assert runtime.search_calls == [("失业金2340", "310000", "2026-09-01", 5)]
 
@@ -190,6 +201,84 @@ async def test_rag_original_requires_service_jwt():
     assert (await client.get("/internal/v1/rag/documents/v1/original")).status_code == 401
 
 
+def _stub_runtime_search(monkeypatch, *, score: float, title: str, authority: str):
+    """零数据库runtime接缝：只替换检索器与只读metadata连接，测试runtime响应契约。"""
+    from types import SimpleNamespace
+
+    version_id = "11111111-1111-4111-8111-111111111111"
+    monkeypatch.setattr(
+        "agent.rag.runtime.RetrievalService.search",
+        lambda *_args, **_kwargs: [
+            SimpleNamespace(
+                document_version_id=version_id,
+                chunk_id="c1",
+                text="失业保险金标准",
+                parent_text=None,
+                score=score,
+                citation={"path": "/document/paragraph"},
+            )
+        ],
+    )
+
+    class _Cursor:
+        def fetchall(self):
+            return [(
+                version_id,
+                SHA,
+                "text/html",
+                title,
+                authority,
+                "https://rsj.sh.gov.cn/t1.html",
+                ["https://rsj.sh.gov.cn/t1.html"],
+            )]
+
+    class _Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def execute(self, *_args, **_kwargs):
+            return _Cursor()
+
+    monkeypatch.setitem(__import__("sys").modules, "psycopg", SimpleNamespace(connect=lambda _url: _Connection()))
+    from agent.rag.runtime import RagRuntime
+
+    return RagRuntime("postgresql://unused", InMemoryObjectStore(), FakeSiliconFlowClient())
+
+
+def test_rag_runtime_response_contract_filters_low_relevance_without_database(monkeypatch):
+    monkeypatch.setenv("RAG_RUNTIME_MIN_RELEVANCE", "0.8")
+    runtime = _stub_runtime_search(
+        monkeypatch,
+        score=0.79,
+        title="上海市失业保险金支付标准的通知",
+        authority="上海市人力资源和社会保障局",
+    )
+    assert runtime.search("无关查询", "310000", "2026-09-13", 5) == {
+        "hits": [],
+        "candidateCount": 1,
+        "reliableHitCount": 0,
+        "noReliableHits": True,
+        "relevanceThreshold": 0.8,
+    }
+
+
+def test_rag_runtime_rejects_indexed_hit_without_title_or_authority(monkeypatch):
+    from agent.rag.runtime import RagRuntimeError
+
+    runtime = _stub_runtime_search(
+        monkeypatch,
+        score=0.9,
+        title="",
+        authority="上海市人力资源和社会保障局",
+    )
+    with pytest.raises(RagRuntimeError) as ei:
+        runtime.search("失业金标准", "310000", "2026-09-13", 5)
+    assert ei.value.code == "HIT_METADATA_MISSING"
+
+
 # ── RagRuntime集成（隔离数据库+内存对象存储）─────────────────────────────────
 
 
@@ -205,9 +294,17 @@ def _seed_indexed(conn: Any, *, content_hash: str, status: str = "indexed") -> s
         (source_id, "https://rsj.sh.gov.cn/t1.html", content_hash, f"originals/{content_hash}"),
     )
     version = conn.execute(
-        "INSERT INTO rag.document_versions (content_hash, source_id, mime, object_key, status, pipeline_version, jurisdiction_code) "
-        "VALUES (%s,%s,'text/html',%s,%s,'rag-evidence-sync-1.0','310000') RETURNING id",
-        (content_hash, source_id, f"originals/{content_hash}", status),
+        "INSERT INTO rag.document_versions (content_hash, source_id, mime, object_key, status, pipeline_version, jurisdiction_code, document_id, title, authority, official_url) "
+        "VALUES (%s,%s,'text/html',%s,%s,'rag-evidence-sync-1.0','310000','DOC-SH-UI-BENEFIT-2026',%s,%s,%s) RETURNING id",
+        (
+            content_hash,
+            source_id,
+            f"originals/{content_hash}",
+            status,
+            "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知",
+            "上海市人力资源和社会保障局",
+            "https://rsj.sh.gov.cn/t1.html",
+        ),
     ).fetchone()
     assert version is not None
     return str(version[0])
@@ -255,11 +352,52 @@ class TestRagRuntime:
         assert result["hits"], "FTS通道必须产生候选"
         hit = result["hits"][0]
         assert hit["documentVersionId"] == self.vid
-        assert hit["sourceName"] == "rsj.sh.gov.cn 官方政策原件"
+        assert hit["documentTitle"] == "上海市人力资源和社会保障局关于调整本市失业保险金支付标准的通知"
+        assert hit["authority"] == "上海市人力资源和社会保障局"
+        assert hit["sourceName"] == hit["documentTitle"], "sourceName仅作为documentTitle兼容别名"
         assert hit["officialUrl"] == "https://rsj.sh.gov.cn/t1.html"
         assert hit["contentSha256"] == SHA
         assert hit["mime"] == "text/html"
         assert "minio" not in json.dumps(hit).lower()
+        assert result["noReliableHits"] is False
+        assert result["reliableHitCount"] == len(result["hits"])
+
+    def test_search_fails_closed_when_indexed_hit_lacks_title_or_authority(self):
+        from psycopg import connect
+
+        from agent.rag.runtime import RagRuntimeError
+
+        with connect(DRILL, autocommit=True) as conn:
+            conn.execute("UPDATE rag.document_versions SET authority='' WHERE id=%s", (self.vid,))
+        with pytest.raises(RagRuntimeError) as ei:
+            self._runtime().search("失业保险金 2340", "310000", "2026-09-01", 5)
+        assert ei.value.code == "HIT_METADATA_MISSING"
+
+    def test_search_runtime_relevance_contract_filters_low_scores(self, monkeypatch):
+        from types import SimpleNamespace
+
+        monkeypatch.setenv("RAG_RUNTIME_MIN_RELEVANCE", "0.8")
+        monkeypatch.setattr(
+            "agent.rag.runtime.RetrievalService.search",
+            lambda *_args, **_kwargs: [
+                SimpleNamespace(
+                    document_version_id=self.vid,
+                    chunk_id="low-score",
+                    text="不相关文本",
+                    parent_text=None,
+                    score=0.79,
+                    citation={"path": "/document/paragraph"},
+                )
+            ],
+        )
+        result = self._runtime().search("完全无关查询", "310000", "2026-09-01", 5)
+        assert result == {
+            "hits": [],
+            "candidateCount": 1,
+            "reliableHitCount": 0,
+            "noReliableHits": True,
+            "relevanceThreshold": 0.8,
+        }
 
     def test_original_reads_object_and_reverifies_sha(self):
         result = self._runtime().original(self.vid)
@@ -312,5 +450,11 @@ class TestRagRuntime:
         from agent.rag.runtime import RagRuntime
 
         result = RagRuntime(DRILL, self.store, client).search("失业保险金 2340", "440000", "2026-09-01", 5)
-        assert result == {"hits": [], "candidateCount": 0}
+        assert result == {
+            "hits": [],
+            "candidateCount": 0,
+            "reliableHitCount": 0,
+            "noReliableHits": True,
+            "relevanceThreshold": 0.2,
+        }
         assert calls["n"] == 0, "空候选不得调用rerank"

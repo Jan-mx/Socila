@@ -57,7 +57,31 @@ HTML_B = (
 SHA_B = hashlib.sha256(HTML_B).hexdigest()
 
 
-def _seed_version(conn: Any, *, content_hash: str, mime: str = "text/html", status: str = "downloaded") -> str:
+@pytest.fixture(autouse=True)
+def fixture_manifest(request, monkeypatch):
+    if not request.node.get_closest_marker("integration") or "real_evidence" in request.node.name:
+        return
+    from agent.rag import evidence_index
+
+    hashes = [SHA_A] if "complete_derived_index_reported" in request.node.name else [SHA_A, SHA_B]
+    manifest = [{
+        "documentId": f"DOC-TEST-{sha[:8]}", "contentHash": sha,
+        "objectKey": f"originals/{sha}", "mime": "text/html",
+        "title": "上海政策测试原件", "authority": "上海市人力资源和社会保障局",
+        "jurisdictionCode": "310000", "effectiveFrom": "2026-07-01", "effectiveTo": None,
+        "officialUrl": f"https://rsj.sh.gov.cn/t/{sha[:8]}.html",
+    } for sha in hashes]
+    monkeypatch.setattr(evidence_index, "load_index_manifest", lambda: manifest)
+
+
+def _seed_version(
+    conn: Any,
+    *,
+    content_hash: str,
+    mime: str = "text/html",
+    status: str = "downloaded",
+    official_url: str | None = None,
+) -> str:
     """登记一条source/fetch/document_version（evidence_sync终态形状；返回version id）。"""
     source = conn.execute(
         "SELECT id FROM rag.sources WHERE domain='rsj.sh.gov.cn' AND jurisdiction_code='310000' LIMIT 1"
@@ -70,10 +94,11 @@ def _seed_version(conn: Any, *, content_hash: str, mime: str = "text/html", stat
     assert source is not None
     source_id = int(source[0])
     object_key = f"originals/{content_hash}"
+    selected_url = official_url or f"https://rsj.sh.gov.cn/t/{content_hash[:8]}.html"
     conn.execute(
         "INSERT INTO rag.fetches (source_id, url, status, content_hash, object_key, mime) "
         "VALUES (%s,%s,200,%s,%s,%s)",
-        (source_id, f"https://rsj.sh.gov.cn/t/{content_hash[:8]}.html", content_hash, object_key, mime),
+        (source_id, selected_url, content_hash, object_key, mime),
     )
     version = conn.execute(
         "INSERT INTO rag.document_versions (content_hash, source_id, mime, object_key, status, pipeline_version, jurisdiction_code) "
@@ -255,6 +280,12 @@ class TestControlledIndex:
         # 完整派生写集合：每个plannedIndex条目绑定version/object/sha/mime。
         for entry in plan["writeSet"]:
             assert set(entry) >= {"documentVersionId", "objectKey", "contentHash", "mime"}
+            assert entry["chunkCount"] == len(entry["chunkManifest"]) > 0
+            assert len(entry["treeHash"]) == len(entry["markdownHash"]) == 64
+            assert all(set(chunk) == {
+                "chunkId", "parentChunkId", "textHash", "pathHash", "metaHash", "ftsHash", "tokenCount",
+            }
+                       for chunk in entry["chunkManifest"])
         assert plan_hash_of(plan) == plan["planHash"]
 
     def test_apply_indexes_documents_with_derived_rows_and_status(self, index_env):
@@ -498,6 +529,11 @@ class TestIngestServiceDedupStatus:
                 "VALUES (%s,%s,'text/html',%s,'downloaded','rag-evidence-sync-1.0','310000')",
                 (SHA_A, source_id, f"originals/{SHA_A}"),
             )
+            conn.execute(
+                "INSERT INTO rag.fetches (source_id, url, status, content_hash, object_key, mime) "
+                "VALUES (%s,%s,200,%s,%s,'text/html')",
+                (source_id, f"https://rsj.sh.gov.cn/t/{SHA_A[:8]}.html", SHA_A, f"originals/{SHA_A}"),
+            )
         service = IngestService(DRILL, store, {"rsj.sh.gov.cn"}, FakeSiliconFlowClient())
         # 同hash版本已存在且为downloaded：不得返回伪indexed（旧实现直接返回indexed）。
         result = service.ingest(source_id, "https://rsj.sh.gov.cn/t/a.html")
@@ -522,6 +558,11 @@ class TestIngestServiceDedupStatus:
                 "INSERT INTO rag.document_versions (content_hash, source_id, mime, object_key, status, pipeline_version, jurisdiction_code) "
                 "VALUES (%s,%s,'text/html',%s,'downloaded','rag-evidence-sync-1.0','310000')",
                 (SHA_A, source_id, f"originals/{SHA_A}"),
+            )
+            conn.execute(
+                "INSERT INTO rag.fetches (source_id, url, status, content_hash, object_key, mime) "
+                "VALUES (%s,%s,200,%s,%s,'text/html')",
+                (source_id, f"https://rsj.sh.gov.cn/t/{SHA_A[:8]}.html", SHA_A, f"originals/{SHA_A}"),
             )
         store.put(f"originals/{SHA_A}", HTML_A, "text/html")
         index = PolicyEvidenceIndex(DRILL, store, FakeSiliconFlowClient())
@@ -594,3 +635,277 @@ def test_cli_error_output_redacts_credentials(monkeypatch, capsys):
     assert rc == 1
     assert "Sup3rSecret9" not in output, "非预期错误输出泄露MinIO口令"
     assert "PgDrillS3cret7" not in output, "非预期错误输出泄露数据库口令"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
+class TestIndexIntegrity:
+    index_env = TestControlledIndex.index_env
+
+    def _apply(self, index: Any, plan: dict[str, Any], **overrides: Any) -> Any:
+        kwargs = {
+            "plan_hash": plan["planHash"],
+            "target_fingerprint": plan["targetFingerprint"],
+            "i_am_authorized": True,
+        }
+        kwargs.update(overrides)
+        return index.apply(plan, **kwargs)
+
+    def test_ineligible_needs_correction_must_not_plan_index(self, index_env):
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            conn.execute("UPDATE rag.document_versions SET status='needs_correction'")
+        with pytest.raises(EvidenceIndexError, match="INDEX_STATUS_REFUSED"):
+            index_env["index"].build_plan()
+    @pytest.mark.parametrize("sql", [
+        "UPDATE rag.document_versions SET effective_from='2027-01-01'",
+        "UPDATE rag.document_versions SET jurisdiction_code='440000'",
+        "UPDATE rag.document_versions SET mime='text/plain'",
+        "UPDATE rag.document_trees SET markdown=markdown || 'tampered'",
+        "UPDATE rag.chunks SET text=text || 'tampered'",
+        "UPDATE rag.chunks SET path=path || '/tampered'",
+        "UPDATE rag.chunks SET meta='{\"tampered\":true}'",
+        "UPDATE rag.embeddings SET embedding=array_fill(0.25::real, ARRAY[1024])::vector",
+    ])
+    def test_same_count_corruption_changes_fingerprint_and_fails_verify(self, index_env, sql):
+        from psycopg import connect
+
+        index = index_env["index"]
+        plan = index.build_plan()
+        self._apply(index, plan)
+        before = index.build_plan()["targetFingerprint"]
+        with connect(DRILL, autocommit=True) as conn:
+            conn.execute(sql)
+        docs = index.collect()
+        after = index._state_fingerprint(docs, force_complete=False, bucket_exists=True)
+        assert after != before, "content/provenance drift must alter target fingerprint"
+        assert not index.verify()["ok"], "same counts must not conceal corruption"
+
+    def test_fts_only_corruption_changes_fingerprint_fails_receipt_and_prevents_noop(self, index_env):
+        from psycopg import connect
+
+        index = index_env["index"]
+        initial_plan = index.build_plan()
+        index.apply(
+            initial_plan,
+            plan_hash=initial_plan["planHash"],
+            target_fingerprint=initial_plan["targetFingerprint"],
+            i_am_authorized=True,
+        )
+        terminal_plan = index.build_plan()
+        before = terminal_plan["targetFingerprint"]
+
+        with connect(DRILL, autocommit=True) as conn:
+            conn.execute(
+                "UPDATE rag.chunks SET fts=to_tsvector('simple', 'fts-only-corruption') "
+                "WHERE id=(SELECT id FROM rag.chunks ORDER BY id LIMIT 1)"
+            )
+
+        after = index._state_fingerprint(index.collect(), force_complete=False, bucket_exists=True)
+        assert after != before, "FTS-only corruption must alter the controlled index fingerprint"
+        report = index.verify()
+        assert report["ok"] is False
+        assert any("完整" in problem or "receipt" in problem.lower() for problem in report["problems"])
+        with pytest.raises(EvidenceIndexError, match=r"DRIFT|漂移|重新plan"):
+            index.apply(
+                terminal_plan,
+                plan_hash=terminal_plan["planHash"],
+                target_fingerprint=terminal_plan["targetFingerprint"],
+                i_am_authorized=True,
+            )
+
+    def test_indexed_but_incomplete_can_be_repaired(self, index_env):
+        from psycopg import connect
+
+        index = index_env["index"]
+        self._apply(index, index.build_plan())
+        with connect(DRILL, autocommit=True) as conn:
+            conn.execute("DELETE FROM rag.embeddings")
+        repaired = self._apply(index, index.build_plan())
+        assert repaired["verified"] and index.verify()["ok"]
+
+    @pytest.mark.parametrize("change", ["writeSet", "plannedIndex", "documents"])
+    def test_plan_collections_must_agree_before_writes(self, index_env, change):
+        index = index_env["index"]
+        plan = index.build_plan()
+        plan[change] = plan[change][1:]
+        plan["planHash"] = plan_hash_of(plan)
+        with pytest.raises(EvidenceIndexError, match="PLAN_INVALID"):
+            self._apply(index, plan)
+
+    def test_actual_vector_length_validated_before_any_write(self, index_env):
+        index = index_env["index"]
+        doc = index.collect()[0]
+        index.client.embed = lambda texts: {"dimensions": 1024, "_vectors": [[0.1] * 8 for _ in texts]}
+
+        class NoWrites:
+            def transaction(self):
+                pytest.fail("short vectors reached database write transaction")
+
+        with pytest.raises(EvidenceIndexError, match="EMBEDDING_DIMENSION_MISMATCH"):
+            index._index_single_document(doc, NoWrites())
+
+    def test_database_drift_during_embedding_is_rejected_before_overwrite(self, index_env):
+        from psycopg import connect
+
+        index = index_env["index"]
+        plan = index.build_plan()
+        real_embed = index.client.embed
+
+        def drifting_embed(texts):
+            with connect(DRILL, autocommit=True) as conn:
+                conn.execute("UPDATE rag.document_versions SET authority='external edit'")
+            return real_embed(texts)
+
+        index.client.embed = drifting_embed
+        with pytest.raises(EvidenceIndexError, match="INDEX_STATE_DRIFT"):
+            self._apply(index, plan)
+        with connect(DRILL, autocommit=True) as conn:
+            chunk_count = conn.execute("SELECT count(*) FROM rag.chunks").fetchone()
+            assert chunk_count is not None and chunk_count[0] == 0
+
+    def test_forged_final_fingerprint_rejected_before_writes(self, index_env):
+        index = index_env["index"]
+        plan = index.build_plan()
+        plan["finalFingerprint"] = "0" * 64
+        plan["planHash"] = plan_hash_of(plan)
+        with pytest.raises(EvidenceIndexError, match="PLAN_INVALID"):
+            self._apply(index, plan)
+
+    def test_document_projection_cannot_disagree_with_write_set(self, index_env):
+        index = index_env["index"]
+        plan = index.build_plan()
+        plan["documents"][0]["contentHash"] = "f" * 64
+        plan["planHash"] = plan_hash_of(plan)
+        with pytest.raises(EvidenceIndexError, match="PLAN_INVALID"):
+            self._apply(index, plan)
+
+    def test_source_jurisdiction_conflict_cannot_plan_partial_repair(self, index_env):
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            conn.execute("UPDATE rag.sources SET jurisdiction_code='440000'")
+        with pytest.raises(EvidenceIndexError, match="SOURCE_PROVENANCE_CONFLICT"):
+            index_env["index"].build_plan()
+
+    def test_runtime_uses_manifest_url_and_verify_rejects_fetch_url_drift(self, index_env):
+        from psycopg import connect
+
+        from agent.rag.runtime import RagRuntime
+
+        index = index_env["index"]
+        plan = index.build_plan()
+        self._apply(index, plan)
+
+        manifest_urls = {doc.version_id: doc.manifest["officialUrl"] for doc in index.collect()}
+        runtime = RagRuntime(DRILL, index_env["store"], FakeSiliconFlowClient())
+        result = runtime.search("失业保险金 2340", "310000", "2026-09-01", 5)
+        assert result["hits"]
+        assert all(
+            hit["officialUrl"] == manifest_urls[hit["documentVersionId"]]
+            for hit in result["hits"]
+        )
+
+        before = index.build_plan()["targetFingerprint"]
+        with connect(DRILL, autocommit=True) as conn:
+            conn.execute(
+                "UPDATE rag.fetches SET url='https://www.gov.cn/other-policy.html', final_url=NULL "
+                "WHERE content_hash=%s",
+                (SHA_A,),
+            )
+
+        after = index._state_fingerprint(index.collect(), force_complete=False, bucket_exists=True)
+        assert after != before, "selected official URL drift must alter the controlled index fingerprint"
+        report = index.verify()
+        assert report["ok"] is False
+        assert any("URL" in problem or "url" in problem.lower() for problem in report["problems"])
+
+
+def test_packaged_manifest_has_exact_shanghai_documents_and_real_windows():
+    from agent.rag.evidence_index import load_index_manifest
+
+    manifest = load_index_manifest()
+    assert len(manifest) == 23
+    docs = {d["documentId"]: d for d in manifest}
+    assert len(docs) == 23 and len({d["contentHash"] for d in manifest}) == 23
+    assert all(d["title"] and d["authority"] and d["jurisdictionCode"] == "310000" for d in manifest)
+    assert docs["DOC-SH-UI-BENEFIT-2025"]["effectiveTo"] == "2026-06-30"
+    assert docs["DOC-SH-UI-BENEFIT-2026"]["effectiveFrom"] == "2026-07-01"
+    assert docs["DOC-SH-UI-CLAIM-RULES-2026"]["effectiveFrom"] == "2026-08-16"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
+def test_real_evidence_scope_provenance_and_fixed_queries(monkeypatch):
+    from pathlib import Path
+
+    from psycopg import connect
+
+    from agent.rag.evidence_index import load_index_manifest
+
+    class LexicalClient(FakeSiliconFlowClient):
+        """Deterministic corpus ranking; the production reranker is exercised by the drill."""
+
+        def rerank(self, query, documents, top_n=8):
+            import jieba
+
+            terms = set(jieba.cut_for_search(query)) - {" "}
+            scored = [{"index": i, "relevance_score": sum(term in text for term in terms) / len(terms)}
+                      for i, text in enumerate(documents)]
+            return sorted(scored, key=lambda item: -item["relevance_score"])[:top_n]
+
+    monkeypatch.setenv("RAG_INDEX_ALLOW_DIRTY", "1")
+    _truncate()
+    manifest = load_index_manifest()
+    evidence = Path(__file__).resolve().parents[3] / "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000"
+    store = InMemoryObjectStore()
+    versions = {}
+    with connect(DRILL, autocommit=True) as conn:
+        for entry in manifest:
+            content = (evidence / entry["documentId"] / "original.html").read_bytes()
+            assert hashlib.sha256(content).hexdigest() == entry["contentHash"]
+            store.put(entry["objectKey"], content, entry["mime"])
+            versions[entry["documentId"]] = _seed_version(
+                conn,
+                content_hash=entry["contentHash"],
+                official_url=entry["officialUrl"],
+            )
+        unrelated = _seed_version(conn, content_hash="f" * 64)
+        conn.execute("UPDATE rag.document_versions SET jurisdiction_code='440000' WHERE id=%s", (unrelated,))
+    index = _make_index(store, client=LexicalClient())
+    plan = index.build_plan()
+    assert plan["documentCount"] == 23
+    assert unrelated not in plan["plannedIndex"]
+    result = index.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+    assert result["verified"]
+    assert len(result["appliedFingerprint"]) == 64
+    with connect(DRILL, autocommit=True) as conn:
+        untouched = conn.execute("SELECT status, document_id FROM rag.document_versions WHERE id=%s", (unrelated,)).fetchone()
+        assert untouched == ("downloaded", None)
+        for entry in manifest:
+            provenance = conn.execute(
+                "SELECT document_id, title, authority, jurisdiction_code, effective_from::text, effective_to::text "
+                "FROM rag.document_versions WHERE id=%s", (versions[entry["documentId"]],),
+            ).fetchone()
+            assert provenance is not None
+            assert list(provenance) == [entry[k] for k in (
+                "documentId", "title", "authority", "jurisdictionCode", "effectiveFrom", "effectiveTo",
+            )]
+
+    def source_text(query, doc_id, date="2026-09-01"):
+        hits = index.search(query, "310000", date, top_k=20)
+        text = "\n".join(h["text"] + (h["parentText"] or "") for h in hits if h["documentVersionId"] == versions[doc_id])
+        return text, hits
+
+    base, _ = source_text("社保缴费基数 7546 37731", "DOC-SH-CONTRIB-BASE-2026")
+    assert "7546" in base and "37731" in base
+    benefit, current = source_text("失业保险金 2340 1872 1690", "DOC-SH-UI-BENEFIT-2026")
+    assert all(number in benefit for number in ("2340", "1872", "1690"))
+    assert versions["DOC-SH-UI-BENEFIT-2025"] not in {h["documentVersionId"] for h in current}
+    waiting, _ = source_text("灵活就业 医疗保险 等待期 6个月 3个月", "DOC-SH-MI-FLEX-WAITING-2025")
+    assert all(term in waiting for term in ("6个月", "3个月", "不受待遇等待期规定限制"))
+    historical, old_hits = source_text("失业保险金 支付标准", "DOC-SH-UI-BENEFIT-2025", "2025-09-01")
+    assert historical
+    assert versions["DOC-SH-UI-BENEFIT-2026"] not in {h["documentVersionId"] for h in old_hits}
+    assert index.search("失业保险金", "440000", "2026-09-01") == []

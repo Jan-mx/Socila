@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { createChatStream } from "@/lib/ai/agent";
+import { createChatStream, formatServerDate } from "@/lib/ai/agent";
 import type { ChatContext } from "@/lib/ai/agent";
 import type { UIMessage } from "ai";
 import { convertToModelMessages } from "ai";
@@ -234,6 +234,8 @@ export async function POST(req: NextRequest) {
     questions: questions as ChatContext["questions"],
     userProfile: sanitizedProfile as ChatContext["userProfile"],
     ownerUserId: actor.userId,
+    // 一次请求只读取一次服务器时钟；提示词与工具共享同一日期，模型不得猜测。
+    currentDate: formatServerDate(new Date()),
   };
 
   logger.info("chat.request", {

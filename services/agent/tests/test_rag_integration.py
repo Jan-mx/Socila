@@ -76,6 +76,16 @@ class TestIngestAndRetrieval:
         result = self._ingest_sample(services)
         assert result.status == "indexed"
         assert result.chunk_count >= 2
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            indexed_counts = conn.execute(
+                "SELECT count(*), count(e.chunk_id) FROM rag.chunks c "
+                "LEFT JOIN rag.embeddings e ON e.chunk_id=c.id "
+                "WHERE c.document_version_id=%s", (result.document_version_id,),
+            ).fetchone()
+            assert indexed_counts is not None
+            assert indexed_counts[0] == indexed_counts[1], "indexed must contain every embedding"
 
         # 原件 + Tree + Markdown 落库（AC-001）。
         from psycopg import connect
@@ -92,6 +102,95 @@ class TestIngestAndRetrieval:
         again = self._ingest_sample(services)
         assert again.deduplicated is True
         assert again.document_version_id == result.document_version_id
+
+    def test_normal_ingest_is_searchable_through_rag_runtime_with_provenance(self, services, monkeypatch):
+        assert DRILL is not None
+        sample = (
+            "# 上海市失业保险金支付标准\n\n"
+            "第一条 失业保险金第1-12个月标准为2340元每月。"
+        ).encode()
+        official_url = "https://hrss.sh.gov.cn/runtime-policy.md"
+
+        def fake_fetch(url, whitelist, max_bytes, timeout=20.0):
+            from agent.rag.fetcher import FetchResult
+
+            return FetchResult(
+                url=url,
+                final_url=official_url,
+                status=200,
+                content=sample,
+                content_hash=__import__("hashlib").sha256(sample).hexdigest(),
+                mime="text/markdown",
+                response_headers={},
+                redirects=0,
+            )
+
+        monkeypatch.setattr("agent.rag.pipeline.fetch", fake_fetch)
+        ingested = services["ingest"].ingest(services["source_id"], official_url)
+        assert ingested.status == "indexed"
+
+        from agent.rag.runtime import RagRuntime
+
+        result = RagRuntime(
+            DRILL,
+            services["store"],
+            FakeSiliconFlowClient(),
+        ).search("失业保险金 2340", "310000", "2026-09-13", 5)
+        assert result["hits"], "normal ingest must be runtime-ready, not only RetrievalService-ready"
+        hit = result["hits"][0]
+        assert hit["documentTitle"] == "上海市失业保险金支付标准"
+        assert hit["authority"] == "上海人社测试源"
+        assert hit["officialUrl"] == official_url
+
+    def test_ingest_deduplicates_identical_sibling_chunks_before_embedding(self, services, monkeypatch):
+        assert DRILL is not None
+        sample = "重复的政策段落。\n重复的政策段落。".encode()
+
+        def fake_fetch(url, whitelist, max_bytes, timeout=20.0):
+            from agent.rag.fetcher import FetchResult
+
+            return FetchResult(
+                url=url,
+                final_url=url,
+                status=200,
+                content=sample,
+                content_hash=__import__("hashlib").sha256(sample).hexdigest(),
+                mime="text/markdown",
+                response_headers={},
+                redirects=0,
+            )
+
+        client = services["ingest"]._client
+        real_embed = client.embed
+        embedded_texts: list[str] = []
+
+        def tracking_embed(texts):
+            embedded_texts.extend(texts)
+            return real_embed(texts)
+
+        monkeypatch.setattr("agent.rag.pipeline.fetch", fake_fetch)
+        monkeypatch.setattr(client, "embed", tracking_embed)
+
+        result = self._ingest_sample(services)
+        assert result.status == "indexed"
+        assert result.chunk_count == 1
+        assert embedded_texts == ["重复的政策段落。"]
+
+        from psycopg import connect
+
+        with connect(DRILL, autocommit=True) as conn:
+            counts = conn.execute(
+                "SELECT count(*), count(e.chunk_id) FROM rag.chunks c "
+                "LEFT JOIN rag.embeddings e ON e.chunk_id=c.id "
+                "WHERE c.document_version_id=%s",
+                (result.document_version_id,),
+            ).fetchone()
+        assert counts == (1, 1)
+
+        again = self._ingest_sample(services)
+        assert again.deduplicated is True
+        assert again.document_version_id == result.document_version_id
+        assert again.status == "indexed"
 
     def test_hybrid_search_filters_and_parent_expansion(self, services, monkeypatch):
         assert DRILL is not None

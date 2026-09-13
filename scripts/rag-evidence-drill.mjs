@@ -34,7 +34,8 @@
  *      恢复副本固定查询一致；
  *  10. bucket创建竞态归属准确：外部进程预先建桶后重新plan（plannedBucketCreate=false）
  *      →apply报告bucketCreated=false且上传/登记/verify全部正确；
- *  11. 输出证据JSON（含执行脚本Git blob SHA与HEAD SHA）；输出全程不含访问密钥/连接串口令。
+ *  11. 输出证据JSON（绑定干净实现提交、提交中的脚本blob与实际执行脚本blob）；
+ *      输出全程不含访问密钥/连接串口令。
  *
  * 退出码：0全部通过；1任一步骤失败。
  */
@@ -348,10 +349,42 @@ print(json.dumps(counts, sort_keys=True))`,
 
 // 执行脚本自身Git blob SHA与HEAD SHA（证据必须由提交中的完全相同脚本生成）。
 const SCRIPT_REL = "scripts/rag-evidence-drill.mjs";
-const SCRIPT_BLOB_SHA = execFileSync("git", ["hash-object", SCRIPT_REL], { cwd: ROOT, encoding: "utf8" }).trim();
-const HEAD_SHA = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
+function readImplementationAttestation() {
+  const implementationCommitSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
+  const executedScriptBlobSha = execFileSync("git", ["hash-object", SCRIPT_REL], { cwd: ROOT, encoding: "utf8" }).trim();
+  const scriptBlobSha = execFileSync("git", ["rev-parse", `${implementationCommitSha}:${SCRIPT_REL}`], { cwd: ROOT, encoding: "utf8" }).trim();
+  // 演练工作目录是本次运行的临时输出，不属于implementation worktree；其余改动一律阻断。
+  const implementationStatus = execFileSync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=all", "--", ".", ":(exclude).rag-evidence-drill/**"],
+    { cwd: ROOT, encoding: "utf8" },
+  ).trim();
+  return { implementationCommitSha, executedScriptBlobSha, scriptBlobSha, implementationStatus };
+}
+
+// `hash-object <path>`描述实际执行的工作树字节；`rev-parse HEAD:<path>`描述提交中的blob。
+// 只有工作树干净且二者相等时，证据才可声称由implementationCommitSha中的脚本生成。
+const INITIAL_ATTESTATION = readImplementationAttestation();
 
 try {
+  step("证据attestation：绑定当前干净实现提交与实际执行脚本blob", () => {
+    if (!/^[0-9a-f]{40}$/.test(INITIAL_ATTESTATION.implementationCommitSha)) throw new Error("implementation commit SHA形状非法");
+    if (INITIAL_ATTESTATION.implementationStatus) {
+      throw new Error("实现工作树非干净状态：先提交实现，再生成可归档演练证据");
+    }
+    if (INITIAL_ATTESTATION.executedScriptBlobSha !== INITIAL_ATTESTATION.scriptBlobSha) {
+      throw new Error("实际执行脚本blob与implementation commit中的脚本blob不一致");
+    }
+    return {
+      implementationCommitSha: INITIAL_ATTESTATION.implementationCommitSha,
+      implementationWorktreeClean: true,
+      script: SCRIPT_REL,
+      scriptBlobSha: INITIAL_ATTESTATION.scriptBlobSha,
+      executedScriptBlobSha: INITIAL_ATTESTATION.executedScriptBlobSha,
+      scriptBlobSemantics: "git-object-id-of-exact-bytes; committed blob equals executed worktree blob",
+    };
+  });
+
   mkdirSync(WORK, { recursive: true });
   const BASE_ENV = { DATABASE_URL: DRILL_URL };
 
@@ -565,7 +598,7 @@ echo "limited-user-removed"`,
   });
 
   let applyResult = null;
-  step("apply：显式建桶+23对象上传+rag登记（单持锁事务）", () => {
+  step("apply：显式建桶+23对象上传+rag登记（PG登记事务；MinIO不参与数据库原子提交）", () => {
     const r = syncCli(APPLY_ARGS(planFile, plan.planHash, plan.targetFingerprint), BASE_ENV, 0);
     applyResult = r.json;
     if (r.json.applied !== true || r.json.verified !== true) throw new Error(`apply异常：${JSON.stringify({ applied: r.json.applied, verified: r.json.verified })}`);
@@ -649,13 +682,6 @@ print("conflict-removed")`,
     return { conflictRefused: true, objectPreserved: true, repairedViaReplan: true, preConflictFingerprints: before, conflictApplyZeroWriteFingerprints: { db: after.db, minio: { bucketExists: after.minio.bucketExists, objectCount: after.minio.objectCount } } };
   });
 
-  step("执行脚本Git blob SHA记录与自检（证据由完全相同的脚本生成）", () => {
-    if (!/^[0-9a-f]{40}$/.test(SCRIPT_BLOB_SHA) || !/^[0-9a-f]{40}$/.test(HEAD_SHA)) {
-      throw new Error("脚本blob SHA或HEAD SHA形状非法");
-    }
-    return { script: SCRIPT_REL, scriptBlobSha: SCRIPT_BLOB_SHA, headSha: HEAD_SHA, note: "提交后验证：git rev-parse HEAD:scripts/rag-evidence-drill.mjs 必须等于 scriptBlobSha" };
-  });
-
   step("索引audit预态：23 versions全部downloaded、0 complete（ok=false零写入）", () => {
     const before = derivedFingerprint(DRILL_URL);
     const r = indexCli(["audit", "--database-url", DRILL_URL], BASE_ENV, 4);
@@ -672,7 +698,7 @@ print("conflict-removed")`,
 
   let indexPlan = null;
   step("索引plan：绑定23 versions/对象SHA/派生指纹/模型/维度/indexVersion/planHash/指纹/写集合（两次逐字节一致）", () => {
-    const r = indexCli(["plan", "--database-url", DRILL_URL, "--out", path.join(WORK, "index-plan.json")], BASE_ENV, 0);
+    indexCli(["plan", "--database-url", DRILL_URL, "--out", path.join(WORK, "index-plan.json")], BASE_ENV, 0);
     const first = readFileSync(path.join(WORK, "index-plan.json"), "utf8");
     indexCli(["plan", "--database-url", DRILL_URL, "--out", path.join(WORK, "index-plan-2.json")], BASE_ENV, 0);
     const second = readFileSync(path.join(WORK, "index-plan-2.json"), "utf8");
@@ -974,6 +1000,40 @@ print("external-pre-created-bucket")`);
 } catch {
   // failed=true已记录
 } finally {
+  let finalAttestation = readImplementationAttestation();
+  if (!failed) {
+    const finalStarted = Date.now();
+    try {
+      if (finalAttestation.implementationCommitSha !== INITIAL_ATTESTATION.implementationCommitSha) {
+        throw new Error("演练期间HEAD发生变化，拒绝写入成功证据");
+      }
+      if (finalAttestation.implementationStatus) {
+        throw new Error("写证据前implementation worktree非干净状态，拒绝写入成功证据");
+      }
+      if (finalAttestation.executedScriptBlobSha !== finalAttestation.scriptBlobSha) {
+        throw new Error("写证据前实际脚本blob与implementation commit脚本blob不一致");
+      }
+      results.push({
+        name: "成功证据写入前最终attestation复核",
+        ok: true,
+        ms: Date.now() - finalStarted,
+        detail: {
+          implementationCommitSha: finalAttestation.implementationCommitSha,
+          implementationWorktreeClean: true,
+          scriptBlobSha: finalAttestation.scriptBlobSha,
+          executedScriptBlobSha: finalAttestation.executedScriptBlobSha,
+        },
+      });
+    } catch (err) {
+      failed = true;
+      results.push({
+        name: "成功证据写入前最终attestation复核",
+        ok: false,
+        ms: Date.now() - finalStarted,
+        error: String(err?.message ?? err),
+      });
+    }
+  }
   mkdirSync(EVIDENCE_OUT, { recursive: true });
   const evidence = {
     drill: "rag-evidence-sync+index",
@@ -984,8 +1044,12 @@ print("external-pre-created-bucket")`);
     database: DB,
     restoreDatabase: RESTORE_DB,
     script: SCRIPT_REL,
-    scriptBlobSha: SCRIPT_BLOB_SHA,
-    headSha: HEAD_SHA,
+    implementationCommitSha: finalAttestation.implementationCommitSha,
+    implementationWorktreeCleanAtStart: INITIAL_ATTESTATION.implementationStatus.length === 0,
+    implementationWorktreeCleanBeforeEvidence: finalAttestation.implementationStatus.length === 0,
+    scriptBlobSha: finalAttestation.scriptBlobSha,
+    executedScriptBlobSha: finalAttestation.executedScriptBlobSha,
+    scriptBlobSemantics: "git-object-id-of-exact-bytes; committed blob equals executed worktree blob",
     finishedAt: new Date().toISOString(),
     failed,
     results,
