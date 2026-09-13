@@ -20,7 +20,7 @@ const UUID_PATTERN =
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ documentVersionId: string }> },
+  { params }: RouteContext<"/api/rag/originals/[documentVersionId]">,
 ) {
   const logger = createRequestLogger();
 
