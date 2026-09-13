@@ -127,3 +127,35 @@ Web下载必须要求登录并代理Agent原件流；不得返回MinIO内部地�
 隔离验收与门禁数字详见`PROGRESS.md`对应章节与验收报告§10。演练33项全ok证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T05-57-34-688Z.json`（scriptBlobSha=执行脚本Git blob SHA `4edd7d8a…`，与提交中脚本一致）。rewrite恢复演练证据`rewrite-drill-evidence-2026-09-13T06-39-43-390Z.json`（10步全ok）。
 
 边界：生产socila-minio（bucket仍为0）与持久policyops未连接未写入；未合并refactor/main；未创建PR、tag或Release。状态**Ready for user testing**。
+
+## 生产fresh授权执行记录（2026-09-13；生产MinIO同步+生产RAG索引完成）
+
+按本WI交付与授权边界执行生产fresh授权两步（两个apply独立授权点），全程`AGENT_MINIO_ENDPOINT=127.0.0.1:9000`（S3 API；9001 Console未用于任何写入路径）、bucket固定`policy-originals`。
+
+### 只读验证（执行前，零漂移）
+
+工作树干净、HEAD与`origin/refactor/policy-ops-agent-platform`均=`da951594c…`；`sync-plan.json`规范化重算planHash一致；以相同参数对生产重新生成plan与存储计划深度相等（即当前状态精确等于计划targetFingerprint）；`socila_minio-data:/data`挂载未变；23个证据文件逐字节SHA/byteSize/对象键与计划一致；生产MinIO无bucket、RAG七表为0；socila-postgres/minio/redis容器与镜像均未变（agent/web镜像ID与`shv2-da95159`一致）。
+
+### 第一步：生产同步（授权哈希：planHash `6751f812…`、targetFingerprint `0de35927…`）
+
+`evidence_sync apply --plan-file --i-am-authorized --plan-hash --target-fingerprint`→`state=applied、bucketCreated=true、uploaded=23、fetches=23、versions=23、verified=true`。完整四方verify `ok=true、problems=0、objectCount=23`。精确核对：`policy-originals`为唯一bucket且恰含23个`originals/<sha256>`对象；`rag.fetches`/`rag.document_versions`各恰23行且(object_key, content_hash)与计划逐一相等、状态全部`downloaded`、jurisdiction=310000；`rag.sources`恰2行（rsj.sh.gov.cn、ybj.sh.gov.cn，owner=`rag-evidence-sync`）。同计划复跑apply→`noop:true`零写入。
+
+### 第二步：生产索引（独立授权；授权哈希：planHash `2f737896…`、targetFingerprint `b87228f7…`）
+
+索引audit报46条均为索引前预期pending态（sync登记路径不写`official_url/title/authority`，由索引apply最终UPDATE从打包固定清单`shanghai_index_manifest.json`回填；派生行为空）；`rag.fetches`实际URL与清单23/23精确一致，无真实漂移。生产index plan（`rag-evidence-index-plan/2.0`，重复生成深度相等）：恰好23个上海document version（version ID与同步登记逐一相等）、plannedIndex=23、noop=0、conflicts=0、BAAI/bge-m3/1024（indexVersion `BAAI/bge-m3:1024`）、23/23标题/发布机关/officialUrl(https gov.cn)/effectiveFrom完整（9份effectiveTo为空=长期有效）、派生写集合23份185 chunks。取得对上述精确哈希的第二次授权后`evidence_index apply`→`applied=true、indexedVersions=23、verified=true`；完整verify `ok=true、23/23 indexed+derivedComplete`；复跑apply→`noop:true`。`appliedFingerprint`与计划finalFingerprint不同属设计（终态承诺=确定性结构+有效receipt，不承诺模型字节；apply内post-verify通过）。
+
+### 生产终态与固定查询
+
+`rag.sources=2、fetches=23、document_versions=23全部indexed、document_trees=23、chunks=185、embeddings=185（model=BAAI/bge-m3、declared dims=1024、实际vector_dims=1024全部）、index_receipts=23`；每文档chunks数与计划写集合逐一相等；MinIO恰23对象无多余。固定查询（production与恢复副本双通过）：缴费基数top1命中7546/37731；失业金三档2340/1872/1690命中；医保"等待期6个月"+"中断后3个月内参保不受等待期限制"命中；jurisdiction=440000零命中；as-of 2026-06-30排除2026-07-01生效文档（7546/37731消失）；未收录问题（公积金贷款额度）0命中不凑数。
+
+### 执行后备份与全新实例恢复演练
+
+- 执行后PostgreSQL dump：`backup/post-shanghai-rag-20260913-233844/policyops.dump`（-Fc，1335292字节）。
+- 23个MinIO对象逐字节备份+SHA清单：同目录`objects/`与`minio-objects-manifest.json`（全部objectKey==originals/<字节SHA256>）。
+- 全新PG17+pgvector（`shv2-postrest-pg`:55432，库`policyops_restore`）+全新MinIO（`shv2-postrest-minio`:19000，一次性凭据仅存gitignored restore.env）：pg_restore仅9条`agent_app`角色GRANT报错（全新实例无该角色，属预期；数据/结构完整），RAG计数源/副本完全一致（sources=2/fetches=23/versions=23全部indexed/trees=23/chunks=185/embeddings=185/receipts=23）。
+- 恢复副本复验全绿：evidence_sync四方verify `ok=true、23对象、problems=0`；evidence_index verify `ok=true、23/23 complete`；六项固定查询全部与生产一致。
+- 运行证据（运行器脚本、apply/verify/查询JSON、恢复产物）均在gitignored `backup/rag-exec-20260913/`与`backup/post-shanghai-rag-20260913-233844/`，不进入版本库。
+
+### 边界与状态
+
+未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；`F:\Socila-shanghai-case-v2` worktree保留待用户测试确认。状态：**生产同步与索引完成，等待用户人工测试**（09-11 Feature最终Accepted仍待用户测试）。

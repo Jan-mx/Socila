@@ -637,3 +637,14 @@
 - `npm test`：85文件 / 877测试通过，0失败、0skip；此前命名扫描在完整套件中的5秒超时已通过该用例显式30秒上限修复。
 - `npx tsc --noEmit`、`npx eslint src`（0 error，7条既有warning）和`npm run build`退出0；Build仅保留既有citation-verifier动态文件访问warning。
 - `uv run pytest -m \"not integration\" -q`（`services/agent`）：137通过、131 deselected；ruff与mypy均无问题。隔离集成门禁以最新真实演练证据为准，生产写入前仍需fresh重跑。
+
+## 2026-09-13生产fresh授权执行：MinIO同步、RAG索引与恢复演练（WI-20260913-01授权边界内）
+
+- 执行前只读验证零漂移：工作树干净、HEAD与`origin/refactor/policy-ops-agent-platform`=`da951594c…`；`sync-plan.json`重算planHash一致且对生产重新生成plan深度相等；`socila_minio-data:/data`挂载、postgres/minio/redis容器未变；23个证据文件SHA/对象键与计划一致；生产无bucket、RAG七表=0。
+- 生产同步（第一次授权，planHash `6751f812…`/target `0de35927…`）：`evidence_sync apply`→`applied、bucketCreated=true、23对象/23 fetches/23 versions、verified=true`；四方verify ok（problems=0）；`rag.sources`恰2行（rsj.sh.gov.cn、ybj.sh.gov.cn）；复跑`noop:true`。
+- 生产索引（第二次独立授权，planHash `2f737896…`/target `b87228f7…`）：audit 46条均为预期pending态（official_url/标题/机关由索引apply从打包清单回填、派生行为空；fetches URL与清单23/23一致无真实漂移）；index plan 23版本/185 chunks/BAAI/bge-m3/1024、深度确定性；`evidence_index apply`→`applied=true、23 indexed、verified=true`；verify `23/23 complete`；复跑`noop:true`。
+- 生产终态：sources=2、fetches=23、versions=23全部indexed、trees=23、chunks=185、embeddings=185（declared与实际vector_dims均1024）、receipts=23；`policy-originals`恰23对象。
+- 固定查询（生产与恢复副本双通过）：7546/37731、2340/1872/1690、医保等待期6个月+3个月内衔接均命中；广东440000零命中；as-of 2026-06-30正确排除2026-07-01生效文档；未收录问题0命中不凑数。
+- 执行后备份与恢复：`backup/post-shanghai-rag-20260913-233844/`（policyops.dump -Fc + 23对象逐字节备份与SHA清单）；全新`shv2-postrest-pg`:55432（policyops_restore）+全新`shv2-postrest-minio`:19000恢复后，源/副本RAG计数一致，四方verify、索引verify与六项固定查询全部通过（pg_restore仅agent_app角色GRANT 9条报错，属全新实例预期）。
+- 边界：未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；运行证据（计划JSON、apply/verify结果、对象备份、dump）仅存gitignored `backup/`，不进入版本库；`F:\Socila-shanghai-case-v2` worktree保留。
+- 状态：**生产同步与索引完成，等待用户人工测试**（用户测试通过前不合并不标记Feature最终Accepted）。

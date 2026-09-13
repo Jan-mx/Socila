@@ -410,3 +410,17 @@ rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-
 - 最新隔离证据`rag-evidence-drill-2026-09-13T11-14-27-135Z.json`为成功结果：23份原件同步、真实1024维索引、固定查询、地区/日期过滤、PostgreSQL+MinIO恢复副本verify和幂等均通过；生产环境未使用该证据替代fresh授权。
 - 当前状态为**Ready for user testing**，不是最终Accepted。生产MinIO仍无`policy-originals` bucket，RAG七张表仍为0；未执行生产容器升级、政策release、0019、V1→V2持久改写或任何生产数据库/对象写入。
 - 用户测试需验证真实对话调用`searchPolicy`、官网及归档原件链接、登录态下载和既有会话/权限；测试通过后才进入显式`--no-ff`合并与生产fresh计划授权。
+
+### 10.7 生产fresh授权执行、执行后备份与恢复演练（2026-09-13）
+
+按WI-20260913-01授权边界完成生产两步fresh授权执行（`AGENT_MINIO_ENDPOINT=127.0.0.1:9000`，bucket固定`policy-originals`）：
+
+1. **执行前只读验证零漂移**：工作树干净；HEAD与远端=`da951594c…`；sync计划重算planHash一致且对生产重新生成深度相等（状态==targetFingerprint）；挂载/容器未变；23证据文件SHA与计划一致；生产无bucket、RAG七表=0。
+2. **生产同步**（授权planHash `6751f812…`、target `0de35927…`）：apply→`applied、bucketCreated=true、23/23/23、verified=true`；四方verify ok=0问题；sources恰2官方域名；复跑noop:true。SHV2-AC-022生产达成。
+3. **生产索引**（第二次独立授权，planHash `2f737896…`、target `b87228f7…`）：audit 46条均为预期pending态（官方元数据由索引apply自打包清单回填，fetches URL与清单23/23一致）；index plan（23版本/185 chunks/BAAI/bge-m3/1024/派生写集合完整/重复生成深度相等）→apply→`23 indexed、verified=true`；verify `23/23 complete`；复跑noop:true。SHV2-AC-023～025生产达成。
+4. **生产终态**：`sources=2、fetches=23、versions=23全部indexed、trees=23、chunks=185、embeddings=185（declared与实际vector_dims均1024）、receipts=23`；每文档chunks与计划写集合逐一相等。SHV2-AC-026～027依赖的运行时数据就位（23版本可检索、原件可溯）。
+5. **固定查询（生产+恢复副本双通过）**：7546/37731（top1 score 0.97）；失业金2340/1872/1690；医保等待期6个月与"中断后3个月内以灵活就业身份参保不受等待期限制"；jurisdiction=440000零命中；as-of 2026-06-30排除2026-07-01生效文档；未收录问题0命中不凑数。SHV2-AC-028检索面生产达成。
+6. **执行后备份与恢复演练**：dump（-Fc，1335292字节）+23对象逐字节备份及SHA清单（`backup/post-shanghai-rag-20260913-233844/`）；全新PG17+pgvector（`shv2-postrest-pg`:55432，`policyops_restore`）+全新MinIO（`shv2-postrest-minio`:19000）恢复后源/副本RAG计数一致（pg_restore仅agent_app GRANT 9条预期报错），四方verify、索引verify与六项固定查询全部通过。
+7. 运行证据仅存gitignored `backup/rag-exec-20260913/`与`backup/post-shanghai-rag-20260913-233844/`（运行器、apply/verify/查询JSON、计划文件、对象备份、dump），不进入版本库；不提交dump、对象备份、凭据或计划JSON。
+
+状态更新：生产同步与索引**已完成**，进入用户人工测试；Feature最终Accepted仍待用户测试确认。未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release。

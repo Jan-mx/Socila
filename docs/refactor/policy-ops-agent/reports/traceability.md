@@ -304,3 +304,18 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | SHV2-AC-026～027 | `agent/api/app.py`、Next下载代理、`searchPolicy`及对话E2E | 隔离通过，待用户测试 |
 | SHV2-AC-028 | PostgreSQL+MinIO备份恢复后四方verify、索引verify、固定查询和noop | 隔离通过，待用户测试 |
 | 生产持久化边界 | 生产MinIO bucket=0、RAG七表=0；目标分支仍`0885613`未合并 | 未授权，不执行 |
+
+## 生产持久化执行映射（2026-09-13生产fresh授权执行，WI-20260913-01授权边界内）
+
+| 需求 | 生产执行/证据 | 状态 |
+| --- | --- | --- |
+| SHV2-AC-022（Compose运行映射+同步） | 只读验证零漂移后`evidence_sync apply`（planHash `6751f812…`/target `0de35927…`）→`applied、bucketCreated=true、23对象/23 fetches/23 versions、verified=true`；四方verify ok；复跑noop:true；`AGENT_MINIO_ENDPOINT=127.0.0.1:9000`、bucket`policy-originals` | 生产达成 |
+| SHV2-AC-023～025（受控真实索引） | 第二次独立授权（planHash `2f737896…`/target `b87228f7…`）→`evidence_index apply`→`23 indexed、verified=true`；verify `23/23 complete`；复跑noop:true；生产终态23 trees/185 chunks/185 embeddings（declared与实际vector_dims均1024）/23 receipts；BAAI/bge-m3:1024 | 生产达成 |
+| SHV2-AC-026～027（内部接口与对话来源链） | 23个indexed版本可经`/internal/v1/rag/search`与`searchPolicy`检索、原件经`/api/rag/originals/<id>`可溯（运行时数据生产就位；对话链路待用户人工测试） | 数据就绪，待用户测试 |
+| SHV2-AC-028（备份恢复） | 执行后dump+23对象逐字节备份及SHA清单（`backup/post-shanghai-rag-20260913-233844/`）→全新PG17+pgvector（`shv2-postrest-pg`:55432，`policyops_restore`）+全新MinIO（`shv2-postrest-minio`:19000）恢复；源/副本RAG计数一致；四方verify、索引verify、六项固定查询全部通过 | 生产达成 |
+| 固定查询契约 | 生产与恢复副本双通过：7546/37731、2340/1872/1690、医保等待期6个月+3个月内衔接；广东440000零命中；as-of 2026-06-30排除2026-07-01生效文档；未收录问题0命中 | 生产达成 |
+| 持久边界 | 执行前只读验证零漂移；两个apply均为独立fresh授权（精确哈希绑定）；运行证据仅存gitignored `backup/`，不提交dump/对象备份/凭据/计划JSON；未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；`F:\Socila-shanghai-case-v2` worktree保留 | 遵守 |
+
+- 生产同步plan：`backup/pre-shanghai-rag-20260913-201709/sync-plan.json`（planHash `6751f812908157f688bf8416808a59ff14d3a0920f1bcf747d89d9996a49392a`、target `0de35927f519a6bccbfb2ebac77b0d18c8a7735da0c54fa589aea21f43025371`、final `6ff9444f74b376d2db22a09bb095a21cd27d30d10c9c4db707eedce6c7bd8599`）。
+- 生产索引plan：`backup/rag-exec-20260913/index-plan.json`（planHash `2f73789603feaa70b54365bbee5f161b9977ffaee029064b6e25cb0f4d85570b`、target `b87228f74c2cba409427274228d7c6f64a51ea9dbee0cc4c31831e799907896c`、final `3fae7bdd7256c54cde2e3b39abfef8b4538047f7fc0af0f4c85fcbdd942c3beb`、manifestHash `58e85966d0aa6d745144004b91a97bc8bfd419c774b1a6e723c36fbeb1681549`）。
+- 状态：**生产同步与索引完成，等待用户人工测试**；Feature最终Accepted待用户测试确认。
