@@ -13,11 +13,12 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..config import Settings, get_settings
 from ..rag.runtime import RagRuntimeError, mime_extension
@@ -63,6 +64,16 @@ class RagSearchRequest(BaseModel):
     jurisdiction_code: str = Field(pattern=r"^(CN|\d{6})$")
     as_of_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     top_k: int = Field(default=5, ge=1, le=20)
+
+    @field_validator("as_of_date")
+    @classmethod
+    def _as_of_date_must_be_real_date(cls, value: str) -> str:
+        # 复审P3-1：格式正则之外追加真实日历日期校验（2026-13-45不得到达SQL层）。
+        try:
+            date.fromisoformat(value)
+        except ValueError as err:
+            raise ValueError("as_of_date必须是真实日历日期（YYYY-MM-DD）") from err
+        return value
 
 
 class AppDeps:

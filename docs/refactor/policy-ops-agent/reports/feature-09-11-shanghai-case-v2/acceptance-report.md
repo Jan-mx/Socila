@@ -355,7 +355,7 @@
 
 | 任务 | 实现 | RED→GREEN |
 | --- | --- | --- |
-| 1 同步竞态修复 | `evidence_sync.apply`新增`_verify_objects_or_conflict`三检查点（ensure后/上传后/事务提交前重验全部目标对象字节SHA；`OBJECT_CONFLICT`/`OBJECT_MISSING`失败关闭、对象不覆盖、RAG三表零写入） | 4测试在旧实现失败（ensure竞态InMemory+真实MinIO双实现、上传窗口冲突、提交前篡改——旧实现均先提交RAG登记）→ `test_rag_evidence_sync.py` 85/85 |
+| 1 同步竞态修复 | `evidence_sync.apply`新增`_verify_objects_or_conflict`三检查点（ensure后/上传后/事务提交前重验全部目标对象字节SHA；`OBJECT_CONFLICT`/`OBJECT_MISSING`失败关闭、对象不覆盖、RAG三表零写入） | 3测试在旧实现失败（ensure竞态InMemory+真实MinIO双实现、上传窗口冲突——旧实现均先提交RAG登记）+提交前篡改1例（独立复审P2-1修正注入点至第8次get并断言错误来自`_verify_objects_or_conflict`终检；旧实现该阈值下无第8次get→verify干净→RED）→ `test_rag_evidence_sync.py` 85/85 |
 | 2 受控真实索引 | `agent/rag/evidence_index.py`五模式CLI（计划绑定23 versions/对象键及SHA/派生状态指纹/BAAI/bge-m3/1024/indexVersion/planHash/targetFingerprint/finalFingerprint/完整派生写集合；apply显式授权绑定+HEAD==codeSha+干净工作树+状态未漂移；MinIO复核SHA→tree/markdown/chunks/真实embeddings→每文档独立事务→indexed；部分完成后原计划失效必须重新plan；终态复跑noop）；`IngestService` dedup不再伪报indexed | `test_rag_evidence_index.py` 22/22零skip（RED=ModuleNotFoundError） |
 | 3 内部RAG接口 | `agent/rag/runtime.py`+`agent/api/app.py`两端点（服务JWT；search输入校验与sourceName/officialUrl/contentSha256/mime回填；original复核SHA：未知版本404、对象缺失/SHA漂移502；attachment/nosniff/private no-store；不返回MinIO地址/凭据/预签名URL）+`main.py`懒装配 | `test_rag_api.py` 11/11零skip |
 | 4 对话来源链 | `src/lib/ai/search-policy.ts`+`searchPolicy`工具+提示词规则10～12+`GET /api/rag/originals/{id}`登录态代理（新签发服务JWT代理Agent流、附件安全头、不暴露MinIO直链）；命中附`/api/rag/originals/<documentVersionId>`；无可靠命中如实说明 | `search-policy.test.ts` 8例+route测试4例（RED=模块缺失）；E2E `shv2-rag-chat.spec.ts` 3例 |
@@ -383,13 +383,23 @@ rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-
 | ruff / mypy | 0问题 / 54文件0错误 |
 | `npm test` | 84文件/863用例零失败零skip |
 | `npm run test:db`（db-gate-task34全新PG17+pgvector） | migration×2/bootstrap×2/seed×2幂等+test:db全量+agent.migrate --with-roles×2+pytest integration全部通过，容器清理零残留 |
-| tsc / eslint / build | 退出0 / 0 error（16条既有warning未新增）/ 零warning |
+| tsc / eslint / build | 退出0 / 0 error（16条既有warning未新增）/ 退出0（1条既有citation-verifier动态fs warning，历史基线记录非本次引入） |
 | Chromium E2E（standalone+mock模型+mock Agent内部API） | 26/26（auth 10+SHV2 4+task3 5+task4 4+**shv2-rag-chat 3**） |
 | citation组 / 案例库`--check` | 32/32 / ok=true（manifestHash `c974157d…`） |
 | scan-secrets --all / Gitleaks 8.29.1完整历史 / allowlist哨兵 | 932文件零命中 / 105提交no leaks / 3场景全过 |
 | `git diff --check` / Markdown相对链接 | 通过 / 通过 |
 
-### 10.4 状态与边界
+### 10.4 独立复审与修复（2026-09-13，提交912d005复审）
+
+独立子Agent对`4da7f1a..912d005`完成全量复审（verdict：`PASS critical=0 p1=0 p2=1 p3若干`），并对可离线运行的测试做了本地复跑（pytest非集成子集48通过、vitest 17通过）。修复记录：
+
+- **P2-1（测试覆盖与验收声明准确性）**：`TestPreCommitObjectCheck`原注入点（第5次get）实际命中的是apply既有的锁内冲突检查而非新增的提交前终检——该测试在旧实现上同样通过，不是有效RED。修复：注入点改为第8次get（确定性实测的新实现get顺序：plan 2次→pre-lock指纹1次→锁内指纹1次→既有冲突检查1次→检查点1→检查点2→检查点3提交前终检=第8次），并追加断言错误消息来自`_verify_objects_or_conflict`（"同键对象内容与原件不一致"）而非既有冲突检查；已在4da7f1a旧实现上复验RED（verify干净→成功→pytest.raises失败）、新实现GREEN。五处文档（WI/PROGRESS/TESTING/traceability/本报告）的"4例RED→GREEN"表述已更正为"3例RED→GREEN+提交前终检1例（复审修正注入点后RED）"。
+- **P3-1（输入校验鲁棒性）**：`RagSearchRequest.as_of_date`在格式正则外追加`date.fromisoformat`真实日历日期校验（2026-13-45→422，不再到达SQL层）；Web侧`searchPolicySchema.as_of_date`同步追加真实日期refine；两侧各补1反例测试。
+- **P3-2（original端点非UUID）**：`RagRuntime.original`在SQL前做UUID校验，非UUID统一`DOCUMENT_NOT_FOUND`（404），不再落入未预期500；补1反例测试。
+
+复审修复后回归：`test_rag_api.py` 12/12、`test_rag_evidence_sync.py` 85/85、ruff 0、mypy 54文件0错误、search-policy+tools-jurisdiction 20/20、tsc 0、eslint 0 error、npm test/build新鲜复跑、scan-secrets --all零命中。
+
+### 10.5 状态与边界
 
 - 状态：**Ready for user testing**（不标记Feature最终Accepted；SHV2-AC-022～028在隔离环境闭环，AC-023～025/AC-028的生产持久态待用户测试后的fresh授权执行）。
 - 边界：生产socila-minio未连接（bucket=0只读事实不变）；持久policyops未连接；未合并refactor/main；未创建PR、tag、Release；未接入Fake `retrieve_impact`；隔离容器/库/临时文件清理。

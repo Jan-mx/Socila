@@ -72,6 +72,13 @@ describe("searchPolicy 输入Schema契约", () => {
       searchPolicySchema.safeParse({
         query: "q",
         jurisdiction_code: "310000",
+        as_of_date: "2026-13-45",
+      }).success,
+    ).toBe(false);
+    expect(
+      searchPolicySchema.safeParse({
+        query: "q",
+        jurisdiction_code: "310000",
         as_of_date: "2026-09-01",
         top_k: 0,
       }).success,

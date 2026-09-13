@@ -113,6 +113,14 @@ class RagRuntime:
     def original(self, document_version_id: str) -> dict[str, Any]:
         """读取登记原件：未知版本404；对象缺失或SHA漂移失败关闭；
         返回字节与响应元数据（不包含MinIO地址/凭据/预签名URL）。"""
+        import uuid as _uuid
+
+        # 复审P3-2：非UUID在SQL前拒绝为DOCUMENT_NOT_FOUND（与未知版本同语义，
+        # 避免Postgres uuid解析错误落入未预期500）。
+        try:
+            _uuid.UUID(str(document_version_id))
+        except (ValueError, AttributeError, TypeError) as err:
+            raise RagRuntimeError("DOCUMENT_NOT_FOUND", f"document version不存在：{document_version_id}") from err
         import psycopg
 
         with psycopg.connect(self._url) as conn:

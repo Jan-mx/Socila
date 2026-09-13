@@ -1460,16 +1460,21 @@ class TestPreCommitObjectCheck:
         monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
         _truncate_rag()
         key = f"originals/{SHA}"
-        # 对象已存在且SHA一致（幂等noop场景）；新实现get顺序：锁内指纹(1)→冲突检查(2)
-        # →ensure后重验(3)→上传后重验(4)→提交前终检(5)，注入点5=提交前终检发现篡改。
-        # 旧实现无重验，第3次get已是事务外verify→RAG登记已提交（RED断言失败）。
-        store = _LateCorruptionStore({key: HTML}, key, corrupt_from_call=5)
+        # 对象已存在且SHA一致（幂等noop场景）。对象预存在时新实现的get顺序（确定性实测）：
+        # plan内_object_states+前置指纹(1-2)→apply入口pre-lock指纹(3)→锁内指纹(4)→既有冲突
+        # 检查(5)→检查点1 ensure后重验(6)→检查点2上传后重验(7)→检查点3提交前终检(8)。
+        # 注入点8=提交前终检发现篡改，并断言错误消息来自_verify_objects_or_conflict
+        # （而非既有冲突检查的“已存在同键不同内容对象”），证明打到新检查点。
+        # 旧实现只有6次get（终检前verify为第6次）：阈值8永不触发→verify干净→apply
+        # 成功→pytest.raises失败（RED）。
+        store = _LateCorruptionStore({key: HTML}, key, corrupt_from_call=8)
         sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=None, database_url=DRILL)
         plan = sync.build_plan()
         before = _rag_db_fingerprint()
         with pytest.raises(EvidenceSyncError) as ei:
             sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
         assert ei.value.code == "OBJECT_CONFLICT", f"期望OBJECT_CONFLICT，实际{ei.value.code}"
+        assert "同键对象内容与原件不一致" in str(ei.value), "错误必须来自提交前终检（_verify_objects_or_conflict）而非既有冲突检查"
         assert _rag_db_fingerprint() == before, "提交前对象篡改必须整体回滚（RAG零写入）"
 
 

@@ -398,6 +398,7 @@ export const searchPolicySchema = z.object({
   as_of_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须是 YYYY-MM-DD")
+    .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)), "必须是真实日历日期")
     .describe("政策有效期判定日期（YYYY-MM-DD），通常使用当前日期"),
   top_k: z
     .number()

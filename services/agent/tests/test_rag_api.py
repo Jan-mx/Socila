@@ -101,12 +101,13 @@ async def test_rag_search_validates_input():
     client = _client(_app_with(runtime))
     auth = _auth_header(jwt)
     base = {"jurisdiction_code": "310000", "as_of_date": "2026-09-01", "query": "失业金标准"}
-    # 缺query / 非法地区 / 非法日期 / top_k越界 → 422校验拒绝。
+    # 缺query / 非法地区 / 非法日期 / 非真实日历日期 / top_k越界 → 422校验拒绝。
     for bad in (
         {k: v for k, v in base.items() if k != "query"},
         {**base, "query": ""},
         {**base, "jurisdiction_code": "SH"},
         {**base, "as_of_date": "2026/09/01"},
+        {**base, "as_of_date": "2026-13-45"},  # 复审P3-1：非真实日历日期
         {**base, "top_k": 0},
         {**base, "top_k": 99},
     ):
@@ -271,6 +272,14 @@ class TestRagRuntime:
 
         with pytest.raises(RagRuntimeError) as ei:
             self._runtime().original("00000000-0000-0000-0000-000000000000")
+        assert ei.value.code == "DOCUMENT_NOT_FOUND"
+
+    def test_original_non_uuid_rejected_as_not_found(self):
+        """复审P3-2：非UUID在SQL前拒绝为DOCUMENT_NOT_FOUND（不得落入未预期500）。"""
+        from agent.rag.runtime import RagRuntimeError
+
+        with pytest.raises(RagRuntimeError) as ei:
+            self._runtime().original("../../etc/passwd")
         assert ei.value.code == "DOCUMENT_NOT_FOUND"
 
     def test_original_object_missing_fails_closed(self):

@@ -115,7 +115,7 @@ Web下载必须要求登录并代理Agent原件流；不得返回MinIO内部地�
 
 | 任务 | 实现位置 | 测试路径 | 证据 |
 | --- | --- | --- | --- |
-| 1 同步竞态修复 | `services/agent/agent/rag/evidence_sync.py`（`_verify_objects_or_conflict`，ensure后/上传后/提交前三检查点） | `tests/test_rag_evidence_sync.py::TestEnsureRaceConflict`、`TestEnsureRaceConflictRealMinio`、`TestPostUploadConflictCheck`、`TestPreCommitObjectCheck`（4例RED→GREEN，全套85/85） | OBJECT_CONFLICT、对象不覆盖、RAG三表前后指纹一致（确定性注入，无sleep） |
+| 1 同步竞态修复 | `services/agent/agent/rag/evidence_sync.py`（`_verify_objects_or_conflict`，ensure后/上传后/提交前三检查点） | `tests/test_rag_evidence_sync.py::TestEnsureRaceConflict`、`TestEnsureRaceConflictRealMinio`、`TestPostUploadConflictCheck`、`TestPreCommitObjectCheck`（3例RED→GREEN+提交前终检1例（复审P2-1修正注入点至第8次get并断言错误来自终检；旧实现该阈值下verify干净→RED，全套85/85） | OBJECT_CONFLICT、对象不覆盖、RAG三表前后指纹一致（确定性注入，无sleep） |
 | 2 受控索引 | `services/agent/agent/rag/evidence_index.py`（五模式CLI）；`agent/rag/pipeline.py`（`derived_index_complete`+`IngestService` dedup修复；空候选不rerank） | `tests/test_rag_evidence_index.py` 22/22零skip（plan绑定/守卫零写入/单文档事务回滚/部分完成re-plan/终态noop/verify反例/端点守卫/伪indexed反例/真实MinIO SHA复核/真实页面解析回归） | drill索引步（真实SiliconFlow） |
 | 3 内部RAG接口 | `agent/rag/runtime.py`、`agent/api/app.py`（`/internal/v1/rag/search`、`/internal/v1/rag/documents/{id}/original`）、`agent/api/main.py` | `tests/test_rag_api.py` 11/11零skip | JWT/校验/附件头/404/502失败关闭/元数据回填/空候选不rerank |
 | 4 对话来源链 | `src/lib/ai/search-policy.ts`、`src/lib/ai/tools.ts`（searchPolicy）、`src/lib/ai/prompts.ts`（规则10～12）、`src/app/api/rag/originals/[documentVersionId]/route.ts` | `src/lib/ai/__tests__/search-policy.test.ts` 8例、route测试4例；E2E `e2e/shv2-rag-chat.spec.ts` 3例 | 对话双链展示+登录态下载字节一致+无命中不编造 |
