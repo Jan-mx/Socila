@@ -11,7 +11,7 @@
 - 关联需求：SHV2-FR-002/023/028～031，SHV2-NFR-006/007/009
 - 关联验收：SHV2-AC-001/017/020/022～028
 - 起点：`codex/shanghai-case-v2@a85420f079f4d57079a8ccb80a1a9ad17adc625a`
-- 当前交付HEAD：`72e3bb1a2e8f8d01b3f7ebcf0e2b83cc4df13021`（实现主体`d32b812`，并包含`91ee87e`完整Node套件命名扫描超时门禁修复与本次文档同步）
+- 当前交付包含实现主体`d32b812`及`91ee87e`完整Node套件命名扫描超时门禁修复；分支tip以交付报告和远端为准。
 - 合并目标：`refactor/policy-ops-agent-platform`；用户人工测试通过前禁止合并
 
 ## 背景
