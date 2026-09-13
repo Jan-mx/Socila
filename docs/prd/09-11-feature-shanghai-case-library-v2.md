@@ -610,7 +610,7 @@ SHV2-FR-028～031、SHV2-NFR-009与SHV2-AC-022～028已全部实现并在隔离�
 
 ### 23.6 当前执行记录（2026-09-13，`d32b812`）
 
-- `codex/shanghai-case-v2`本地与远端均为`91ee87e643ea0d84b871ee23b0d57bfe595d3323`（实现主体为`d32b812`，本次补齐完整Node套件命名扫描超时契约）；`refactor/policy-ops-agent-platform`仍为`0885613f2fbb68bf361d55c3b89694dc1024d1b4`，未修改、未合并。
+- `codex/shanghai-case-v2`本地与远端均为`72e3bb1a2e8f8d01b3f7ebcf0e2b83cc4df13021`（实现主体为`d32b812`，`91ee87e`补齐完整Node套件命名扫描超时契约，`72e3bb1`同步文档事实）；`refactor/policy-ops-agent-platform`仍为`0885613f2fbb68bf361d55c3b89694dc1024d1b4`，未修改、未合并。
 - 最新隔离演练证据为`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T11-14-27-135Z.json`：真实SiliconFlow索引23/23、Tree/chunks/1024维embeddings、固定查询、地区/日期过滤、双侧备份恢复及幂等均通过；证据由当前提交中的脚本和干净工作树生成。
 - 当前生产边界不变：未连接或写入`localhost:5432/policyops`，未写入生产MinIO，未创建`policy-originals`；未执行政策release、0019、V1→V2持久改写或容器升级。
 - 状态保持`Ready for user testing`，用户测试通过后才允许合并；生产同步和索引必须分别生成fresh `codeSha/planHash/targetFingerprint/写集合`并取得精确授权。

@@ -404,9 +404,9 @@ rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-
 - 状态：**Ready for user testing**（不标记Feature最终Accepted；SHV2-AC-022～028在隔离环境闭环，AC-023～025/AC-028的生产持久态待用户测试后的fresh授权执行）。
 - 边界：生产socila-minio未连接（bucket=0只读事实不变）；持久policyops未连接；未合并refactor/main；未创建PR、tag、Release；未接入Fake `retrieve_impact`；隔离容器/库/临时文件清理。
 
-### 10.6 当前交付复核（HEAD `91ee87e`，2026-09-13）
+### 10.6 当前交付复核（HEAD `72e3bb1`，2026-09-13）
 
-- 功能分支`codex/shanghai-case-v2`本地与远端均为`91ee87e643ea0d84b871ee23b0d57bfe595d3323`（实现主体`d32b812`，补充完整Node套件命名扫描的30秒测试上限）；集成分支`refactor/policy-ops-agent-platform`仍为`0885613f2fbb68bf361d55c3b89694dc1024d1b4`，未修改、未合并。
+- 功能分支`codex/shanghai-case-v2`本地与远端均为`72e3bb1a2e8f8d01b3f7ebcf0e2b83cc4df13021`（实现主体`d32b812`，`91ee87e`补充完整Node套件命名扫描的30秒测试上限）；集成分支`refactor/policy-ops-agent-platform`仍为`0885613f2fbb68bf361d55c3b89694dc1024d1b4`，未修改、未合并。
 - 最新隔离证据`rag-evidence-drill-2026-09-13T11-14-27-135Z.json`为成功结果：23份原件同步、真实1024维索引、固定查询、地区/日期过滤、PostgreSQL+MinIO恢复副本verify和幂等均通过；生产环境未使用该证据替代fresh授权。
 - 当前状态为**Ready for user testing**，不是最终Accepted。生产MinIO仍无`policy-originals` bucket，RAG七张表仍为0；未执行生产容器升级、政策release、0019、V1→V2持久改写或任何生产数据库/对象写入。
 - 用户测试需验证真实对话调用`searchPolicy`、官网及归档原件链接、登录态下载和既有会话/权限；测试通过后才进入显式`--no-ff`合并与生产fresh计划授权。
