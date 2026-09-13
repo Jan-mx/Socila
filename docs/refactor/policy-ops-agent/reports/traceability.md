@@ -296,7 +296,7 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 - 持久边界：生产socila-minio（bucket=0）与持久policyops未连接未写入；隔离环境为任务专属`shv2-wi13-pg`:55110与`shv2-wi13-minio-a/b`:55111/55112。
 - 状态：**Ready for user testing**；生产同步/索引与refactor合并待用户测试后的fresh精确授权。
 
-## 当前交付复核（`d32b812`，2026-09-13）
+## 当前交付复核（HEAD `91ee87e`，实现主体`d32b812`，2026-09-13）
 
 | 需求 | 当前实现/证据 | 状态 |
 | --- | --- | --- |

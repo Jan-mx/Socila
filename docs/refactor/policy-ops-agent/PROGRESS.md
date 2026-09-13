@@ -626,9 +626,9 @@
 
 状态：**Ready for user testing**（不标记Feature最终Accepted）。生产同步/索引、持久RAG写入、refactor合并均待用户测试通过后按WI-20260913-01交付与授权边界的fresh精确授权执行。
 
-## 2026-09-13当前复核（`d32b812`）
+## 2026-09-13当前复核（HEAD `91ee87e`，实现主体`d32b812`）
 
-- 功能分支`codex/shanghai-case-v2`已推送并与远端一致；`refactor/policy-ops-agent-platform@0885613`和`main`均未修改。
+- 功能分支`codex/shanghai-case-v2`已推送并与远端一致（HEAD `91ee87e643ea0d84b871ee23b0d57bfe595d3323`）；`refactor/policy-ops-agent-platform@0885613`和`main`均未修改。
 - 最新真实SiliconFlow隔离演练证据为`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T11-14-27-135Z.json`，同步、索引、固定检索、恢复和noop均通过；当前工作树仅保留该待归档证据文件。
 - 生产事实保持：MinIO bucket=0，RAG七表=0，未连接或写入生产`policyops`，未升级生产容器。状态保持`Ready for user testing`；用户测试通过后才允许合并和生成生产fresh授权计划。
 

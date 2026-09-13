@@ -16,7 +16,7 @@
 
 09-05 Feature（`docs/prd/09-05-feature-socila-naming-regional-dsl.md`，Socila命名统一与地区DSL分层）**Accepted（2026-09-05两轮复审纠正后重新验收）**：首轮复审三项缺漏已纠正——命名契约区分"允许的精确旧协议片段"与"独立品牌标识"、`.gitleaks.toml`改用`[[allowlists]]`+`targetRules`并新增哨兵回归（ADR-0009）、多地区Seed补齐jurisdiction作用域并有落库级测试；第二轮复审又修复扫描器注释自命中与`.gitleaksignore`说明文字历史误报，并将Next生产构建worker限制为2以适配本机及4GB Demo资源档。最终新鲜复验：`npm test` 359/359、Gitleaks 8.29.1完整历史43提交零发现、`npm run build`以2 workers退出0。通用协议`dsl/protocol/socila_dsl_v1`与上海地区`dsl/regions/shanghai_dsl_v1`分层，规则格式唯一规范值`SOCILA-DSL-1.0`；活动代码与配置完成Socila硬切换；服务JWT身份为`socila-next-core`；粤川示例仅保留测试夹具，生产Seed与持久库均为0。证据见`reports/feature-09-05-socila-naming/acceptance-report.md`。
 
-09-11 Feature（`docs/prd/09-11-feature-shanghai-case-library-v2.md`，上海政策纠偏与36条案例V2重建）当前为**Ready for user testing**：运行时RAG闭环已在功能分支`d32b812`完成隔离实现、真实SiliconFlow演练和独立复审；生产MinIO bucket=0，RAG七张表=0，生产同步/索引尚未授权或执行。用户人工测试前不合并目标分支，生产fresh授权前不写当前MinIO或policyops。
+09-11 Feature（`docs/prd/09-11-feature-shanghai-case-library-v2.md`，上海政策纠偏与36条案例V2重建）当前为**Ready for user testing**：运行时RAG闭环已在功能分支`d32b812`实现并由HEAD `91ee87e`补齐完整Node套件门禁，真实SiliconFlow演练和独立复审通过；生产MinIO bucket=0，RAG七张表=0，生产同步/索引尚未授权或执行。用户人工测试前不合并目标分支，生产fresh授权前不写当前MinIO或policyops。
 
 2026-09-12控制契约复审修复（起点`b5a8d13`，f583adc为历史任务2/3交付SHA；本修复提交HEAD）继续保持**Ready for independent review**：evidence_sync apply收紧为fresh授权计划契约（确定性`build_plan`+`--i-am-authorized/--plan-hash/--target-fingerprint`+写入前校验计划结构/HEAD/工作树/evidence未漂移/MinIO+RAG状态指纹，漂移与终态noop语义与rewrite CLI同构）；完整audit/plan/apply/verify必须连数据库（缺库verify不得ok:true），仅对象层走显式`--object-only`降级标记；35/35测试+17项隔离演练全ok（含授权/hash/漂移/并发/恢复反例与全新库+全新MinIO恢复对账）。
 
