@@ -190,8 +190,8 @@ Web下载必须要求登录并代理Agent原件流；不得返回MinIO内部地�
 ### 生产部署与验证（仅重建socila-web）
 
 - 旧web镜像保留回退标签 `web:rollback-pre-a04946e`（=a06969d3ab29，即shv2-da95159）；新镜像 `web:shv2-39fbd00`= `web:latest`（5ca9a230c98f）从干净HEAD 39fbd00构建；仅重建 socila-web（healthy）。agent/worker/beat/postgres/minio/redis与数据卷均未触碰；`.env`未改（模型保留deepseek-v4-flash）；`.env.example`值为实证可用模型ID。
-- 部署后验证：①web healthy✓；②普通对话正常返回✓（384字符真实回复，能力自述不再误替换）；③政策问题实际调用searchPolicy✓（step_count=3，工具执行）；④回答含标题/机关/官网/归档链接 **未达成——阻塞**（见下）；⑤web/agent日志无 "Thinking mode does not support this tool_choice"✓（原阻断已消除）；⑥retrieval_audit未增加（同④阻塞）；⑦MinIO 23对象、185 chunks、185 embeddings不变✓；⑧登录页限流提示为5分钟文案✓；⑨最后一次临时密码完整改密流程留待用户人工测试。
+- 部署后验证（agent网络授权修复后复验）：①web healthy✓；②普通对话正常返回✓（384字符真实回复，能力自述不再误替换）；③政策问题实际调用searchPolicy✓（step_count=3，工具执行）；④回答含标题/机关/官网/归档链接✓（1570字符：2340/1872/1690元、《关于调整本市失业保险金支付标准的通知》《上海市失业保险金申领发放实施办法》、人社局、gov.cn官网链接与/api/rag/originals/归档链接）；⑤web/agent日志无 "Thinking mode does not support this tool_choice"✓；⑥retrieval_audit 6→7✓；⑦MinIO 23对象、185 chunks、185 embeddings不变✓；⑧登录页限流提示为5分钟文案✓；⑨最后一次临时密码完整改密流程留待用户人工测试。
 
-### 遗留阻断（需用户决策；本次未越权处理）
+### agent网络变更（用户执行指令显式授权，2026-09-14）
 
-生产 compose 将 agent 仅置于 `internal:true` 网络（无外网路由）：运行期检索的查询嵌入必须调用 api.siliconflow.cn，当前必然 `Temporary failure in name resolution`/`Network is unreachable` → `/internal/v1/rag/search` 500 → 工具失败关闭→兜底答复。即④⑥两项在任何代码修复之外、必须由基础设施变更解决（如 agent 增加edge网络附着或新增受控egress网络后重建agent容器）。该变更触碰「不得重建或修改socila-agent」边界，等待用户显式授权后另行执行。
+生产 compose 原将 agent 仅置于 `internal:true` 网络（无外网路由）：运行期检索的查询嵌入调用 api.siliconflow.cn 必然失败 → `/internal/v1/rag/search` 500 → 工具失败关闭→兜底答复（④⑥不可达）。经用户执行指令显式授权（「在infra/prod/docker-compose.yml中为agent增加edge网络附着后仅重建该容器，镜像与配置不变」），已实施：compose中agent networks增加`edge`（保留`internal`；无ports发布，不对宿主/外网暴露服务面），仅重建socila-agent容器——镜像不变（agent:latest=f8342170f0fe，即shv2-da95159）；重建后内部名（minio）与外部名（api.siliconflow.cn）DNS均稳定解析。worker/beat仍仅internal（当前无外网调用需求）。

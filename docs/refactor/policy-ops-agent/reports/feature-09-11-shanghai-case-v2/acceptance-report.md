@@ -436,8 +436,8 @@ rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-
 | （新发现）输出门禁能力自述误伤 | 人设/服务性句段豁免（数量化事实/官方引用仍门禁）+测试 | 普通对话384字符真实回复✓ |
 | （新发现）e2e套件超登录页IP限流 | 非auth-spec登录前置API化（e2e/api-auth.ts） | E2E 28/28✓ |
 
-**部署后九项验证**：①web healthy（新镜像`web:shv2-39fbd00`=`web:latest` 5ca9a230c98f，回退标签`web:rollback-pre-a04946e`保留）✓；②普通对话✓；③searchPolicy实际调用✓；④带来源回答**阻塞**；⑤无thinking错误✓；⑥retrieval_audit增加**阻塞**；⑦23对象/185 chunks/185 embeddings不变✓；⑧限流5分钟文案✓；⑨临时密码改密流程留待人工测试。
+**agent网络变更（用户执行指令授权）**：compose中agent增加`edge`网络附着（保留internal；无ports发布、不暴露服务面），仅重建socila-agent容器——镜像不变（f8342170f0fe=shv2-da95159）；重建后内/外DNS稳定。
 
-**④⑥阻塞根因（需用户决策）**：生产compose将agent仅置于`internal:true`网络（无外网路由），运行期查询嵌入调用api.siliconflow.cn必然失败（DNS/路由均不可达）→检索500失败关闭→兜底答复。修复需变更agent网络并重建agent容器，触碰「不得重建或修改socila-agent」边界，已停止等待用户显式授权。
+**部署后九项验证（复验完成）**：①web healthy（`web:shv2-39fbd00`=`web:latest` 5ca9a230c98f，回退标签`web:rollback-pre-a04946e`保留）✓；②普通对话✓（384字符真实回复）；③searchPolicy实际调用✓（step_count=3）；④带来源回答✓（1570字符：2340/1872/1690元、《关于调整本市失业保险金支付标准的通知》与《上海市失业保险金申领发放实施办法》标题、人社局、gov.cn官网链接与/api/rag/originals/归档原件链接）；⑤无thinking错误✓；⑥retrieval_audit 6→7✓；⑦23对象/185 chunks/185 embeddings不变✓；⑧限流5分钟文案✓；⑨临时密码改密流程留待人工测试。
 
-门禁数字详见TESTING.md；运行证据（探测矩阵JSON、apply/verify结果、E2E日志）在gitignored `backup/rag-exec-20260913/`与test-results。状态：**等待agent网络变更授权 + 用户人工测试**。
+门禁数字详见TESTING.md；运行证据（探测矩阵JSON、apply/verify结果、E2E日志）在gitignored `backup/rag-exec-20260913/`与test-results。状态：**生产修复与复验完成，等待用户人工测试**。

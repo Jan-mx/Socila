@@ -329,9 +329,10 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | 密码重置连续语义 | 集成测试（全新PG17）9/9：全语义+连续重置+仅最后临时密码可登录+改密后清除+审计；管理员页二次重置提示 | 自动化证明✓，人工流程待用户测试 |
 | provenance门禁误伤（新发现） | URL提取器全角/半角括号终止符+输出门禁人设句段豁免（数量化事实/官方引用仍门禁）；单测13/13 | 生产修复✓ |
 | e2e套件登录限流兼容（新发现） | `e2e/api-auth.ts` API登录前置；auth.spec保留UI专测 | E2E 28/28✓ |
-| agent外网出口（新发现阻塞） | 生产compose `socila_internal=internal:true`，agent无外网路由→api.siliconflow.cn不可达→检索500失败关闭→兜底答复；修复需变更agent网络并重建（触碰保护边界） | **等待用户显式授权** |
+| agent外网出口（新发现） | 用户执行指令授权后：compose中agent增加`edge`附着（保留internal；无ports发布），仅重建socila-agent（镜像不变f8342170f0fe）；重建后内/外DNS稳定，检索200 | 生产达成✓ |
+| 部署后④⑥复验 | 生产政策问题（上海失业保险金标准）真实回答1570字符：2340/1872/1690元、两份文件标题、人社局、gov.cn官网链接与归档原件链接；retrieval_audit 6→7；23对象/185 chunks/185 embeddings不变 | 生产达成✓ |
 
 - 生产部署：`web:shv2-39fbd00`=`web:latest`（5ca9a230c98f）仅重建socila-web（healthy）；回退标签`web:rollback-pre-a04946e`保留；agent/worker/beat/postgres/minio/redis与数据卷未触碰。
 - 生产终态不变：23对象/185 chunks/185 embeddings/sources=2/fetches=23/versions=23全部indexed；retrieval_audit=6（均为宿主机固定查询记录）。
 - 边界：未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；worktree与功能分支保留。
-- 状态：**代码/部署完成；政策问答完整链路等待agent网络变更授权后复验；其余待用户人工测试**。
+- 状态：**生产修复与复验完成，等待用户人工测试**。

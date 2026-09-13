@@ -76,6 +76,10 @@ services:
       AGENT_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY}
     networks:
+      # UAT修复2026-09-14（用户授权）：运行期检索的查询嵌入必须调用 SiliconFlow，
+      # internal:true 网络无外网路由导致检索必然失败关闭。agent 附着 edge 获得受控
+      # 出口（无 ports 发布，不对宿主/外网暴露服务面）；数据库/MinIO仍走 internal。
+      - edge
       - internal
     depends_on:
       postgres:
