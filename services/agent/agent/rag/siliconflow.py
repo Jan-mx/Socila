@@ -141,7 +141,10 @@ class FakeSiliconFlowClient(SiliconFlowClient):
             import hashlib
 
             seed = hashlib.sha256(t.encode()).digest()
-            vector = [b / 255.0 for b in (seed * 4)[: self.embedding_dimensions]]
+            # 确定性扩展到声明维度（seed只有32字节，朴素seed*4切片在维度>128时
+            # 会静默产生短向量，导致pgvector维度不一致）。
+            extended = (seed * (self.embedding_dimensions // len(seed) + 1))[: self.embedding_dimensions]
+            vector = [b / 255.0 for b in extended]
             vectors.append(vector)
         return {
             "model": self.embedding_model,

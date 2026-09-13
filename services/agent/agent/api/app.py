@@ -16,10 +16,11 @@ import logging
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, Field
 
 from ..config import Settings, get_settings
+from ..rag.runtime import RagRuntimeError, mime_extension
 from ..repositories import (
     HumanReview,
     InMemoryRepositories,
@@ -55,6 +56,15 @@ class ReviewRequest(BaseModel):
     patch: dict[str, Any] | None = None
 
 
+class RagSearchRequest(BaseModel):
+    """内部RAG搜索输入（SHV2-FR-030）：query/jurisdiction_code/as_of_date/top_k显式校验。"""
+
+    query: str = Field(min_length=1, max_length=2000)
+    jurisdiction_code: str = Field(pattern=r"^(CN|\d{6})$")
+    as_of_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
 class AppDeps:
     """可注入依赖（测试用 InMemory，生产装配为 Postgres + PostgresSaver + Celery）。
 
@@ -70,12 +80,15 @@ class AppDeps:
         settings: Settings | None = None,
         service_jwt: ServiceJwt | None = None,
         replay: Any | None = None,
+        rag_runtime: Any | None = None,
     ) -> None:
         self.repos = repos
         self.runner = graph_runner
         self.settings = settings or get_settings()
         self.service_jwt = service_jwt
         self.replay = replay
+        # SHV2-FR-030：运行时RAG读取面（生产装配RagRuntime；内存单元测试可注入替身）。
+        self.rag_runtime = rag_runtime
 
 
 class _AuthDenied(Exception):
@@ -273,5 +286,48 @@ def create_app(deps: AppDeps) -> FastAPI:
             return {"review_id": review.id, "proposal_id": proposal_id, "resumed": resumed, "idempotent": False}
 
         return _execute_write(claims, business)
+
+    # ── 内部RAG读取面（SHV2-FR-030，WI-20260913-01任务3）──────────────────────
+
+    def _rag_runtime() -> Any:
+        if deps.rag_runtime is None:
+            raise HTTPException(status_code=503, detail="RAG runtime unavailable")
+        return deps.rag_runtime
+
+    def _rag_error_response(exc: RagRuntimeError) -> JSONResponse:
+        """稳定错误映射：未知版本404；对象缺失/SHA漂移/元数据缺失失败关闭（502）；
+        响应体只含稳定code，不携带MinIO地址、凭据或内部细节。"""
+        if exc.code == "DOCUMENT_NOT_FOUND":
+            return JSONResponse(status_code=404, content={"error": exc.code}, headers={"Cache-Control": "no-store"})
+        return JSONResponse(status_code=502, content={"error": exc.code}, headers={"Cache-Control": "no-store"})
+
+    @app.post("/internal/v1/rag/search")
+    def rag_search(req: RagSearchRequest, request: Request):
+        require_service_jwt(request)
+        runtime = _rag_runtime()
+        try:
+            return runtime.search(req.query, req.jurisdiction_code, req.as_of_date, req.top_k)
+        except RagRuntimeError as exc:
+            return _rag_error_response(exc)
+
+    @app.get("/internal/v1/rag/documents/{document_version_id}/original")
+    def rag_original(document_version_id: str, request: Request):
+        require_service_jwt(request)
+        runtime = _rag_runtime()
+        try:
+            original = runtime.original(document_version_id)
+        except RagRuntimeError as exc:
+            return _rag_error_response(exc)
+        filename = f"original-{original['sha256'][:12]}{mime_extension(original['mime'])}"
+        return Response(
+            content=original["content"],
+            media_type=original["mime"] or "application/octet-stream",
+            headers={
+                # SHV2-NFR-009：附件下载三件套；不提供MinIO直链或预签名URL。
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control": "private, no-store",
+            },
+        )
 
     return app

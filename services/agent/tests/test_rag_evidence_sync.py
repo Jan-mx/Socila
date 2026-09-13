@@ -1303,6 +1303,176 @@ class TestFingerprintSemantics:
         assert plan_hash_of(body_existing) != plan_hash_of(body_created)
 
 
+# ── 第五轮修复（WI-20260913-01任务1）：ensure期间冲突对象竞态 ─────────────────
+# 缺口：外部进程在bucket_exists与ensure_bucket之间创建bucket并写入错误同键对象时，
+# 现实现把该对象计为noop并提交RAG登记，事务外verify才发现SHA不符——违反SHV2-NFR-006。
+# 闭环：ensure后、上传后、数据库提交前重验全部目标对象字节SHA；任一错误→
+# OBJECT_CONFLICT且RAG三表前后指纹一致（零写入）。
+
+
+class _EnsureRaceConflictStore(InMemoryObjectStore):
+    """确定性建桶+冲突对象竞态（无sleep）：守卫/计划读到bucket缺失后、ensure_bucket
+    执行时，外部进程抢先建桶并写入错误同键对象——真实语义为bucket此后存在且目标键
+    字节与原件不一致。"""
+
+    def __init__(self, conflict_key: str, conflict_bytes: bytes) -> None:
+        super().__init__(with_bucket=False)
+        self._conflict_key = conflict_key
+        self._conflict_bytes = conflict_bytes
+
+    def ensure_bucket(self) -> bool:
+        # 外部进程在bucket_exists()与ensure_bucket()之间创建bucket并写入冲突对象。
+        self._bucket_exists = True
+        self._objects[self._conflict_key] = self._conflict_bytes
+        return False  # 本次ensure_bucket不是创建者
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
+class TestEnsureRaceConflict:
+    """ensure期间外部建桶+错误同键对象：必须OBJECT_CONFLICT、对象不覆盖、
+    rag.sources/rag.fetches/rag.document_versions前后指纹一致（RAG零写入）。"""
+
+    def test_inmemory_ensure_race_conflict_refused_zero_rag_write(self, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        key = f"originals/{SHA}"
+        store = _EnsureRaceConflictStore(key, OTHER_BYTES)
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=DRILL)
+        plan = sync.build_plan()
+        assert plan["plannedBucketCreate"] is True
+        before = _rag_db_fingerprint()
+        with pytest.raises(EvidenceSyncError) as ei:
+            sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        # 旧实现：冲突对象计为noop→提交RAG登记→事务外verify才失败（APPLY_VERIFY_FAILED）。
+        assert ei.value.code == "OBJECT_CONFLICT", f"期望OBJECT_CONFLICT，实际{ei.value.code}"
+        assert store.get(key) == OTHER_BYTES, "冲突对象不得覆盖"
+        assert _rag_db_fingerprint() == before, "拒绝路径RAG三表前后指纹必须一致（零写入）"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not (DRILL and MINIO_EP), reason="requires SOCILA_TEST_DATABASE_URL + RAG_SYNC_TEST_MINIO_ENDPOINT")
+class TestEnsureRaceConflictRealMinio:
+    def test_real_minio_ensure_race_conflict_refused_zero_rag_write(self, fresh_minio, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        key = f"originals/{SHA}"
+
+        class _RaceStore(MinioObjectStore):
+            """ensure_bucket执行前外部进程抢先建桶并写入错误同键对象（确定性注入）。"""
+
+            def ensure_bucket(self) -> bool:
+                fresh_minio.make_bucket(EVIDENCE_BUCKET)
+                fresh_minio.put_object(
+                    EVIDENCE_BUCKET, key, io.BytesIO(OTHER_BYTES), length=len(OTHER_BYTES), content_type="text/html"
+                )
+                return super().ensure_bucket()  # 已存在→False
+
+        store = _RaceStore(MINIO_EP, MINIO_AK, MINIO_SK, EVIDENCE_BUCKET)
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=evidence_env["dsl"], database_url=DRILL)
+        plan = sync.build_plan()
+        assert plan["bucketExists"] is False and plan["plannedBucketCreate"] is True
+        before = _rag_db_fingerprint()
+        with pytest.raises(EvidenceSyncError) as ei:
+            sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert ei.value.code == "OBJECT_CONFLICT", f"期望OBJECT_CONFLICT，实际{ei.value.code}"
+        assert fresh_minio.get_object(EVIDENCE_BUCKET, key).read() == OTHER_BYTES, "冲突对象不得覆盖"
+        assert _rag_db_fingerprint() == before, "拒绝路径RAG三表前后指纹必须一致（零写入）"
+
+
+def _two_doc_evidence(jur_root: Path):
+    """两份原件（用于上传窗口内冲突注入：第二份文档被外部写入错误同键对象）。"""
+    import hashlib as _hl
+
+    bodies = {}
+    for i, doc_id in enumerate(("DOC-SH-RACE-A", "DOC-SH-RACE-B")):
+        body = HTML + f"variant-{i}".encode()
+        bodies[doc_id] = (body, _hl.sha256(body).hexdigest())
+        make_evidence(jur_root, doc_id, body=body)
+    return bodies
+
+
+class _MidUploadConflictStore(InMemoryObjectStore):
+    """上传窗口冲突注入（确定性）：第一个对象put后，外部进程立即向第二个目标键
+    写入错误字节——上传循环按"已存在"计为noop，必须在RAG登记前被对象重验拦截。"""
+
+    def __init__(self, trigger_key: str, target_key: str, conflict_bytes: bytes) -> None:
+        super().__init__()
+        self._trigger = trigger_key
+        self._target = target_key
+        self._conflict = conflict_bytes
+
+    def put(self, key: str, content: bytes, content_type: str = "application/octet-stream") -> str:
+        result = super().put(key, content, content_type)
+        if key == self._trigger and self._target not in self._objects:
+            self._objects[self._target] = self._conflict  # 外部进程在上传窗口写入错误对象
+        return result
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
+class TestPostUploadConflictCheck:
+    """上传完成后、RAG登记前必须再次核对全部对象SHA；上传窗口内外部写入的错误
+    对象不得计为noop并提交RAG登记。"""
+
+    def test_mid_upload_conflict_detected_before_rag_registration(self, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        bodies = _two_doc_evidence(evidence_env["evidence_root"])
+        key_a = f"originals/{bodies['DOC-SH-RACE-A'][1]}"
+        key_b = f"originals/{bodies['DOC-SH-RACE-B'][1]}"
+        store = _MidUploadConflictStore(key_a, key_b, OTHER_BYTES)
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=None, database_url=DRILL)
+        plan = sync.build_plan()
+        before = _rag_db_fingerprint()
+        with pytest.raises(EvidenceSyncError) as ei:
+            sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert ei.value.code == "OBJECT_CONFLICT", f"期望OBJECT_CONFLICT，实际{ei.value.code}"
+        assert store.get(key_b) == OTHER_BYTES, "冲突对象不得覆盖"
+        assert _rag_db_fingerprint() == before, "RAG三表前后指纹必须一致（零写入）"
+
+
+class _LateCorruptionStore(InMemoryObjectStore):
+    """提交前篡改注入（确定性）：自第corrupt_from次get起对目标键返回错误字节，
+    模拟"数据库事务提交前对象被外部改写"。seed_objects预置正确对象。"""
+
+    def __init__(self, seed_objects: dict[str, bytes], key: str, corrupt_from_call: int) -> None:
+        super().__init__()
+        self._objects.update(seed_objects)
+        self._key = key
+        self._corrupt_from = corrupt_from_call
+        self._gets = 0
+
+    def get(self, key: str) -> bytes:
+        self._gets += 1
+        if key == self._key and self._gets >= self._corrupt_from:
+            return OTHER_BYTES
+        return super().get(key)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
+class TestPreCommitObjectCheck:
+    """数据库事务提交前必须执行最终对象完整性检查；提交前对象被外部改写时
+    整个事务回滚（RAG三表零写入）。"""
+
+    def test_pre_commit_corruption_rolls_back_rag_registration(self, evidence_env, monkeypatch):
+        monkeypatch.setenv("RAG_EVIDENCE_ALLOW_DIRTY", "1")
+        _truncate_rag()
+        key = f"originals/{SHA}"
+        # 对象已存在且SHA一致（幂等noop场景）；新实现get顺序：锁内指纹(1)→冲突检查(2)
+        # →ensure后重验(3)→上传后重验(4)→提交前终检(5)，注入点5=提交前终检发现篡改。
+        # 旧实现无重验，第3次get已是事务外verify→RAG登记已提交（RED断言失败）。
+        store = _LateCorruptionStore({key: HTML}, key, corrupt_from_call=5)
+        sync = PolicyEvidenceSync(evidence_env["evidence_root"], store, dsl_root=None, database_url=DRILL)
+        plan = sync.build_plan()
+        before = _rag_db_fingerprint()
+        with pytest.raises(EvidenceSyncError) as ei:
+            sync.apply(plan, plan_hash=plan["planHash"], target_fingerprint=plan["targetFingerprint"], i_am_authorized=True)
+        assert ei.value.code == "OBJECT_CONFLICT", f"期望OBJECT_CONFLICT，实际{ei.value.code}"
+        assert _rag_db_fingerprint() == before, "提交前对象篡改必须整体回滚（RAG零写入）"
+
+
 @pytest.mark.integration
 @pytest.mark.skipif(not DRILL, reason="requires SOCILA_TEST_DATABASE_URL")
 def test_cli_unexpected_s3_error_output_redacts_credentials(evidence_env, monkeypatch, capsys):

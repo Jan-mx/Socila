@@ -1,7 +1,7 @@
 # 09-11 Feature：上海政策纠偏与36条案例V2全量重建 — 验收报告
 
 > Author: Jan
-> Status: Reopened（运行时MinIO/RAG与对话来源链未闭环；本报告§9记录新增缺口，本轮仅更新文档）
+> Status: Ready for user testing（§10记录WI-20260913-01运行时RAG闭环交付；等待用户人工测试；不标记最终Accepted）
 > Updated: 2026-09-13
 
 ## 1. WI-20260911-01 上海官方原文采集与政策纠偏
@@ -346,3 +346,50 @@
 本Feature恢复Reopened。`WI-20260913-01`完成开发、完整门禁和独立复审后只能进入Ready for user testing；用户人工测试通过后才合并refactor。生产同步与索引仍须基于merge SHA的fresh精确授权。本节不声称任何代码、MinIO、数据库、部署或持久验收已经完成。
 
 本轮docs-only验证：文档目标测试3/3；12个变更Markdown中的13个相对链接全部存在；`scan-secrets --all`扫描931个候选文件零命中；`git diff --check`通过。未修改业务代码、Compose、MinIO、PostgreSQL、refactor或main。
+
+## 10. 2026-09-13运行时RAG闭环交付（WI-20260913-01；起点4da7f1a，最终SHA=本任务提交HEAD）
+
+严格TDD（RED→GREEN）完成五个任务并在任务专属隔离环境验收；生产socila-minio（bucket=0未变）与持久policyops未连接未写入；未合并refactor/main，未创建PR/tag/Release。
+
+### 10.1 交付内容（SHV2-FR-028～031、NFR-009）
+
+| 任务 | 实现 | RED→GREEN |
+| --- | --- | --- |
+| 1 同步竞态修复 | `evidence_sync.apply`新增`_verify_objects_or_conflict`三检查点（ensure后/上传后/事务提交前重验全部目标对象字节SHA；`OBJECT_CONFLICT`/`OBJECT_MISSING`失败关闭、对象不覆盖、RAG三表零写入） | 4测试在旧实现失败（ensure竞态InMemory+真实MinIO双实现、上传窗口冲突、提交前篡改——旧实现均先提交RAG登记）→ `test_rag_evidence_sync.py` 85/85 |
+| 2 受控真实索引 | `agent/rag/evidence_index.py`五模式CLI（计划绑定23 versions/对象键及SHA/派生状态指纹/BAAI/bge-m3/1024/indexVersion/planHash/targetFingerprint/finalFingerprint/完整派生写集合；apply显式授权绑定+HEAD==codeSha+干净工作树+状态未漂移；MinIO复核SHA→tree/markdown/chunks/真实embeddings→每文档独立事务→indexed；部分完成后原计划失效必须重新plan；终态复跑noop）；`IngestService` dedup不再伪报indexed | `test_rag_evidence_index.py` 22/22零skip（RED=ModuleNotFoundError） |
+| 3 内部RAG接口 | `agent/rag/runtime.py`+`agent/api/app.py`两端点（服务JWT；search输入校验与sourceName/officialUrl/contentSha256/mime回填；original复核SHA：未知版本404、对象缺失/SHA漂移502；attachment/nosniff/private no-store；不返回MinIO地址/凭据/预签名URL）+`main.py`懒装配 | `test_rag_api.py` 11/11零skip |
+| 4 对话来源链 | `src/lib/ai/search-policy.ts`+`searchPolicy`工具+提示词规则10～12+`GET /api/rag/originals/{id}`登录态代理（新签发服务JWT代理Agent流、附件安全头、不暴露MinIO直链）；命中附`/api/rag/originals/<documentVersionId>`；无可靠命中如实说明 | `search-policy.test.ts` 8例+route测试4例（RED=模块缺失）；E2E `shv2-rag-chat.spec.ts` 3例 |
+| 5 Compose契约 | agent/worker显式`AGENT_MINIO_ENDPOINT=minio:9000`+`AGENT_MINIO_BUCKET=policy-originals`；volume/9001语义不变、无第二MinIO卷、无无条件建桶 | `rag-runtime-config-contract.test.ts` 5/5（RED=bucket缺失） |
+
+配套产品修复（门禁路径暴露）：`document_tree.parse_html`重写为全块级提取（真实政府页面正文在嵌套div内、HTML注释节点.tag为cython函数曾致崩溃——修复后23份原件关键数字全部进入chunk文本）；`FakeSiliconFlowClient.embed`声明维度与实际向量长度不一致修复；`RetrievalService`无候选不再以空文档调用rerank并写审计。
+
+### 10.2 隔离验收（真实SiliconFlow；环境`shv2-wi13-pg`:55110+隔离MinIO a/b:55111/55112）
+
+`scripts/rag-evidence-drill.mjs`升级22项→**33项全ok**（证据`rag-evidence-drill-2026-09-13T05-57-34-688Z.json`，failed=false）：
+
+- 同步链（继承22项）：缺桶起点audit/plan零写入、守卫反例A-I零写入零建桶、apply建桶23对象+四方verify、复跑noop、object-only降级、冲突拒绝+re-plan恢复、write-only真实AccessDenied、bucket创建竞态归属；
+- **索引链（新增）**：索引audit预态（23 downloaded/0 complete）→索引plan两次逐字节一致（绑定23 versions/对象SHA/派生指纹/BAAI/bge-m3/1024/indexVersion/planHash/双指纹/23条写集合）→索引apply守卫反例（缺授权exit2/错planHash exit4/错指纹exit4，派生表零写入）→**索引apply（真实SiliconFlow BAAI/bge-m3 1024维，31s）**→索引verify **23/23 complete**（23 versions/23 trees/chunks>0/embeddings=chunks/维度1024/全部indexed）；
+- **固定查询**：缴费基数命中7546/37731、失业金命中2340（FTS通道3候选）、等待期命中6个月，**FTS与向量双通道均产生候选**（通道级SQL计数证据）；广东jurisdiction过滤零命中；日期过滤effective_to排除后命中消失、恢复后命中恢复；
+- **幂等与恢复**：索引复跑同一计划noop:true；pg_dump（含派生索引）+逐对象备份→全新库pg_restore+全新MinIO受控回填→恢复副本四方verify ok+同计划apply noop+**恢复副本索引verify 23/23+固定查询结果一致**；
+- 证据记录执行脚本Git blob SHA `4edd7d8a…`（=提交中`scripts/rag-evidence-drill.mjs` blob，证据由完全相同脚本生成）。
+
+rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-drill-evidence-2026-09-13T06-39-43-390Z.json`；全新库baseline→e2e-rcl-setup→generate-v2→audit/plan→守卫→apply 108行→verify/noop→0019×2幂等→post dump第三实例恢复对账→最终36/36/80+1批次+108entries+36条V2干净case+业务hash零漂移）。
+
+### 10.3 完整门禁（全部本地新鲜执行，零skip）
+
+| 门禁 | 结果 |
+| --- | --- |
+| pytest（integration+非集成，`shv2_wi13_rag`库） | 232/232通过、零skip（含evidence_sync 85、evidence_index 22、rag_api 11） |
+| ruff / mypy | 0问题 / 54文件0错误 |
+| `npm test` | 84文件/863用例零失败零skip |
+| `npm run test:db`（db-gate-task34全新PG17+pgvector） | migration×2/bootstrap×2/seed×2幂等+test:db全量+agent.migrate --with-roles×2+pytest integration全部通过，容器清理零残留 |
+| tsc / eslint / build | 退出0 / 0 error（16条既有warning未新增）/ 零warning |
+| Chromium E2E（standalone+mock模型+mock Agent内部API） | 26/26（auth 10+SHV2 4+task3 5+task4 4+**shv2-rag-chat 3**） |
+| citation组 / 案例库`--check` | 32/32 / ok=true（manifestHash `c974157d…`） |
+| scan-secrets --all / Gitleaks 8.29.1完整历史 / allowlist哨兵 | 932文件零命中 / 105提交no leaks / 3场景全过 |
+| `git diff --check` / Markdown相对链接 | 通过 / 通过 |
+
+### 10.4 状态与边界
+
+- 状态：**Ready for user testing**（不标记Feature最终Accepted；SHV2-AC-022～028在隔离环境闭环，AC-023～025/AC-028的生产持久态待用户测试后的fresh授权执行）。
+- 边界：生产socila-minio未连接（bucket=0只读事实不变）；持久policyops未连接；未合并refactor/main；未创建PR、tag、Release；未接入Fake `retrieve_impact`；隔离容器/库/临时文件清理。

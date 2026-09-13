@@ -268,7 +268,11 @@ RAG_DRILL_PG_CONTAINER=<容器> RAG_DRILL_PG_PORT=<端口> RAG_DRILL_MINIO_ENDPO
 - **fresh授权契约（2026-09-12控制复审）**：apply必须绑定不可变计划文件与`--i-am-authorized/--plan-hash/--target-fingerprint`——环境开关只是endpoint/库名的附加保护，不能替代授权参数；授权缺失、hash错误、计划过期（evidenceManifestHash/状态指纹漂移）、HEAD≠codeSha或工作树dirty均零写入拒绝；状态达计划终态→幂等noop。并发apply由任务专属advisory锁串行化并在锁内重分类。
 - 输出（stdout与`--out`文件）只含docId/bucket/objectKey/size/contentType/sha256/dslRefs/记录ID，连接串口令在错误路径统一redact。
 
-## SHV2当前MinIO端口、索引与部署runbook（WI-20260913-01，待实现）
+## SHV2当前MinIO端口、索引与部署runbook（WI-20260913-01，隔离验收已闭环；持久执行待授权）
+
+> **受控索引（WI-20260913-01任务2已实现）**：`services/agent/agent/rag/evidence_index.py`（CLI `python -m agent.rag.evidence_index`，audit/plan/apply/verify/search五模式）。计划绑定codeSha、全部document versions（对象键与SHA）、派生状态指纹、`BAAI/bge-m3`、1024维、indexVersion（`BAAI/bge-m3:1024`）、planHash、targetFingerprint、finalFingerprint与完整派生写集合；apply显式`--i-am-authorized --plan-file --plan-hash --target-fingerprint`并校验HEAD==codeSha、工作树干净（`RAG_INDEX_ALLOW_DIRTY`仅隔离演练）、目标库名policyops默认拒绝（`RAG_INDEX_ALLOW_PERSISTENT=1`仅fresh授权）；从MinIO读原件复核SHA→DocumentTree/Markdown→chunks→真实SiliconFlow 1024维embeddings→每份文档独立事务（清理旧派生行→写入→标记indexed）；当前文档失败整体回滚该文档、部分完成后原计划失效必须重新plan、完整终态复跑noop。`IngestService`对dedup命中downloaded/parsed版本不再返回伪indexed（派生索引完整才返回indexed）。内部RAG接口`POST /internal/v1/rag/search`、`GET /internal/v1/rag/documents/{id}/original`（`agent/rag/runtime.py`，服务JWT保护，原件读取复核SHA，未知版本404、对象缺失/SHA漂移502失败关闭）；Web登录态下载代理`GET /api/rag/originals/{documentVersionId}`与`searchPolicy`对话工具（地区必须等于会话确认地区；回复同时展示官网原文与归档原件链接；无可靠命中不编造）。
+>
+> **隔离验收（2026-09-13）**：`scripts/rag-evidence-drill.mjs`升级为33项（同步+竞态+真实索引+固定查询+地区/日期过滤+恢复副本索引对账），全ok证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T05-57-34-688Z.json`（记录执行脚本Git blob SHA `4edd7d8a…`，与提交中脚本一致）。对生产MinIO/持久policyops的同步与索引仍属独立持久操作，须针对fresh planHash/targetFingerprint/写集合取得用户明确授权。
 
 | 场景 | Endpoint | 说明 |
 | --- | --- | --- |

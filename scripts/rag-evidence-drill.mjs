@@ -21,17 +21,26 @@
  *   4. apply（显式建桶+23对象上传+rag登记+verify，bucketCreated=true）→ 断言bucket存在
  *      且恰好23对象 → 四方verify → 复跑同一计划noop:true → object-only verify（降级标记）；
  *   5. 冲突对象拒绝覆盖（对象字节不变；清除后复跑恢复）；
- *   6. 备份：pg_dump + 逐对象下载（sha256清单）；
- *   7. 恢复：全新数据库pg_restore + 全新MinIO受控回填（恢复程序自身显式建桶，非evidence_sync副作用）；
- *   8. 恢复副本四方对账（verify ok）+ 恢复副本同计划apply noop；
- *   9. bucket创建竞态归属准确：外部进程预先建桶后重新plan（plannedBucketCreate=false）
+ *   6. 受控真实索引（WI-20260913-01任务2，真实SiliconFlow BAAI/bge-m3）：
+ *      索引audit预态（0 complete）→ 索引plan（绑定23 versions/对象SHA/派生指纹/模型/维度/
+ *      indexVersion/planHash/targetFingerprint/finalFingerprint/writeSet，两次逐字节一致）→
+ *      索引apply守卫反例（缺授权exit2/错planHash exit4/错指纹exit4，派生表零写入）→
+ *      索引apply（真实embedding）→ 索引verify（23/23 complete）→ 固定查询
+ *      （7546；2340/1872/1690；等待期6个月；FTS与向量双通道均产生候选）→
+ *      地区过滤（广东零命中）与日期过滤（effective_to排除后恢复）→ 索引复跑noop；
+ *   7. 备份：pg_dump（含派生索引）+ 逐对象下载（sha256清单）；
+ *   8. 恢复：全新数据库pg_restore + 全新MinIO受控回填（恢复程序自身显式建桶，非evidence_sync副作用）；
+ *   9. 恢复副本四方对账（verify ok）+ 恢复副本同计划apply noop + 恢复副本索引verify +
+ *      恢复副本固定查询一致；
+ *  10. bucket创建竞态归属准确：外部进程预先建桶后重新plan（plannedBucketCreate=false）
  *      →apply报告bucketCreated=false且上传/登记/verify全部正确；
- *  10. 输出证据JSON；输出全程不含访问密钥/连接串口令。
+ *  11. 输出证据JSON（含执行脚本Git blob SHA与HEAD SHA）；输出全程不含访问密钥/连接串口令。
  *
  * 退出码：0全部通过；1任一步骤失败。
  */
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -52,10 +61,20 @@ const RESTORE_DB = `${DB}_restore`;
 const BASE = `postgresql://postgres:postgres@localhost:${PORT}`;
 const DRILL_URL = `${BASE}/${DB}`;
 const RESTORE_URL = `${BASE}/${RESTORE_DB}`;
-const SECRET_SENTINELS = [MINIO_SK, "minioadmin123", "postgres:postgres", "R4LimitedPass9137"].filter((s) => s && s.length > 6);
+const SECRET_SENTINELS = [MINIO_SK, "minioadmin123", "postgres:postgres", "R4LimitedPass9137", process.env.SILICONFLOW_API_KEY].filter((s) => s && s.length > 6);
 
 const results = [];
 let failed = false;
+
+// 本机代理（HTTP(S)_PROXY）会拦截api.siliconflow.cn导致401：隔离演练的子进程
+// 一律直连（DB/MinIO/SiliconFlow均为本地或白名单外网API，无需代理）。
+function stripProxy(env) {
+  const out = { ...env };
+  for (const key of Object.keys(out)) {
+    if (/^(https?_proxy|all_proxy|no_proxy)$/i.test(key)) delete out[key];
+  }
+  return out;
+}
 
 function step(name, fn) {
   process.stdout.write(`[rag-evidence-drill] ${name} ...\n`);
@@ -83,7 +102,7 @@ function py(code, env = {}) {
     cwd: ROOT,
     encoding: "utf8",
     timeout: 300_000,
-    env: { ...process.env, ...env },
+    env: stripProxy({ ...process.env, ...env }),
   });
   if (r.status !== 0) throw new Error(`python -c 退出码${r.status}：${(r.stderr || "").slice(0, 400)}`);
   return r.stdout;
@@ -94,7 +113,7 @@ function syncCli(args, env = {}, expect = 0) {
     cwd: ROOT,
     encoding: "utf8",
     timeout: 300_000,
-    env: {
+    env: stripProxy({
       ...process.env,
       AGENT_MINIO_ENDPOINT: MINIO_EP,
       AGENT_MINIO_ACCESS_KEY: MINIO_AK,
@@ -102,7 +121,7 @@ function syncCli(args, env = {}, expect = 0) {
       // 仅隔离演练放行dirty工作树（门禁在提交前运行）；持久执行禁止该变量。
       RAG_EVIDENCE_ALLOW_DIRTY: "1",
       ...env,
-    },
+    }),
   });
   const out = (r.stdout || "") + (r.stderr || "");
   assertNoSecrets(out, `evidence_sync ${args[0]}输出`);
@@ -265,6 +284,72 @@ const APPLY_ARGS = (planFile, planHash, targetFingerprint) => [
   "--plan-hash", planHash,
   "--target-fingerprint", targetFingerprint,
 ];
+
+// ── 受控真实索引CLI（WI-20260913-01任务2；真实SiliconFlow由SILICONFLOW_API_KEY注入）──
+
+function indexCli(args, env = {}, expect = 0, timeoutMs = 600_000) {
+  const r = spawnSync(
+    "uv",
+    ["run", "--project", path.join(ROOT, "services", "agent"), "python", "-m", "agent.rag.evidence_index", ...args],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      timeout: timeoutMs,
+      env: stripProxy({
+        ...process.env,
+        AGENT_MINIO_ENDPOINT: MINIO_EP,
+        AGENT_MINIO_ACCESS_KEY: MINIO_AK,
+        AGENT_MINIO_SECRET_KEY: MINIO_SK,
+        // 仅隔离演练放行dirty工作树（门禁在提交前运行）；持久执行禁止该变量。
+        RAG_INDEX_ALLOW_DIRTY: "1",
+        ...env,
+      }),
+    },
+  );
+  const out = (r.stdout || "") + (r.stderr || "");
+  assertNoSecrets(out, `evidence_index ${args[0]}输出`);
+  if (expect !== "*" && r.status !== expect) {
+    throw new Error(`evidence_index ${args[0]} 退出码${r.status} ≠ ${expect}：${out.slice(0, 500)}`);
+  }
+  let json = null;
+  try {
+    json = JSON.parse(r.stdout);
+  } catch {
+    // 非JSON输出（守卫/错误路径）允许。
+  }
+  return { code: r.status, out, json };
+}
+
+const INDEX_APPLY_ARGS = (planFile, planHash, targetFingerprint) => [
+  "apply",
+  "--database-url", DRILL_URL,
+  "--plan-file", planFile,
+  "--i-am-authorized",
+  "--plan-hash", planHash,
+  "--target-fingerprint", targetFingerprint,
+];
+
+function derivedFingerprint(dbUrl) {
+  return JSON.parse(py(
+    `import json, hashlib, os, psycopg
+with psycopg.connect(os.environ["FP_DB_URL"]) as conn:
+    counts = {}
+    for label, sql in (
+        ("trees", "SELECT count(*) FROM rag.document_trees"),
+        ("chunks", "SELECT count(*) FROM rag.chunks"),
+        ("embeddings", "SELECT count(*) FROM rag.embeddings"),
+        ("indexed", "SELECT count(*) FROM rag.document_versions WHERE status='indexed'"),
+    ):
+        counts[label] = conn.execute(sql).fetchone()[0]
+print(json.dumps(counts, sort_keys=True))`,
+    { FP_DB_URL: dbUrl },
+  ));
+}
+
+// 执行脚本自身Git blob SHA与HEAD SHA（证据必须由提交中的完全相同脚本生成）。
+const SCRIPT_REL = "scripts/rag-evidence-drill.mjs";
+const SCRIPT_BLOB_SHA = execFileSync("git", ["hash-object", SCRIPT_REL], { cwd: ROOT, encoding: "utf8" }).trim();
+const HEAD_SHA = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
 
 try {
   mkdirSync(WORK, { recursive: true });
@@ -564,6 +649,197 @@ print("conflict-removed")`,
     return { conflictRefused: true, objectPreserved: true, repairedViaReplan: true, preConflictFingerprints: before, conflictApplyZeroWriteFingerprints: { db: after.db, minio: { bucketExists: after.minio.bucketExists, objectCount: after.minio.objectCount } } };
   });
 
+  step("执行脚本Git blob SHA记录与自检（证据由完全相同的脚本生成）", () => {
+    if (!/^[0-9a-f]{40}$/.test(SCRIPT_BLOB_SHA) || !/^[0-9a-f]{40}$/.test(HEAD_SHA)) {
+      throw new Error("脚本blob SHA或HEAD SHA形状非法");
+    }
+    return { script: SCRIPT_REL, scriptBlobSha: SCRIPT_BLOB_SHA, headSha: HEAD_SHA, note: "提交后验证：git rev-parse HEAD:scripts/rag-evidence-drill.mjs 必须等于 scriptBlobSha" };
+  });
+
+  step("索引audit预态：23 versions全部downloaded、0 complete（ok=false零写入）", () => {
+    const before = derivedFingerprint(DRILL_URL);
+    const r = indexCli(["audit", "--database-url", DRILL_URL], BASE_ENV, 4);
+    if (r.json.ok !== false || r.json.documentCount !== 23 || r.json.completeCount !== 0) {
+      throw new Error(`索引audit预态异常：${JSON.stringify({ ok: r.json?.ok, docs: r.json?.documentCount, complete: r.json?.completeCount })}`);
+    }
+    if (r.json.embeddingModel !== "BAAI/bge-m3" || r.json.embeddingDimensions !== 1024) {
+      throw new Error("索引audit模型/维度声明异常");
+    }
+    const after = derivedFingerprint(DRILL_URL);
+    if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error("audit零写入破坏派生状态");
+    return { documentCount: 23, completeCount: 0, model: r.json.embeddingModel, dims: r.json.embeddingDimensions, derived: after };
+  });
+
+  let indexPlan = null;
+  step("索引plan：绑定23 versions/对象SHA/派生指纹/模型/维度/indexVersion/planHash/指纹/写集合（两次逐字节一致）", () => {
+    const r = indexCli(["plan", "--database-url", DRILL_URL, "--out", path.join(WORK, "index-plan.json")], BASE_ENV, 0);
+    const first = readFileSync(path.join(WORK, "index-plan.json"), "utf8");
+    indexCli(["plan", "--database-url", DRILL_URL, "--out", path.join(WORK, "index-plan-2.json")], BASE_ENV, 0);
+    const second = readFileSync(path.join(WORK, "index-plan-2.json"), "utf8");
+    if (first !== second) throw new Error("索引plan输出不确定（两次不一致）");
+    indexPlan = JSON.parse(first);
+    if (indexPlan.documentCount !== 23 || indexPlan.documents.length !== 23) throw new Error("索引plan文档数 ≠ 23");
+    if (indexPlan.embeddingModel !== "BAAI/bge-m3" || indexPlan.embeddingDimensions !== 1024 || indexPlan.indexVersion !== "BAAI/bge-m3:1024") {
+      throw new Error(`索引plan绑定异常：${indexPlan.embeddingModel}/${indexPlan.embeddingDimensions}/${indexPlan.indexVersion}`);
+    }
+    if (indexPlan.plannedIndex.length !== 23 || indexPlan.writeSet.length !== 23 || indexPlan.noopDocuments.length !== 0) {
+      throw new Error(`索引plan集合异常：planned=${indexPlan.plannedIndex.length} writeSet=${indexPlan.writeSet.length} noop=${indexPlan.noopDocuments.length}`);
+    }
+    for (const d of indexPlan.documents) {
+      if (d.objectShaMatches !== true) throw new Error(`索引plan对象SHA未核对：${d.objectKey}`);
+      if (d.objectKey !== `originals/${d.contentHash}`) throw new Error(`对象键非内容寻址：${d.objectKey}`);
+    }
+    for (const key of ("targetFingerprint finalFingerprint planHash codeSha").split(" ")) {
+      if (!new RegExp(`^[0-9a-f]{${key === "codeSha" ? 40 : 64}}$`).test(indexPlan[key])) throw new Error(`索引plan ${key}形状非法`);
+    }
+    return { documents: 23, plannedIndex: 23, writeSet: 23, model: indexPlan.embeddingModel, dims: indexPlan.embeddingDimensions, indexVersion: indexPlan.indexVersion, planHash: indexPlan.planHash.slice(0, 16) + "…" };
+  });
+
+  step("索引apply守卫反例：缺授权exit2/错planHash exit4/错指纹exit4（派生表零写入）", () => {
+    const before = derivedFingerprint(DRILL_URL);
+    const noAuth = INDEX_APPLY_ARGS(path.join(WORK, "index-plan.json"), indexPlan.planHash, indexPlan.targetFingerprint)
+      .filter((a) => a !== "--i-am-authorized");
+    indexCli(noAuth, BASE_ENV, 2);
+    indexCli(INDEX_APPLY_ARGS(path.join(WORK, "index-plan.json"), "0".repeat(64), indexPlan.targetFingerprint), BASE_ENV, 4);
+    indexCli(INDEX_APPLY_ARGS(path.join(WORK, "index-plan.json"), indexPlan.planHash, "0".repeat(64)), BASE_ENV, 4);
+    const after = derivedFingerprint(DRILL_URL);
+    if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error("索引守卫反例产生派生写入");
+    return { refusals: 3, derivedStill: before };
+  });
+
+  step("索引apply：真实SiliconFlow BAAI/bge-m3 1024维嵌入（每文档独立事务）", () => {
+    if (!process.env.SILICONFLOW_API_KEY) throw new Error("缺少SILICONFLOW_API_KEY（隔离验收要求真实Embedding）");
+    const r = indexCli(INDEX_APPLY_ARGS(path.join(WORK, "index-plan.json"), indexPlan.planHash, indexPlan.targetFingerprint), BASE_ENV, 0, 900_000);
+    if (r.json.applied !== true || r.json.verified !== true) throw new Error(`索引apply异常：${JSON.stringify({ applied: r.json?.applied, verified: r.json?.verified })}`);
+    if (r.json.indexedVersions.length !== 23) throw new Error(`索引apply完成数 ${r.json.indexedVersions.length} ≠ 23`);
+    return { indexed: r.json.indexedVersions.length, planHash: indexPlan.planHash.slice(0, 16) + "…" };
+  });
+
+  step("索引verify：23/23 complete（tree/chunks>0/embeddings=chunks/维度1024/状态indexed）", () => {
+    const r = indexCli(["verify", "--database-url", DRILL_URL], BASE_ENV, 0);
+    if (r.json.ok !== true || r.json.documentCount !== 23 || r.json.completeCount !== 23) {
+      throw new Error(`索引verify异常：ok=${r.json?.ok} complete=${r.json?.completeCount}/${r.json?.documentCount} problems=${(r.json?.problems ?? []).slice(0, 3).join("；")}`);
+    }
+    const detail = py(
+      `import json, os, psycopg
+with psycopg.connect(os.environ["FP_DB_URL"]) as conn:
+    versions = conn.execute("SELECT count(*) FROM rag.document_versions WHERE status='indexed'").fetchone()[0]
+    trees = conn.execute("SELECT count(*) FROM rag.document_trees").fetchone()[0]
+    chunks = conn.execute("SELECT count(*) FROM rag.chunks").fetchone()[0]
+    embeddings = conn.execute("SELECT count(*) FROM rag.embeddings").fetchone()[0]
+    dims = conn.execute("SELECT DISTINCT vector_dims(embedding) FROM rag.embeddings").fetchall()
+    models = conn.execute("SELECT DISTINCT model FROM rag.embeddings").fetchall()
+print(json.dumps({"versions": versions, "trees": trees, "chunks": chunks, "embeddings": embeddings, "dims": [d[0] for d in dims], "models": [m[0] for m in models]}))`,
+      { FP_DB_URL: DRILL_URL },
+    );
+    const stats = JSON.parse(detail);
+    if (stats.versions !== 23 || stats.trees !== 23 || stats.chunks <= 0 || stats.embeddings !== stats.chunks) {
+      throw new Error(`派生数据不一致：${detail}`);
+    }
+    if (JSON.stringify(stats.dims) !== "[1024]") throw new Error(`向量维度异常：${detail}`);
+    if (JSON.stringify(stats.models) !== '["BAAI/bge-m3"]') throw new Error(`Embedding模型异常：${detail}`);
+    return { ...stats, indexVersion: "BAAI/bge-m3:1024" };
+  });
+
+  step("固定查询：7546 / 2340-1872-1690 / 等待期6个月 命中，FTS与向量通道均产生候选", () => {
+    const queries = [
+      { q: "上海社保缴费基数上下限是多少", expect: ["7546", "37731"], channelQuery: "本市社保缴费基数的上限调整为37731元" },
+      { q: "失业保险金发放标准 第1-12月 第13-24月", expect: ["2340"], channelQuery: "失业保险金支付标准的月标准为2340元" },
+      { q: "灵活就业人员参加职工医保等待期是多久", expect: ["6个月"], channelQuery: "灵活就业人员参加职工医保的等待期为6个月" },
+    ];
+    const channelEvidence = [];
+    for (const { q, expect, channelQuery } of queries) {
+      const r = indexCli(["search", "--database-url", DRILL_URL, "--query", q, "--jurisdiction", "310000", "--as-of", "2026-09-01", "--top-k", "5"], BASE_ENV, 0);
+      const hits = r.json?.hits ?? [];
+      const joined = hits.map((h) => `${h.text}\n${h.parentText ?? ""}`).join("\n");
+      for (const token of expect) {
+        if (!joined.includes(token)) throw new Error(`固定查询「${q}」未命中${token}：${joined.slice(0, 200)}`);
+      }
+      // 通道级证据：FTS与向量在该查询下都必须产生候选（直接核对两通道SQL计数）。
+      // FTS为plainto_tsquery AND语义：通道核对使用与chunk原文分词对齐的短语；
+      // 自然问句经向量+rerank通道命中（上方hits断言）。
+      const channels = JSON.parse(py(
+        `import json, os, psycopg, jieba
+from agent.rag.siliconflow import SiliconFlowClient
+q = os.environ["Q"]
+client = SiliconFlowClient()
+with psycopg.connect(os.environ["FP_DB_URL"]) as conn:
+    tokenized = " ".join(jieba.cut_for_search(q))
+    fts = conn.execute("""
+        SELECT count(*) FROM rag.chunks c
+        CROSS JOIN (SELECT plainto_tsquery('simple', %s) AS query) tq
+        JOIN rag.document_versions dv ON dv.id = c.document_version_id
+        JOIN rag.sources s ON s.id = dv.source_id
+        WHERE dv.status='indexed' AND s.jurisdiction_code='310000'
+          AND c.fts @@ tq.query""", (tokenized,)).fetchone()[0]
+    emb = client.embed([q])
+    vector_literal = "[" + ",".join(f"{x:.6f}" for x in emb["_vectors"][0]) + "]"
+    dense = conn.execute("""
+        SELECT count(*) FROM rag.chunks c
+        JOIN rag.embeddings e ON e.chunk_id = c.id
+        JOIN rag.document_versions dv ON dv.id = c.document_version_id
+        JOIN rag.sources s ON s.id = dv.source_id
+        WHERE dv.status='indexed' AND s.jurisdiction_code='310000'
+          AND e.embedding <=> %s::vector < 1.0""", (vector_literal,)).fetchone()[0]
+print(json.dumps({"fts": fts, "dense": dense}))`,
+        { FP_DB_URL: DRILL_URL, Q: channelQuery },
+      ));
+      if (channels.fts <= 0 || channels.dense <= 0) {
+        throw new Error(`固定查询「${q}」通道候选不足：${JSON.stringify(channels)}`);
+      }
+      channelEvidence.push({ query: q, expect, hits: hits.length, channels });
+    }
+    return { queries: channelEvidence };
+  });
+
+  step("地区过滤：广东查询零命中（不串区）", () => {
+    const r = indexCli(["search", "--database-url", DRILL_URL, "--query", "失业保险金发放标准", "--jurisdiction", "440000", "--as-of", "2026-09-01", "--top-k", "5"], BASE_ENV, 0);
+    if ((r.json?.hits ?? []).length !== 0) throw new Error("广东过滤产生串区命中");
+    return { jurisdiction: "440000", hits: 0 };
+  });
+
+  step("日期过滤：effective_to排除后命中消失、恢复NULL后命中恢复", () => {
+    // 找到含7546的版本，设置effective_to=2026-06-30 → as-of 2026-09-01必须排除它。
+    const target = py(
+      `import json, os, psycopg
+with psycopg.connect(os.environ["FP_DB_URL"]) as conn:
+    row = conn.execute("""
+        SELECT dv.id FROM rag.document_versions dv
+        JOIN rag.chunks c ON c.document_version_id = dv.id
+        WHERE c.text LIKE %s LIMIT 1""", ("%7546%",)).fetchone()
+    assert row is not None
+    print(row[0])`,
+      { FP_DB_URL: DRILL_URL },
+    ).trim();
+    py(
+      `import os, psycopg
+with psycopg.connect(os.environ["FP_DB_URL"], autocommit=True) as conn:
+    conn.execute("UPDATE rag.document_versions SET effective_to='2026-06-30' WHERE id=%s", ("${target}",))
+print("window-closed")`,
+      { FP_DB_URL: DRILL_URL },
+    );
+    const excluded = indexCli(["search", "--database-url", DRILL_URL, "--query", "上海社保缴费基数上下限是多少", "--jurisdiction", "310000", "--as-of", "2026-09-01", "--top-k", "5"], BASE_ENV, 0);
+    const excludedJoined = (excluded.json?.hits ?? []).map((h) => h.text).join("\n");
+    if (excludedJoined.includes("7546")) throw new Error("日期过滤未生效：effective_to排除后仍命中7546");
+    py(
+      `import os, psycopg
+with psycopg.connect(os.environ["FP_DB_URL"], autocommit=True) as conn:
+    conn.execute("UPDATE rag.document_versions SET effective_to=NULL WHERE id=%s", ("${target}",))
+print("window-reset")`,
+      { FP_DB_URL: DRILL_URL },
+    );
+    const restored = indexCli(["search", "--database-url", DRILL_URL, "--query", "上海社保缴费基数上下限是多少", "--jurisdiction", "310000", "--as-of", "2026-09-01", "--top-k", "5"], BASE_ENV, 0);
+    const restoredJoined = (restored.json?.hits ?? []).map((h) => h.text).join("\n");
+    if (!restoredJoined.includes("7546")) throw new Error("日期窗口恢复后命中未恢复");
+    return { documentVersionId: target, excluded: true, restored: true };
+  });
+
+  step("索引复跑：同一计划noop:true（完整终态幂等）", () => {
+    const r = indexCli(INDEX_APPLY_ARGS(path.join(WORK, "index-plan.json"), indexPlan.planHash, indexPlan.targetFingerprint), BASE_ENV, 0);
+    if (r.json.noop !== true || r.json.applied !== false) throw new Error(`索引复跑异常：noop=${r.json?.noop}`);
+    return { noop: true, indexed: 0 };
+  });
+
   step("备份：pg_dump + 逐对象下载（sha256清单）", () => {
     const dump = dockerBuf(["pg_dump", "-U", "postgres", "-Fc", DB]);
     writeFileSync(path.join(WORK, "rag-drill.dump"), dump);
@@ -633,6 +909,26 @@ print("restored")`,
     return { ok: true, objects: 23, database: RESTORE_DB, restoredNoop: true };
   });
 
+  step("恢复副本索引对账：索引verify ok + 固定查询结果一致", () => {
+    const restoreIndexEnv = { DATABASE_URL: RESTORE_URL, AGENT_MINIO_ENDPOINT: MINIO_RESTORE_EP };
+    const verify = indexCli(["verify", "--database-url", RESTORE_URL], restoreIndexEnv, 0);
+    if (verify.json.ok !== true || verify.json.completeCount !== 23 || verify.json.documentCount !== 23) {
+      throw new Error(`恢复副本索引verify异常：complete=${verify.json?.completeCount}/${verify.json?.documentCount}`);
+    }
+    for (const { q, expect } of [
+      { q: "上海社保缴费基数上下限是多少", expect: ["7546"] },
+      { q: "失业保险金发放标准 第1-12月 第13-24月", expect: ["2340"] },
+      { q: "灵活就业人员参加职工医保等待期是多久", expect: ["6个月"] },
+    ]) {
+      const r = indexCli(["search", "--database-url", RESTORE_URL, "--query", q, "--jurisdiction", "310000", "--as-of", "2026-09-01", "--top-k", "5"], restoreIndexEnv, 0);
+      const joined = (r.json?.hits ?? []).map((h) => `${h.text}\n${h.parentText ?? ""}`).join("\n");
+      for (const token of expect) {
+        if (!joined.includes(token)) throw new Error(`恢复副本固定查询「${q}」未命中${token}`);
+      }
+    }
+    return { indexVerifyOk: true, complete: 23, fixedQueries: 3 };
+  });
+
   step("bucket创建竞态归属准确：外部进程预先建桶 → 重新plan(plannedBucketCreate=false) → apply报告bucketCreated=false且上传/登记/verify全部正确", () => {
     // 回到缺桶起点：清空primary bucket与RAG表（备份/恢复证据已固定，不受影响）。
     wipeBucket(MINIO_EP);
@@ -670,6 +966,8 @@ print("external-pre-created-bucket")`);
     scan(path.join(WORK, "rag-apply-manifest.json"));
     scan(path.join(WORK, "rag-plan-race.json"));
     scan(path.join(WORK, "rag-plan-repair.json"));
+    scan(path.join(WORK, "index-plan.json"));
+    scan(path.join(WORK, "index-plan-2.json"));
     scan(path.join(WORK, "minio-backup", "manifest.json"));
     return { filesScanned: scanned };
   });
@@ -678,13 +976,16 @@ print("external-pre-created-bucket")`);
 } finally {
   mkdirSync(EVIDENCE_OUT, { recursive: true });
   const evidence = {
-    drill: "rag-evidence-sync",
+    drill: "rag-evidence-sync+index",
     container: CONTAINER,
     port: PORT,
     primaryMinio: MINIO_EP,
     restoreMinio: MINIO_RESTORE_EP,
     database: DB,
     restoreDatabase: RESTORE_DB,
+    script: SCRIPT_REL,
+    scriptBlobSha: SCRIPT_BLOB_SHA,
+    headSha: HEAD_SHA,
     finishedAt: new Date().toISOString(),
     failed,
     results,

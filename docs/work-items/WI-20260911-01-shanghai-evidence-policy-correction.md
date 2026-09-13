@@ -1,7 +1,7 @@
 # WI-20260911-01：上海官方原文采集与政策纠偏
 
 > Author: Jan
-> Status: Reopened（ensure期间外部创建bucket并写入冲突对象时，现实现可能在事务外verify发现错误前已提交RAG登记；由WI-20260913-01闭环）
+> Status: Ready for user testing（第五轮ensure期间冲突对象竞态已由WI-20260913-01任务1闭环；持久MinIO同步仍待用户fresh授权）
 > Updated: 2026-09-13
 
 ## Work Item
@@ -115,3 +115,9 @@
 独立复审确认：当前apply在`ensure_bucket()`前检查冲突；若外部进程在ensure期间创建bucket并写入相同key但错误字节，后续循环只把“对象存在”计为noop，可能先提交`rag.sources/fetches/document_versions`，再由事务外verify发现SHA不符。该路径不满足SHV2-NFR-006失败关闭和零RAG写入要求。
 
 闭环条件：ensure后、上传后及数据库提交前校验全部目标对象字节SHA；确定性竞态测试必须同时注入建桶和冲突对象，断言对象不覆盖且三张RAG表前后指纹一致。最终演练证据必须记录并匹配执行脚本Git blob SHA。实现、索引和运行验收统一由`WI-20260913-01-shanghai-rag-runtime-closure.md`承接。
+
+## 第五轮闭环记录（2026-09-13，由WI-20260913-01任务1完成）
+
+- `evidence_sync.apply`新增`_verify_objects_or_conflict`三检查点：`ensure_bucket()`后重新枚举全部目标对象并下载核对SHA（上传前拦截外部抢先建桶+错误同键对象→`OBJECT_CONFLICT`）；全部上传完成后、RAG登记前再次核对（`OBJECT_MISSING`/`OBJECT_CONFLICT`）；数据库事务提交前执行最终对象完整性检查（任一漂移整体回滚）。冲突对象不覆盖。
+- 确定性竞态测试（无sleep）：`TestEnsureRaceConflict`（InMemory，外部ensure期间建桶+错误同键对象→旧实现提交RAG登记后才在事务外verify失败，新实现OBJECT_CONFLICT且`rag.sources/fetches/document_versions`前后指纹一致）、`TestEnsureRaceConflictRealMinio`（真实隔离MinIO同场景）、`TestPostUploadConflictCheck`（上传窗口内外部写入错误对象不计为noop）、`TestPreCommitObjectCheck`（提交前篡改→整体回滚零写入）。RED在旧实现4/4失败→GREEN。
+- 演练证据（33项全ok，`rag-evidence-drill-2026-09-13T05-57-34-688Z.json`）记录执行脚本Git blob SHA `4edd7d8a…`；提交后核对`git rev-parse HEAD:scripts/rag-evidence-drill.mjs`与之一致（证据由提交中的完全相同脚本生成）。

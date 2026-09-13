@@ -88,21 +88,52 @@ def parse_json(raw: bytes) -> ParseResult:
 
 
 def parse_html(raw: bytes) -> ParseResult:
+    """HTML→DocumentTree：全块级元素提取（h1-h6/p/li/tr/dd/dt/blockquote/pre）。
+
+    真实政府页面的正文通常位于嵌套div内的p/table中（不与标题同级），因此不能只取
+    标题兄弟节点；跳过script/style与嵌套重复块，保留文档顺序；lxml中注释/PI节点的
+    .tag是cython工厂函数而非字符串，需类型过滤。"""
     from lxml import html as lxml_html
 
     doc = lxml_html.fromstring(raw.decode("utf-8", errors="replace"))
-    root = TreeNode(type="document")
-    for heading in doc.xpath("//h1|//h2|//h3"):
-        chapter = TreeNode(type="chapter", text=heading.text_content().strip())
-        root.children.append(chapter)
-        for sibling in heading.itersiblings():
-            tag = sibling.tag.lower()
-            if tag in ("h1", "h2", "h3"):
+    for noise in doc.xpath("//script|//style|//noscript|//template|//head"):
+        parent = noise.getparent()
+        if parent is not None:
+            parent.remove(noise)
+    block_xpath = "//h1|//h2|//h3|//h4|//h5|//h6|//p|//li|//tr|//dd|//dt|//blockquote|//pre"
+    selected: list[Any] = []
+    selected_set: set[int] = set()
+    for el in doc.xpath(block_xpath):
+        ancestor = el.getparent()
+        duplicated = False
+        while ancestor is not None:
+            if id(ancestor) in selected_set:
+                duplicated = True
                 break
-            if tag in ("p", "li"):
-                text = sibling.text_content().strip()
-                if text:
-                    chapter.children.append(TreeNode(type="paragraph", text=text))
+            ancestor = ancestor.getparent()
+        if not duplicated:
+            selected.append(el)
+            selected_set.add(id(el))
+    root = TreeNode(type="document")
+    current_chapter: TreeNode | None = None
+    for el in selected:
+        tag = el.tag.lower() if isinstance(el.tag, str) else ""
+        if tag == "tr":
+            cells = [" ".join(c.text_content().split()) for c in el.xpath("./td|./th")]
+            text = " | ".join(c for c in cells if c) or " ".join(el.text_content().split())
+        else:
+            text = " ".join(el.text_content().split())
+        if not text:
+            continue
+        if tag in ("h1", "h2", "h3"):
+            current_chapter = TreeNode(type="chapter", text=text)
+            root.children.append(current_chapter)
+        elif tag in ("h4", "h5", "h6"):
+            node = TreeNode(type="section", text=text)
+            (current_chapter or root).children.append(node)
+        else:
+            node = TreeNode(type="paragraph", text=text)
+            (current_chapter or root).children.append(node)
     if not root.children:
         text = " ".join(doc.text_content().split())
         root.children.append(TreeNode(type="paragraph", text=text))

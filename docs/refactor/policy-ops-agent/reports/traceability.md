@@ -279,16 +279,19 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 - 演练升级：`scripts/rag-evidence-drill.mjs` 17项→22项（新增codeSha不一致、dirty工作树、RAG数据库漂移、write-only权限错误经受限IAM用户真实AccessDenied、bucket创建竞态归属），22项全ok。
 - 持久边界：本轮全程仅隔离PostgreSQL（`shv2-r4-pg`:55101）与隔离MinIO（`shv2-r4-minio-a/b`:55102/55103，任务专属容器，验收后删除）；仅对生产MinIO执行只读bucket清单核对（bucketCount=0，未写入）；持久policyops未连接未写入；`refactor/policy-ops-agent-platform@0885613`未修改未合并；未创建PR、未合并main、未创建tag/Release。
 
-## SHV2运行时RAG闭环规划映射（WI-20260913-01，docs-only）
+## SHV2运行时RAG闭环实现映射（WI-20260913-01，2026-09-13交付）
 
-| 需求 | 当前缺口 | 计划实现 | 计划测试/证据 | 状态 |
-| --- | --- | --- | --- | --- |
-| SHV2-FR-028 / AC-022 MinIO映射 | 端口与volume已存在但bucket未创建，Compose未显式bucket；9001易被误当API | Agent/Worker固定`minio:9000`+`policy-originals`，宿主CLI固定`127.0.0.1:9000`，保持`socila_minio-data:/data` | 9000/9001契约、docker inspect、容器更新后对象持久性 | Planned |
-| SHV2-NFR-006 / AC-017 同步竞态 | ensure期间错误同键对象可能在事务外verify前留下RAG登记 | ensure后、上传后、提交前对象SHA重验；冲突回滚RAG | 确定性建桶+冲突对象竞态，RAG三表前后指纹 | Planned |
-| SHV2-FR-029 / AC-023～025 受控索引 | downloaded版本无tree/chunks/embeddings，无法搜索 | `evidence_index`五模式，真实bge-m3 1024维，完整后indexed | 23 versions/trees、embeddings=chunks、固定查询、地区/日期隔离 | Planned |
-| SHV2-FR-030 / AC-026 内部API | 无运行时搜索与原件读取端点 | 服务JWT搜索/原件API，读取时复核SHA | JWT、未知版本、SHA漂移、附件头与字节SHA | Planned |
-| SHV2-FR-031 / AC-027 对话来源链 | 对话只有三个既有工具，无RAG来源链接 | Web登录下载代理+`searchPolicy`，官网与归档链接 | 对话E2E、未登录下载、无命中不编造 | Planned |
-| SHV2-NFR-007 / AC-028 恢复 | 尚无生产对象与派生索引恢复证据 | PostgreSQL+MinIO pre/post备份及全新实例恢复 | 四方verify、索引verify、固定检索与noop | Planned |
+| 需求 | 实现 | 测试/证据 | 状态 |
+| --- | --- | --- | --- |
+| SHV2-FR-028 / AC-022 MinIO映射 | `infra/prod/docker-compose.yml`（agent/worker显式`AGENT_MINIO_ENDPOINT=minio:9000`+`AGENT_MINIO_BUCKET=policy-originals`）；`src/lib/env/rag-runtime-config-contract.test.ts` | 契约测试5/5（9001与/login拒绝、`socila_minio-data:/data`、无第二MinIO卷、无无条件建桶）；`docker compose config --quiet`通过 | 已交付（待用户测试） |
+| SHV2-NFR-006 / AC-017 同步竞态 | `services/agent/agent/rag/evidence_sync.py`（`_verify_objects_or_conflict`三检查点：ensure后/上传后/提交前） | `tests/test_rag_evidence_sync.py` 85/85（`TestEnsureRaceConflict`、`TestEnsureRaceConflictRealMinio`、`TestPostUploadConflictCheck`、`TestPreCommitObjectCheck`四例RED→GREEN）；drill竞态步骤ok | 已交付（待用户测试） |
+| SHV2-FR-029 / AC-023～025 受控索引 | `services/agent/agent/rag/evidence_index.py`（audit/plan/apply/verify/search五模式）；`agent/rag/pipeline.py`（`derived_index_complete`、`IngestService` dedup修复、空候选不rerank） | `tests/test_rag_evidence_index.py` 22/22零skip；drill真实SiliconFlow索引23/23+固定查询7546/2340/1872/1690/6个月+双通道候选+地区/日期过滤+noop+恢复副本一致 | 已交付（待用户测试） |
+| SHV2-FR-030 / AC-026 内部API | `agent/rag/runtime.py`+`agent/api/app.py`（`/internal/v1/rag/search`、`/internal/v1/rag/documents/{id}/original`）+`agent/api/main.py`懒装配 | `tests/test_rag_api.py` 11/11零skip（JWT/校验/附件头/404/502/元数据回填/广东零命中不rerank） | 已交付（待用户测试） |
+| SHV2-FR-031 / AC-027 对话来源链 | `src/lib/ai/search-policy.ts`+`src/lib/ai/tools.ts`（searchPolicy）+`src/lib/ai/prompts.ts`（规则10～12）+`src/app/api/rag/originals/[documentVersionId]/route.ts` | `src/lib/ai/__tests__/search-policy.test.ts` 8例+route测试4例；E2E `e2e/shv2-rag-chat.spec.ts` 3例（双链展示+登录态下载字节一致+无命中不编造） | 已交付（待用户测试） |
+| SHV2-NFR-007 / AC-028 恢复 | `scripts/rag-evidence-drill.mjs`（备份恢复+恢复副本索引对账）；`scripts/rcl-rewrite-drill-v2.mjs`（rewrite恢复演练） | drill 33项全ok（`rag-evidence-drill-2026-09-13T05-57-34-688Z.json`，scriptBlobSha `4edd7d8a…`=提交中脚本）；rewrite演练10步全ok（`rewrite-drill-evidence-2026-09-13T06-39-43-390Z.json`） | 已交付（待用户测试） |
 
-- 当前代码起点：`a85420f079f4d57079a8ccb80a1a9ad17adc625a`；本轮只更新需求文档，实际实现与测试路径由后续Goal Agent回填。
-- 当前持久边界：生产MinIO bucket=0、RAG七表=0；未修改代码、Compose、数据库、MinIO、refactor或main。
+配套修复：`agent/rag/document_tree.py parse_html`（真实政府页面全块级提取+注释节点兼容）、`agent/rag/siliconflow.py`（Fake声明维度与实际向量长度一致）、`agent/rag/pipeline.py`（空候选不调用rerank）。
+
+- 代码起点`4da7f1a4269b99f351ef2994ac7cf6771914d0fa`；最终SHA=本任务提交HEAD（见PROGRESS对应章节回填）。
+- 持久边界：生产socila-minio（bucket=0）与持久policyops未连接未写入；隔离环境为任务专属`shv2-wi13-pg`:55110与`shv2-wi13-minio-a/b`:55111/55112。
+- 状态：**Ready for user testing**；生产同步/索引与refactor合并待用户测试后的fresh精确授权。

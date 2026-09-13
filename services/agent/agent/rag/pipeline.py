@@ -81,15 +81,21 @@ class IngestService:
         conn = self._conn()
         try:
             existing = conn.execute(
-                "SELECT id FROM rag.document_versions WHERE content_hash=%s", (result.content_hash,)
+                "SELECT id, status FROM rag.document_versions WHERE content_hash=%s", (result.content_hash,)
             ).fetchone()
             if existing:
+                # WI-20260913-01任务2：dedup命中downloaded/parsed版本时不得返回伪
+                # indexed——只有派生索引完整（tree+chunks+embeddings齐全且状态indexed）
+                # 才可返回indexed，否则如实返回当前状态（由受控evidence_index补齐）。
+                version_id = str(existing[0])
+                status = str(existing[1] or "")
+                complete = derived_index_complete(conn, version_id)
                 conn.close()
                 return IngestResult(
-                    document_version_id=str(existing[0]),
+                    document_version_id=version_id,
                     content_hash=result.content_hash,
                     deduplicated=True,
-                    status="indexed",
+                    status="indexed" if complete else (status if status in ("downloaded", "parsed") else "incomplete"),
                 )
 
             object_key = f"originals/{result.content_hash}"
@@ -229,8 +235,22 @@ class RetrievalService:
                     "path": row[4],
                 }
 
-        # rerank（Fake/真实均可）。
+        # rerank（Fake/真实均可）；无候选时不得以空文档列表调用rerank（WI-20260913-01任务3：
+        # 真实rerank API对空documents可能报错，且空候选语义下直接返回空hits）。
         ordered_ids = sorted(rrf, key=lambda k: -rrf[k])[: max(top_k * 3, 10)]
+        if not ordered_ids:
+            conn = self._conn()
+            try:
+                conn.execute(
+                    """INSERT INTO rag.retrieval_audit (query, jurisdiction_code, as_of_date, top_k, candidate_count, result_ids, index_version)
+                       VALUES (%s,%s,%s,%s,0,'[]'::jsonb,%s)""",
+                    (query, jurisdiction_code, as_of_date, top_k, self._client.index_version),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            return []
+
         reranked = self._client.rerank(query, [detail[i]["text"] for i in ordered_ids], top_n=top_k)
         min_score = float(os.environ.get("RAG_RERANK_MIN_SCORE", "0.2"))
         reranked = [r for r in reranked if float(r["relevance_score"]) >= min_score]
@@ -276,6 +296,26 @@ class RetrievalService:
         finally:
             conn.close()
         return hits
+
+
+def derived_index_complete(conn: Any, document_version_id: str) -> bool:
+    """派生索引完整性（WI-20260913-01任务2）：tree存在、chunks>0、embeddings数量
+    等于chunks且向量非空、版本状态为indexed。任一不满足即不完整——调用方不得
+    把downloaded/parsed版本报告为伪indexed。"""
+    row = conn.execute(
+        """SELECT
+             (SELECT status FROM rag.document_versions WHERE id=%s),
+             EXISTS(SELECT 1 FROM rag.document_trees WHERE document_version_id=%s),
+             (SELECT count(*) FROM rag.chunks WHERE document_version_id=%s),
+             (SELECT count(*) FROM rag.embeddings e JOIN rag.chunks c ON c.id=e.chunk_id
+                WHERE c.document_version_id=%s AND e.embedding IS NOT NULL)
+           """,
+        (document_version_id, document_version_id, document_version_id, document_version_id),
+    ).fetchone()
+    if row is None:
+        return False
+    status, tree, chunks, embeddings = row[0], bool(row[1]), int(row[2]), int(row[3])
+    return status == "indexed" and tree and chunks > 0 and embeddings == chunks
 
 
 def content_hash_of(content: bytes) -> str:

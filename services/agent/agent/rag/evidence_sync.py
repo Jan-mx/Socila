@@ -646,6 +646,10 @@ class PolicyEvidenceSync:
                         f"bucket {self.bucket}缺失但计划未声明plannedBucketCreate：计划与MinIO状态不一致（重新plan）",
                     )
                 bucket_created = self.store.ensure_bucket()
+            # 竞态修复检查点1（WI-20260913-01任务1）：ensure后重新枚举全部目标对象并
+            # 下载核对SHA——外部进程可能在bucket_exists与ensure_bucket之间创建bucket并
+            # 写入错误同键对象；此处拦截后上传段尚未执行、RAG登记尚未写入（零写入拒绝）。
+            self._verify_objects_or_conflict(docs, require_present=False)
             uploaded = 0
             noop = 0
             for doc in docs:
@@ -654,9 +658,15 @@ class PolicyEvidenceSync:
                 else:
                     self.store.put(doc.object_key, doc.artifact.read_bytes(), doc.mime)
                     uploaded += 1
+            # 竞态修复检查点2：上传完成后、RAG登记前再次核对全部对象（对象必须存在
+            # 且SHA一致）——上传窗口内的外部写入不得计为noop并提交RAG登记。
+            self._verify_objects_or_conflict(docs, require_present=True)
             if inject_failure_at == "after_uploads":
                 raise EvidenceSyncError("INJECTED_FAILURE", "演练注入：after_uploads（对象已上传、RAG未登记）")
             manifest, new_fetches, new_versions = self._register(docs, conn=conn)
+            # 竞态修复检查点3：数据库事务提交前最终对象完整性检查——任一对象缺失或
+            # SHA漂移即抛出，当前事务整体回滚（rag.sources/fetches/document_versions零写入）。
+            self._verify_objects_or_conflict(docs, require_present=True)
         report = self.verify()
         if not report["ok"]:
             raise EvidenceSyncError("APPLY_VERIFY_FAILED", "apply后verify未通过：" + "；".join(report["problems"][:5]))
@@ -673,6 +683,31 @@ class PolicyEvidenceSync:
             "manifest": manifest,
             "verified": True,
         }
+
+    def _verify_objects_or_conflict(self, docs: list[SyncDoc], *, require_present: bool) -> None:
+        """竞态修复（WI-20260913-01任务1）：枚举全部目标对象并下载核对字节SHA。
+        同键不同内容→OBJECT_CONFLICT（禁止覆盖）；require_present=True时对象缺失
+        同样失败（OBJECT_MISSING）。任一错误即抛出——调用点位于上传段与数据库
+        事务提交前，抛出时RAG登记整体回滚（零写入）。"""
+        mismatched: list[str] = []
+        missing: list[str] = []
+        for doc in docs:
+            if not self.store.exists(doc.object_key):
+                missing.append(f"{doc.doc_id}:{doc.object_key}")
+                continue
+            actual = sha256_bytes(self.store.get(doc.object_key))
+            if actual != doc.sha256:
+                mismatched.append(f"{doc.doc_id}:{doc.object_key}")
+        if mismatched:
+            raise EvidenceSyncError(
+                "OBJECT_CONFLICT",
+                "MinIO同键对象内容与原件不一致，禁止覆盖：" + "；".join(mismatched),
+            )
+        if require_present and missing:
+            raise EvidenceSyncError(
+                "OBJECT_MISSING",
+                "上传段完成后目标对象缺失（外部删除或上传未生效）：" + "；".join(missing),
+            )
 
     def _register(self, docs: list[SyncDoc], conn: Any = None) -> tuple[list[dict[str, Any]], int, int]:
         import psycopg

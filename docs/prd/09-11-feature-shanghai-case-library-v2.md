@@ -1,7 +1,7 @@
 # 上海政策纠偏与36条案例V2全量重建PRD
 
 > Author: Jan
-> Status: Updating / Reopened（运行时RAG闭环待开发：生产MinIO尚无bucket，RAG索引为空，Web对话尚未接入政策检索；不标记Accepted；未合并目标分支）
+> Status: Ready for user testing（运行时RAG闭环已由WI-20260913-01开发、隔离验收与独立复审完成并推送；等待用户人工测试；不标记Accepted；未合并目标分支）
 > Updated: 2026-09-13
 
 ## 1. 文档元数据
@@ -597,3 +597,13 @@ RCL-GEN-2.0记录固定返回`caseNature: "synthetic"`和`policySources: PolicyS
 3. 从merge SHA重建并更新Web/Agent/Worker/Beat；MinIO继续使用现有`socila_minio-data`。
 4. 生产同步和索引分别生成fresh `codeSha/planHash/targetFingerprint/写集合`，取得精确授权后才可写当前MinIO和policyops。
 5. 本次不接入仍为Fake的PolicyOps LangGraph `retrieve_impact`，不执行政策materialization、管理员批准、snapshot/release、0019或持久案例改写。
+
+### 23.5 WI-20260913-01交付记录（2026-09-13，起点4da7f1a，最终SHA=本任务提交HEAD）
+
+SHV2-FR-028～031、SHV2-NFR-009与SHV2-AC-022～028已全部实现并在隔离环境验收（实现/测试/证据路径见`WI-20260913-01`交付记录、`traceability.md`、验收报告§10与PROGRESS对应章节）：
+
+- **同步竞态闭环（第五轮复审）**：`evidence_sync.apply`在ensure后、上传后与数据库提交前三处重验全部目标对象字节SHA；确定性竞态测试（InMemory+真实MinIO）证明旧实现"提交RAG登记后事务外verify才发现冲突"的路径已消除——新实现OBJECT_CONFLICT、对象不覆盖、RAG三表前后指纹一致。
+- **受控真实索引**：`evidence_index`五模式（audit/plan/apply/verify/search）；真实SiliconFlow `BAAI/bge-m3` 1024维完成23/23索引（23 versions/23 trees/chunks>0/embeddings=chunks/维度1024/全部indexed）；固定查询命中缴费基数7546/37731、失业金2340/1872/1690、灵活就业医保等待期6个月，FTS与向量双通道均产生候选；广东过滤零命中；日期过滤正确；同步与索引复跑均noop；PostgreSQL与MinIO恢复到全新实例后四方verify、索引verify与固定查询一致。
+- **内部接口与对话来源链**：服务JWT保护的搜索/原件接口与Web登录态下载代理、`searchPolicy`工具按§23.2契约交付；对话E2E证明政策事实问题同时展示官网原文与归档原件链接、无命中不编造。
+- **Compose映射**：agent/worker显式`minio:9000`+`policy-originals`，配置契约测试防回归；`socila_minio-data:/data`不变。
+- 生产MinIO bucket=0与RAG七表=0的持久事实未变：生产同步/索引须待用户测试通过后按§18/§23.4的fresh精确授权执行。

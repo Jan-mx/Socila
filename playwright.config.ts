@@ -61,6 +61,9 @@ export default defineConfig({
         OPENAI_URL: `http://127.0.0.1:${MOCK_PORT}/v1`,
         OPENAI_API_KEY: ["e2e", "local", "mock"].join("-"),
         OPENAI_MODEL: "e2e-mock-model",
+        // SHV2-FR-031（WI-20260913-01任务4）：searchPolicy工具与原件下载代理指向
+        // mock-openai.mjs内置的mock Agent内部API（E2E专用，校验Bearer存在）。
+        AGENT_INTERNAL_URL: `http://127.0.0.1:${MOCK_PORT}`,
       },
     },
   ],

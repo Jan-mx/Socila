@@ -1,7 +1,7 @@
 # WI-20260913-01：上海政策原件与对话RAG运行闭环
 
 > Author: Jan
-> Status: Ready
+> Status: Ready for user testing（开发、隔离验收、独立复审、完整门禁与推送完成；不标记09-11 Feature最终Accepted）
 > Updated: 2026-09-13
 
 ## Work Item
@@ -110,3 +110,19 @@ Web下载必须要求登录并代理Agent原件流；不得返回MinIO内部地�
 - PostgreSQL与MinIO pre/post备份均在全新实例恢复验证。
 - 用户人工测试前不合并；生产fresh授权前不写持久MinIO/RAG。
 - Work Item完成后可标记Accepted，但09-11 Feature在其余原PRD持久事项完成前不得标记最终Accepted。
+
+## 交付记录（2026-09-13；起点4da7f1a，最终SHA=本任务提交HEAD）
+
+| 任务 | 实现位置 | 测试路径 | 证据 |
+| --- | --- | --- | --- |
+| 1 同步竞态修复 | `services/agent/agent/rag/evidence_sync.py`（`_verify_objects_or_conflict`，ensure后/上传后/提交前三检查点） | `tests/test_rag_evidence_sync.py::TestEnsureRaceConflict`、`TestEnsureRaceConflictRealMinio`、`TestPostUploadConflictCheck`、`TestPreCommitObjectCheck`（4例RED→GREEN，全套85/85） | OBJECT_CONFLICT、对象不覆盖、RAG三表前后指纹一致（确定性注入，无sleep） |
+| 2 受控索引 | `services/agent/agent/rag/evidence_index.py`（五模式CLI）；`agent/rag/pipeline.py`（`derived_index_complete`+`IngestService` dedup修复；空候选不rerank） | `tests/test_rag_evidence_index.py` 22/22零skip（plan绑定/守卫零写入/单文档事务回滚/部分完成re-plan/终态noop/verify反例/端点守卫/伪indexed反例/真实MinIO SHA复核/真实页面解析回归） | drill索引步（真实SiliconFlow） |
+| 3 内部RAG接口 | `agent/rag/runtime.py`、`agent/api/app.py`（`/internal/v1/rag/search`、`/internal/v1/rag/documents/{id}/original`）、`agent/api/main.py` | `tests/test_rag_api.py` 11/11零skip | JWT/校验/附件头/404/502失败关闭/元数据回填/空候选不rerank |
+| 4 对话来源链 | `src/lib/ai/search-policy.ts`、`src/lib/ai/tools.ts`（searchPolicy）、`src/lib/ai/prompts.ts`（规则10～12）、`src/app/api/rag/originals/[documentVersionId]/route.ts` | `src/lib/ai/__tests__/search-policy.test.ts` 8例、route测试4例；E2E `e2e/shv2-rag-chat.spec.ts` 3例 | 对话双链展示+登录态下载字节一致+无命中不编造 |
+| 5 Compose契约 | `infra/prod/docker-compose.yml`（agent/worker bucket显式）；`src/lib/env/rag-runtime-config-contract.test.ts` | 5/5（RED=bucket缺失） | `docker compose config --quiet`通过 |
+
+配套产品修复（门禁路径暴露）：`agent/rag/document_tree.py parse_html`重写为全块级提取（真实政府页面正文在嵌套div内、HTML注释节点.tag为cython函数曾致崩溃——23份原件关键数字全部进入chunk文本）；`agent/rag/siliconflow.py FakeSiliconFlowClient.embed`维度修复（声明1024维但seed*4切片实际128）；`RetrievalService`无候选时不再以空文档调用rerank并写审计。
+
+隔离验收与门禁数字详见`PROGRESS.md`对应章节与验收报告§10。演练33项全ok证据`reports/feature-09-11-shanghai-case-v2/rag-evidence-drill-2026-09-13T05-57-34-688Z.json`（scriptBlobSha=执行脚本Git blob SHA `4edd7d8a…`，与提交中脚本一致）。rewrite恢复演练证据`rewrite-drill-evidence-2026-09-13T06-39-43-390Z.json`（10步全ok）。
+
+边界：生产socila-minio（bucket仍为0）与持久policyops未连接未写入；未合并refactor/main；未创建PR、tag或Release。状态**Ready for user testing**。

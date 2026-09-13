@@ -8,6 +8,7 @@
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import { createJurisdictionComputePlan } from "@/server/modules/planning/application";
+import { executeSearchPolicy } from "./search-policy";
 
 // ─── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -381,12 +382,61 @@ export function executeUpdateProfile(params: UpdateProfileInput): {
   };
 }
 
+// ─── Tool 4: searchPolicy（SHV2-FR-031，WI-20260913-01任务4）────────────────
+
+/** searchPolicy 工具输入 Schema（导出供契约测试）。 */
+export const searchPolicySchema = z.object({
+  query: z
+    .string()
+    .min(1)
+    .max(2000)
+    .describe("政策检索问题，如'上海失业保险金标准是多少'"),
+  jurisdiction_code: z
+    .string()
+    .regex(JURISDICTION_CODE_PATTERN, "地区代码必须是 CN 或 6 位行政区划代码")
+    .describe("检索地区代码，必须与会话已确认地区一致"),
+  as_of_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须是 YYYY-MM-DD")
+    .describe("政策有效期判定日期（YYYY-MM-DD），通常使用当前日期"),
+  top_k: z
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .optional()
+    .default(5)
+    .describe("返回的原文片段数量上限，默认5"),
+}).strict();
+
+type SearchPolicyInput = z.infer<typeof searchPolicySchema>;
+
+export const searchPolicyTool = tool<
+  SearchPolicyInput,
+  Awaited<ReturnType<typeof executeSearchPolicy>>
+>({
+  description:
+    "检索官方政策原文库（RAG）。凡回答政策金额、比例、资格条件、期限、有效期或政策来源（依据哪份文件）的问题时必须调用此工具，不得凭记忆作答。每个命中同时给出官网原文链接与归档原件下载链接；无可靠命中时如实说明，不得编造来源。",
+  inputSchema: zodSchema(searchPolicySchema),
+  execute: (params: SearchPolicyInput, options?: { experimental_context?: unknown }) => {
+    const ctx = options?.experimental_context as
+      | { confirmedJurisdictionCode?: unknown; ownerUserId?: unknown }
+      | undefined;
+    return executeSearchPolicy(params, {
+      confirmedJurisdictionCode:
+        typeof ctx?.confirmedJurisdictionCode === "string" ? ctx.confirmedJurisdictionCode : undefined,
+      ownerUserId: typeof ctx?.ownerUserId === "string" ? ctx.ownerUserId : undefined,
+    });
+  },
+});
+
 // ─── 工具集导出 ──────────────────────────────────────────────────────────────
 
 export const tools = {
   computePlan: computePlanTool,
   validateField: validateFieldTool,
   updateProfile: updateProfileTool,
+  searchPolicy: searchPolicyTool,
 };
 
 // ─── 内部辅助函数 ─────────────────────────────────────────────────────────────
