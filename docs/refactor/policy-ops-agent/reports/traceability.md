@@ -336,3 +336,11 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 - 生产终态不变：23对象/185 chunks/185 embeddings/sources=2/fetches=23/versions=23全部indexed；retrieval_audit=6（均为宿主机固定查询记录）。
 - 边界：未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；worktree与功能分支保留。
 - 状态：**生产修复与复验完成，等待用户人工测试**。
+
+## DeepSeek多步工具循环第二轮修复（2026-09-14）
+
+| 需求/阻断 | 实现与证据 | 状态 |
+| --- | --- | --- |
+| SHV2-AC-027多步工具最终回答 | `deepseek-compat.ts`：DeepSeek Chat Completions携带非空tools时整个循环注入`thinking.disabled`；`deepseek-compat.test.ts`两步RED→GREEN，11/11 | 已修复 |
+| 最终回答持久化 | `e2e/shv2-rag-chat.spec.ts`经对话读取API断言非空assistant text part；全新验收库Chromium 28/28 | 自动化通过 |
+| 生产部署 | `d936526`、`web:deepseek-d936526`（`b520e9ae79c3…`），仅重建socila-web；RAG 23/23/185/185与其他容器不变 | 已部署，待人工测试 |

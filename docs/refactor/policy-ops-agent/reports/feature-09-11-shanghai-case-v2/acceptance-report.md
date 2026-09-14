@@ -441,3 +441,9 @@ rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-
 **部署后九项验证（复验完成）**：①web healthy（`web:shv2-39fbd00`=`web:latest` 5ca9a230c98f，回退标签`web:rollback-pre-a04946e`保留）✓；②普通对话✓（384字符真实回复）；③searchPolicy实际调用✓（step_count=3）；④带来源回答✓（1570字符：2340/1872/1690元、《关于调整本市失业保险金支付标准的通知》与《上海市失业保险金申领发放实施办法》标题、人社局、gov.cn官网链接与/api/rag/originals/归档原件链接）；⑤无thinking错误✓；⑥retrieval_audit 6→7✓；⑦23对象/185 chunks/185 embeddings不变✓；⑧限流5分钟文案✓；⑨临时密码改密流程留待人工测试。
 
 门禁数字详见TESTING.md；运行证据（探测矩阵JSON、apply/verify结果、E2E日志）在gitignored `backup/rag-exec-20260913/`与test-results。状态：**生产修复与复验完成，等待用户人工测试**。
+
+### 10.9 DeepSeek多步工具循环第二轮修复（2026-09-14，提交`d936526`）
+
+第一次UAT修复仅对显式强制`tool_choice`关闭thinking，未覆盖工具结果后的`tool_choice=auto`步骤。生产日志证明RAG检索已返回200，但第二次DeepSeek请求因未回传`reasoning_content`返回400，最终回答未生成，失败会话为空。本轮将DeepSeek `/chat/completions`的非空tools请求全部设为`thinking.disabled`，覆盖完整工具循环，同时保留强制searchPolicy和来源失败关闭。
+
+验收证据：旧实现新增测试2失败→修复后DeepSeek兼容11/11、AI聚焦35/35、完整Node 897、Chromium全新验收库28/28（新增最终回答持久化断言）、tsc/eslint/build通过。生产仅更新`socila-web`至`web:deepseek-d936526`（镜像`b520e9ae79c3…`，healthy）；Agent及23版本/23树/185 chunks/185 embeddings未修改。生产自动浏览器冒烟因管理员当前密码与历史验收口令不同而未执行政策提问，系统未重置账号；最终Accepted仍待用户用有效账号确认回答和双来源链接。

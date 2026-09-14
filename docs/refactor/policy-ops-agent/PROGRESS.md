@@ -661,3 +661,11 @@
 - **部署后验证（复验完成）**：①healthy✓ ②普通对话✓（384字符真实回复）③searchPolicy实际调用✓（step_count=3）④政策回答✓（1570字符：2340/1872/1690元+两份文件标题+人社局+gov.cn官网链接+/api/rag/originals/归档链接）⑤无thinking错误✓ ⑥retrieval_audit 6→7✓ ⑦23对象/185 chunks/185 embeddings不变✓ ⑧限流5分钟文案✓；⑨临时密码改密流程留待用户人工测试。
 - 边界：未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；`F:\Socila-shanghai-case-v2` worktree与功能分支保留。
 - 状态：**生产修复与复验完成，等待用户人工测试**（09-11 Feature最终Accepted仍待用户测试确认）。
+
+## 2026-09-14第二轮UAT修复：DeepSeek多步工具循环（提交`d936526`）
+
+- **生产复现**：`caee930`/`web:shv2-39fbd00`下，政策问题已使Agent `/internal/v1/rag/search`返回200且`retrieval_audit`增加，但工具结果后的第二次DeepSeek请求为`tool_choice=auto`并恢复默认thinking；AI SDK未回传DeepSeek专用`reasoning_content`，上游400（`The reasoning_content in the thinking mode must be passed back`），流式回答中断且最新失败会话为空。
+- **根因修复**：`withDeepSeekCompat`从“仅显式tool_choice关闭thinking”收紧为“DeepSeek `/chat/completions`携带非空tools数组时，整个多步工具循环均注入`thinking={type:disabled}`”；首步强制`searchPolicy`、来源校验和非DeepSeek行为不变。不带tools的普通请求不修改。
+- **TDD与门禁**：RED=auto步骤未注入thinking、两步循环第二步返回400共2失败；GREEN=DeepSeek兼容11/11、AI聚焦35/35、`npm test`87文件/897通过、tsc、eslint 0 error、build通过；全新`shv2_dsfix_e2e`验收库（migration/bootstrap/seed/e2e-rcl-setup）Chromium 28/28，RAG E2E新增非空assistant消息持久化断言。
+- **生产部署**：`web:deepseek-d936526`=`web:latest`（镜像`b520e9ae79c3…`）仅重建`socila-web`并healthy；agent/worker/beat/postgres/minio/redis容器及数据卷未变，模型仍为`deepseek-v4-flash`，无migration、无RAG重索引。
+- **人工验证边界**：自动化生产浏览器冒烟因管理员实际密码已不同于仓库验收口令而登录失败；未重置或读取生产密码，`retrieval_audit`保持9。状态为**修复已部署，等待当前有效账号人工测试**，不得据此标记最终Accepted或删除功能worktree。

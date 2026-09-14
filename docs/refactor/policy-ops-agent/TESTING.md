@@ -349,3 +349,10 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - **探测矩阵证据**（脱敏，生产Key）：v4.1-flash=400/不在models；deepseek-flash与v4-flash：plain 200、auto 200（工具调用）、强制默认thinking 400、强制+thinking disabled 200。
 - **全套门禁**：npm test 87文件/896零失败零skip；tsc 0；eslint 0 error（7条既有warning）；build退出0；Chromium E2E 28/28；pytest 137；ruff 0；mypy(agent) 0（36文件）；citation/RAG契约28/28；案例库--check ok；scan-secrets --all 948零命中；git diff --check通过。mypy全仓扫描在 `scripts/neon_drill.py`/`scripts/validate_siliconflow.py` 存在19条既有类型错误（历史遗留、非本门禁口径 `uv run mypy agent` 范围，本次未触碰）。
 - **e2e登录前置API化说明**：登录页IP限流20次/5分钟为产品契约；非auth-spec的登录前置统一走 `e2e/api-auth.ts`（NextAuth callback，断言302目标不含error=），auth.spec保留登录页UI流程专测；5分钟窗口契约由rate-limit单测覆盖。
+
+## DeepSeek多步工具循环回归（2026-09-14第二轮UAT）
+
+- 生产RED：首步`searchPolicy`成功后，第二步`tool_choice=auto`因缺少`reasoning_content`返回400；Agent检索200不能替代最终回答与会话持久化验收。
+- 单元RED→GREEN：`deepseek-compat.test.ts`新增auto工具步骤与两步循环；旧实现2失败，修复后11/11。契约为DeepSeek Chat Completions携带非空tools数组时所有步骤均`thinking.disabled`，不带tools/非DeepSeek/非JSON保持原样。
+- E2E新增断言：带来源回答渲染后，经`GET /api/chat/<conversationId>`读取持久会话，必须存在非空assistant text part。
+- 新鲜门禁：`npm test`87文件/897；TypeScript与Build退出0；ESLint 0 error（既有warning）；全新PG17验收库Chromium 28/28。首次复用旧E2E库产生4项状态污染失败，不作为产品结论；重新migration/bootstrap/seed/e2e-rcl-setup后全绿。
