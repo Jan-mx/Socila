@@ -343,4 +343,4 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | --- | --- | --- |
 | SHV2-AC-027多步工具最终回答 | `deepseek-compat.ts`：DeepSeek Chat Completions携带非空tools时整个循环注入`thinking.disabled`；`deepseek-compat.test.ts`两步RED→GREEN，11/11 | 已修复 |
 | 最终回答持久化 | `e2e/shv2-rag-chat.spec.ts`经对话读取API断言非空assistant text part；全新验收库Chromium 28/28 | 自动化通过 |
-| 生产部署 | `d936526`、`web:deepseek-d936526`（`b520e9ae79c3…`），仅重建socila-web；RAG 23/23/185/185与其他容器不变 | 已部署，待人工测试 |
+| 生产部署 | `d936526`、`web:deepseek-d936526`（`b520e9ae79c3…`），仅重建socila-web；真实Provider两步探测200/200且最终包含2340/1872/1690；RAG 23/23/185/185与其他容器不变 | 已部署，待页面人工测试 |

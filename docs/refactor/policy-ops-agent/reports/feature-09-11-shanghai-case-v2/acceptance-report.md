@@ -446,4 +446,4 @@ rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-
 
 第一次UAT修复仅对显式强制`tool_choice`关闭thinking，未覆盖工具结果后的`tool_choice=auto`步骤。生产日志证明RAG检索已返回200，但第二次DeepSeek请求因未回传`reasoning_content`返回400，最终回答未生成，失败会话为空。本轮将DeepSeek `/chat/completions`的非空tools请求全部设为`thinking.disabled`，覆盖完整工具循环，同时保留强制searchPolicy和来源失败关闭。
 
-验收证据：旧实现新增测试2失败→修复后DeepSeek兼容11/11、AI聚焦35/35、完整Node 897、Chromium全新验收库28/28（新增最终回答持久化断言）、tsc/eslint/build通过。生产仅更新`socila-web`至`web:deepseek-d936526`（镜像`b520e9ae79c3…`，healthy）；Agent及23版本/23树/185 chunks/185 embeddings未修改。生产自动浏览器冒烟因管理员当前密码与历史验收口令不同而未执行政策提问，系统未重置账号；最终Accepted仍待用户用有效账号确认回答和双来源链接。
+验收证据：旧实现新增测试2失败→修复后DeepSeek兼容11/11、AI聚焦35/35、完整Node 897、Chromium全新验收库28/28（新增最终回答持久化断言）、tsc/eslint/build通过。生产仅更新`socila-web`至`web:deepseek-d936526`（镜像`b520e9ae79c3…`，healthy）；Agent及23版本/23树/185 chunks/185 embeddings未修改。生产容器内真实Provider两步探测为200/200，工具名`searchPolicy`，最终文本包含2340/1872/1690；自动浏览器因管理员当前密码与历史验收口令不同而未执行完整页面政策提问，系统未重置账号；最终Accepted仍待用户用有效账号确认回答和双来源链接。

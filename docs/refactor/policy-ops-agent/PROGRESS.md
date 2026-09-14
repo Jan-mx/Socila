@@ -668,4 +668,4 @@
 - **根因修复**：`withDeepSeekCompat`从“仅显式tool_choice关闭thinking”收紧为“DeepSeek `/chat/completions`携带非空tools数组时，整个多步工具循环均注入`thinking={type:disabled}`”；首步强制`searchPolicy`、来源校验和非DeepSeek行为不变。不带tools的普通请求不修改。
 - **TDD与门禁**：RED=auto步骤未注入thinking、两步循环第二步返回400共2失败；GREEN=DeepSeek兼容11/11、AI聚焦35/35、`npm test`87文件/897通过、tsc、eslint 0 error、build通过；全新`shv2_dsfix_e2e`验收库（migration/bootstrap/seed/e2e-rcl-setup）Chromium 28/28，RAG E2E新增非空assistant消息持久化断言。
 - **生产部署**：`web:deepseek-d936526`=`web:latest`（镜像`b520e9ae79c3…`）仅重建`socila-web`并healthy；agent/worker/beat/postgres/minio/redis容器及数据卷未变，模型仍为`deepseek-v4-flash`，无migration、无RAG重索引。
-- **人工验证边界**：自动化生产浏览器冒烟因管理员实际密码已不同于仓库验收口令而登录失败；未重置或读取生产密码，`retrieval_audit`保持9。状态为**修复已部署，等待当前有效账号人工测试**，不得据此标记最终Accepted或删除功能worktree。
+- **Provider实证与人工边界**：生产Web容器内使用现有Key执行无用户数据的真实两步调用，首步强制`searchPolicy`=200、第二步auto=200，最终111字符并包含2340/1872/1690；自动化生产浏览器因管理员实际密码已不同于仓库验收口令而登录失败，未重置或读取生产密码，`retrieval_audit`保持9。状态为**修复已部署，等待当前有效账号人工测试**，不得据此标记最终Accepted或删除功能worktree。
