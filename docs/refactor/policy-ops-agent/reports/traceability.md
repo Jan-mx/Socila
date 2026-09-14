@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-13
+> Updated: 2026-09-14
 
 ## 用途
 
@@ -366,3 +366,23 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | 浏览器回归 | `e2e/shv2-rag-chat.spec.ts`验收库fixture：会话归属测试用户、messages含user+assistant工具输出（warnings混合string与对象）；打开`/chat?conversationId=<id>`验证零pageerror、无崩溃页、字符串与结构化text均显示、非法值不显示、重复显示一次、第三轮可发送且得到回复 | 全新验收库29/29✓ |
 | 完整门禁 | tool-result-card 7/7；npm test 88文件/904零失败零skip；tsc 0；eslint 0 error（8条既有warning）；build退出0；Chromium全新PG17验收库（migration/bootstrap/seed/vector/e2e-rcl-setup 36/36/80）29/29；scan-secrets 953零命中；git diff --check通过 | 全部通过✓ |
 | 生产部署 | 仅重建socila-web（`6b43421`构建`web:warnfix-6b43421`=`web:latest`，镜像`933f3b9ab971…`，容器`2f7190cb6594` healthy）；回退标签`web:rollback-pre-6b43421`保留；RAG 23/23/185/185与agent/worker/beat/postgres/minio/redis/proxy容器ID及数据卷不变；新容器日志零error | 已部署，待人工测试 |
+
+## v1.0.1发布CI门禁闭环映射（WI-20260914-01，2026-09-14；起点`main@6411ea6`，分支`codex/ci-v1.0.1-closure`）
+
+| 需求 | 根因（CI #23） | 实现位置 | 测试/证据路径 |
+| --- | --- | --- | --- |
+| CIG-FR-001 显式路由签名 | `route.ts(23,15) TS2304: Cannot find name 'RouteContext'`（构建生成全局类型，干净checkout不可见） | `src/app/api/rag/originals/[documentVersionId]/route.ts`（`{ params: Promise<{ documentVersionId: string }> }`） | `src/app/api/rag/originals/[documentVersionId]/__tests__/route-signature.contract.test.ts`（3例）+ 既有`route.test.ts`（4例）；CIG-AC-001 fresh clone无`.next` `tsc --noEmit` |
+| CIG-FR-002 零ESLint warning | 7条src warning（`npx eslint src`未设阈值）+1条e2e | `e2e/auth.spec.ts`（`MOCK_ASSISTANT_REPLY`进入断言）、`src/app/admin/rules/[ruleId]/page.tsx`（`identityQuery`入`useEffect`依赖）、`src/app/api/admin/__tests__/nrp-stage-e-fix.integration.test.ts`（删除死代码）、`src/lib/case-rewrite/__tests__/rcl-rewrite-cli.integration.test.ts`（`finalFingerprint`断言apply结果与批次行）、`src/lib/case-rewrite/rewrite-v2.ts`（删除未用解构）、`src/lib/policy-materialization/shv2-shanghai-delta.integration.test.ts`（删除`matQuery`）、`src/server/modules/policy/__tests__/snapshot-service.integration.test.ts`（删除未用import）；`.github/workflows/ci.yml` `npx eslint src e2e --max-warnings 0` | `npx eslint src e2e --max-warnings 0`退出0 |
+| CIG-FR-003/004 政策基线夹具 | `git show d7fd63a…`在squash后main不可达（git对不存在对象亦提示`exists on disk, but not in`） | `src/lib/policy-materialization/baseline-fixture.ts`、`__fixtures__/policy-baseline-d7fd63a.json`（38文件，contentSha256 `9f9da11d…`，expectedCounts 26/46/4/4）、`scripts/build-policy-baseline-fixture.ts`（只读提取）、`manifest.ts`导出`REGION_DIRS`、`shv2-shanghai-delta.integration.test.ts`改读夹具 | `src/lib/policy-materialization/baseline-fixture.test.ts`（11例）；`shv2-shanghai-delta.integration.test.ts`（3例，fresh clone无`d7fd63a`对象） |
+| CIG-FR-005/006 RCL演练环境 | `No such container: jrp-drill-pg`；`-U postgres`与CI用户`ci_db_user`不符 | `src/lib/case-governance/drill-pg-env.ts`（`resolveDrillPgEnv`/`dockerPsqlArgs`/`dockerPgRestoreArgs`）、`rcl-cli.integration.test.ts`、`rcl-rewrite-cli.integration.test.ts`、`scripts/e2e-rcl-setup.ts`；`ci.yml` database-gates/e2e-gates `RCL_DRILL_PG_CONTAINER: ${{ job.services.postgres.id }}` | `src/lib/case-governance/__tests__/drill-pg-env.test.ts`（11例）；两个RCL集成测试在`POSTGRES_USER=ci_db_user`容器上以容器ID通过 |
+| PMG-NFR-004 零未解释错误（新增） | `[vitest-worker]: Timeout calling "onTaskUpdate"`（CI #23与本地均复现：`spawnSync`连续阻塞worker事件循环>60秒触发birpc RPC超时，即使全部用例通过也使`test:db`退出1） | `src/lib/case-governance/run-subprocess.ts`（异步子进程helper）；两个RCL集成测试的CLI/seed/docker调用改为`await` | `src/lib/case-governance/__tests__/run-subprocess.test.ts`（6例，含事件循环响应性属性）；fresh容器`npm run test:db`退出0且无Unhandled Errors |
+| CIG-FR-007/008 E2E初始化与诊断 | 3失败/7未运行：公开案例0条、规划422——缺`e2e-rcl-setup`（沪粤快照+36/36/80替换） | `ci.yml` e2e-gates（migration→bootstrap→seed→`CREATE EXTENSION vector`→`e2e-rcl-setup`→build→E2E→`if: failure()`上传）、`playwright.config.ts`（html报告+webServer stdout/stderr pipe）、`.gitignore` | `src/lib/env/ci-compose-override-contract.test.ts`（工作流契约）；全新库Chromium 29/29 |
+| CIG-FR-009 Compose诊断 | 工作流在`down -v`前无日志保留 | `ci.yml` container-gates `compose diagnostics (on failure, before cleanup)`+`upload compose diagnostics`（`actions/upload-artifact@043fb46d… # v7.0.1`） | 契约测试断言诊断→上传→`down -v`→零残留顺序与`if:`条件 |
+| CIG-FR-010 CI Compose override | 固定`container_name`/生产卷名/固定宿主端口与开发机冲突 | `infra/prod/docker-compose.ci.yml`（`!reset`容器名与端口、`external`生产卷、`ci-*`临时卷、postgres随机端口）；`ci.yml` `COMPOSE_FILE`+唯一`COMPOSE_PROJECT_NAME`+`verify zero task residue` | `ci-compose-override-contract.test.ts`（12例，含生产文件语义未变护栏）；本地`config --quiet`/合并配置核验/完整启动冒烟 |
+| CIG-FR-011 镜像拉取首错 | `pull access denied for minio/minio, repository does not exist`——Docker Hub API核实仓库已不存在（非限流） | override `image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493…`（与生产在用镜像RepoDigest一致） | 契约测试断言digest；`docs/refactor/policy-ops-agent/OPERATIONS.md`记录生产风险 |
+| database-gates pgvector前置 | 恢复对账读取`pg_extension`断言pgvector版本非空，核心migration不创建扩展 | `ci.yml` database-gates/e2e-gates `pgvector extension (fresh database)` | 契约测试断言两处`CREATE EXTENSION IF NOT EXISTS vector` |
+| container-gates migration依赖 | 该job无`npm ci`却运行`npm run db:migrate`（首错之后的潜在失败） | `ci.yml` container-gates增加setup-node+`npm ci`；migration改用`docker compose port postgres 5432`随机端口 | 本地CI Compose流程 |
+| gates 单测跨平台确定性（运行#24） | `case-library-doc.test.ts`在Linux失败：中文来源`localeCompare`排序依赖宿主locale | `src/lib/case-governance/dsl-evidence-index.ts`（code-unit元组序）；重建`docs/refactor/policy-ops-agent/case-library/shanghai-guangdong-v2.{md,manifest.json}` | `src/lib/case-governance/__tests__/dsl-evidence-index.test.ts`（2例，Windows旧实现RED）；`case-library-doc.test.ts`；`rcl-case-library-v2-doc.ts --check` |
+| container-gates Trivy安装（运行#24） | trivy-action `version: "0.74.0"`缺`v`前缀→`unable to find '0.74.0'` | `.github/workflows/ci.yml`两处`version: "v0.74.0"` | `ci-compose-override-contract.test.ts`（版本断言先RED后GREEN） |
+| container-gates 健康检查就绪竞态（运行#25） | agent `/internal/health`单次无等待探测早于uvicorn就绪→Connection refused | `.github/workflows/ci.yml` `health checks`改为web/agent双就绪条件轮询`wait_for` | `ci-compose-override-contract.test.ts`（`wait_for`断言先RED后GREEN）；诊断artifact证明容器无重启 |
+| 文档 | — | `docs/work-items/WI-20260914-01-ci-release-gates-closure.md`、`PROGRESS.md`、`TESTING.md`、`OPERATIONS.md`、本文件 | Markdown相对链接检查、`git diff --check` |

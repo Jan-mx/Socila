@@ -44,6 +44,10 @@ next-env.d.ts
 .env.local
 .tmp-playwright/
 test-results/
+# WI-20260914-01：E2E html 报告与 CI 诊断落盘目录（仅作为 Actions artifact 上传）
+playwright-report/
+e2e-artifacts/
+infra/prod/ci-diagnostics/
 /.git.previous-before-socila-reset/
 /.claude/
 

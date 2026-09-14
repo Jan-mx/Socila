@@ -20,7 +20,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [["list"]],
+  // WI-20260914-01 CIG-FR-008：list 供终端/CI 日志；html 报告落盘 playwright-report/
+  // （失败时作为 CI artifact 上传；本地不自动打开）。
+  reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   use: {
     baseURL,
     trace: "retain-on-failure",
@@ -38,6 +40,9 @@ export default defineConfig({
       url: `http://127.0.0.1:${MOCK_PORT}/health`,
       reuseExistingServer: false,
       timeout: 30_000,
+      // CIG-FR-008：mock OpenAI/Agent 日志并入测试输出（CI 以 tee 落盘）。
+      stdout: "pipe",
+      stderr: "pipe",
     },
     {
       // PMG-FR-004：运行 output: standalone 产物（node .next/standalone/server.js）。
@@ -45,6 +50,9 @@ export default defineConfig({
       url: `http://127.0.0.1:${PORT}/api/health`,
       reuseExistingServer: false,
       timeout: 120_000,
+      // CIG-FR-008：standalone Web 日志并入测试输出（CI 以 tee 落盘）。
+      stdout: "pipe",
+      stderr: "pipe",
       env: {
         PORT: String(PORT),
         HOSTNAME: "127.0.0.1",

@@ -709,7 +709,7 @@ export async function executeRewriteApply(input: {
   actor: string;
   injectFailureAt?: RewriteFailurePoint;
 }): Promise<RewriteApplyResult> {
-  const { client, plan } = input;
+  const { plan } = input;
   const bodyProblems = verifyPlanBody(plan);
   if (bodyProblems.length > 0) {
     throw new CaseRewriteError("PLAN_INVALID", `计划正文自校验失败：${bodyProblems.slice(0, 5).join("；")}`);

@@ -14,13 +14,15 @@
  * - 每个case恰一条地区回归test（RCL-FR-013）；
  * - 四川始终unsupported（RCL-AC-013）。
  *
- * 前提：SOCILA_TEST_DATABASE_URL 指向已迁移+已seed的全新PG17库（显式提供，零skip）。
+ * 前提：SOCILA_TEST_DATABASE_URL 指向已迁移+已seed的全新PG17库（显式提供，零skip）；
+ * RCL_DRILL_PG_CONTAINER 指向该库所在容器（CI传入 job.services.postgres.id，本机传入
+ * 任务专属演练容器）——容器ID与psql/pg_restore用户/库名经`resolveDrillPgEnv`前置解析，
+ * 缺失即明确失败（WI-20260914-01 CIG-FR-005）。
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 /** CLI子进程spawn在Windows下tsx重编译依赖图约33秒：所有CLI测试统一120秒超时。 */
 const cliIt = (name: string, fn: () => void | Promise<void>) => it(name, fn, 120_000);
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -46,20 +48,27 @@ import { activateJurisdictionRelease } from "@/server/modules/publishing/applica
 import { DrizzleRulesReadRepository } from "@/server/modules/rules/infrastructure/drizzle/rules-read.repository";
 import { buildVerifiedRestoreReport } from "@/lib/case-governance/reconcile";
 import { bufferSha256 } from "@/lib/case-governance/executor";
+import {
+  dockerPgRestoreArgs,
+  dockerPsqlArgs,
+  resolveDrillPgEnv,
+  type DrillPgEnv,
+} from "@/lib/case-governance/drill-pg-env";
+import { runSubprocess } from "@/lib/case-governance/run-subprocess";
 
 const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
 const ROOT = resolve(__dirname, "../../../../..");
 const CLI = join(ROOT, "scripts", "rcl-case-library.ts");
 const TSX_CLI = join(ROOT, "node_modules", "tsx", "dist", "cli.mjs");
-const DOCKER_PG = process.env.RCL_DRILL_PG_CONTAINER ?? "jrp-drill-pg";
+let drillPg: DrillPgEnv;
 
-function runCli(args: string[], extraEnv: Record<string, string> = {}) {
-  const r = spawnSync(process.execPath, [TSX_CLI, CLI, ...args], {
+/** 异步运行受控CLI（WI-20260914-01：不以spawnSync阻塞vitest worker事件循环，避免birpc 60秒RPC超时）。 */
+async function runCli(args: string[], extraEnv: Record<string, string> = {}) {
+  const r = await runSubprocess(process.execPath, [TSX_CLI, CLI, ...args], {
     env: { ...process.env, DATABASE_URL: DRILL_URL!, ...extraEnv },
-    encoding: "utf-8",
-    timeout: 300_000,
+    timeoutMs: 300_000,
   });
-  return { code: r.status ?? -1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return { code: r.code, stdout: r.stdout, stderr: r.stderr };
 }
 
 function parseJson<T>(stdout: string, marker: string): T {
@@ -128,6 +137,12 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     if (!DRILL_URL) {
       throw new Error("SOCILA_TEST_DATABASE_URL 未设置：CLI演练需要已迁移+已seed的全新PG17库（CI database-gates 自动提供）");
     }
+    // CIG-FR-005：容器ID与psql/pg_restore连接参数前置解析，缺失即明确失败。
+    drillPg = resolveDrillPgEnv({
+      container: process.env.RCL_DRILL_PG_CONTAINER,
+      databaseUrl: DRILL_URL,
+      databaseUrlVar: "SOCILA_TEST_DATABASE_URL",
+    });
     process.env.DATABASE_URL = DRILL_URL;
     storageDir = mkdtempSync(join(tmpdir(), "rcl-cli-"));
 
@@ -142,12 +157,11 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     await db.delete(tests).where(sql`name like 'RPCT-%' OR name = 'old-test-1'`);
     // 恢复seed baseline（幂等）：上一轮演练可能已完成替换（cases/showcase为RPC新行），
     // 重跑seed把851/117/528基线还原，保证audit/plan的旧目标集合确定。
-    const seed = spawnSync(process.execPath, [TSX_CLI, join(ROOT, "src", "lib", "db", "seed", "index.ts")], {
+    const seed = await runSubprocess(process.execPath, [TSX_CLI, join(ROOT, "src", "lib", "db", "seed", "index.ts")], {
       env: { ...process.env, DATABASE_URL: DRILL_URL! },
-      encoding: "utf-8",
-      timeout: 300_000,
+      timeoutMs: 300_000,
     });
-    expect(seed.status, seed.stderr?.slice(0, 500)).toBe(0);
+    expect(seed.code, seed.stderr.slice(0, 500)).toBe(0);
     // 激活上海2026 + 广东2026/2030（与生成器asOfDate匹配）。
     await activateRegion("310000", "2026-09-01");
     await activateRegion("440000", "2026-09-01", "2029-12-31");
@@ -166,16 +180,16 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     await db.delete(caseArchiveBatches);
   });
 
-  cliIt("audit：真实输出计数与目标指纹（非打印说明）", () => {
-    const r = runCli(["audit"]);
+  cliIt("audit：真实输出计数与目标指纹（非打印说明）", async () => {
+    const r = await runCli(["audit"]);
     expect(r.code).toBe(0);
     const out = parseJson<{ counts: { cases: number; showcase: number; tests: number }; targetFingerprint: string }>(r.stdout, "audit");
     expect(out.counts.cases).toBeGreaterThan(0);
     expect(out.targetFingerprint.length).toBeGreaterThan(16);
   });
 
-  cliIt("generate：真实生成36条场景并回填快照规划器期望", () => {
-    const r = runCli(["generate", "--storage", storageDir]);
+  cliIt("generate：真实生成36条场景并回填快照规划器期望", async () => {
+    const r = await runCli(["generate", "--storage", storageDir]);
     expect(r.code).toBe(0);
     const out = parseJson<{ scenarioCount: number; shanghai: number; guangdong: number; coverageManifestHash: string }>(r.stdout, "generate");
     expect(out.scenarioCount).toBe(36);
@@ -191,8 +205,8 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     }
   });
 
-  cliIt("plan-replacement：构建完整manifest并输出manifestHash（旧目标+完整场景字段）", () => {
-    const r = runCli(["plan-replacement", "--storage", storageDir]);
+  cliIt("plan-replacement：构建完整manifest并输出manifestHash（旧目标+完整场景字段）", async () => {
+    const r = await runCli(["plan-replacement", "--storage", storageDir]);
     expect(r.code).toBe(0);
     const out = parseJson<{ manifestHash: string; caseCount: number; showcaseCount: number; oldTargets: { cases: number; tests: number } }>(r.stdout, "plan");
     expect(out.manifestHash).toMatch(/^[0-9a-f]{64}$/);
@@ -214,8 +228,8 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     expect(manifest.exampleTests.length).toBe(44);
   });
 
-  cliIt("prepare-archive：真实dump+selection+manifest+pending restore，sha256sums.txt最后生成且不自包含", () => {
-    const r = runCli(["prepare-archive", "--storage", storageDir, "--pgdump-docker", DOCKER_PG]);
+  cliIt("prepare-archive：真实dump+selection+manifest+pending restore，sha256sums.txt最后生成且不自包含", async () => {
+    const r = await runCli(["prepare-archive", "--storage", storageDir, "--pgdump-docker", drillPg.container]);
     expect(r.code).toBe(0);
     const out = parseJson<{ batchId: string; files: string[]; sha256sums: string }>(r.stdout, "prepare");
     expect(out.files).toContain("sha256sums.txt");
@@ -237,27 +251,28 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     expect(selection.curatedUids).toHaveLength(36);
     // 批次处于 prepared。
     const batches = db.select({ status: caseArchiveBatches.status }).from(caseArchiveBatches).where(eq(caseArchiveBatches.id, out.batchId));
-    return batches.then((rows) => expect(rows[0].status).toBe("prepared"));
+    const rows = await batches;
+    expect(rows[0].status).toBe("prepared");
   });
 
   cliIt("真实恢复演练：dump在第二实例恢复并对账（RCL-FR-004/AC-004），写verified restore-report", async () => {
-    // 第二实例（同容器新库）恢复完整dump。
+    // 第二实例（同容器新库）恢复完整dump：psql/pg_restore以URL用户连接（不假设postgres角色）。
     const restoreDbName = `rcl_cli_restore_${Date.now().toString(36)}`;
-    const dropRestore = spawnSync("docker", ["exec", DOCKER_PG, "psql", "-U", "postgres", "-c", `DROP DATABASE IF EXISTS "${restoreDbName}" WITH (FORCE)`], { encoding: "utf-8" });
-    if (dropRestore.status !== 0) {
-      console.log("DROP ERR:", (dropRestore.error as Error | undefined)?.message, "stderr:", dropRestore.stderr?.toString().slice(0, 300));
+    const dropRestore = await runSubprocess("docker", dockerPsqlArgs(drillPg, `DROP DATABASE IF EXISTS "${restoreDbName}" WITH (FORCE)`));
+    if (dropRestore.code !== 0) {
+      console.log("DROP ERR:", dropRestore.stderr.slice(0, 300));
     }
-    expect(dropRestore.status).toBe(0);
-    const createRestore = spawnSync("docker", ["exec", DOCKER_PG, "psql", "-U", "postgres", "-c", `CREATE DATABASE "${restoreDbName}"`], { encoding: "utf-8" });
-    if (createRestore.status !== 0) {
-      console.log("CREATE ERR:", (createRestore.error as Error | undefined)?.message, "signal:", createRestore.signal, "stderr:", createRestore.stderr?.toString().slice(0, 300));
+    expect(dropRestore.code).toBe(0);
+    const createRestore = await runSubprocess("docker", dockerPsqlArgs(drillPg, `CREATE DATABASE "${restoreDbName}"`));
+    if (createRestore.code !== 0) {
+      console.log("CREATE ERR:", createRestore.stderr.slice(0, 300));
     }
-    expect(createRestore.status).toBe(0);
+    expect(createRestore.code).toBe(0);
 
     const dumpFile = join(storageDir, "policyops-fc.dump");
     // 恢复：dump字节经stdin传给docker exec pg_restore（Windows无cat，直接读文件Buffer）。
-    const restore = spawnSync("docker", ["exec", "-i", DOCKER_PG, "pg_restore", "-U", "postgres", "-d", restoreDbName, "--clean", "--if-exists"], { input: readFileSync(dumpFile), maxBuffer: 512 * 1024 * 1024, encoding: "buffer" });
-    expect(restore.status, restore.stderr?.toString().slice(0, 500)).toBe(0);
+    const restore = await runSubprocess("docker", dockerPgRestoreArgs(drillPg, restoreDbName), { input: readFileSync(dumpFile) });
+    expect(restore.code, restore.stderr.slice(0, 500)).toBe(0);
 
     // 对账：源库 vs 恢复库（表集合/行数/规范化哈希）。
     const { drizzle } = await import("drizzle-orm/node-postgres");
@@ -304,7 +319,7 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     writeFileSync(join(storageDir, "sha256sums.txt"), entries.join(String.fromCharCode(10)) + String.fromCharCode(10));
   });
 
-  cliIt("verify-archive：SHA+必备文件+restore verified → 批次restore_verified", () => {
+  cliIt("verify-archive：SHA+必备文件+restore verified → 批次restore_verified", async () => {
     // 从prepare输出的batchId（重新读取批次——按storagePath匹配）。
     const batches = db
       .select({ id: caseArchiveBatches.id, storagePath: caseArchiveBatches.storagePath, status: caseArchiveBatches.status })
@@ -312,7 +327,7 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     return batches.then(async (rows) => {
       const batch = rows.find((r) => r.storagePath === storageDir);
       expect(batch).toBeTruthy();
-      const r = runCli(["verify-archive", "--storage", storageDir, "--batch-id", batch!.id]);
+      const r = await runCli(["verify-archive", "--storage", storageDir, "--batch-id", batch!.id]);
       if (r.code !== 0) {
         console.log("VERIFY-ARCHIVE STDERR:", r.stderr.slice(0, 500));
         console.log("VERIFY-ARCHIVE STDOUT FULL:", r.stdout);
@@ -331,7 +346,7 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     const batch = batches.find((r) => r.storagePath === storageDir);
     console.log("APPLY-TEST batch:", batch?.id, "status:", batch?.status, "storagePath:", batch?.storagePath, "expect:", storageDir);
     expect(batch).toBeTruthy();
-    const r = runCli(["apply", "--storage", storageDir, "--batch-id", batch!.id, "--i-am-authorized"]);
+    const r = await runCli(["apply", "--storage", storageDir, "--batch-id", batch!.id, "--i-am-authorized"]);
     if (r.code !== 0) {
       console.log("APPLY STDERR FULL:", r.stderr);
       console.log("APPLY STDOUT FULL:", r.stdout.slice(0, 1200));
@@ -379,7 +394,7 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
   });
 
   cliIt("verify：N/36/N+44与配额（沪粤18/18、男女9/9、年龄段6/6/6、就业态6/6/6）与字段完整性", async () => {
-    const r = runCli(["verify", "--storage", storageDir]);
+    const r = await runCli(["verify", "--storage", storageDir]);
     if (r.code !== 0) {
       console.log("VERIFY STDOUT FULL:", r.stdout.slice(0, 1500));
       console.log("VERIFY STDERR FULL:", r.stderr.slice(0, 300));
@@ -410,7 +425,7 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
   cliIt("apply缺授权参数 → 退出码1且零写入（RCL-FR-021）", async () => {
     const batches = await db.select({ id: caseArchiveBatches.id, storagePath: caseArchiveBatches.storagePath }).from(caseArchiveBatches);
     const batch = batches.find((r) => r.storagePath === storageDir);
-    const r = runCli(["apply", "--storage", storageDir, "--batch-id", batch!.id]);
+    const r = await runCli(["apply", "--storage", storageDir, "--batch-id", batch!.id]);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain("--i-am-authorized");
   });
@@ -418,7 +433,7 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
   cliIt("落库新行hash漂移 → verify退出码2（不得只核对总数和字段非空，Fix 8）", async () => {
     // 篡改一条已落库新case的业务字段。
     await db.update(cases).set({ governanceReason: "TAMPERED-AFTER-APPLY" }).where(eq(cases.caseUid, "RPC-310000-SH-male-before_1970-employed-RETIREMENT-V1"));
-    const r = runCli(["verify", "--storage", storageDir]);
+    const r = await runCli(["verify", "--storage", storageDir]);
     expect(r.code).toBe(2);
     const out = parseJson<{ ok: boolean; mismatches: string[] }>(r.stdout, "verify-drift");
     expect(out.ok).toBe(false);
@@ -427,13 +442,13 @@ describe("RCL受控CLI七模式真实演练（RCL-FR-021/AC-004/005/008/011/013�
     await db.update(cases).set({ governanceReason: "RCL确定性模板生成（无真实用户数据）" }).where(eq(cases.caseUid, "RPC-310000-SH-male-before_1970-employed-RETIREMENT-V1"));
   });
 
-  cliIt("归档文件被篡改：verify-archive退出码2并报告SHA不符（RCL-AC-001）", () => {
+  cliIt("归档文件被篡改：verify-archive退出码2并报告SHA不符（RCL-AC-001）", async () => {
     const tamperedDir = mkdtempSync(join(tmpdir(), "rcl-cli-tamper-"));
     try {
       // 复制归档目录并篡改manifest.json。
       cpSync(storageDir, tamperedDir, { recursive: true });
       writeFileSync(join(tamperedDir, "manifest.json"), "TAMPERED");
-      const r = runCli(["verify-archive", "--storage", tamperedDir, "--batch-id", "bogus"]);
+      const r = await runCli(["verify-archive", "--storage", tamperedDir, "--batch-id", "bogus"]);
       expect(r.code).toBe(2);
       const out = parseJson<{ ok: boolean; mismatches: string[] }>(r.stdout, "tamper");
       expect(out.ok).toBe(false);

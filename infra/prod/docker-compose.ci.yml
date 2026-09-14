@@ -1,0 +1,72 @@
+# PolicyOps CI 专用 Compose override（WI-20260914-01 CIG-FR-010/011；PMG-FR-024/NFR-001）
+#
+# 只在 GitHub Actions container-gates 中与生产文件叠加使用：
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml --env-file .ci.env ...
+# 不修改 infra/prod/docker-compose.yml 的生产运行语义。本文件表达的 CI 差异：
+#   1. 移除全部固定 container_name（避免与开发机/并发任务的 socila-* 容器冲突；
+#      容器名由 COMPOSE_PROJECT_NAME 派生，CI 以 run_id 保证唯一）；
+#   2. 数据卷改为项目级临时卷 ci-*（不引用 socila_pg-data / socila_minio-data /
+#      socila_caddy-data；生产三卷在此声明为 external 并不被任何服务挂载，
+#      因而 compose down -v 永不删除它们）；
+#   3. 不绑定 80/443/5432/6380/9000/9001 宿主固定端口；postgres 仅发布随机宿主端口
+#      供 SJWT 冒烟前的 core migration 使用（docker compose port postgres 5432 取值）；
+#   4. minio 镜像改用 MinIO 官方 Quay 仓库并按 digest 固定——CI #23 真实首错为
+#      Docker Hub `minio/minio` 仓库已不存在（hub API: object not found），
+#      `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` 的 manifest list digest
+#      sha256:14cea493… 与生产在用镜像 RepoDigest 完全一致（字节相同的同一 release）。
+#   保留：服务间内部 DNS（web/agent/postgres/redis/minio）、全部 healthcheck、
+#   服务 JWT 必填插值与 AC-017 双向冒烟。
+services:
+  proxy:
+    container_name: !reset null
+    ports: !reset []
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ci-caddy-data:/data
+
+  web:
+    container_name: !reset null
+
+  agent:
+    container_name: !reset null
+
+  worker:
+    container_name: !reset null
+
+  beat:
+    container_name: !reset null
+
+  migrate:
+    container_name: !reset null
+
+  postgres:
+    container_name: !reset null
+    # 仅发布随机宿主端口（不占用 5432）：core migration 在宿主执行需经 TCP 访问。
+    ports: !override
+      - "5432"
+    volumes:
+      - ci-pg-data:/var/lib/postgresql/data
+
+  redis:
+    container_name: !reset null
+    ports: !reset []
+
+  minio:
+    container_name: !reset null
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    ports: !reset []
+    volumes:
+      - ci-minio-data:/data
+
+volumes:
+  # 生产三卷：声明为 external 且不被任何 CI 服务挂载 → compose 不创建、down -v 不删除。
+  caddy-data:
+    external: true
+  pg-data:
+    external: true
+  minio-data:
+    external: true
+  # CI 任务专属临时卷（名称由项目名派生：<COMPOSE_PROJECT_NAME>_ci-*）。
+  ci-caddy-data: {}
+  ci-pg-data: {}
+  ci-minio-data: {}

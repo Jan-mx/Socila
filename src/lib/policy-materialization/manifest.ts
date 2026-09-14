@@ -100,7 +100,7 @@ interface PackFileJson {
   tables: Array<Record<string, unknown>>;
 }
 
-const REGION_DIRS: Array<{ dir: string; jurisdiction: RegionJurisdiction }> = [
+export const REGION_DIRS: ReadonlyArray<{ dir: string; jurisdiction: RegionJurisdiction }> = [
   { dir: "dsl/regions/cn_dsl_v1", jurisdiction: "CN" },
   { dir: "dsl/regions/guangdong_dsl_v1", jurisdiction: "440000" },
   { dir: "dsl/regions/sichuan_dsl_v1", jurisdiction: "510000" },

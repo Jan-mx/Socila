@@ -2,13 +2,14 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-13
+> Updated: 2026-09-14
 
 ## 当前结论
 
 > SHV2进展（2026-09-13）：功能分支`codex/shanghai-case-v2@a85420f`重新进入Updating/Reopened。生产MinIO bucket=0、RAG七张表=0；同步器仅登记downloaded版本，尚无DocumentTree/chunks/embeddings，Web对话未接入RAG。ensure期间冲突对象仍可能在事务外verify前留下RAG登记。`WI-20260913-01`已定义最小运行闭环；本轮只更新文档，不写MinIO/数据库、不合并目标分支。
 
 - 七阶段重构Goal：**Accepted**，七份阶段验收报告全部PASS。
+- 2026-09-14 v1.0.1发布CI门禁闭环（`WI-20260914-01`，分支`codex/ci-v1.0.1-closure`）：CI #23四项失败（gates/database-gates/e2e-gates/container-gates）已逐项以真实日志定位根因并修复，本地fresh clone+全新PG17/pgvector/隔离MinIO/唯一项目名Compose全部门禁新鲜复现；状态**Ready for independent review**（GitHub全绿运行URL见文末章节）。`main`、`refactor/*`、`v1.0.1`与生产环境未修改。
 - 当前开发分支：`refactor/policy-ops-agent-platform`；任务3/4最终集成分支已完成显式merge commit集成。
 - 09-11上海政策与案例V2 Feature：历史修复链保留；当前因运行时MinIO/RAG与对话来源链未闭环而Reopened。开发入口为`WI-20260913-01-shanghai-rag-runtime-closure.md`；用户人工测试前不得合并，生产fresh授权前不得写当前MinIO或policyops。
 - 当前运行事实源：单机Docker Compose中的PostgreSQL、MinIO和Agent存储；Neon不再承接运行时读写。
@@ -693,3 +694,24 @@
 - squash来源为本记录提交后的refactor最终HEAD；main发布提交必须只有`v1.0.0`基线`1c0f6e7`一个父提交，且最终文件树与refactor完全一致。
 - 运行时MinIO/RAG、DeepSeek多步调用、结构化警告渲染与用户人工UAT均已Accepted；政策release、持久0019和V1→V2案例改写继续Deferred。
 - 发布前后不修改生产容器或数据，不创建PR，不移动`v1.0.0`，不强制推送。
+
+## 2026-09-14 v1.0.1发布CI门禁闭环（WI-20260914-01；起点`main@6411ea6`，分支`codex/ci-v1.0.1-closure`）
+
+CI #23（<https://github.com/Jan-mx/Socila/actions/runs/34833854266>，六项门禁工作流首次在GitHub-hosted runner运行）经Actions API读取job日志定位**首个实际错误**：
+
+| Job | 真实根因（日志原文） | 修复（TDD：先RED后GREEN） |
+| --- | --- | --- |
+| gates | `route.ts(23,15): TS2304: Cannot find name 'RouteContext'`——`next build`生成的全局类型，干净checkout无`.next`不可见；ESLint 7条warning未设阈值 | 显式`params: Promise<{ documentVersionId: string }>`+源码契约测试；8条warning清零；CI改`npx eslint src e2e --max-warnings 0` |
+| database-gates | `git show d7fd63a…`（squash后main不可达）；`No such container: jrp-drill-pg`+`-U postgres`；另发现`[vitest-worker]: Timeout calling "onTaskUpdate"`未处理错误（Linux CI与本地均复现，全绿仍exit 1）与Python集成32个MinIO环境skip | `d7fd63a`基线固化为版本化夹具（schema/版本/sourceCommit/SHA-256/26-46-4-4计数失败关闭）；`resolveDrillPgEnv`（容器ID只来自`RCL_DRILL_PG_CONTAINER=${{ job.services.postgres.id }}`，用户/库/端口来自URL）；`run-subprocess.ts`异步子进程消除RPC超时根因；全新库`CREATE EXTENSION vector`；两个隔离MinIO使Python集成零skip |
+| e2e-gates | 3失败/7未运行：公开案例0条、规划422（缺`e2e-rcl-setup`沪粤快照+36/36/80替换） | 初始化顺序对齐验收文档（migration→Jan引导→seed→vector→`e2e-rcl-setup`→build→E2E）；失败上传playwright-report/test-results/trace/Web与mock日志 |
+| container-gates | `pull access denied for minio/minio, repository does not exist`——Docker Hub API核实**仓库已不存在**（非限流）；工作流`down -v`前无日志 | `infra/prod/docker-compose.ci.yml`（无固定container_name、`ci-*`临时卷且生产卷`external`不挂载、无固定宿主端口、`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493…`与生产在用镜像RepoDigest一致）；唯一`COMPOSE_PROJECT_NAME`；`if: failure()`诊断（ps/logs/inspect状态/docker info/df/端口/网络/卷）上传artifact后才`down -v`并核验零残留；补`npm ci`供冒烟前migration |
+
+本地新鲜门禁（fresh clone无`d7fd63a`对象无`.next`；任务专属`ci-closure-pg`容器`POSTGRES_USER=ci_db_user`）：tsc 0；`eslint src e2e --max-warnings 0` 0；`npm test` 94文件/950零失败零skip；database-gates顺序全部退出0、`npm run test:db` 29文件/160通过exit 0零Unhandled、`agent.migrate --with-roles`×2幂等、`pytest -m integration` 131/0 skip（隔离MinIO）；agent ruff 0/mypy 54文件0/非集成137；build 0；全新库Chromium 29/29；CI Compose完整流程（config、契约核验、8 running/6 healthy、随机端口migration、SJWT-AC-017、诊断采集、`down -v`、残留0/0/0、`socila-*`未动）；citation 9/9、案例库`--check` ok（重建后manifestHash `d4a2b01c…`）、Markdown链接8/8；scan-secrets 966零命中、Gitleaks完整历史零发现、哨兵3/3；actionlint 1.7.7零发现；`git diff --check`通过。环境阻塞（如实记录，不计PASS）：pip-audit（本机代理到PyPI重置，依赖集零diff，CI #23 agent-gates已通过）与Trivy（本机无法拉取0.74.0与漏洞库，Dockerfile零diff），均以GitHub运行为准。
+
+GitHub运行#24（<https://github.com/Jan-mx/Socila/actions/runs/34854340650>，提交`aaee1ed`）暴露两项此前从未在Linux/GitHub执行过的问题并已修复：①`case-library-doc.test.ts`——`dsl-evidence-index.ts`以无locale的`localeCompare`排序中文来源，Windows与Linux顺序不同；改为UTF-16 code-unit元组序并以内存生成器重建已提交案例库（36场景中29个来源顺序规范化、内容零变化，manifestHash `c974157d…`→`d4a2b01c…`），新增`dsl-evidence-index.test.ts`（Windows旧实现RED→GREEN）；②Trivy安装`unable to find '0.74.0'`——trivy-action `version`须带`v`前缀，改为`v0.74.0`（契约测试RED→GREEN）。该运行中database-gates（含RCL演练与131/0 skip Python集成）、e2e-gates（29/29）、agent-gates、security-gates均已成功。
+
+GitHub运行#25（<https://github.com/Jan-mx/Socila/actions/runs/34857595911>，提交`689469f`）：gates、agent-gates、security-gates、database-gates（RCL演练经service容器+Python集成131/0 skip）、e2e-gates（29/29）成功；container-gates在Compose全部启动后失败于健康检查——web首轮就绪后agent `/internal/health`单次无等待探测早于uvicorn就绪（诊断artifact证明8容器running、exitCode 0、无重启），健康检查改为web/agent双就绪条件轮询（契约测试RED→GREEN）。
+
+**GitHub Actions全绿运行#26：<https://github.com/Jan-mx/Socila/actions/runs/34859661518>（提交`087cf8f`）——gates、agent-gates、database-gates、e2e-gates、container-gates、security-gates六项全部success。**最终提交与`087cf8f`仅相差本URL记录；最终SHA的确认运行为该分支Actions页的下一运行（#27）。
+
+边界：`main`、`refactor/*`、`v1.0.0`、`v1.0.1`未修改；未创建PR/tag/Release；生产容器、生产PostgreSQL/MinIO/RAG与`socila_*`卷未连接未修改；`infra/prod/docker-compose.yml`未修改（Docker Hub minio仓库消失对全新部署的风险见`OPERATIONS.md`，切换生产镜像来源需另行授权）。状态：**Ready for independent review**（等待独立审查）。

@@ -101,7 +101,7 @@ test.describe.serial("09-02 双角色鉴权关键流程", () => {
 
     // PMG-FR-002（PMG-AC-001）：真实助手流式回复必须可见。
     // 协议修正前（/v1/responses 对 mock 404）此处无助手回复，断言 Red。
-    const assistantReply = page.getByText("你好，我是本地 mock 回复。");
+    const assistantReply = page.getByText(MOCK_ASSISTANT_REPLY);
     await expect(assistantReply).toBeVisible({ timeout: 30_000 });
 
     // 刷新后会话仍在，且助手回复来自服务端持久化（非本地状态）
@@ -109,7 +109,7 @@ test.describe.serial("09-02 双角色鉴权关键流程", () => {
     await expect(
       page.locator("#conversation-sidebar").getByText(message.slice(0, 30)),
     ).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("你好，我是本地 mock 回复。")).toBeVisible({
+    await expect(page.getByText(MOCK_ASSISTANT_REPLY)).toBeVisible({
       timeout: 30_000,
     });
   });

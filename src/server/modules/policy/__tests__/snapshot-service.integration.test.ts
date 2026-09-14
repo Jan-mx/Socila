@@ -5,7 +5,7 @@
  * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { sql, isNotNull, eq } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { params, policyPackVersions } from "@/lib/db/schema";
 import { rulesWrites } from "@/server/modules/rules/application";

@@ -94,7 +94,7 @@ function RuleDetailContent({
       })
       .catch(() => setRule(null))
       .finally(() => setLoading(false));
-  }, [ruleId]);
+  }, [ruleId, identityQuery]);
 
   const showMsg = (type: "ok" | "err", text: string) => {
     setMsg({ type, text });
