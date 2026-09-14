@@ -447,3 +447,13 @@ rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-
 第一次UAT修复仅对显式强制`tool_choice`关闭thinking，未覆盖工具结果后的`tool_choice=auto`步骤。生产日志证明RAG检索已返回200，但第二次DeepSeek请求因未回传`reasoning_content`返回400，最终回答未生成，失败会话为空。本轮将DeepSeek `/chat/completions`的非空tools请求全部设为`thinking.disabled`，覆盖完整工具循环，同时保留强制searchPolicy和来源失败关闭。
 
 验收证据：旧实现新增测试2失败→修复后DeepSeek兼容11/11、AI聚焦35/35、完整Node 897、Chromium全新验收库28/28（新增最终回答持久化断言）、tsc/eslint/build通过。生产仅更新`socila-web`至`web:deepseek-d936526`（镜像`b520e9ae79c3…`，healthy）；Agent及23版本/23树/185 chunks/185 embeddings未修改。生产容器内真实Provider两步探测为200/200，工具名`searchPolicy`，最终文本包含2340/1872/1690；自动浏览器因管理员当前密码与历史验收口令不同而未执行完整页面政策提问，系统未重置账号；最终Accepted仍待用户用有效账号确认回答和双来源链接。
+
+### 10.10 结构化警告渲染崩溃修复（2026-09-14第三轮UAT）
+
+生产第二轮对话渲染computePlan工具结果时崩溃：`Uncaught TypeError: e.trim is not a function`→"This page couldn't load"。生产`policyops`只读核对warning类型统计：顶层`output.warnings`=string×3+对象×1（`{warning_id,text}`），`calc.warnings`=对象×4。压缩堆栈定位`src/components/chat/ToolResultCard.tsx`旧`collectWarnings`：`(result.warnings ?? []).filter((w) => w.trim().length > 0)`对对象调用`trim()`。
+
+修复：新增`collectWarningTexts(result: unknown): string[]`（外部边界unknown[]归一化——仅接受trim非空string或含非空string text的非数组对象；合并顶层+calc、去重、上限4、不改入参、无`String()`强转），`ComputePlanCard`接入；`collectCaveats`/`MilestonesCard`已有typeof保护未改；`buildNextActions`唯一同类缺陷`subsidy_name.includes`补typeof守卫。
+
+TDD与门禁：单元RED 7/7→GREEN 7/7（`tool-result-card.test.ts`）；Chromium E2E新增验收库fixture混合warning恢复测试（零pageerror、警告归一化显示、去重、非法值隐藏、第三轮可继续），全新PG17验收库29/29；npm test 88文件/904、tsc 0、eslint 0 error、build退出0、scan-secrets 953文件零命中、git diff --check通过。生产仅更新`socila-web`（镜像ID与部署后验证见后续docs记录）；RAG 23 versions/23 trees/185 chunks/185 embeddings与agent/worker/beat/postgres/minio/redis不变；不删除现有失败会话。
+
+状态：**等待用户人工测试**（①刷新原崩溃会话不崩溃；②警告文本正常显示；③第三轮对话与持久化正常）。通过前不标记最终Accepted。

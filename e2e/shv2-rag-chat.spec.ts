@@ -7,12 +7,16 @@
  *   工具经服务JWT调用Agent检索 → 最终回复同时展示官网原文链接与
  *   /api/rag/originals/<documentVersionId>归档原件链接；
  * - 登录态下载返回attachment/nosniff/private no-store与正确字节；
- * - 无可靠命中（生育津贴场景）时如实说明，不编造链接。
+ * - 无可靠命中（生育津贴场景）时如实说明，不编造链接；
+ * - 恢复含混合warning工具消息的会话不崩溃且可继续对话（UAT 2026-09-14）。
  *
  * 注册只发生一次（套件共享 /api/auth/register 的IP限流，上限5次/小时）：
- * 第二个场景复用同一用户直接登录。
+ * 后续场景复用同一用户直接登录。
  */
+import { randomUUID } from "node:crypto";
+
 import { expect, test, type Page } from "@playwright/test";
+import { Pool } from "pg";
 
 import { loginViaApi, registerLoginAndEnterChat } from "./api-auth";
 
@@ -158,3 +162,116 @@ test.describe.serial("SHV2 对话RAG来源链（AC-027）", () => {
     await expect(page.getByText(/22222222-2222/)).toHaveCount(0);
   });
 });
+
+/**
+ * UAT第二轮崩溃回归（2026-09-14）：生产实证顶层output.warnings同时含
+ * string×3与对象×1、calc.warnings为对象×4，旧实现对对象直接调用trim()
+ * 导致历史恢复渲染时抛出"e.trim is not a function"页面崩溃。
+ * 复用E2E_USER_RAG（注册限流5次/小时为套件级共享资源，不新增注册），
+ * 经验收库fixture写入会话，验证恢复渲染与第三轮继续对话。
+ */
+test.describe.serial("混合warning工具消息恢复与继续对话（UAT回归）", () => {
+  test("恢复含混合warning的会话不崩溃、警告归一化显示且可继续第三轮", async ({
+    page,
+  }) => {
+    await loginViaApi(page, E2E_USER_RAG, E2E_PASSPHRASE);
+    const conversationId = await seedMixedWarningConversation(E2E_USER_RAG);
+
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(String(error)));
+
+    await page.goto(`/chat?conversationId=${conversationId}`);
+    await expect(page).toHaveURL(
+      new RegExp(`conversationId=${conversationId}`),
+    );
+
+    // 历史恢复渲染：字符串警告与结构化warning.text均显示（trim+去重）。
+    await expect(page.getByText("风险与提醒", { exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByText("第一条警告", { exact: true })).toHaveCount(1);
+    await expect(page.getByText("第二条警告", { exact: true })).toBeVisible();
+    await expect(page.getByText("第三条警告", { exact: true })).toBeVisible();
+
+    // 非法warning值（null/42/缺text对象/空白text）不得显示。
+    await expect(page.getByText("[object Object]")).toHaveCount(0);
+    await expect(page.getByText("42", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("missing-text")).toHaveCount(0);
+
+    // 页面不崩溃：无pageerror（旧实现为 e.trim is not a function）且无错误页。
+    expect(pageErrors).toEqual([]);
+    await expect(page.getByText(/This page couldn.t load/i)).toHaveCount(0);
+
+    // 第二轮工具消息之后仍可继续第三轮对话并得到回复。
+    await page.locator("#chat-input").fill("好的，谢谢，请继续说明下一步。");
+    await page.getByRole("button", { name: "发送" }).click();
+    await expect(page.getByText("你好，我是本地 mock 回复。")).toBeVisible({
+      timeout: 60_000,
+    });
+    expect(pageErrors).toEqual([]);
+  });
+});
+
+/** 在验收库写入混合warning会话fixture：user消息+assistant工具输出（顶层与calc均含对象）。 */
+async function seedMixedWarningConversation(username: string): Promise<string> {
+  const connectionString = process.env.SOCILA_E2E_DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("SOCILA_E2E_DATABASE_URL 未设置，无法写入会话fixture");
+  }
+  const pool = new Pool({ connectionString });
+  try {
+    const user = await pool.query<{ id: string }>(
+      "SELECT id FROM users WHERE normalized_username = $1",
+      [username],
+    );
+    if (user.rows.length === 0) {
+      throw new Error(`fixture用户不存在：${username}`);
+    }
+    const conversationId = randomUUID();
+    const messages = [
+      {
+        id: "fixture-user-1",
+        role: "user",
+        parts: [{ type: "text", text: "请帮我做一份社保规划" }],
+      },
+      {
+        id: "fixture-assistant-1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-computePlan",
+            toolCallId: "fixture-call-1",
+            toolName: "computePlan",
+            state: "output-available",
+            input: {},
+            output: {
+              success: true,
+              warnings: [
+                "  第一条警告  ",
+                { warning_id: "w2", text: "第二条警告" },
+                { text: "第一条警告" },
+                null,
+                42,
+                { warning_id: "missing-text" },
+              ],
+              calc: {
+                warnings: [
+                  { warning_id: "w3", text: "第三条警告" },
+                  { text: "   " },
+                ],
+              },
+            },
+          },
+          { type: "text", text: "已为你生成社保规划方案，请查看风险与提醒。" },
+        ],
+      },
+    ];
+    await pool.query(
+      "INSERT INTO conversations (id, owner_user_id, messages, user_profile) VALUES ($1, $2, $3, '{}'::jsonb)",
+      [conversationId, user.rows[0].id, JSON.stringify(messages)],
+    );
+    return conversationId;
+  } finally {
+    await pool.end();
+  }
+}

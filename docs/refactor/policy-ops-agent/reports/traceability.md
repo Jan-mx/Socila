@@ -344,3 +344,14 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | SHV2-AC-027多步工具最终回答 | `deepseek-compat.ts`：DeepSeek Chat Completions携带非空tools时整个循环注入`thinking.disabled`；`deepseek-compat.test.ts`两步RED→GREEN，11/11 | 已修复 |
 | 最终回答持久化 | `e2e/shv2-rag-chat.spec.ts`经对话读取API断言非空assistant text part；全新验收库Chromium 28/28 | 自动化通过 |
 | 生产部署 | `d936526`、`web:deepseek-d936526`（`b520e9ae79c3…`），仅重建socila-web；真实Provider两步探测200/200且最终包含2340/1872/1690；RAG 23/23/185/185与其他容器不变 | 已部署，待页面人工测试 |
+
+## 结构化警告渲染崩溃修复（2026-09-14第三轮UAT）
+
+| 需求/阻断 | 实现与证据 | 状态 |
+| --- | --- | --- |
+| 第二轮对话渲染崩溃（e.trim not a function） | `ToolResultCard.tsx`：生产warning类型统计（顶层string×3+对象×1、calc对象×4）→压缩堆栈定位旧`collectWarnings`的`fromTool` filter→新增`collectWarningTexts(result: unknown): string[]`纯函数（unknown边界归一化/顶层+calc合并/去重/上限4/零修改入参） | 已修复 |
+| 同类未检查外部数据 | `buildNextActions`的`subsidy_name.includes`补typeof守卫；`collectCaveats`/`MilestonesCard`已有typeof保护不修改；无无关UI重构 | 已修复 |
+| 单元TDD | `src/components/chat/tool-result-card.test.ts` 7例：RED=旧实现7/7失败（collectWarningTexts缺失）；GREEN=7/7 | RED→GREEN✓ |
+| 浏览器回归 | `e2e/shv2-rag-chat.spec.ts`验收库fixture：会话归属测试用户、messages含user+assistant工具输出（warnings混合string与对象）；打开`/chat?conversationId=<id>`验证零pageerror、无崩溃页、字符串与结构化text均显示、非法值不显示、重复显示一次、第三轮可发送且得到回复 | 全新验收库29/29✓ |
+| 完整门禁 | tool-result-card 7/7；npm test 88文件/904零失败零skip；tsc 0；eslint 0 error（8条既有warning）；build退出0；Chromium全新PG17验收库（migration/bootstrap/seed/vector/e2e-rcl-setup 36/36/80）29/29；scan-secrets 953零命中；git diff --check通过 | 全部通过✓ |
+| 生产部署 | 仅重建socila-web；回退标签保留；RAG 23/23/185/185与其他容器/数据卷不变；镜像ID见docs部署记录 | 已部署，待人工测试 |

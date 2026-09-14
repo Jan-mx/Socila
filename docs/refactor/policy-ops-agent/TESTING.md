@@ -356,3 +356,10 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 单元RED→GREEN：`deepseek-compat.test.ts`新增auto工具步骤与两步循环；旧实现2失败，修复后11/11。契约为DeepSeek Chat Completions携带非空tools数组时所有步骤均`thinking.disabled`，不带tools/非DeepSeek/非JSON保持原样。
 - E2E新增断言：带来源回答渲染后，经`GET /api/chat/<conversationId>`读取持久会话，必须存在非空assistant text part。
 - 新鲜门禁：`npm test`87文件/897；TypeScript与Build退出0；ESLint 0 error（既有warning）；全新PG17验收库Chromium 28/28。首次复用旧E2E库产生4项状态污染失败，不作为产品结论；重新migration/bootstrap/seed/e2e-rcl-setup后全绿。
+
+## 结构化警告渲染崩溃修复（2026-09-14第三轮UAT，tool-result-card）
+
+- 生产RED：第二轮对话渲染computePlan工具结果时浏览器抛`Uncaught TypeError: e.trim is not a function`并显示"This page couldn't load"。生产只读核对：顶层`output.warnings`=string×3+对象×1（`{warning_id,text}`），`calc.warnings`=对象×4；压缩堆栈映射到`src/components/chat/ToolResultCard.tsx`旧`collectWarnings`的`fromTool = (result.warnings ?? []).filter((w) => w.trim().length > 0)`——warnings被错误声明为`string[]`并对对象直接调用`trim()`。
+- 单元RED→GREEN：新增`src/components/chat/tool-result-card.test.ts` 7例（混合string/结构化/非法值归一化、顶层在前calc在后的合并顺序、规范化文本去重、上限4条、非对象/非数组输入零抛错、传入对象不被修改）；旧实现7/7失败（`collectWarningTexts`缺失），实现后7/7。契约：`collectWarningTexts(result: unknown): string[]`——外部边界不可信，仅接受trim后非空的string或含非空string `text`的非数组对象，任何unknown值先经`typeof`检查才可调用`trim()`，不使用`String()`强转。
+- E2E新增（`e2e/shv2-rag-chat.spec.ts`，共29例）：验收库fixture写入属于测试用户的会话（user消息+assistant的`tool-computePlan` part，warnings混合string与对象）；打开`/chat?conversationId=<id>`验证历史恢复——页面零pageerror、无"This page couldn't load"、字符串与结构化警告均显示、重复只显示一次、非法值不显示，且发送第三轮消息仍可继续对话。测试复用该spec已注册用户（注册限流5次/小时为套件级共享资源，不新增注册）。
+- 新鲜门禁：`npx vitest run tool-result-card.test.ts` 7/7（先RED后GREEN）；`npm test` 88文件/904零失败零skip；tsc 0；eslint 0 error（8条既有warning）；build退出0；全新PG17验收库（migration/bootstrap-admin/seed/e2e-rcl-setup 36/36/80）Chromium E2E 29/29；scan-secrets --all 953文件零命中；git diff --check通过。
