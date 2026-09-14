@@ -685,3 +685,11 @@
 - 当前生产Web为结构化警告修复镜像且healthy；生产RAG保持23 versions/23 trees/185 chunks/185 embeddings。
 - `codex/shanghai-case-v2@30f507c`已经是`refactor/policy-ops-agent-platform`祖先，不再创建重复merge；用户授权删除`F:\Socila-shanghai-case-v2` worktree，保留本地与远端功能分支。
 - 09-11 Feature整体保持Active：政策release、持久0019、V1→V2案例改写继续Deferred；不合并main、不创建PR/tag/Release。
+
+## 2026-09-14 v1.0.1 squash发布授权
+
+- 用户明确要求只把`refactor/policy-ops-agent-platform`的最终文件树作为main相对`v1.0.0`基线的一个普通提交，不保留refactor内部提交历史或merge父节点；此前本地no-ff尝试未推送并已撤销。
+- 发布版本固定为Git annotated tag `v1.0.1`，覆盖历史文档中的`v2.0.0`设想；不修改`package.json`的`0.2.0`，不创建GitHub Release。
+- squash来源为本记录提交后的refactor最终HEAD；main发布提交必须只有`v1.0.0`基线`1c0f6e7`一个父提交，且最终文件树与refactor完全一致。
+- 运行时MinIO/RAG、DeepSeek多步调用、结构化警告渲染与用户人工UAT均已Accepted；政策release、持久0019和V1→V2案例改写继续Deferred。
+- 发布前后不修改生产容器或数据，不创建PR，不移动`v1.0.0`，不强制推送。
