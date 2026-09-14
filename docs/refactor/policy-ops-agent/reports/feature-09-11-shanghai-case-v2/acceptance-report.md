@@ -454,6 +454,6 @@ rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-
 
 修复：新增`collectWarningTexts(result: unknown): string[]`（外部边界unknown[]归一化——仅接受trim非空string或含非空string text的非数组对象；合并顶层+calc、去重、上限4、不改入参、无`String()`强转），`ComputePlanCard`接入；`collectCaveats`/`MilestonesCard`已有typeof保护未改；`buildNextActions`唯一同类缺陷`subsidy_name.includes`补typeof守卫。
 
-TDD与门禁：单元RED 7/7→GREEN 7/7（`tool-result-card.test.ts`）；Chromium E2E新增验收库fixture混合warning恢复测试（零pageerror、警告归一化显示、去重、非法值隐藏、第三轮可继续），全新PG17验收库29/29；npm test 88文件/904、tsc 0、eslint 0 error、build退出0、scan-secrets 953文件零命中、git diff --check通过。生产仅更新`socila-web`（镜像ID与部署后验证见后续docs记录）；RAG 23 versions/23 trees/185 chunks/185 embeddings与agent/worker/beat/postgres/minio/redis不变；不删除现有失败会话。
+TDD与门禁：单元RED 7/7→GREEN 7/7（`tool-result-card.test.ts`）；Chromium E2E新增验收库fixture混合warning恢复测试（零pageerror、警告归一化显示、去重、非法值隐藏、第三轮可继续），全新PG17验收库29/29；npm test 88文件/904、tsc 0、eslint 0 error、build退出0、scan-secrets 953文件零命中、git diff --check通过。生产仅更新`socila-web`：回退标签`web:rollback-pre-6b43421`（旧镜像`b520e9ae79c3…`）保留；从HEAD`6b43421`构建`web:warnfix-6b43421`=`web:latest`（镜像`933f3b9ab971…`）；部署后socila-web healthy（容器`2f7190cb6594`），其余容器ID不变，23 versions/23 trees/185 chunks/185 embeddings不变，新容器日志零error；不删除现有失败会话。
 
 状态：**等待用户人工测试**（①刷新原崩溃会话不崩溃；②警告文本正常显示；③第三轮对话与持久化正常）。通过前不标记最终Accepted。

@@ -354,4 +354,4 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | 单元TDD | `src/components/chat/tool-result-card.test.ts` 7例：RED=旧实现7/7失败（collectWarningTexts缺失）；GREEN=7/7 | RED→GREEN✓ |
 | 浏览器回归 | `e2e/shv2-rag-chat.spec.ts`验收库fixture：会话归属测试用户、messages含user+assistant工具输出（warnings混合string与对象）；打开`/chat?conversationId=<id>`验证零pageerror、无崩溃页、字符串与结构化text均显示、非法值不显示、重复显示一次、第三轮可发送且得到回复 | 全新验收库29/29✓ |
 | 完整门禁 | tool-result-card 7/7；npm test 88文件/904零失败零skip；tsc 0；eslint 0 error（8条既有warning）；build退出0；Chromium全新PG17验收库（migration/bootstrap/seed/vector/e2e-rcl-setup 36/36/80）29/29；scan-secrets 953零命中；git diff --check通过 | 全部通过✓ |
-| 生产部署 | 仅重建socila-web；回退标签保留；RAG 23/23/185/185与其他容器/数据卷不变；镜像ID见docs部署记录 | 已部署，待人工测试 |
+| 生产部署 | 仅重建socila-web（`6b43421`构建`web:warnfix-6b43421`=`web:latest`，镜像`933f3b9ab971…`，容器`2f7190cb6594` healthy）；回退标签`web:rollback-pre-6b43421`保留；RAG 23/23/185/185与agent/worker/beat/postgres/minio/redis/proxy容器ID及数据卷不变；新容器日志零error | 已部署，待人工测试 |
