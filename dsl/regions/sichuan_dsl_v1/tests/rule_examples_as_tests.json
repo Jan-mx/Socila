@@ -1,0 +1,112 @@
+{
+  "tests": [
+    {
+      "rule_id": "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+      "example_name": "四川继承国家口径：1965-01男 -> 60岁1个月",
+      "input": {
+        "user": {
+          "basic": {
+            "gender": "male",
+            "female_retire_type": "na",
+            "birth_year": 1965,
+            "birth_month": 1,
+            "birth_date": "1965-01-15"
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "retirement": {
+            "legal_retire_age_years": 60,
+            "legal_retire_age_months": 1,
+            "original_retire_age_years": 60
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-200-MIN-PENSION-YEARS",
+      "example_name": "四川继承国家时间线：退休年份2035 -> 18年",
+      "input": {
+        "calc": {
+          "retirement": {
+            "legal_retire_year": 2035
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "pension": {
+            "min_years_required": 18
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+      "example_name": "四川继承国家法定档：失业险11年 -> 最长24个月",
+      "input": {
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        },
+        "user": {
+          "social": {
+            "unemployment_insurance_years": 11
+          }
+        },
+        "params": {
+          "P-UNEMPLOYMENT-MAX-MONTHS": 24,
+          "T-UNEMPLOYMENT-DURATION-BY-YEARS": [
+            {
+              "insured_years_min": 1,
+              "insured_years_max": 5,
+              "months": 12
+            },
+            {
+              "insured_years_min": 5,
+              "insured_years_max": 10,
+              "months": 18
+            },
+            {
+              "insured_years_min": 10,
+              "insured_years_max": 99,
+              "months": 24
+            }
+          ]
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "unemployment": {
+            "duration_months": 24
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-220-MEDICAL-LIFETIME-GAP",
+      "example_name": "四川医保退休年限省级未定 -> 追问（人工裁决待办）",
+      "input": {
+        "user": {
+          "basic": {
+            "gender": "male"
+          },
+          "social": {
+            "medical_contrib_months": 120
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "needs_agent": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+[project]
+name = "policyops-agent"
+version = "0.2.0"
+description = "PolicyOps Agent Runtime (Stage 04): FastAPI control plane + Celery + LangGraph skeleton"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "celery[redis]>=5.4",
+    "redis>=5.0",
+    "psycopg[binary,pool]>=3.1",
+    "langgraph>=0.2",
+    "langgraph-checkpoint-postgres>=1.0",
+    "httpx>=0.27",
+    "lxml>=6.1.2",
+    "python-docx>=1.2.0",
+    "openpyxl>=3.1.5",
+    "minio>=7.2.20",
+    "pymupdf>=1.28.2",
+    "ijson>=3.5.1",
+    "jieba>=0.42.1",
+    "pyjwt>=2.10,<3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff==0.16.5",
+    "mypy==2.3.1",
+    "pip-audit==2.10.1",
+    "types-lxml>=6",
+    "types-openpyxl>=3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+# jieba 0.42.1源码含历史转义序列（如"\."），其.pyc缓存冷编译时在import期发出
+# DeprecationWarning，会被上一条的error过滤器升级为SyntaxError（2026-09-11
+# WI-20260911-01 DB门禁复现）。仅对jieba模块忽略该第三方噪声；项目自身代码
+# 的DeprecationWarning仍为error（TESTING.md PMG-FR-008不降级）。
+addopts = "-W error::DeprecationWarning -W ignore::DeprecationWarning:jieba"
+markers = ["integration: requires local drill PostgreSQL/Redis"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E4",  # import 缩进/空白错误
+    "E7",  # 语句错误
+    "E9",  # 运行时错误
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "RUF", # ruff 专属
+    "SIM", # simplify
+]
+# RUF001/002/003 为歧义 CJK 标点提示：本代码库注释与字符串以中文为主，
+# 统一忽略（中文项目惯例），不影响任何运行时行为。
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "fitz", "ijson", "jieba"]
+ignore_missing_imports = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent"]

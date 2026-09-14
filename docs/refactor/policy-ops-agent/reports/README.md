@@ -1,0 +1,41 @@
+# PolicyOps测试与验收报告
+
+> Author: Jan
+> Status: Active
+> Updated: 2026-09-11
+
+## 用途
+
+本目录保存已经执行的测试、验收、迁移、恢复和发布证据。报告记录事实，不定义未来需求。
+
+## 目录
+
+| 路径 | 用途 |
+| --- | --- |
+| `stage-01/` | 基础工程、迁移、契约、Secret和CI基线 |
+| `stage-02/` | Next Core、Repository、权限和接口验收 |
+| `stage-03/` | 地区树、政策Overlay和快照验收 |
+| `stage-04/` | FastAPI、Celery、LangGraph和服务JWT验收 |
+| `stage-05/` | 解析、OCR、RAG和SiliconFlow验收 |
+| `stage-06/` | Diff、草案、审核和物化验收 |
+| `stage-07/` | 部署、迁移、恢复、回退和切换验收 |
+| `feature-09-02-auth/` | 用户与管理员双角色鉴权Feature验收 |
+| `stage-09-03-pre-merge-release/` | P0合并质量门禁与v2.0.0发布准备阶段验收（六job门禁、镜像加固、Secret/Trivy/Gitleaks、发布治理） |
+| `stage-09-03-runtime-config-remediation/` | 09-03本地运行配置与凭据整改阶段验收（环境加载统一、模板收口、一次性引导、新鲜备份+真实恢复对账、口令轮换与演练资源清理） |
+| `feature-09-05-socila-naming/` | 09-05 Socila命名统一与地区DSL分层Feature验收（协议/地区DSL分层、命名硬切换、服务JWT身份socila-next-core、粤川示例夹具化、0010迁移与持久库精确清理对账） |
+| `stage-09-05-national-baseline-overlays/` | 09-05 国家baseline及粤川权威overlay Stage；任务2首期CN/上海/广东最终Accepted，四川Deferred，历史Reopened与修复证据见验收报告§11～§17 |
+| `feature-09-05-jurisdiction-planning/` | 任务3两轮独立复审；最新2026-09-09报告记录空黄金测试、停用地区绑定、replay hash和DB证据缺口 |
+| `stage-09-05-case-governance/` | 任务4多轮修复与最终验收；repair-forward、可信归档、幂等和恢复证据已于2026-09-11独立复审通过 |
+| `task34-final-integration/` | 任务3/4最终集成到`refactor/policy-ops-agent-platform`的父提交、完整门禁与远端核对证据 |
+| `feature-09-03-service-jwt/` | Core与Agent双向服务JWT鉴权Feature验收与复审（4项缺漏已修复闭环并重新验收：文档入口关闭、启动期fail-fast、重放异常503映射、宿主配置补齐） |
+| `documentation/` | 文档体系和补充决策验收 |
+| `traceability.md` | 需求、实现、测试和报告追踪 |
+
+## 使用规则
+
+- Agent不得默认读取全部报告。
+- 只有验证历史结论或调查失败时读取相关报告。
+- 新报告记录命令、退出码、时间、环境和结论。
+- 未来报告作者为Jan，执行者单独记录为Agent、CI或人工。
+- 报告不得包含密钥、完整向量、生产备份或用户数据。
+- 报告不得保存可执行Agent提示词；提示词只在对话中交付，报告仅记录事实、证据、权限边界和验收结论。

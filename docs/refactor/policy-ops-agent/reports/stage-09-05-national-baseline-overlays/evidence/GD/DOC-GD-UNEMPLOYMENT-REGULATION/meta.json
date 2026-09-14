@@ -1,0 +1,11 @@
+{
+  "docId": "DOC-GD-UNEMPLOYMENT-REGULATION",
+  "title": "广东省失业保险条例",
+  "officialUrl": "https://hrss.gd.gov.cn/gkmlpt/content/4/4669/post_4669825.html",
+  "finalUrl": "https://hrss.gd.gov.cn/gkmlpt/content/4/4669/post_4669825.html",
+  "httpStatus": 200,
+  "fetchedAt": "2026-09-06T14:07:25.406Z",
+  "fetchMethod": "curl-browser-ua",
+  "sha256": "15f3551f796ae24058b996c75d5220a79115dc9a82915cbff537b008d28e4456",
+  "byteSize": 100700
+}

@@ -1,0 +1,11 @@
+{
+  "docId": "DOC-CN-SOCIAL-INSURANCE-LAW",
+  "title": "中华人民共和国社会保险法_中华人民共和国人力资源和社会保障部",
+  "officialUrl": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394629.html",
+  "finalUrl": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394629.html",
+  "httpStatus": 200,
+  "fetchedAt": "2026-09-05T13:38:56.250Z",
+  "fetchMethod": "playwright-chromium-headless",
+  "sha256": "b69d5d490f9b6b70394dfb670c2e1a0a959f306e70380bb678ee4866f947d464",
+  "byteSize": 94618
+}

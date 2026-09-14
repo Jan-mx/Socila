@@ -1,0 +1,108 @@
+{
+  "round": "3",
+  "started": "2026-08-31T13:44:15.857438+00:00",
+  "steps": [
+    {
+      "step": "prep(skipped, external)",
+      "status": "ok"
+    },
+    {
+      "step": "copy",
+      "status": "ok",
+      "rows": {
+        "cases": 851,
+        "conversations": 12,
+        "params": 29,
+        "plans": 9,
+        "policy_pack_versions": 0,
+        "publishes": 2,
+        "rule_sets": 1,
+        "rules": 24,
+        "showcase_cases": 117,
+        "tests": 528,
+        "workflows": 1
+      },
+      "preserved": {
+        "showcase_cases.transcript_text": 0
+      }
+    },
+    {
+      "step": "sequences",
+      "status": "ok"
+    },
+    {
+      "step": "reconcile",
+      "status": "ok",
+      "tables": {
+        "cases": {
+          "count_source": 851,
+          "count_target": 851,
+          "count_match": true,
+          "shared_hash_match": true
+        },
+        "conversations": {
+          "count_source": 12,
+          "count_target": 12,
+          "count_match": true,
+          "shared_hash_match": true
+        },
+        "params": {
+          "count_source": 29,
+          "count_target": 29,
+          "count_match": true,
+          "shared_hash_match": true
+        },
+        "plans": {
+          "count_source": 9,
+          "count_target": 9,
+          "count_match": true,
+          "shared_hash_match": true
+        },
+        "policy_pack_versions": {
+          "count_source": 0,
+          "count_target": 0,
+          "count_match": true,
+          "shared_hash_match": true
+        },
+        "publishes": {
+          "count_source": 2,
+          "count_target": 2,
+          "count_match": true,
+          "shared_hash_match": true
+        },
+        "rule_sets": {
+          "count_source": 1,
+          "count_target": 1,
+          "count_match": true,
+          "shared_hash_match": true
+        },
+        "rules": {
+          "count_source": 24,
+          "count_target": 24,
+          "count_match": true,
+          "shared_hash_match": true
+        },
+        "showcase_cases": {
+          "count_source": 117,
+          "count_target": 117,
+          "count_match": true,
+          "shared_hash_match": true
+        },
+        "tests": {
+          "count_source": 528,
+          "count_target": 528,
+          "count_match": true,
+          "shared_hash_match": true
+        },
+        "workflows": {
+          "count_source": 1,
+          "count_target": 1,
+          "count_match": true,
+          "shared_hash_match": true
+        }
+      }
+    }
+  ],
+  "reconciliation_all_match": true,
+  "finished": "2026-08-31T13:44:18.099635+00:00"
+}

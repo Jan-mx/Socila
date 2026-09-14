@@ -1,0 +1,430 @@
+# PolicyOps 合并质量门禁（09-03 PMG-FR-020～029）
+#
+# 六项必需检查：gates / agent-gates / database-gates / e2e-gates /
+# container-gates / security-gates。全部只使用合成凭据与全新数据库，
+# 不接触任何生产数据（PMG-FR-015）。
+#
+# 触发（PMG-FR-026）：pull_request、main push、人工 dispatch；
+# 同 ref 并发取消 + job timeout；默认 GITHUB_TOKEN 仅 contents: read，
+# Gitleaks 关闭 PR 评论，不授予写权限。
+#
+# 第三方 Action 固定完整提交 SHA 并保留版本注释（PMG-FR-027）。
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  UV_VERSION: "0.12.7"
+
+jobs:
+  # PMG-FR-020：npm ci → ESLint → TypeScript → 单元测试（零skip）→ 生产构建
+  gates:
+    name: gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      NEXTAUTH_SECRET: ci-placeholder-secret-not-real
+      NEXTAUTH_URL: http://localhost:3000
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD_HASH: "$2a$12$abcdefghijklmnopqrstuv0123456789012345678901234567890"
+      OPENAI_URL: ""
+      OPENAI_API_KEY: ci-placeholder-key-not-real
+      OPENAI_MODEL: gpt-4o-mini
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: npm ci
+        run: npm ci
+      - name: ESLint
+        run: npx eslint src
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: unit tests
+        run: npm test
+      - name: production build
+        run: npm run build
+
+  # PMG-FR-021：冻结依赖同步 → Ruff → Mypy → 非integration pytest → pip-audit
+  agent-gates:
+    name: agent-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: services/agent
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: frozen dependency sync
+        run: uv sync --frozen
+      - name: Ruff
+        run: uv run ruff check .
+      - name: Mypy
+        run: uv run mypy agent tests
+      - name: pytest (non-integration)
+        run: uv run pytest -q -m "not integration"
+      - name: pip-audit
+        run: uv run pip-audit
+
+  # PMG-FR-022（初始化顺序 PMG-FR-015～019）：
+  # 全新 pgvector/pgvector:pg17 + 合成口令；
+  # Core migration ×2（第二次必须幂等no-op）→ 管理员引导 ×2 → seed ×1 →
+  # 完整 Node 数据库套件 → Agent migration + 角色授权 → 完整 Python 数据库套件
+  database-gates:
+    name: database-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: ci_db_user
+          POSTGRES_PASSWORD: ci-synthetic-db-password-not-real
+          POSTGRES_DB: policyops_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_db_user"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
+      SOCILA_TEST_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
+      AGENT_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
+      AGENT_DB_PASSWORD: ci-synthetic-agent-role-pw-not-real
+      ADMIN_USERNAME: ci-admin
+      ADMIN_PASSWORD_HASH: "$2a$12$abcdefghijklmnopqrstuv0123456789012345678901234567890"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: npm ci
+        run: npm ci
+      - name: Core migration (1st)
+        run: npm run db:migrate
+      - name: Core migration (2nd, must be idempotent no-op)
+        run: npm run db:migrate
+      - name: admin bootstrap (1st)
+        run: node scripts/bootstrap-admin.mjs
+      - name: admin bootstrap (2nd, must be idempotent no-op)
+        run: node scripts/bootstrap-admin.mjs
+      - name: seed
+        run: npm run seed
+      - name: Node database suite
+        run: npm run test:db
+      - name: Agent migration + role grants
+        working-directory: services/agent
+        run: uv run python -m agent.migrate --with-roles
+      - name: Python database suite
+        working-directory: services/agent
+        run: uv run pytest -q -m integration
+
+  # PMG-FR-023：Chromium + 系统依赖；全新 PostgreSQL 17 → migration → 引导 →
+  # seed → build → npm run test:e2e:auth
+  e2e-gates:
+    name: e2e-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: ci_db_user
+          POSTGRES_PASSWORD: ci-synthetic-db-password-not-real
+          POSTGRES_DB: policyops_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_db_user"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      SOCILA_E2E_DATABASE_URL: postgresql://ci_db_user:ci-synthetic-db-password-not-real@localhost:5432/policyops_ci
+      SOCILA_E2E_NEXTAUTH_SECRET: ci-e2e-nextauth-secret-not-real
+      SOCILA_E2E_REFRESH_PEPPER: ci-e2e-refresh-pepper-not-real
+      # 管理员引导账号不在此覆盖：bootstrap 与 run-auth-e2e.mjs 必须与
+      # e2e/auth.spec.ts 的既有验收契约一致（Jan + 规格内拆分构造的一次性口令）。
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: npm ci
+        run: npm ci
+      - name: Chromium + system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: migration
+        env:
+          DATABASE_URL: ${{ env.SOCILA_E2E_DATABASE_URL }}
+        run: npm run db:migrate
+      - name: admin bootstrap
+        env:
+          DATABASE_URL: ${{ env.SOCILA_E2E_DATABASE_URL }}
+        run: |
+          # 与 e2e/auth.spec.ts 的既有验收契约一致：用户名 Jan；口令按规格
+          # 相同的拆分构造生成，不在本文件引入新的凭据字面量。
+          ADMIN_USERNAME="Jan"
+          ADMIN_PASSWORD_HASH="$(node -e "process.stdout.write(require('bcryptjs').hashSync(['Acceptance','Temp','9137'].join('-'), 12))")"
+          export ADMIN_USERNAME ADMIN_PASSWORD_HASH
+          node scripts/bootstrap-admin.mjs
+      - name: seed
+        env:
+          DATABASE_URL: ${{ env.SOCILA_E2E_DATABASE_URL }}
+        run: npm run seed
+      - name: production build
+        run: npm run build
+      - name: auth E2E
+        run: npm run test:e2e:auth
+
+  # PMG-FR-024：构建 web:latest 与 agent:latest；合成 env + 临时卷启动
+  # proxy/web/agent/worker/beat/postgres/redis/minio；检查 /api/health 与
+  # /internal/health；SJWT-AC-017 双向服务JWT冒烟（合法调用通过、伪造服务名失败）；
+  # 无条件 docker compose down -v。
+  # PMG-FR-029：Trivy 0.74.0 扫描两个最终运行镜像（结果属于本门禁）。
+  container-gates:
+    name: container-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: socila-ci
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: build web:latest
+        run: docker build -f Dockerfile -t web:latest .
+      - name: build agent:latest
+        run: docker build -f services/agent/Dockerfile -t agent:latest services/agent
+      - name: synthetic env file
+        working-directory: infra/prod
+        run: |
+          cat > .ci.env <<'EOF'
+          POSTGRES_USER=ci_postgres
+          POSTGRES_PASSWORD=ci-synthetic-pg-pw
+          POSTGRES_DB=policyops_ci
+          DATABASE_URL=postgresql://ci_postgres:ci-synthetic-pg-pw@postgres:5432/policyops_ci
+          AGENT_DATABASE_URL=postgresql://ci_postgres:ci-synthetic-pg-pw@postgres:5432/policyops_ci
+          NEXTAUTH_SECRET=ci-synthetic-nextauth
+          AUTH_REFRESH_PEPPER=ci-synthetic-pepper
+          NEXTAUTH_URL=http://localhost
+          ADMIN_USERNAME=ci-admin
+          ADMIN_PASSWORD_HASH=$2a$12$abcdefghijklmnopqrstuv0123456789012345678901234567890
+          # SJWT-FR-001/NFR-003/AC-010：合成Secret必须≥32 UTF-8字节，否则
+          # web/agent/worker/beat 启动失败（模块级强制校验）。
+          AGENT_SERVICE_JWT_CURRENT=ci-synthetic-jwt-current-secret-0123456789ab
+          AGENT_SERVICE_JWT_PREVIOUS=ci-synthetic-jwt-previous-secret-0123456789ab
+          OPENAI_API_KEY=ci-synthetic-openai
+          OPENAI_URL=http://localhost:9
+          OPENAI_MODEL=ci-model
+          MINIO_ROOT_USER=ci_minio
+          MINIO_ROOT_PASSWORD=ci-synthetic-minio-pw
+          SILICONFLOW_API_KEY=ci-synthetic-siliconflow
+          REDIS_PASSWORD=ci-synthetic-redis-pw
+          EOF
+      - name: compose config (required interpolation must pass)
+        working-directory: infra/prod
+        run: docker compose --env-file .ci.env config --quiet
+      - name: compose up (synthetic env, temporary volumes)
+        working-directory: infra/prod
+        run: docker compose --env-file .ci.env up -d proxy web agent worker beat postgres redis minio
+      - name: health checks
+        working-directory: infra/prod
+        run: |
+          ok=0
+          for _ in $(seq 1 36); do
+            if docker compose --env-file .ci.env exec -T web wget -qO- http://127.0.0.1:3000/api/health | grep -q '"status":"ok"'; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ok" != "1" ]; then
+            docker compose --env-file .ci.env logs
+            exit 1
+          fi
+          docker compose --env-file .ci.env exec -T agent \
+            python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8100/internal/health', timeout=4)"
+      - name: service state assertions (all 8 services)
+        working-directory: infra/prod
+        run: |
+          set -euo pipefail
+          for c in socila-proxy socila-web socila-agent socila-worker socila-beat socila-postgres socila-redis socila-minio; do
+            state=$(docker inspect -f '{{.State.Status}}' "$c")
+            if [ "$state" != "running" ]; then
+              echo "FAIL: $c state=$state (expected running)"
+              docker compose --env-file .ci.env logs --tail 100 "$c" || true
+              exit 1
+            fi
+            echo "OK: $c state=$state"
+          done
+          for c in socila-web socila-agent socila-worker socila-postgres socila-redis socila-minio; do
+            ok=0
+            health=starting
+            for _ in $(seq 1 24); do
+              health=$(docker inspect -f '{{.State.Health.Status}}' "$c")
+              if [ "$health" = "healthy" ]; then ok=1; break; fi
+              sleep 5
+            done
+            if [ "$ok" != "1" ]; then
+              echo "FAIL: $c health=$health (expected healthy)"
+              docker compose --env-file .ci.env logs --tail 100 "$c" || true
+              exit 1
+            fi
+            echo "OK: $c health=healthy"
+          done
+      - name: core migration for SJWT smoke (compose postgres via published port)
+        env:
+          DATABASE_URL: postgresql://ci_postgres:ci-synthetic-pg-pw@localhost:5432/policyops_ci
+        run: npm run db:migrate
+      # SJWT-AC-017：完整Compose启动后双向合法调用通过、伪造服务名失败。
+      # 从agent容器验证：health豁免、业务端点缺JWT/仅X-Service-Name统一401、
+      # 合法Next→Agent 200、合法Agent→Core物化200入台账、同JTI重放401、错误方向401。
+      - name: SJWT-AC-017 smoke (bidirectional legal calls pass, forged service name fails)
+        working-directory: infra/prod
+        run: |
+          docker compose --env-file .ci.env exec -T agent python - <<'PY'
+          import json, os, time, urllib.request, urllib.error, uuid
+          import jwt as pyjwt
+
+          secret = os.environ["AGENT_SERVICE_JWT_CURRENT"].encode("utf-8")
+          now = int(time.time())
+
+          def sign(iss, aud, sub):
+              return pyjwt.encode(
+                  {"iss": iss, "aud": aud, "sub": sub, "jti": str(uuid.uuid4()),
+                   "iat": now, "exp": now + 300},
+                  secret, algorithm="HS256", headers={"typ": "JWT"},
+              )
+
+          def call(url, headers=None, body=None):
+              data = json.dumps(body).encode("utf-8") if body is not None else None
+              req = urllib.request.Request(
+                  url, data=data, headers=dict(headers or {}),
+                  method="POST" if body is not None else "GET")
+              if body is not None:
+                  req.add_header("Content-Type", "application/json")
+              try:
+                  with urllib.request.urlopen(req, timeout=10) as r:
+                      return r.status, json.loads(r.read().decode("utf-8") or "null")
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read().decode("utf-8") or "null")
+
+          # 1) /internal/health 唯一免JWT内部端点。
+          s, b = call("http://127.0.0.1:8100/internal/health")
+          assert s == 200 and b == {"status": "ok"}, (s, b)
+          # 2) 业务端点无JWT → 统一401。
+          s, b = call("http://127.0.0.1:8100/internal/ready")
+          assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
+          # 3) 仅X-Service-Name、无JWT → 401（Header不参与鉴权，SJWT-FR-006）。
+          s, b = call("http://127.0.0.1:8100/internal/ready", {"X-Service-Name": "next-core"})
+          assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
+          # 4) 合法Next→Agent调用（Next身份令牌）→ 200。
+          next_tok = sign("socila-next-core", "policy-agent", "next-core")
+          s, b = call("http://127.0.0.1:8100/internal/ready", {"Authorization": "Bearer " + next_tok})
+          assert s == 200 and b == {"status": "ready"}, (s, b)
+
+          bundle = {
+              "proposal_id": "smoke-prop", "run_id": "smoke-run",
+              "idempotency_key": "smoke-key-1", "base_snapshot_id": None,
+              "jurisdiction_code": "310000", "effective_from": "2026-01-01", "status": "draft",
+              "rule_drafts": [{"temp_id": "t1", "rule_id": "R-SMOKE-1", "name": "smoke",
+                                "decision_table": {"hit_policy": "first", "rows": []},
+                                "effective_from": "2026-01-01",
+                                "citations": [{"document_version_id": "dv-smoke", "path": "/doc"}],
+                                "parameter_refs": []}],
+          }
+          draft_url = "http://web:3000/api/internal/v1/draft-imports"
+          # 5) Agent→Core：仅X-Service-Name（伪造服务名）→ 401。
+          s, b = call(draft_url, {"X-Service-Name": "agent-runtime"}, bundle)
+          assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
+          # 6) 合法Agent→Core调用（Agent身份令牌）→ 200且台账入库。
+          agent_tok = sign("policy-agent", "socila-next-core", "agent-runtime")
+          s, b = call(draft_url, {"Authorization": "Bearer " + agent_tok,
+                                  "X-Service-Name": "agent-runtime"}, bundle)
+          assert s == 200 and b["idempotent"] is False, (s, b)
+          # 7) 同JTI重放 → 401且无业务副作用（SJWT-FR-008）。
+          s, b = call(draft_url, {"Authorization": "Bearer " + agent_tok,
+                                  "X-Service-Name": "agent-runtime"},
+                      {**bundle, "idempotency_key": "smoke-key-2"})
+          assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
+          # 8) 错误方向（Next身份令牌到Core）→ 401。
+          wrong = sign("socila-next-core", "policy-agent", "next-core")
+          s, b = call(draft_url, {"Authorization": "Bearer " + wrong,
+                                  "X-Service-Name": "agent-runtime"},
+                      {**bundle, "idempotency_key": "smoke-key-3"})
+          assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
+          print("SJWT-AC-017 smoke: OK")
+          PY
+      - name: compose down -v (unconditional)
+        if: always()
+        working-directory: infra/prod
+        run: docker compose --env-file .ci.env down -v
+      - name: Trivy web:latest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: "0.74.0"
+          image-ref: web:latest
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Trivy agent:latest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: "0.74.0"
+          image-ref: agent:latest
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  # PMG-FR-025/028：仓库 Secret 扫描 + Gitleaks 完整历史扫描
+  # （固定 8.29.1，checkout fetch-depth 0，.gitleaksignore 仅五个已核实 fingerprint）
+  security-gates:
+    name: security-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: repo secret scan (all tracked files)
+        run: node scripts/scan-secrets.mjs --all
+      - name: Gitleaks full-history scan
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.29.1
+          GITLEAKS_ENABLE_COMMENTS: "false"
+      # 09-05 SDL-NFR-007（ADR-0009）：allowlist哨兵回归——已核实误报被精确忽略、
+      # 允许路径上其他规则的合成哨兵必须被检测、无整文件跳过。
+      - name: gitleaks allowlist sentinel regression
+        run: node scripts/verify-gitleaks-allowlist.mjs

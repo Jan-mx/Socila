@@ -1,5 +1,6 @@
+import { rulesReads } from "@/server/modules/rules/application";
+import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { getRule, updateRule } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +11,21 @@ export async function PUT(
   try {
     const { ruleId, versionId } = await params;
     const version = parseInt(versionId, 10);
+    const jurisdictionCode =
+      req.nextUrl.searchParams.get("jurisdiction_code") ?? undefined;
+    if (!jurisdictionCode) {
+      return NextResponse.json(
+        { error: "缺少精确实体身份（jurisdiction_code，NRP-FR-021）" },
+        { status: 400 },
+      );
+    }
     const body = await req.json();
 
-    const existing = await getRule(ruleId, version);
+    const existing = await rulesReads.getRuleExact({
+      ruleId,
+      jurisdictionCode,
+      version,
+    });
     if (!existing) {
       return NextResponse.json(
         { error: "未找到规则版本" },
@@ -27,7 +40,7 @@ export async function PUT(
       );
     }
 
-    const updated = await updateRule(existing.id, body);
+    const updated = await rulesWrites.updateRule(existing.id, body);
     return NextResponse.json({ rule: updated });
   } catch {
     return NextResponse.json(
@@ -44,6 +57,14 @@ export async function POST(
   try {
     const { ruleId, versionId } = await params;
     const version = parseInt(versionId, 10);
+    const jurisdictionCode =
+      req.nextUrl.searchParams.get("jurisdiction_code") ?? undefined;
+    if (!jurisdictionCode) {
+      return NextResponse.json(
+        { error: "缺少精确实体身份（jurisdiction_code，NRP-FR-021）" },
+        { status: 400 },
+      );
+    }
     const body = await req.json();
     const { action } = body;
 
@@ -51,7 +72,11 @@ export async function POST(
       return NextResponse.json({ error: "未知操作" }, { status: 400 });
     }
 
-    const existing = await getRule(ruleId, version);
+    const existing = await rulesReads.getRuleExact({
+      ruleId,
+      jurisdictionCode,
+      version,
+    });
     if (!existing) {
       return NextResponse.json(
         { error: "未找到规则版本" },

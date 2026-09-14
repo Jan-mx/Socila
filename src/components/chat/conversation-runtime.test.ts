@@ -48,7 +48,7 @@ test("失败响应不应该把不存在的 conversationId 写回客户端", asyn
 
 test("恢复失败提示区分无权限和会话不存在", () => {
   expect(getConversationRestoreErrorMessage(403)).toBe(
-    "这个对话不属于当前浏览器会话，已为你打开新对话。",
+    "这个对话不属于当前账号，已为你打开新对话。",
   );
   expect(getConversationRestoreErrorMessage(404)).toBe(
     "这个对话链接已经失效，已为你打开新对话。",
@@ -58,7 +58,6 @@ test("恢复失败提示区分无权限和会话不存在", () => {
 test("当前面板已经是同一个会话时，不应再从 URL 重新恢复", () => {
   expect(
     shouldRestoreConversationFromUrl({
-      sessionId: "session-1",
       conversationIdFromUrl: "conv-1",
       panelConversationId: "conv-1",
     }),
@@ -68,7 +67,6 @@ test("当前面板已经是同一个会话时，不应再从 URL 重新恢复", 
 test("URL 指向其他会话时，仍然应该触发恢复", () => {
   expect(
     shouldRestoreConversationFromUrl({
-      sessionId: "session-1",
       conversationIdFromUrl: "conv-2",
       panelConversationId: "conv-1",
     }),

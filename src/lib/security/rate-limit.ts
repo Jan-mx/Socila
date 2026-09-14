@@ -18,12 +18,12 @@ export interface RateLimitOptions {
 }
 
 const globalState = globalThis as typeof globalThis & {
-  __sspRateLimitBuckets?: Map<string, RateLimitBucket>;
+  __socilaRateLimitBuckets?: Map<string, RateLimitBucket>;
 };
 
 const buckets =
-  globalState.__sspRateLimitBuckets ??
-  (globalState.__sspRateLimitBuckets = new Map<string, RateLimitBucket>());
+  globalState.__socilaRateLimitBuckets ??
+  (globalState.__socilaRateLimitBuckets = new Map<string, RateLimitBucket>());
 
 function cleanupBuckets(now: number): void {
   for (const [key, value] of buckets.entries()) {
@@ -34,16 +34,21 @@ function cleanupBuckets(now: number): void {
 }
 
 export function getClientIp(req: NextRequest): string {
+  return clientIpFromRequest(new Request("http://local", { headers: req.headers }));
+}
+
+/** 从标准 Headers 提取客户端 IP（NextAuth authorize 的 request 无 NextRequest 封装）。 */
+export function clientIpFromRequest(request: Request): string {
   // Prefer x-real-ip: on Vercel/edge the platform sets it to the true client IP.
   // x-forwarded-for is client-supplied and its first hop is spoofable (a forged
   // header would otherwise mint a fresh rate-limit bucket per request), so it is
   // only a fallback for environments that don't set x-real-ip.
-  const realIp = req.headers.get("x-real-ip");
+  const realIp = request.headers.get("x-real-ip");
   if (realIp) {
     return realIp.trim();
   }
 
-  const forwarded = req.headers.get("x-forwarded-for");
+  const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
     return forwarded.split(",")[0]?.trim() ?? "unknown";
   }
@@ -102,5 +107,13 @@ export function applyRateLimitHeaders(
   if (!result.allowed) {
     response.headers.set("retry-after", String(result.retryAfterSeconds));
   }
+}
+
+/**
+ * 测试专用：清空进程内全部限流bucket（配合vi.setSystemTime可控时钟）。
+ * 生产代码不得调用。
+ */
+export function resetRateLimitBucketsForTest(): void {
+  buckets.clear();
 }
 

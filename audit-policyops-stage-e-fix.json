@@ -1,0 +1,110 @@
+{
+  "mode": "audit",
+  "target": {
+    "host": "localhost",
+    "port": "5432",
+    "database": "policyops"
+  },
+  "manifestHash": "5c2bbf2cca3f584d2088bad1cfa398a79c6a0d905cc93d2699263993ef100d9c",
+  "manifestHashOfBuildManifest": "5c2bbf2cca3f584d2088bad1cfa398a79c6a0d905cc93d2699263993ef100d9c",
+  "sourceCommit": "59a646766e5d3f74d3391e26cd16fe2517a911bd",
+  "targetFingerprint": "6404849bbbd1d3316577b91f29edec4900404f6a505a26841b58999d7e0658f6",
+  "worktreeClean": true,
+  "existingCounts": {
+    "rules": 49,
+    "params": 70,
+    "rule_sets": 5,
+    "policy_pack_versions": 4,
+    "tests": 528,
+    "cases": 851,
+    "showcase_cases": 117,
+    "policy_snapshots": 0
+  },
+  "expectedPostCounts": {
+    "rules": 74,
+    "params": 111,
+    "rule_sets": 9,
+    "policy_pack_versions": 8,
+    "tests": 528,
+    "cases": 851,
+    "showcase_cases": 117,
+    "policy_snapshots": 0
+  },
+  "idempotentNoOp": false,
+  "packSnapshotDrift": [
+    {
+      "jurisdictionCode": "CN",
+      "packId": "CN-BASELINE",
+      "version": 1
+    },
+    {
+      "jurisdictionCode": "440000",
+      "packId": "GD-BASE",
+      "version": 1
+    },
+    {
+      "jurisdictionCode": "510000",
+      "packId": "SC-BASE",
+      "version": 1
+    },
+    {
+      "jurisdictionCode": "310000",
+      "packId": "SHANGHAI_BASE",
+      "version": 1
+    }
+  ],
+  "regions": [
+    {
+      "jurisdictionCode": "CN",
+      "readiness": "awaiting_approval",
+      "blockingReasons": [],
+      "counts": {
+        "rules": 16,
+        "params": 6,
+        "ruleSets": 1,
+        "packs": 1
+      }
+    },
+    {
+      "jurisdictionCode": "440000",
+      "readiness": "blocked",
+      "blockingReasons": [
+        "2025-07后缴费基数上下限未取得权威原文（粤人社发〔2025〕32号未见于省厅官网）",
+        "《广东省失业保险条例》原文未在白名单域名获取，失业待遇缺口",
+        "2030年前市级医保退休口径缺失（省级统一自2030-01-01起生效）"
+      ],
+      "counts": {
+        "rules": 1,
+        "params": 5,
+        "ruleSets": 1,
+        "packs": 1
+      }
+    },
+    {
+      "jurisdictionCode": "510000",
+      "readiness": "blocked",
+      "blockingReasons": [
+        "医保退休年限省级统一文件未正式印发（仅2025-03征求意见稿，不作为事实源）",
+        "失业保险金标准原文（川人社办发〔2023〕18号）未在白名单域名获取",
+        "2026年度缴费基数未公布，2025年度参数窗口已失效"
+      ],
+      "counts": {
+        "rules": 0,
+        "params": 3,
+        "ruleSets": 1,
+        "packs": 1
+      }
+    },
+    {
+      "jurisdictionCode": "310000",
+      "readiness": "awaiting_approval",
+      "blockingReasons": [],
+      "counts": {
+        "rules": 8,
+        "params": 27,
+        "ruleSets": 1,
+        "packs": 1
+      }
+    }
+  ]
+}

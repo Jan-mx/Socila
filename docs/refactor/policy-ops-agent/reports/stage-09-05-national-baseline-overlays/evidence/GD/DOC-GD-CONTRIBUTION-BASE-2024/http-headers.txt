@@ -1,0 +1,15 @@
+# 200 https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4615619.html
+connection: keep-alive
+content-encoding: gzip
+content-security-policy: manifest-src 'self';
+content-type: text/html; charset=utf-8
+date: Sat, 05 Sep 2026 15:52:33 GMT
+referrer-policy: origin
+server: nginx
+set-cookie: Path=/; HttpOnly; Secure
+transfer-encoding: chunked
+vary: Accept-Encoding
+x-download-options: noopen
+x-frame-options: SAMEORIGIN
+x-permitted-cross-domain-policies: none
+x-xss-protection: 1;mode=block

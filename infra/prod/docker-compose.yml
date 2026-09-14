@@ -1,0 +1,246 @@
+# PolicyOps 单机部署 Compose（阶段07.1，REL-FR-001～004）
+# Personal Demo Profile（ADR-0002）：4核4GB、总用户≤100、并发≤5。
+# 仅反向代理对外；PostgreSQL/Redis/MinIO/FastAPI 仅内部网络可达。
+# 凭据全部来自部署环境 Secret / local env（不落仓库）。
+
+name: socila
+
+services:
+  proxy:
+    image: caddy:2-alpine
+    container_name: socila-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - edge
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - web
+    mem_limit: 64m
+
+  web:
+    image: web:latest
+    container_name: socila-web
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      # 刷新会话 HMAC pepper（ADR-0007 / 09-03 PMG-FR-032）：必填，缺失或空值时
+      # compose 拒绝启动；必须与 NEXTAUTH_SECRET 为不同值（应用启动时二次拒绝相同值）
+      AUTH_REFRESH_PEPPER: ${AUTH_REFRESH_PEPPER:?AUTH_REFRESH_PEPPER is required and must differ from NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      # 管理员不再经运行环境变量注入（09-03 CFG-FR-004）：运行时登录只查询
+      # users 表；一次性引导使用 node scripts/bootstrap-admin.mjs 显式进程变量。
+      AGENT_INTERNAL_URL: http://agent:8100
+      # 服务JWT（SJWT-FR-001/AC-010，09-03复审缺漏二）：current必填插值——缺失或
+      # 空值时docker compose config直接失败；previous仅轮换期提供且不得与current相同。
+      AGENT_SERVICE_JWT_CURRENT: ${AGENT_SERVICE_JWT_CURRENT:?AGENT_SERVICE_JWT_CURRENT is required (at least 32 random bytes, must differ from AGENT_SERVICE_JWT_PREVIOUS)}
+      AGENT_SERVICE_JWT_PREVIOUS: ${AGENT_SERVICE_JWT_PREVIOUS}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_URL: ${OPENAI_URL}
+      OPENAI_MODEL: ${OPENAI_MODEL}
+    networks:
+      - edge
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: 1.5
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  agent:
+    image: agent:latest
+    container_name: socila-agent
+    restart: unless-stopped
+    command: uvicorn agent.api.main:app --host 0.0.0.0 --port 8100
+    environment:
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
+      AGENT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      AGENT_CORE_BASE_URL: http://web:3000
+      AGENT_SERVICE_JWT_CURRENT: ${AGENT_SERVICE_JWT_CURRENT:?AGENT_SERVICE_JWT_CURRENT is required (at least 32 random bytes, must differ from AGENT_SERVICE_JWT_PREVIOUS)}
+      AGENT_SERVICE_JWT_PREVIOUS: ${AGENT_SERVICE_JWT_PREVIOUS}
+      AGENT_MINIO_ENDPOINT: minio:9000
+      # SHV2-FR-028（WI-20260913-01）：内容寻址政策原件bucket显式固定；bucket创建
+      # 属于fresh授权apply的ensure_bucket写入段，Compose不做无条件初始化建桶。
+      AGENT_MINIO_BUCKET: policy-originals
+      AGENT_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      AGENT_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY}
+    networks:
+      # UAT修复2026-09-14（用户授权）：运行期检索的查询嵌入必须调用 SiliconFlow，
+      # internal:true 网络无外网路由导致检索必然失败关闭。agent 附着 edge 获得受控
+      # 出口（无 ports 发布，不对宿主/外网暴露服务面）；数据库/MinIO仍走 internal。
+      - edge
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 384m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://127.0.0.1:8100/internal/health', timeout=4)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    image: agent:latest
+    container_name: socila-worker
+    restart: unless-stopped
+    command: celery -A agent.worker.celery_app.celery_app worker --loglevel=info --concurrency=1 --prefetch-multiplier=1 --max-tasks-per-child=20 --time-limit=120 --soft-time-limit=110
+    environment:
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
+      AGENT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      AGENT_CORE_BASE_URL: http://web:3000
+      # SJWT-FR-001：worker 调用 Core draft-import 时签发Agent身份令牌；
+      # 缺失/无效时进程启动失败（模块级校验，AC-010）。
+      AGENT_SERVICE_JWT_CURRENT: ${AGENT_SERVICE_JWT_CURRENT:?AGENT_SERVICE_JWT_CURRENT is required (at least 32 random bytes, must differ from AGENT_SERVICE_JWT_PREVIOUS)}
+      AGENT_SERVICE_JWT_PREVIOUS: ${AGENT_SERVICE_JWT_PREVIOUS}
+      AGENT_MINIO_ENDPOINT: minio:9000
+      # SHV2-FR-028：与agent一致的运行映射（9000为S3 API；9001仅为Console）。
+      AGENT_MINIO_BUCKET: policy-originals
+      AGENT_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      AGENT_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY}
+    networks:
+      - internal
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 768m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A agent.worker.celery_app.celery_app inspect ping -d celery@$$HOSTNAME"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  beat:
+    image: agent:latest
+    container_name: socila-beat
+    restart: unless-stopped
+    command: celery -A agent.worker.celery_app.celery_app beat --loglevel=info
+    environment:
+      AGENT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      # beat 与worker共用tasks模块导入（含服务JWT模块级校验，AC-010）。
+      AGENT_SERVICE_JWT_CURRENT: ${AGENT_SERVICE_JWT_CURRENT:?AGENT_SERVICE_JWT_CURRENT is required (at least 32 random bytes, must differ from AGENT_SERVICE_JWT_PREVIOUS)}
+      AGENT_SERVICE_JWT_PREVIOUS: ${AGENT_SERVICE_JWT_PREVIOUS}
+    networks:
+      - internal
+    depends_on:
+      - redis
+    mem_limit: 128m
+
+  # 一次性 Schema 迁移（agent schema；core drizzle 由 web 迁移任务承担）
+  migrate:
+    image: agent:latest
+    container_name: socila-migrate
+    restart: "no"
+    command: python -m agent.migrate
+    environment:
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
+      # 09-03 CFG-FR-009/CFG-NFR-001：仅本服务持有内部非 loopback 例外——
+      # Compose 内部 DNS 主机 postgres 对容器而言是“远程”主机，agent.migrate 的
+      # db-guard 默认拒绝；宿主机脚本仍只允许 localhost/127.0.0.1/::1。
+      ALLOW_REMOTE_DATABASE: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    mem_limit: 256m
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: socila-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - internal
+      # 开发机临时加入 edge 以使宿主端口发布生效（Compose 对纯 internal 网络容器的
+      # 端口发布不生效）；服务器部署时删除此网络与端口映射，恢复纯内网隔离
+      - edge
+    ports:
+      - "5432:5432"
+    mem_limit: 768m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: socila-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    networks:
+      - internal
+      # 开发机临时加入 edge 使宿主端口发布生效（服务器部署时移除并恢复纯内网）
+      - edge
+    ports:
+      # 宿主 6380（6379 已被本机原生 redis-server.exe 服务占用）
+      - "6380:6379"
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  minio:
+    # 版本固定：与演练环境一致的 MinIO RELEASE（不使用 latest，PRD §10 镜像固定）
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: socila-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    networks:
+      - internal
+      # 开发机临时加入 edge 使宿主端口发布生效（服务器部署时移除并恢复纯内网）
+      - edge
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  edge:
+  internal:
+    internal: true
+
+volumes:
+  caddy-data:
+    name: socila_caddy-data
+  pg-data:
+    name: socila_pg-data
+  minio-data:
+    name: socila_minio-data

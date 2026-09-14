@@ -1,5 +1,5 @@
+import { planningWrites } from "@/server/modules/planning/application";
 import { NextRequest, NextResponse } from "next/server";
-import { insertCases } from "@/lib/db/queries";
 import * as XLSX from "xlsx";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       sourceFile: file.name,
     }));
 
-    const inserted = await insertCases(caseData);
+    const inserted = await planningWrites.insertCases(caseData);
     return NextResponse.json({ inserted: inserted.length, cases: inserted });
   } catch {
     return NextResponse.json(

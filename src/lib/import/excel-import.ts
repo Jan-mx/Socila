@@ -1,7 +1,7 @@
 import path from "path";
 import { readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { cases, tests } from "@/lib/db/schema";
 
@@ -239,17 +239,29 @@ export async function importRegressionTests() {
 
   console.log(`Importing ${importedTests.length} regression tests from Excel...`);
   for (const importedTest of importedTests) {
+    // 地区归属（09-05复审纠正）：回归语料来自 data/shanghai-test-cases-from-transcripts.xlsx
+    // （上海案例转录），行级归属固定上海行政区划；upsert按jurisdictionCode+name，
+    // 不触碰其他地区的同名测试行。
+    const jurisdictionCode = "310000";
     const data = {
       name: importedTest.name,
+      jurisdictionCode,
       ruleId: importedTest.ruleId,
       input: importedTest.input,
       paramsOverride: importedTest.paramsOverride,
       expected: importedTest.expected,
       source: importedTest.source,
     };
-    const existing = await db.select({ id: tests.id }).from(tests).where(eq(tests.name, data.name)).limit(1);
+    const existing = await db
+      .select({ id: tests.id })
+      .from(tests)
+      .where(and(eq(tests.jurisdictionCode, jurisdictionCode), eq(tests.name, data.name)))
+      .limit(1);
     if (existing.length > 0) {
-      await db.update(tests).set({ ...data, updatedAt: new Date() }).where(eq(tests.name, data.name));
+      await db
+        .update(tests)
+        .set({ ...data, updatedAt: new Date() })
+        .where(and(eq(tests.jurisdictionCode, jurisdictionCode), eq(tests.name, data.name)));
     } else {
       await db.insert(tests).values(data);
     }

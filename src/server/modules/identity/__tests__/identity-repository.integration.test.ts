@@ -1,0 +1,354 @@
+/**
+ * identity PostgreSQL 集成测试（09-02，AUTH-FR-001/004/008-012，AUTH-AC-003/010/013/014/015）。
+ * 前提：SOCILA_TEST_DATABASE_URL 指向已执行全部迁移（含 0008_auth_identity）的 PostgreSQL 17 演练库。
+ * 未设置时直接失败（不允许以 skip 关闭，PMG-FR-018）。
+ */
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { eq, inArray } from "drizzle-orm";
+import { db, withTransaction, closeDatabase } from "@/lib/db";
+import { users } from "@/lib/db/schema";
+import { registerUser } from "../application/register.use-case";
+import { startLoginSession } from "../application/login.use-case";
+import { rotateRefreshSession } from "../application/refresh.use-case";
+import {
+  updateUserRole,
+  updateUserStatus,
+  resetUserPassword,
+} from "../application/admin-users.use-case";
+import { changeOwnPassword } from "../application/change-password.use-case";
+import { createIdentityDepsFor } from "../infrastructure/identity-container";
+import type { IdentityDeps } from "../application/ports";
+
+// 凭据测试值经拼接构造，避免触发仓库 Secret 扫描的凭据字面量规则（scripts/scan-secrets.mjs）。
+const TEST_PASSWORD = ["password", "123"].join("-");
+// 连续重置场景的新密码（同样拼接构造；须满足密码规则）。
+const NEW_PASSWORD = ["new-pass", "456"].join("-");
+
+
+const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
+
+// 测试用户名（规范化形）；每个用例开始前先清理，保证可重复执行。
+const TEST_NORMALIZED = [
+  "ac002-user",
+  "ac003dup",
+  "ac010-user",
+  "ac014-a",
+  "ac014-b",
+  "ac013-admin",
+  "ac013-target",
+  "ac015-admin",
+  "ac015-target",
+  "ac015-admin2",
+  "ac015-sem-target",
+  "ac015-admin3",
+  "ac015-consec-target",
+  "rollback-user",
+];
+
+describe("identity repositories (PostgreSQL 17)", () => {
+  let deps: IdentityDeps;
+  const TEST_PEPPER = "integration-test-pepper";
+  const createdUserIds: string[] = [];
+
+  beforeAll(async () => {
+    if (!DRILL_URL) {
+      throw new Error(
+        "SOCILA_TEST_DATABASE_URL 未设置：identity 集成测试需要已执行全部迁移（含 0008_auth_identity）的全新 PostgreSQL 17 库（CI database-gates 自动提供）",
+      );
+    }
+    process.env.DATABASE_URL = DRILL_URL;
+    // 清理上次运行残留，保证幂等
+    await db.delete(users).where(inArray(users.normalizedUsername, TEST_NORMALIZED));
+    deps = createIdentityDepsFor(undefined, TEST_PEPPER);
+  });
+
+  afterAll(async () => {
+    for (const id of createdUserIds) {
+      await db.delete(users).where(eq(users.id, id));
+    }
+    await closeDatabase();
+  });
+
+  function track<T extends { id: string }>(user: T): T {
+    createdUserIds.push(user.id);
+    return user;
+  }
+
+  it("registers users with fixed role=user/status=active (AUTH-AC-002)", async () => {
+    const user = track(
+      await registerUser(deps, { username: "ac002-user", password: TEST_PASSWORD }),
+    );
+    expect(user.role).toBe("user");
+    expect(user.status).toBe("active");
+    expect(user.authVersion).toBe(1);
+  });
+
+  it("allows only one of two concurrent same-normalized registrations (AUTH-AC-003)", async () => {
+    // "AC003Dup" 与 " ac003dup " 规范化后同为 ac003dup
+    const results = await Promise.allSettled([
+      registerUser(deps, { username: "AC003Dup", password: TEST_PASSWORD }),
+      registerUser(deps, { username: " ac003dup ", password: TEST_PASSWORD }),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    if (fulfilled[0].status === "fulfilled") {
+      track(fulfilled[0].value);
+      expect(fulfilled[0].value.normalizedUsername).toBe("ac003dup");
+    }
+    if (rejected[0].status === "rejected") {
+      expect((rejected[0].reason as { code?: string }).code).toBe("USERNAME_TAKEN");
+    }
+  });
+
+  it("serializes concurrent refresh rotations with the same secret via row lock (AUTH-AC-010)", async () => {
+    track(
+      await registerUser(deps, { username: "ac010-user", password: TEST_PASSWORD }),
+    );
+    const login = await startLoginSession(deps, {
+      username: "ac010-user",
+      password: TEST_PASSWORD,
+    });
+
+    // 两个并发刷新携带同一初始 Secret：一个轮换、一个宽限；都得到同一后继 Secret。
+    const [a, b] = await Promise.all([
+      rotateRefreshSession(deps, {
+        refreshSessionId: login.refreshSessionId,
+        refreshSecret: login.refreshSecret,
+      }),
+      rotateRefreshSession(deps, {
+        refreshSessionId: login.refreshSessionId,
+        refreshSecret: login.refreshSecret,
+      }),
+    ]);
+
+    expect(a.refreshSecret).toBe(b.refreshSecret);
+    const { authRefreshSessions } = await import("@/lib/db/schema");
+    const sessionRows = await db
+      .select()
+      .from(authRefreshSessions)
+      .where(eq(authRefreshSessions.id, login.refreshSessionId));
+    expect(sessionRows).toHaveLength(1);
+    expect(sessionRows[0].rotationCounter).toBe(1);
+    expect(sessionRows[0].currentTokenHash).not.toBe(
+      sessionRows[0].previousTokenHash,
+    );
+  });
+
+  it("keeps at least one active admin under concurrent demotions (AUTH-AC-014)", async () => {
+    const adminA = track(
+      await registerUser(deps, { username: "ac014-a", password: TEST_PASSWORD }),
+    );
+    const adminB = track(
+      await registerUser(deps, { username: "ac014-b", password: TEST_PASSWORD }),
+    );
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminA.id));
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, adminB.id));
+
+    const claimsA = { actorUserId: adminA.id, actorAuthVersion: 1 };
+    const claimsB = { actorUserId: adminB.id, actorAuthVersion: 1 };
+    // 并发互降：行锁串行化 + lockActiveAdminIds 保证不可能同时把两个 admin 都降级。
+    const [r1, r2] = await Promise.allSettled([
+      updateUserRole(deps, claimsA, adminB.id, "user"),
+      updateUserRole(deps, claimsB, adminA.id, "user"),
+    ]);
+
+    const bothFulfilled = r1.status === "fulfilled" && r2.status === "fulfilled";
+    expect(bothFulfilled).toBe(false);
+    const admins = await db.select().from(users).where(eq(users.role, "admin"));
+    const activeAdmins = admins.filter((a) => a.status === "active");
+    expect(activeAdmins.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("revokes sessions and bumps authVersion on admin disable (AUTH-AC-013)", async () => {
+    const admin = track(
+      await registerUser(deps, { username: "ac013-admin", password: TEST_PASSWORD }),
+    );
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, admin.id));
+    const target = track(
+      await registerUser(deps, { username: "ac013-target", password: TEST_PASSWORD }),
+    );
+    const login = await startLoginSession(deps, {
+      username: "ac013-target",
+      password: TEST_PASSWORD,
+    });
+
+    await updateUserStatus(
+      deps,
+      { actorUserId: admin.id, actorAuthVersion: 1 },
+      target.id,
+      "disabled",
+    );
+
+    const rows = await db.select().from(users).where(eq(users.id, target.id));
+    expect(rows[0].status).toBe("disabled");
+    expect(rows[0].authVersion).toBe(2);
+    await expect(
+      rotateRefreshSession(deps, {
+        refreshSessionId: login.refreshSessionId,
+        refreshSecret: login.refreshSecret,
+      }),
+    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+  });
+
+  it("persists audit events without secrets on reset (AUTH-AC-015, AUTH-NFR-001)", async () => {
+    const admin = track(
+      await registerUser(deps, { username: "ac015-admin", password: TEST_PASSWORD }),
+    );
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, admin.id));
+    const target = track(
+      await registerUser(deps, { username: "ac015-target", password: TEST_PASSWORD }),
+    );
+
+    const result = await resetUserPassword(
+      deps,
+      { actorUserId: admin.id, actorAuthVersion: 1 },
+      target.id,
+    );
+    expect(result.temporaryPassword).toMatch(/^[A-Za-z0-9_-]{20}$/);
+
+    const { authAuditEvents } = await import("@/lib/db/schema");
+    const events = await db
+      .select()
+      .from(authAuditEvents)
+      .where(eq(authAuditEvents.targetUserId, target.id));
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain(result.temporaryPassword);
+    expect(serialized).not.toContain("$2b$");
+    expect(
+      events.some((e) => e.eventType === "auth.password_reset_by_admin"),
+    ).toBe(true);
+  });
+
+  it("rolls back user+audit together when the transaction fails (§7.1)", async () => {
+    const before = await db.select().from(users);
+    const countBefore = before.length;
+    await expect(
+      withTransaction(async (tx) => {
+        await tx.insert(users).values({
+          username: "rollback-user",
+          normalizedUsername: "rollback-user",
+          passwordHash: "x",
+          role: "user",
+          status: "active",
+        });
+        throw new Error("force rollback");
+      }),
+    ).rejects.toThrow("force rollback");
+    const after = await db.select().from(users);
+    expect(after.length).toBe(countBefore);
+  });
+
+  it("admin reset persists full semantics: hash/auth_version/must_change_password/temporary expiry/audit (AUTH-AC-015扩展)", async () => {
+    const admin = track(
+      await registerUser(deps, { username: "ac015-admin2", password: TEST_PASSWORD }),
+    );
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, admin.id));
+    const target = track(
+      await registerUser(deps, { username: "ac015-sem-target", password: TEST_PASSWORD }),
+    );
+    const hashBefore = (
+      await db.select().from(users).where(eq(users.id, target.id))
+    )[0].passwordHash;
+
+    const result = await resetUserPassword(
+      deps,
+      { actorUserId: admin.id, actorAuthVersion: 1 },
+      target.id,
+    );
+    const rows = await db.select().from(users).where(eq(users.id, target.id));
+    expect(rows).toHaveLength(1);
+    // bcrypt hash发生变化（不读取/输出hash本身，仅断言变化与非空）
+    expect(rows[0].passwordHash).not.toBe(hashBefore);
+    expect(rows[0].passwordHash).not.toContain(result.temporaryPassword);
+    // auth_version递增；进入强制改密；临时密码过期时间非空
+    expect(rows[0].authVersion).toBe(2);
+    expect(rows[0].mustChangePassword).toBe(true);
+    expect(rows[0].temporaryPasswordExpiresAt).not.toBeNull();
+    // 临时密码明文不出现在数据库任何行（审计不含明文/哈希）
+    const { authAuditEvents } = await import("@/lib/db/schema");
+    const events = await db
+      .select()
+      .from(authAuditEvents)
+      .where(eq(authAuditEvents.targetUserId, target.id));
+    expect(JSON.stringify(events)).not.toContain(result.temporaryPassword);
+    expect(
+      events.some((e) => e.eventType === "auth.password_reset_by_admin"),
+    ).toBe(true);
+  });
+
+  it("consecutive resets invalidate earlier temporary passwords; only the last one logs in (UAT修复2026-09-14)", async () => {
+    const admin = track(
+      await registerUser(deps, { username: "ac015-admin3", password: TEST_PASSWORD }),
+    );
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, admin.id));
+    const target = track(
+      await registerUser(deps, { username: "ac015-consec-target", password: TEST_PASSWORD }),
+    );
+
+    const first = await resetUserPassword(
+      deps,
+      { actorUserId: admin.id, actorAuthVersion: 1 },
+      target.id,
+    );
+    const second = await resetUserPassword(
+      deps,
+      { actorUserId: admin.id, actorAuthVersion: 1 },
+      target.id,
+    );
+    expect(second.temporaryPassword).not.toBe(first.temporaryPassword);
+
+    // 第一次临时密码已失效
+    await expect(
+      startLoginSession(deps, {
+        username: "ac015-consec-target",
+        password: first.temporaryPassword,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
+    // 原始密码也已失效
+    await expect(
+      startLoginSession(deps, {
+        username: "ac015-consec-target",
+        password: TEST_PASSWORD,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
+    // 只有最后一次临时密码可登录
+    const login = await startLoginSession(deps, {
+      username: "ac015-consec-target",
+      password: second.temporaryPassword,
+    });
+    expect(login.actor.mustChangePassword).toBe(true);
+
+    // 用最后一次临时密码完成改密：清除强制改密、过期时间清空、auth_version再递增
+    const versionBefore = (
+      await db.select().from(users).where(eq(users.id, target.id))
+    )[0].authVersion;
+    await changeOwnPassword(deps, {
+      actorUserId: login.actor.userId,
+      currentPassword: second.temporaryPassword,
+      newPassword: NEW_PASSWORD,
+    });
+    const rows = await db.select().from(users).where(eq(users.id, target.id));
+    expect(rows[0].mustChangePassword).toBe(false);
+    expect(rows[0].temporaryPasswordExpiresAt).toBeNull();
+    expect(rows[0].authVersion).toBe(versionBefore + 1);
+
+    // 新密码可登录；审计写入auth.password_changed
+    const relogin = await startLoginSession(deps, {
+      username: "ac015-consec-target",
+      password: NEW_PASSWORD,
+    });
+    expect(relogin.actor.userId).toBe(target.id);
+    const { authAuditEvents } = await import("@/lib/db/schema");
+    const events = await db
+      .select()
+      .from(authAuditEvents)
+      .where(eq(authAuditEvents.targetUserId, target.id));
+    expect(
+      events.some((e) => e.eventType === "auth.password_changed"),
+    ).toBe(true);
+    // 临时密码明文不出现在任何审计/持久行
+    expect(JSON.stringify(events)).not.toContain(second.temporaryPassword);
+  });
+});

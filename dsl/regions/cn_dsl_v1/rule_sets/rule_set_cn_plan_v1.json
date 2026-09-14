@@ -1,0 +1,30 @@
+{
+  "rule_set_id": "RS-CN-PLAN-V1",
+  "description": "国家baseline规划主规则集：全国统一的归一化、退休、养老、医保、失业与门禁框架（地区overlay在继承链上叠加）",
+  "status": "published",
+  "effective_from": "2025-01-01",
+  "operation": "baseline",
+  "target_business_key": null,
+  "rules": [
+    "R-010-PARSE-BIRTH-YEAR",
+    "R-011-BUILD-BIRTH-DATE",
+    "R-012-NORMALIZE-GENDER",
+    "R-020-FEMALE-RETIRE-TYPE",
+    "R-110-LOOKUP-LEGAL-RETIRE-AGE",
+    "R-115-FLEXIBLE-RETIREMENT",
+    "R-120-COMPUTE-RETIRE-DATE",
+    "R-200-MIN-PENSION-YEARS",
+    "R-210-PENSION-GAP",
+    "R-220-MEDICAL-LIFETIME-GAP",
+    "R-300-MI-GAP-MONTHS",
+    "R-400-UNEMPLOYMENT-ELIGIBILITY",
+    "R-410-UNEMPLOYMENT-DURATION",
+    "R-420-UI-MEDICAL-COVERAGE",
+    "R-700-PLAN-TEMPLATE",
+    "R-900-FINAL-GATE"
+  ],
+  "conflict_resolution": {
+    "same_rule_id_multiple_versions": "latest_effective_from",
+    "policy_params": "latest_effective_from"
+  }
+}

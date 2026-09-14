@@ -1,6 +1,7 @@
+import { planningReads } from "@/server/modules/planning/application";
+import { mapRouteError } from "@/lib/api/route-errors";
+import { requireActor } from "@/lib/auth/require-actor";
 import { NextRequest, NextResponse } from "next/server";
-import { getPlan } from "@/lib/db/queries";
-import { readAnonymousSession } from "@/lib/security/anon-session";
 
 export const dynamic = "force-dynamic";
 
@@ -9,27 +10,27 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await params;
-    const plan = await getPlan(id);
-
-    if (!plan) {
-      return NextResponse.json({ error: "未找到规划方案" }, { status: 404 });
+    // 09-02 AUTH-FR-003/005：规划详情只对 owner_user_id 本人可见；
+    // 旧匿名数据（无 owner_user_id）对新入口不可见（AUTH-AC-017）。
+    const gate = await requireActor();
+    if (!gate.ok) {
+      return gate.response;
     }
 
-    // 归属校验：方案带 session 标记时，只有创建它的会话能读取（旧数据 sessionId 为
-    // null 不限制）。用 404 而非 403，避免泄露"该 id 存在"。
-    if (plan.sessionId && plan.sessionId !== readAnonymousSession(req)) {
+    const { id } = await params;
+    const plan = await planningReads.getPlan(id);
+
+    if (!plan || plan.ownerUserId !== gate.actor.userId) {
       return NextResponse.json({ error: "未找到规划方案" }, { status: 404 });
     }
 
     // 不把归属会话 token 回显到响应体里。
     const safePlan: Record<string, unknown> = { ...plan };
     delete safePlan.sessionId;
+    delete safePlan.ownerUserId;
     return NextResponse.json({ plan: safePlan });
-  } catch {
-    return NextResponse.json(
-      { error: "加载规划方案失败" },
-      { status: 500 },
-    );
+  } catch (err) {
+    const mapped = mapRouteError(err, { operation: "plan.read" });
+    return NextResponse.json(mapped.body, { status: mapped.status });
   }
 }

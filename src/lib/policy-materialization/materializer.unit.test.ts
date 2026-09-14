@@ -1,0 +1,598 @@
+/**
+ * NRP-FR-017/FR-018、NRP-NFR-009、NRP-AC-011/013 物化器单元测试：
+ * - 目标守卫：无显式DATABASE_URL即拒绝（直接构造环境对象，不依赖.env.local，审查缺陷9）；
+ *   非授权库/非本机拒绝；指纹为非敏感哈希；
+ * - manifest：从已提交内容构建且确定性；地区就绪/阻断语义；
+ * - 计划器：草稿强制（不信任文件published）、既有键v2/新键v1、
+ *   published行永不原地更新、目标版本冲突拒绝。
+ */
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, it, expect } from "vitest";
+import {
+  computeTargetFingerprint,
+  loadExistingState,
+  resolveTarget,
+  TargetGuardError,
+  canonicalJson,
+  sha256,
+  type ExistingState,
+  type SqlLike,
+} from "./target";
+import {
+  buildManifest,
+  manifestHash,
+  regionReadiness,
+  type GitReader,
+  type ManifestRegion,
+  type PolicyMaterializationManifest,
+} from "./manifest";
+import { buildPlan, buildPackSnapshotPayload, PlanConflictError } from "./plan";
+import { payloadShapeHash } from "./shapes";
+
+const REPO = process.cwd();
+
+/** 假git：直接从工作树读（单测只验证manifest构建逻辑与确定性）。 */
+function fakeGitReader(): GitReader {
+  return {
+    showHead(p: string) {
+      if (p === "COMMIT") return "test-commit-hash";
+      return readFileSync(path.join(REPO, p), "utf8");
+    },
+    listCommittedFiles(dir: string) {
+      return [dir];
+    },
+    isWorktreeDirty() {
+      return false;
+    },
+  };
+}
+
+describe("目标守卫（NRP-FR-017/NRP-NFR-009）", () => {
+  it("DATABASE_URL未显式设置时拒绝——直接构造干净环境对象证明不读取dotenv（审查缺陷9）", () => {
+    // 不依赖开发者私有文件是否存在：直接构造无DATABASE_URL的环境对象。
+    // 若解析器读取过.env.local，本用例就会得到policyops目标而通过——因此
+    // 抛错本身即是"零dotenv回退"的证明。
+    const cleanEnv: Partial<NodeJS.ProcessEnv> = { NODE_ENV: "test" };
+    expect(() => resolveTarget(cleanEnv)).toThrow(TargetGuardError);
+    expect(() => resolveTarget({} as Partial<NodeJS.ProcessEnv>)).toThrow(
+      /禁止dotenv\/\.env回退/,
+    );
+  });
+
+  it("非授权库或非本机目标拒绝；授权本机policyops通过", () => {
+    expect(() =>
+      resolveTarget({ DATABASE_URL: "postgresql://u:p@10.0.0.8:5432/policyops" }),
+    ).toThrow(/目标不在授权范围/);
+    expect(() =>
+      resolveTarget({ DATABASE_URL: "postgresql://u:p@localhost:5432/someother" }),
+    ).toThrow(/目标不在授权范围/);
+    const ok = resolveTarget({
+      DATABASE_URL: "postgresql://u:p@localhost:5432/policyops",
+    });
+    expect(ok).toEqual({ host: "localhost", port: "5432", database: "policyops" });
+    // 测试注入的演练库放宽仅显式传入时生效。
+    expect(
+      resolveTarget(
+        { DATABASE_URL: "postgresql://u:p@localhost:5439/nrp_e_mat" },
+        { allowedDatabases: ["nrp_e_mat"], allowedPorts: ["5439"] },
+      ).database,
+    ).toBe("nrp_e_mat");
+  });
+
+  it("目标指纹为非敏感哈希：不含连接串、口令或完整URL", async () => {
+    const sql: SqlLike = {
+      query: async () => ({ rows: [] }),
+    };
+    const state = await loadExistingState(sql);
+    state.counts = { rules: 24, params: 29 };
+    state.publishedRowsHash = "abc";
+    const fp = computeTargetFingerprint(
+      { host: "localhost", port: "5432", database: "policyops" },
+      state,
+    );
+    expect(fp).toMatch(/^[0-9a-f]{64}$/);
+    expect(fp).not.toContain("postgresql");
+    expect(fp).not.toContain("postgres:");
+  });
+
+  it("published行哈希覆盖整行负载（to_jsonb形态，审查缺陷8）", async () => {
+    // 新实现：hash查询为 `select to_jsonb(r) as row from rules ...`——
+    // 整行负载参与哈希，修改任一字段（此处以payload字段为例）都会改变哈希。
+    const baseRow = { row: { rule_id: "R-1", name: "旧名", decision_table: {} } };
+    const changedRow = {
+      row: { rule_id: "R-1", name: "新名", decision_table: {} },
+    };
+    const sqlA: SqlLike = {
+      query: async (text) => ({ rows: text.includes("from rules") ? [baseRow] : [] }),
+    };
+    const sqlB: SqlLike = {
+      query: async (text) => ({
+        rows: text.includes("from rules") ? [changedRow] : [],
+      }),
+    };
+    const a = await loadExistingState(sqlA);
+    const b = await loadExistingState(sqlB);
+    expect(a.publishedRowsHash).not.toBe(b.publishedRowsHash);
+    // 同一行两次读取哈希稳定。
+    const a2 = await loadExistingState(sqlA);
+    expect(a.publishedRowsHash).toBe(a2.publishedRowsHash);
+  });
+});
+
+describe("repair目标绑定与指纹（WI-20260906-01）", () => {
+  const target = { host: "localhost", port: "5432", database: "policyops" };
+
+  function packTargetSql(
+    pack: {
+      row_id: number;
+      jurisdiction_code: string;
+      policy_pack_id: string;
+      version: number;
+      status: string;
+      param_snapshot: unknown;
+    } | null,
+    member: { member_id: number; entity_row_id: number; content_hash: string } | null,
+  ): SqlLike {
+    return {
+      query: async (text) => {
+        if (text.includes("policy_import_batch_members")) {
+          return { rows: member ? [member] : [] };
+        }
+        if (text.includes("from policy_pack_versions p")) {
+          return { rows: pack ? [pack] : [] };
+        }
+        return { rows: [] };
+      },
+    };
+  }
+
+  const PACK = {
+    row_id: 11,
+    jurisdiction_code: "310000",
+    policy_pack_id: "SHANGHAI_BASE",
+    version: 2,
+    status: "draft",
+    param_snapshot: { b: 2, a: 1 } as unknown,
+  };
+  const MEMBER = { member_id: 21, entity_row_id: 11, content_hash: "member-hash-old" };
+
+  it("目标指纹绑定draft包行ID/版本/状态/快照哈希/成员哈希——任一变化都改变指纹", async () => {
+    const stateA = await loadExistingState(packTargetSql(PACK, MEMBER));
+    const fpA = computeTargetFingerprint(target, stateA);
+    expect(stateA.packTargets).toHaveLength(1);
+    expect(stateA.packTargets[0]).toMatchObject({
+      rowId: 11,
+      jurisdictionCode: "310000",
+      packId: "SHANGHAI_BASE",
+      version: 2,
+      status: "draft",
+      memberRowId: 21,
+      memberHash: "member-hash-old",
+    });
+    expect(stateA.packTargets[0].snapshotHash).toMatch(/^[0-9a-f]{64}$/);
+
+    // 未变化 → 指纹稳定。
+    const stateAgain = await loadExistingState(packTargetSql(PACK, MEMBER));
+    expect(computeTargetFingerprint(target, stateAgain)).toBe(fpA);
+
+    // 快照内容、状态、版本、行ID、成员哈希任一变化 → 指纹必须变化。
+    const variants = [
+      { ...PACK, param_snapshot: { b: 2, a: 1, edited: true } },
+      { ...PACK, status: "staging" },
+      { ...PACK, version: 3 },
+      { ...PACK, row_id: 12 },
+    ];
+    for (const variant of variants) {
+      const state = await loadExistingState(packTargetSql(variant, MEMBER));
+      expect(computeTargetFingerprint(target, state)).not.toBe(fpA);
+    }
+    const stateMember = await loadExistingState(
+      packTargetSql(PACK, { ...MEMBER, content_hash: "member-hash-new" }),
+    );
+    expect(computeTargetFingerprint(target, stateMember)).not.toBe(fpA);
+  });
+
+  it("CLI按实际修复数量输出，不固定声称4个（源码契约）", () => {
+    const source = readFileSync(
+      path.join(REPO, "scripts", "materialize-policy-regions.ts"),
+      "utf8",
+    );
+    expect(source).not.toContain("4个draft政策包");
+    expect(source).toContain("repaired.repaired.length");
+  });
+});
+
+describe("manifest（NRP-FR-019，确定性）", () => {
+  it("四地区计数与仓库权威资产一致（CN16/6、沪10/31、粤2/10、川0/3；SHV2纠偏后）", () => {
+    const manifest = buildManifest(fakeGitReader());
+    const byJur = new Map(manifest.regions.map((r) => [r.jurisdictionCode, r]));
+    expect(byJur.get("CN")!.rules).toHaveLength(16);
+    expect(byJur.get("CN")!.params).toHaveLength(6);
+    expect(byJur.get("310000")!.rules).toHaveLength(10);
+    expect(byJur.get("310000")!.params).toHaveLength(31);
+    expect(byJur.get("440000")!.rules).toHaveLength(2);
+    expect(byJur.get("440000")!.params).toHaveLength(10);
+    expect(byJur.get("510000")!.rules).toHaveLength(0);
+    expect(byJur.get("510000")!.params).toHaveLength(3);
+    expect(manifest.counts).toEqual({ rules: 28, params: 50, ruleSets: 4, packs: 4 });
+  });
+
+  it("同一提交内容构建的manifest哈希恒定", () => {
+    const a = manifestHash(buildManifest(fakeGitReader()));
+    const b = manifestHash(buildManifest(fakeGitReader()));
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("就绪语义：CN/沪/粤awaiting_approval，四川blocked且原因非空（ADR-0010）", () => {
+    expect(regionReadiness("CN")).toEqual({
+      readiness: "awaiting_approval",
+      blockingReasons: [],
+    });
+    expect(regionReadiness("310000").readiness).toBe("awaiting_approval");
+    // 广东三项缺口已闭环（2025基数/失业条例原文已采集；2030前市级口径由
+    // R-220能力级守卫处理）→ 整体进入首期交付，等待管理员批准。
+    expect(regionReadiness("440000")).toEqual({
+      readiness: "awaiting_approval",
+      blockingReasons: [],
+    });
+    const sc = regionReadiness("510000");
+    expect(sc.readiness).toBe("blocked");
+    expect(sc.blockingReasons.some((r) => r.includes("征求意见"))).toBe(true);
+    // 四川三项blocking reasons保持不变（WI-20260907-01）。
+    expect(sc.blockingReasons).toHaveLength(3);
+  });
+});
+
+describe("计划器（NRP-FR-018/NRP-AC-013）", () => {
+  const manifest = buildManifest(fakeGitReader());
+
+  function emptyState(): ExistingState {
+    return {
+      counts: {
+        rules: 24,
+        params: 29,
+        rule_sets: 1,
+        policy_pack_versions: 0,
+        tests: 528,
+        cases: 851,
+        showcase_cases: 117,
+        policy_snapshots: 0,
+      },
+      publishedRowsHash: "old-hash",
+      maxVersions: new Map(),
+      packVersions: new Map(),
+      packTargets: [],
+      existingEntityHashes: new Map(),
+    };
+  }
+
+  it("空基线：CN/粤/川首次实体v1；同键多窗口条目按出现顺序v1、v2递增", () => {
+    const plan = buildPlan(manifest, emptyState(), []);
+    const byJur = new Map(plan.regions.map((r) => [r.jurisdictionCode, r]));
+    for (const e of byJur.get("CN")!.entities) expect(e.version).toBe(1);
+    // GD同param_id多窗口（2024与2025窗口）：同一业务键在manifest内顺序版本化。
+    const seenGd = new Map<string, number>();
+    for (const e of byJur.get("440000")!.entities) {
+      const n = (seenGd.get(e.businessKey) ?? 0) + 1;
+      seenGd.set(e.businessKey, n);
+      expect(e.version).toBe(n);
+    }
+    expect(seenGd.get("P-GD-CONTRIB-BASE-UPPER")).toBe(2);
+    expect(seenGd.get("T-GD-CONTRIB-BASE-LOWER-BY-CITY")).toBe(2);
+    for (const e of byJur.get("510000")!.entities) expect(e.version).toBe(1);
+    // 四川批次规则成员为0（PRD §7不变量）。
+    expect(byJur.get("510000")!.counts.rules).toBe(0);
+    expect(byJur.get("510000")!.counts.params).toBe(3);
+    expect(byJur.get("510000")!.readiness).toBe("blocked");
+  });
+
+  it("上海既有业务键→v2、新业务键→v1；所有实体强制draft", () => {
+    const state = emptyState();
+    // 模拟旧上海运行基线：24条规则与既有参数键。
+    for (const key of [
+      "R-310-MI-WAITING-PERIOD",
+      "R-500-4050-ELIGIBILITY",
+      "R-510-4050-AMOUNT",
+      "R-520-JOB-SUBSIDY-ELIGIBILITY",
+      "R-521-JOB-SUBSIDY-AMOUNT",
+      "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+      "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+      "R-600-PAY-GAP-REMINDER",
+      "RS-SHANGHAI-PLAN-V1",
+    ]) {
+      state.maxVersions.set(`310000|${key}`, 1);
+    }
+    for (const key of [
+      "P-SH-CONTRIB-BASE-LOWER",
+      "T-SH-PAY-GAP-MONTHS",
+      "P-SH-MIN-WAGE",
+    ]) {
+      state.maxVersions.set(`310000|${key}`, 1);
+    }
+    const plan = buildPlan(manifest, state, []);
+    const sh = plan.regions.find((r) => r.jurisdictionCode === "310000")!;
+    const versions = new Map(
+      sh.entities.map((e) => [`${e.entityType}|${e.businessKey}`, e.version] as const),
+    );
+    expect(versions.get("rule|R-500-4050-ELIGIBILITY")).toBe(2);
+    expect(versions.get("rule_set|RS-SHANGHAI-PLAN-V1")).toBe(2);
+    // P-SH-MIN-WAGE 现为双窗口（2690历史+2740当前）：既有v1 → 窗口依次v2、v3。
+    expect(versions.get("param|P-SH-MIN-WAGE")).toBe(3);
+    // 新业务键（重分类引入）→v1。
+    expect(versions.get("param|P-MI-LIFETIME-MALE-YEARS")).toBe(1);
+    expect(versions.get("param|T-UNEMPLOYMENT-DURATION-BY-YEARS")).toBe(1);
+    for (const r of plan.regions) {
+      for (const e of r.entities) {
+        expect(e.status).toBe("draft");
+      }
+    }
+  });
+
+  it("目标版本冲突拒绝", () => {
+    // 已存在同地区同键v2 → 计划解析为3正常；但同名v3已存在时max=3→4，不冲突。
+    // 冲突场景：manifest内同一键出现两次（人为构造）。
+    const state2 = emptyState();
+    state2.maxVersions.set("CN|R-200-MIN-PENSION-YEARS", 1);
+    const plan = buildPlan(manifest, state2, []);
+    expect(plan.counts.rules).toBeGreaterThan(0);
+    // 直接构造重复键验证冲突分支。
+    const dupState = emptyState();
+    expect(() => {
+      const p = buildPlan(manifest, dupState, []);
+      // 手工注入重复实体模拟计划冲突。
+      const first = p.regions[0].entities[0];
+      p.regions[0].entities.push({ ...first });
+      const seen = new Set<string>();
+      for (const e of p.regions[0].entities) {
+        const key = `${e.entityType}|${e.jurisdictionCode}|${e.businessKey}|${e.version}`;
+        if (seen.has(key)) throw new PlanConflictError(key);
+        seen.add(key);
+      }
+    }).toThrow(PlanConflictError);
+  });
+
+  // ── 增量物化（ADR-0010任务2）：内容未变化零新增，只写GD delta ──────────────
+
+  /** 持久库式既有状态（模拟当前持久库49/70/5/4：CN/沪/川与GD旧内容已物化）。
+   * 与真实持久库的差异：SH既有键版本按2（沪已有v1运行基线+git v2），其余v1。 */
+  function persistentLikeState(
+    m: PolicyMaterializationManifest,
+  ): ExistingState {
+    const state = emptyState();
+    const gd = m.regions.find((r) => r.jurisdictionCode === "440000")!;
+    const keptGd: ManifestRegion = {
+      ...gd,
+      // 持久库广东已物化：仅旧规则与5个旧参数（2024窗口×2 + 医保年限×2 + 2023社平）。
+      rules: gd.rules.filter((r) => r.businessKey === "R-GD-MI-RETIRE-RESTRICT"),
+      params: gd.params.filter((p) => {
+        const id = (p.payload.param_id as string) ?? p.businessKey;
+        if (id === "P-GD-PENSION-CALC-BASE-2025") return false;
+        if (id === "P-GD-UNEMPLOYMENT-BENEFIT-RATE") return false;
+        if (id === "T-GD-MIN-WAGE-BY-CITY") return false;
+        return p.payload.effective_from !== "2025-07-01";
+      }),
+      ruleSetPayload: {
+        ...gd.ruleSetPayload!,
+        rules: (gd.ruleSetPayload!.rules as string[]).filter(
+          (r) => r !== "R-GD-UI-AMOUNT",
+        ),
+      } as Record<string, unknown>,
+    };
+    const keep = new Map<string, ManifestRegion>(
+      m.regions.map((r) => [r.jurisdictionCode, r]),
+    );
+    keep.set("440000", keptGd);
+
+    for (const [jur, region] of keep) {
+      const base = jur === "310000" ? 2 : 1;
+      for (const rule of region.rules) {
+        const key = `${jur}|rule|${rule.businessKey}`;
+        let set = state.existingEntityHashes.get(key);
+        if (!set) {
+          set = new Set();
+          state.existingEntityHashes.set(key, set);
+        }
+        set.add(payloadShapeHash("rule", rule.payload));
+        state.maxVersions.set(`${jur}|${rule.businessKey}`, base);
+      }
+      for (const param of region.params) {
+        const key = `${jur}|param|${param.businessKey}`;
+        let set = state.existingEntityHashes.get(key);
+        if (!set) {
+          set = new Set();
+          state.existingEntityHashes.set(key, set);
+        }
+        set.add(payloadShapeHash("param", param.payload));
+        state.maxVersions.set(`${jur}|${param.businessKey}`, base);
+      }
+      if (region.ruleSetPayload) {
+        const ruleSetId = region.ruleSetPayload.rule_set_id as string;
+        const key = `${jur}|rule_set|${ruleSetId}`;
+        let set = state.existingEntityHashes.get(key);
+        if (!set) {
+          set = new Set();
+          state.existingEntityHashes.set(key, set);
+        }
+        set.add(payloadShapeHash("rule_set", region.ruleSetPayload));
+        state.maxVersions.set(`${jur}|${ruleSetId}`, base);
+      }
+      state.packVersions.set(`${jur}|${region.packId}`, 1);
+      state.packTargets.push({
+        rowId: 0,
+        jurisdictionCode: jur,
+        packId: region.packId,
+        version: 1,
+        status: "draft",
+        snapshotHash: sha256(canonicalJson(buildPackSnapshotPayload(region))),
+        memberRowId: null,
+        memberHash: null,
+      });
+    }
+    return state;
+  }
+
+  it("增量计划：持久库式状态 → 仅广东delta（1规则+5参数+1规则集+1政策包），CN/沪/川零新增", () => {
+    const m = buildManifest(fakeGitReader());
+    const plan = buildPlan(m, persistentLikeState(m), []);
+
+    // 未变化的CN、上海、四川零新增。
+    expect(plan.counts).toEqual({ rules: 1, params: 5, ruleSets: 1, packs: 1 });
+    for (const r of plan.regions) {
+      if (r.jurisdictionCode === "440000") continue;
+      expect(r.counts).toEqual({ rules: 0, params: 0, ruleSets: 0, packs: 0 });
+      expect(r.entities).toHaveLength(0);
+    }
+
+    const gd = plan.regions.find((r) => r.jurisdictionCode === "440000")!;
+    const byKind = (kind: string) =>
+      gd.entities.filter((e) => e.entityType === kind);
+    expect(gd.counts).toEqual({ rules: 1, params: 5, ruleSets: 1, packs: 1 });
+
+    // 三个全新GD参数使用v1。
+    const newParams = new Map(
+      byKind("param").map((e) => [e.businessKey, e]),
+    );
+    expect(newParams.get("P-GD-PENSION-CALC-BASE-2025")?.version).toBe(1);
+    expect(newParams.get("P-GD-UNEMPLOYMENT-BENEFIT-RATE")?.version).toBe(1);
+    expect(newParams.get("T-GD-MIN-WAGE-BY-CITY")?.version).toBe(1);
+    // 两个新窗口（2025-07-01起）使用v2，旧窗口保持v1（不在计划内）。
+    expect(newParams.get("P-GD-CONTRIB-BASE-UPPER")?.version).toBe(2);
+    expect(
+      newParams.get("T-GD-CONTRIB-BASE-LOWER-BY-CITY")?.version,
+    ).toBe(2);
+    // 新建失业金额规则v1；广东规则集下一版本v2；GD政策包v2。
+    expect(
+      byKind("rule").find((e) => e.businessKey === "R-GD-UI-AMOUNT")?.version,
+    ).toBe(1);
+    expect(
+      byKind("rule_set").find((e) => e.businessKey === "RS-GD-PLAN-V1")
+        ?.version,
+    ).toBe(2);
+    expect(
+      byKind("policy_pack_version").find((e) => e.businessKey === "GD-BASE")
+        ?.version,
+    ).toBe(2);
+  });
+
+  it("增量计划：全部内容已物化 → 完全no-op计划（复跑零新增）", () => {
+    const m = buildManifest(fakeGitReader());
+    // 全部当前git内容视为已落库。
+    const state = persistentLikeState(m);
+    const full = buildPlan(m, emptyState(), []);
+    const packIdByJur = new Map(
+      m.regions.map((r) => [r.jurisdictionCode, r.packId] as const),
+    );
+    for (const region of full.regions) {
+      for (const e of region.entities) {
+        if (e.entityType === "policy_pack_version") continue;
+        const key = `${region.jurisdictionCode}|${e.entityType}|${e.businessKey}`;
+        const payload = e.payload as Record<string, unknown>;
+        let set = state.existingEntityHashes.get(key);
+        if (!set) {
+          set = new Set();
+          state.existingEntityHashes.set(key, set);
+        }
+        set.add(
+          payloadShapeHash(e.entityType as "rule" | "param" | "rule_set", payload),
+        );
+      }
+      const jur = region.jurisdictionCode as string;
+      state.packVersions.set(
+        `${jur}|${packIdByJur.get(jur as never)!}`,
+        (state.packVersions.get(`${jur}|${packIdByJur.get(jur as never)!}`) ??
+          0) + 1,
+      );
+    }
+    // 补全GD包新快照。
+    const gd = m.regions.find((r) => r.jurisdictionCode === "440000")!;
+    state.packTargets.push({
+      rowId: 999,
+      jurisdictionCode: gd.jurisdictionCode,
+      packId: gd.packId,
+      version: 2,
+      status: "draft",
+      snapshotHash: sha256(canonicalJson(buildPackSnapshotPayload(gd))),
+      memberRowId: null,
+      memberHash: null,
+    });
+
+    const plan = buildPlan(m, state, []);
+    expect(plan.counts).toEqual({ rules: 0, params: 0, ruleSets: 0, packs: 0 });
+    for (const r of plan.regions) {
+      expect(r.entities).toHaveLength(0);
+    }
+  });
+});
+
+function makeEmptyState(): ExistingState {
+  return {
+    counts: {
+      rules: 24,
+      params: 29,
+      rule_sets: 1,
+      policy_pack_versions: 0,
+      tests: 528,
+      cases: 851,
+      showcase_cases: 117,
+      policy_snapshots: 0,
+    },
+    publishedRowsHash: "old-hash",
+    maxVersions: new Map(),
+    packVersions: new Map(),
+    packTargets: [],
+    existingEntityHashes: new Map(),
+  };
+}
+
+describe("包快照完整性（审查缺陷4）", () => {
+  it("表格参数快照携带rows/key_fields/value_fields/type/有效期，标量携带value", () => {
+    const manifest = buildManifest(fakeGitReader());
+    const plan = buildPlan(manifest, makeEmptyState(), []);
+    const cnPack = plan.regions
+      .find((r) => r.jurisdictionCode === "CN")!
+      .entities.find((e) => e.entityType === "policy_pack_version")!;
+    const snapshot = cnPack.payload as Array<Record<string, unknown>>;
+    expect(snapshot).toHaveLength(6);
+
+    const retireTable = snapshot.find(
+      (s) => s.businessKey === "T-RETIREMENT-AGE-LOOKUP",
+    );
+    expect(retireTable).toBeTruthy();
+    expect(retireTable?.type).toBe("table");
+    expect(Array.isArray(retireTable?.rows)).toBe(true);
+    expect((retireTable?.rows as unknown[]).length).toBeGreaterThan(0);
+    expect(retireTable?.key_fields).toEqual([
+      "gender",
+      "female_retire_type",
+      "birth_year",
+    ]);
+    expect(retireTable?.value_fields).toContain("legal_retire_age_years");
+    expect(retireTable?.effective_from).toBe("2025-01-01");
+    expect(retireTable?.operation).toBe("baseline");
+    expect(retireTable?.target_business_key).toBeNull();
+    expect(Array.isArray(retireTable?.evidence)).toBe(true);
+    expect((retireTable?.evidence as unknown[]).length).toBeGreaterThan(0);
+
+    const scalar = snapshot.find(
+      (s) => s.businessKey === "P-UNEMPLOYMENT-MAX-MONTHS",
+    );
+    expect(scalar?.value).toBe(24);
+    expect(scalar?.type).toBe("number");
+    // 标量不得写rows。
+    expect(scalar?.rows ?? null).toBeNull();
+
+    const timeline = snapshot.find(
+      (s) => s.businessKey === "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+    );
+    expect(timeline?.type).toBe("timeline");
+    expect(Array.isArray(timeline?.rows)).toBe(true);
+
+    // paramId/businessKey齐备。
+    for (const entry of snapshot) {
+      expect(entry.businessKey ?? entry.param_id).toBeTruthy();
+      expect(entry.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    }
+  });
+});

@@ -1,13 +1,13 @@
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import { rules } from "@/lib/db/schema";
-import ruleDslSchema from "../../../dsl/ssp_dsl_v1/schema/ssp_rule_dsl.schema.json";
+import ruleDslSchema from "../../../dsl/protocol/socila_dsl_v1/schema/socila_rule_dsl.schema.json";
 
 /**
  * DSL JSON-Schema 校验。
  *
  * 此前发布门禁和 validate 路由只做 `ruleId && name && rows.length>0` 的浅检查，
- * 而项目里的 `ajv` + 完整 JSON-Schema（`dsl/ssp_dsl_v1/schema/*.json`）从未被引用。
+ * 而项目里的 `ajv` + 完整 JSON-Schema（`dsl/protocol/socila_dsl_v1/schema/*.json`）从未被引用。
  * 本模块把 schema 真正接到 ajv 上，让畸形规则（缺字段、hit_policy 非法、行缺 when/then 等）
  * 在进 staging / production 前被拦下。
  */
@@ -31,7 +31,7 @@ export interface SchemaValidationResult {
 type DbRuleRow = typeof rules.$inferSelect;
 
 /**
- * 校验一条 DB 规则行是否符合 SSP Rule DSL JSON-Schema。
+ * 校验一条 DB 规则行是否符合 Socila Rule DSL JSON-Schema。
  * DB 用 camelCase，DSL/Schema 用 snake_case —— 这里做一次形态转换后再校验。
  */
 export function validateRuleAgainstSchema(

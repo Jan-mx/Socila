@@ -1,0 +1,19 @@
+# Drizzle迁移SQL的换行规范化（WI-20260907-03第四轮复审）
+#
+# drizzle-orm的migrator对**工作树文件字节**计算sha256并写入
+# drizzle.__drizzle_migrations.hash。若工作树换行随宿主core.autocrlf漂移
+# （Windows默认true会把checkout写成CRLF），同一份SQL在Windows与Linux上
+# 会产生不同账本hash，导致迁移账本出现同一迁移的重复登记
+# （持久库ID 18/19/20即0012/0013/0014的CRLF重复登记）。
+#
+# 固定为LF后，Drizzle实际读取的hash恒等于Git blob的LF SHA-256。
+drizzle/*.sql text eol=lf
+
+# 官方政策原件（evidence integrity）：content_sha256 === sha256(original.html 原始字节)。
+# 禁止换行规范化，保证任意平台检出字节与meta.json记录一致（WI-20260911-01）。
+docs/refactor/policy-ops-agent/reports/**/evidence/**/original.html -text
+
+# 合成政策案例库V2（WI-20260911-02）：Markdown与manifest由脚本确定性渲染并以 --check
+# 逐字节对账；固定LF避免宿主autocrlf改变检出字节导致check误报。
+docs/refactor/policy-ops-agent/case-library/*.md text eol=lf
+docs/refactor/policy-ops-agent/case-library/*.json text eol=lf

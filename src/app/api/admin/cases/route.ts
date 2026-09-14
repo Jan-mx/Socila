@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { cases } from "@/lib/db/schema";
-import { or, ilike, sql, desc } from "drizzle-orm";
+import { planningReads } from "@/server/modules/planning/application";
+import { decorateShowcaseCase } from "@/lib/showcase/case-nature";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * 管理案例列表（RCL-FR-020 `active AND filters`；SHV2-AC-012）：
+ * 分页与既有字段保持不变，每行附加 caseNature 与结构化 policySources。
+ */
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl;
@@ -15,49 +18,16 @@ export async function GET(req: NextRequest) {
 
     const page = Math.max(1, parseInt(pageStr, 10));
     const pageSize = Math.min(200, Math.max(1, parseInt(pageSizeStr, 10)));
-    const offset = (page - 1) * pageSize;
 
-    const whereClauses = [];
-
-    if (q) {
-      whereClauses.push(
-        or(
-          ilike(cases.caseUid, `%${q}%`),
-          ilike(cases.caseText, `%${q}%`),
-          ilike(cases.creator, `%${q}%`),
-        ),
-      );
-    }
-
-    if (topic) {
-      whereClauses.push(sql`${cases.topics}::text ilike ${"%" + topic + "%"}`);
-    }
-
-    const whereExpr =
-      whereClauses.length === 0
-        ? undefined
-        : whereClauses.length === 1
-          ? whereClauses[0]
-          : or(...whereClauses);
-
-    const [rows, totalRows] = await Promise.all([
-      db
-        .select()
-        .from(cases)
-        .where(whereExpr)
-        .orderBy(desc(cases.updatedAt))
-        .limit(pageSize)
-        .offset(offset),
-      db
-        .select({ total: sql<number>`count(*)` })
-        .from(cases)
-        .where(whereExpr),
-    ]);
-
-    const total = Number(totalRows[0]?.total ?? 0);
+    const { rows, total } = await planningReads.searchCases({
+      q,
+      topic,
+      page,
+      pageSize,
+    });
 
     return NextResponse.json({
-      cases: rows,
+      cases: rows.map((row) => decorateShowcaseCase(row as unknown as Record<string, unknown>)),
       total,
       page,
       pageSize,

@@ -1,10 +1,9 @@
 import fs from "fs";
-import path from "path";
 import { db } from "@/lib/db";
-import { ruleSets, workflows, tests } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-
-const DSL_DIR = path.join(process.cwd(), "dsl/ssp_dsl_v1");
+import { ruleSets, tests } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
+import type { DiscoveredRegion } from "@/lib/dsl/region-manifest";
+import { parseOverlayOperation } from "@/lib/dsl/overlay-operation";
 
 interface RuleSetFile {
   rule_set_id: string;
@@ -13,16 +12,8 @@ interface RuleSetFile {
   effective_from: string;
   rules: string[];
   conflict_resolution?: unknown;
-}
-
-interface WorkflowFile {
-  workflow_id: string;
-  name: string;
-  version: string;
-  stages: unknown[];
-  rollback_policy?: unknown;
-  canary?: unknown;
-  audit?: unknown;
+  operation?: string;
+  target_business_key?: string | null;
 }
 
 interface TestEntry {
@@ -37,24 +28,44 @@ interface TestsFile {
   tests: TestEntry[];
 }
 
-export async function seedMisc() {
-  // Seed rule set
-  const ruleSetPath = path.join(
-    DSL_DIR,
-    "rule_sets/rule_set_shanghai_plan_v1.json",
-  );
-  const ruleSetRaw = fs.readFileSync(ruleSetPath, "utf-8");
+/**
+ * 装载地区规则集与示例测试（SDL-FR-004：路径与地区来自地区Manifest）。
+ * 复审纠正：存在检查与更新条件包含jurisdictionCode——同一rule_set_id/测试名称
+ * 在不同地区各自成行，绝不跨地区更新覆盖；tests行写入jurisdictionCode。
+ * 协议级发布工作流与本职责分离（见seed-workflow.ts，只装载一次）。
+ */
+export async function seedMisc(region: DiscoveredRegion) {
+  const jurisdictionCode = region.manifest.jurisdiction_code;
+
+  // Seed rule set（地区作用域：jurisdictionCode + ruleSetId + version）
+  const ruleSetRaw = fs.readFileSync(region.ruleSetPath, "utf-8");
   const ruleSet: RuleSetFile = JSON.parse(ruleSetRaw);
 
   console.log(`Seeding rule set: ${ruleSet.rule_set_id}...`);
 
+  // NRP-FR-007：规则集同样持久化显式overlay操作。
+  const ruleSetOverlay = parseOverlayOperation(
+    "rule_set",
+    ruleSet.rule_set_id,
+    ruleSet.operation,
+    ruleSet.target_business_key,
+    jurisdictionCode,
+  );
+
   const existingRuleSet = await db
     .select({ id: ruleSets.id })
     .from(ruleSets)
-    .where(eq(ruleSets.ruleSetId, ruleSet.rule_set_id))
+    .where(
+      and(
+        eq(ruleSets.jurisdictionCode, jurisdictionCode),
+        eq(ruleSets.ruleSetId, ruleSet.rule_set_id),
+        eq(ruleSets.version, 1),
+      ),
+    )
     .limit(1);
 
   const ruleSetData = {
+    jurisdictionCode,
     ruleSetId: ruleSet.rule_set_id,
     description: ruleSet.description ?? null,
     status: ruleSet.status,
@@ -62,59 +73,29 @@ export async function seedMisc() {
     rules: ruleSet.rules,
     conflictResolution: ruleSet.conflict_resolution ?? null,
     version: 1,
+    operation: ruleSetOverlay.operation,
+    targetBusinessKey: ruleSetOverlay.targetBusinessKey,
   };
 
   if (existingRuleSet.length > 0) {
     await db
       .update(ruleSets)
       .set({ ...ruleSetData, updatedAt: new Date() })
-      .where(eq(ruleSets.ruleSetId, ruleSet.rule_set_id));
+      .where(
+        and(
+          eq(ruleSets.jurisdictionCode, jurisdictionCode),
+          eq(ruleSets.ruleSetId, ruleSet.rule_set_id),
+          eq(ruleSets.version, 1),
+        ),
+      );
     console.log(`  Updated rule set: ${ruleSet.rule_set_id}`);
   } else {
     await db.insert(ruleSets).values(ruleSetData);
     console.log(`  Inserted rule set: ${ruleSet.rule_set_id}`);
   }
 
-  // Seed workflow
-  const workflowPath = path.join(
-    DSL_DIR,
-    "workflows/publish_workflow_default.json",
-  );
-  const workflowRaw = fs.readFileSync(workflowPath, "utf-8");
-  const workflow: WorkflowFile = JSON.parse(workflowRaw);
-
-  console.log(`Seeding workflow: ${workflow.workflow_id}...`);
-
-  const existingWorkflow = await db
-    .select({ id: workflows.id })
-    .from(workflows)
-    .where(eq(workflows.workflowId, workflow.workflow_id))
-    .limit(1);
-
-  const workflowData = {
-    workflowId: workflow.workflow_id,
-    name: workflow.name,
-    versionStr: workflow.version,
-    stages: workflow.stages,
-    rollbackPolicy: workflow.rollback_policy ?? null,
-    canary: workflow.canary ?? null,
-    auditConfig: workflow.audit ?? null,
-  };
-
-  if (existingWorkflow.length > 0) {
-    await db
-      .update(workflows)
-      .set({ ...workflowData, updatedAt: new Date() })
-      .where(eq(workflows.workflowId, workflow.workflow_id));
-    console.log(`  Updated workflow: ${workflow.workflow_id}`);
-  } else {
-    await db.insert(workflows).values(workflowData);
-    console.log(`  Inserted workflow: ${workflow.workflow_id}`);
-  }
-
-  // Seed tests from rule examples
-  const testsPath = path.join(DSL_DIR, "tests/rule_examples_as_tests.json");
-  const testsRaw = fs.readFileSync(testsPath, "utf-8");
+  // Seed tests from rule examples（地区作用域：jurisdictionCode + name）
+  const testsRaw = fs.readFileSync(region.testsPath, "utf-8");
   const testsFile: TestsFile = JSON.parse(testsRaw);
 
   console.log(`Seeding ${testsFile.tests.length} example tests...`);
@@ -125,11 +106,12 @@ export async function seedMisc() {
     const existingTest = await db
       .select({ id: tests.id })
       .from(tests)
-      .where(eq(tests.name, testName))
+      .where(and(eq(tests.jurisdictionCode, jurisdictionCode), eq(tests.name, testName)))
       .limit(1);
 
     const testData = {
       name: testName,
+      jurisdictionCode,
       ruleId: t.rule_id,
       input: t.input as Record<string, unknown>,
       paramsOverride: t.params_override ?? null,
@@ -141,7 +123,7 @@ export async function seedMisc() {
       await db
         .update(tests)
         .set({ ...testData, updatedAt: new Date() })
-        .where(eq(tests.name, testName));
+        .where(and(eq(tests.jurisdictionCode, jurisdictionCode), eq(tests.name, testName)));
       console.log(`  Updated test: ${testName}`);
     } else {
       await db.insert(tests).values(testData);

@@ -10,12 +10,15 @@ export const dynamic = "force-dynamic";
 
 interface PromoteRequest {
   entity_type?: PublishEntityType;
+  jurisdiction_code?: string;
   entity_id?: string;
+  version?: number;
   to_stage?: string;
   actor?: string;
   reason?: string;
 
   entityType?: PublishEntityType;
+  jurisdictionCode?: string;
   entityId?: string;
   toStage?: string;
 }
@@ -25,13 +28,19 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as PromoteRequest;
 
     const entityType = body.entity_type ?? body.entityType;
+    const jurisdictionCode =
+      body.jurisdiction_code ?? body.jurisdictionCode;
     const entityId = body.entity_id ?? body.entityId;
+    const version = body.version;
     const requestedToStage = normalizeStageInput(body.to_stage ?? body.toStage);
     const actor = body.actor ?? "admin-ui";
 
-    if (!entityType || !entityId) {
+    if (!entityType || !jurisdictionCode || !entityId || !version) {
       return NextResponse.json(
-        { error: "缺少必填字段" },
+        {
+          error:
+            "缺少精确实体身份（entity_type/jurisdiction_code/entity_id/version，NRP-FR-021）",
+        },
         { status: 400 },
       );
     }
@@ -45,7 +54,9 @@ export async function POST(req: NextRequest) {
 
     const result = await promoteEntity({
       entityType,
+      jurisdictionCode,
       entityId,
+      version: Number(version),
       requestedToStage,
       actor,
       reason: body.reason,

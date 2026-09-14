@@ -44,11 +44,6 @@ interface AgentQuestion {
   options?: AgentQuestionOption[];
 }
 
-interface WarningItem {
-  warning_id?: string;
-  text: string;
-}
-
 interface CaveatItem {
   caveat_id?: string;
   text: string;
@@ -61,7 +56,9 @@ interface ComputePlanResult {
   plan_id?: string;
   needs_agent?: boolean;
   questions?: AgentQuestion[];
-  warnings?: string[];
+  // 外部工具边界（UAT 2026-09-14）：warnings实际为string与{warning_id,text}
+  // 混合数组，不可声明为string[]；渲染前必须经collectWarningTexts归一化。
+  warnings?: unknown[];
   caveats?: CaveatItem[];
   plan?: {
     conclusion_level?: string;
@@ -92,7 +89,7 @@ interface ComputePlanResult {
     };
     scenarios?: Scenario[];
     subsidy_recommendations?: SubsidyRecommendation[];
-    warnings?: WarningItem[];
+    warnings?: unknown[];
     caveats?: CaveatItem[];
     [key: string]: unknown;
   };
@@ -180,7 +177,10 @@ function buildNextActions(
   const subsidyRecs = result.calc?.subsidy_recommendations ?? [];
   const eligibleRecs = subsidyRecs.filter((r) => r.eligible === true);
   const pending4050 = subsidyRecs.find(
-    (r) => r.subsidy_name.includes("4050") && r.eligible !== true,
+    (r) =>
+      typeof r.subsidy_name === "string" &&
+      r.subsidy_name.includes("4050") &&
+      r.eligible !== true,
   );
 
   if (pensionGap != null && pensionGap > 0) {
@@ -221,12 +221,49 @@ function buildNextActions(
   return Array.from(new Set(actions)).slice(0, 4);
 }
 
-function collectWarnings(result: ComputePlanResult): string[] {
-  const fromCalc = (result.calc?.warnings ?? [])
-    .map((w) => w?.text)
-    .filter((w): w is string => typeof w === "string" && w.trim().length > 0);
-  const fromTool = (result.warnings ?? []).filter((w) => w.trim().length > 0);
-  return Array.from(new Set([...fromCalc, ...fromTool])).slice(0, 4);
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * 单条warning归一化：仅接受string（trim后非空）或含非空string text的
+ * 非数组对象；其余值（null/undefined/数字/布尔/数组/缺text对象）忽略，
+ * 不做String()强转。任何unknown值都先经typeof检查才可调用trim()。
+ */
+function normalizeWarningText(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (isPlainRecord(value) && typeof value.text === "string") {
+    const trimmed = value.text.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  return null;
+}
+
+function collectWarningTextsFromList(source: unknown): string[] {
+  if (!Array.isArray(source)) return [];
+  const texts: string[] = [];
+  for (const item of source) {
+    const text = normalizeWarningText(item);
+    if (text !== null) texts.push(text);
+  }
+  return texts;
+}
+
+/**
+ * 外部工具返回的warnings是不可信边界（生产实证：顶层为string与
+ * {warning_id,text}混合、calc.warnings为对象数组）。合并顶层与calc.warnings，
+ * 顶层在前；按规范化文本去重并保持首次出现顺序；最多返回4条；不修改传入对象。
+ */
+export function collectWarningTexts(result: unknown): string[] {
+  if (!isPlainRecord(result)) return [];
+  const fromTool = collectWarningTextsFromList(result.warnings);
+  const fromCalc = isPlainRecord(result.calc)
+    ? collectWarningTextsFromList(result.calc.warnings)
+    : [];
+  return Array.from(new Set([...fromTool, ...fromCalc])).slice(0, 4);
 }
 
 function collectCaveats(result: ComputePlanResult): CaveatItem[] {
@@ -411,7 +448,7 @@ function ScenarioCards({
 
   return (
     <div className="mt-3">
-      <p className="mb-2 text-xs font-medium text-muted-foreground">路径对比（按真实案例高频字段）</p>
+      <p className="mb-2 text-xs font-medium text-muted-foreground">路径对比（按典型场景高频字段）</p>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
         {scenarios.map((s) => {
           const recommended = s.scenario_id === recommendedId;
@@ -620,7 +657,7 @@ function ComputePlanCard({ result }: { result: ComputePlanResult }) {
   const scenarios = result.calc?.scenarios ?? [];
   const recommended = pickRecommendedScenario(scenarios);
   const subsidyRecs = result.calc?.subsidy_recommendations ?? [];
-  const warnings = collectWarnings(result);
+  const warnings = collectWarningTexts(result);
   const caveats = collectCaveats(result);
   const nextActions = buildNextActions(result, recommended);
   const questions = result.questions ?? [];

@@ -1,0 +1,169 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-200-MIN-PENSION-YEARS",
+  "name": "按退休年份查最低养老缴费年限（参数时间线）",
+  "module": "pension",
+  "status": "published",
+  "priority": 200,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "该时间线为可配置参数：如政策调整，只需在 Admin 中新增版本/修正 rows，无需改代码。",
+  "inputs": [
+    {
+      "key": "calc.retirement.legal_retire_year",
+      "type": "number",
+      "required": true
+    }
+  ],
+  "parameter_refs": [
+    {
+      "param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+      "purpose": "最低缴费年限时间线"
+    }
+  ],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_missing",
+        "when": {
+          "==": [
+            {
+              "var": "calc.retirement.legal_retire_year"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-RETIRE-YEAR",
+                "text": "缺少退休年份，无法判断最低缴费年限（15/16/…/20年）。",
+                "field": "calc.retirement.legal_retire_year"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_lookup",
+        "when": {
+          "!=": [
+            {
+              "var": "calc.retirement.legal_retire_year"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "lookup",
+              "table_param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+              "key": {
+                "retire_year": {
+                  "var": "calc.retirement.legal_retire_year"
+                }
+              },
+              "into": "calc.pension.min_years_required"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.pension.min_years_required",
+      "type": "number",
+      "desc": "最低养老缴费年限(年)"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "退休年份2029 -> 15年",
+      "input": {
+        "calc": {
+          "retirement": {
+            "legal_retire_year": 2029
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "pension": {
+            "min_years_required": 15
+          }
+        }
+      }
+    },
+    {
+      "name": "退休年份2036 -> 18.5年",
+      "input": {
+        "calc": {
+          "retirement": {
+            "legal_retire_year": 2036
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "pension": {
+            "min_years_required": 18.5
+          }
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "document_id": "DOC-CN-SOCIAL-INSURANCE-LAW",
+      "jurisdiction_code": "CN",
+      "title": "中华人民共和国社会保险法（2018修正）",
+      "authority": "全国人民代表大会常务委员会",
+      "official_url": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394629.html",
+      "fetched_at": "2026-09-05T13:38:56.250Z",
+      "content_sha256": "b69d5d490f9b6b70394dfb670c2e1a0a959f306e70380bb678ee4866f947d464",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-SOCIAL-INSURANCE-LAW/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "article",
+        "reference": "第十六条"
+      },
+      "excerpt": "参加基本养老保险的个人，达到法定退休年龄时累计缴费满十五年的，按月领取基本养老金。"
+    },
+    {
+      "document_id": "DOC-CN-NPC-DELAYED-RETIREMENT-2024",
+      "jurisdiction_code": "CN",
+      "title": "全国人民代表大会常务委员会关于实施渐进式延迟法定退休年龄的决定",
+      "authority": "全国人民代表大会常务委员会",
+      "official_url": "https://www.mohrss.gov.cn/SYrlzyhshbzb/ztzl/zt202409/qwfb/202409/t20240913_525781.html",
+      "fetched_at": "2026-09-05T13:37:42.739Z",
+      "content_sha256": "69a02418f3ce5fbc6276135990e62731cfb6ae7c0b1524c3f2f855651ffa7d9b",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-NPC-DELAYED-RETIREMENT-2024/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "article",
+        "reference": "国务院办法第二条"
+      },
+      "excerpt": "从2030年1月1日起，将职工按月领取基本养老金最低缴费年限由十五年逐步提高至二十年，每年提高六个月。"
+    }
+  ],
+  "operation": "baseline"
+}

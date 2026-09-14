@@ -19,7 +19,8 @@ async function importer(): Promise<Required<ImportModule>> {
   return importerModule as Required<ImportModule>;
 }
 
-describe("Excel import mapping", () => {
+// PMG-FR-007：Excel/workbook 解析含动态导入，只在自身设置 15 秒上限，不提高全项目默认 timeout。
+describe("Excel import mapping", { timeout: 15_000 }, () => {
   it("maps current and legacy case headers", async () => {
     const { parseCaseRows } = await importer();
 

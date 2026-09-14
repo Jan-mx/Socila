@@ -6,10 +6,11 @@
  */
 
 import "../src/lib/env/load-environment";
+import { assertLocalDatabaseUrl } from "../src/lib/db/guard";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
 import { streamText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -22,7 +23,7 @@ import {
   type SourceShowcaseCase,
 } from "../src/lib/showcase/builder";
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = assertLocalDatabaseUrl();
 if (!DATABASE_URL) {
   process.stderr.write("DATABASE_URL not set\n");
   process.exit(1);
@@ -50,8 +51,8 @@ const llmRuntime = createShowcaseLlmRuntime(fallbackOnly, {
   setupStream: () => streamText,
 });
 const { config: llmConfig, client: openai, stream } = llmRuntime;
-const neonSql = neon(DATABASE_URL);
-const db = drizzle({ client: neonSql });
+const pool = new Pool({ connectionString: DATABASE_URL });
+const db = drizzle({ client: pool });
 
 const SYSTEM_PROMPT = `你是"社保规划助手"，专注于上海社保规划。请基于用户信息和参考预期结果，生成一份可执行、无占位符的方案。
 
@@ -200,6 +201,7 @@ async function main() {
       VALUES (${row.caseUid}, ${row.title}, ${JSON.stringify(row.tags)}::jsonb, ${row.userMessage}, ${row.aiResponse}, ${JSON.stringify(row.inputData)}::jsonb, ${JSON.stringify(row.expectedData)}::jsonb, ${row.category}, ${row.isPublished}, ${row.sortOrder})`);
   }
   process.stdout.write(`\n=== Complete: ${preparedRows.length} showcase cases inserted ===\n`);
+  await pool.end();
 }
 
 main().catch((err) => {

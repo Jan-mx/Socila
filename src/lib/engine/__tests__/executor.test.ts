@@ -5,7 +5,7 @@ import type { RuleDefinition } from "@/types/engine";
 
 function makeRule(partial: Partial<RuleDefinition>): RuleDefinition {
   return {
-    dsl_version: "ssp_dsl_v1",
+    dsl_version: "SOCILA-DSL-1.0",
     rule_id: "R-TEST",
     name: "test",
     status: "published",

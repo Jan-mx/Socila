@@ -1,0 +1,82 @@
+# Gitleaks 自定义配置（09-05 SDL-NFR-007；ADR-0009复审纠正）：
+# [extend] useDefault = true 保留完整默认规则集；仅追加人工核实的测试合成值
+# [[allowlists]]——按"目标规则×精确路径"收窄（targetRules + condition = "AND"）。
+#
+# 为什么不用旧式全局 [allowlist]：Gitleaks 8.29.1 对旧式全局allowlist按路径
+# condition=OR **整文件跳过**（trace: `skipping file: global allowlist`）——允许路径上
+# 匹配其他规则的Secret将漏检，违反"检测能力不降低"。[[allowlists]]+targetRules把
+# 忽略范围收窄到指定规则，同文件中其他规则的发现仍正常报告。
+#
+# 自动化哨兵回归：node scripts/verify-gitleaks-allowlist.mjs
+# （已核实误报通过 + 允许路径上其他规则哨兵必须被检测 + trace无整文件跳过）。
+# 任何新增命中仍必须阻断并人工核实；不得扩大本清单（不得排除生产代码/配置/目录）。
+[extend]
+useDefault = true
+
+# jwt规则：仅SJWT跨语言契约固定合成向量（文件自述"testSecrets为测试专用固定值，
+# 非生产Secret"；2026-09-05人工核实）。
+[[allowlists]]
+description = "SJWT契约固定合成向量（jwt规则，人工核实）"
+targetRules = ["jwt"]
+paths = ['''^testdata/service-jwt-vectors\.json$''']
+condition = "AND"
+
+# generic-api-key规则：测试占位Secret（sjwt-*-secret-…明显占位值；2026-09-05人工核实）。
+[[allowlists]]
+description = "测试占位Secret（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^services/agent/tests/test_service_jwt_replay_integration\.py$''',
+  '''^src/server/modules/agent-integration/__tests__/draft-imports-route\.integration\.test\.ts$''',
+  '''^src/server/modules/agent-integration/__tests__/service-jwt-replay\.integration\.test\.ts$''',
+]
+condition = "AND"
+
+# generic-api-key规则：DSL决策表业务字段名（"key": "calc.…"等；与.gitleaksignore
+# 旧路径基线为同一批已核实误报，目录迁移后按新路径登记；2026-09-05人工核实）。
+[[allowlists]]
+description = "DSL规则JSON业务字段名（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^dsl/regions/shanghai_dsl_v1/rules/R-500-4050-ELIGIBILITY\.json$''',
+  '''^dsl/regions/shanghai_dsl_v1/rules/R-510-4050-AMOUNT\.json$''',
+  '''^dsl/regions/shanghai_dsl_v1/rules/R-540-SUBSIDY-MUTUAL-EXCLUSION\.json$''',
+]
+condition = "AND"
+
+# generic-api-key规则：合成政策案例manifest的scenarioKey/token状字段值（RCL-GEN-2.0
+# 确定性场景键如"SH-female-from_1980-unemployed-UNEMPLOYMENT"，非凭据；WI-20260911-02
+# 人工核实为误报）。按"规则×路径"精确收窄，哨兵回归保证该路径上其他规则照常检测。
+[[allowlists]]
+description = "合成案例manifest场景键（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^docs/refactor/policy-ops-agent/case-library/shanghai-guangdong-v2\.manifest\.json$''',
+]
+condition = "AND"
+
+# generic-api-key规则：RAG证据同步测试的脱敏哨兵口令（"topsecret-*-9137"合成占位值，
+# 仅用于断言CLI输出不含凭据，非真实凭据；2026-09-12人工核实为误报）。按"规则×路径"
+# 精确收窄，哨兵回归保证该路径上其他规则照常检测。
+[[allowlists]]
+description = "证据同步测试脱敏哨兵口令（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^services/agent/tests/test_rag_evidence_sync\.py$''',
+]
+condition = "AND"
+
+# generic-api-key规则：rag-evidence隔离演练的合成IAM口令（"R4LimitedPass9137"仅用于
+# 演练步骤内在隔离MinIO上创建受限用户并触发AccessDenied反例，步骤finally即移除用户，
+# 非任何持久系统凭据；2026-09-13人工核实为误报）。按"规则×路径×秘密精确正则"收窄，
+# 哨兵回归保证该路径上其他规则照常检测。
+[[allowlists]]
+description = "rag-evidence演练合成IAM口令（generic-api-key规则，人工核实）"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^scripts/rag-evidence-drill\.mjs$''',
+]
+regexes = [
+  '''^R4LimitedPass9137$''',
+]
+condition = "AND"

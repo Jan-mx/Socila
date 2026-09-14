@@ -1,0 +1,69 @@
+# Work Item目录
+
+> Author: Jan
+> Status: Active
+> Updated: 2026-09-13
+
+## 用途
+
+本目录保存中型开发任务的轻量规格。Work Item位于聊天指令和完整PRD之间，用于固定任务范围、测试、验收和回退要求。
+
+## 使用条件
+
+以下情况创建Work Item：
+
+- 在现有架构内增加可观察行为；
+- 修改一个或少量模块；
+- 需要独立测试和验收；
+- 不足以建立新的Feature PRD。
+
+明确Bug、纯文档修正和无行为变化的内部重构可以不创建，但仍需关联需求和验证。
+
+## 命名
+
+```text
+WI-YYYYMMDD-NN-english-slug.md
+```
+
+## 必需内容
+
+- Author、Status、Updated；
+- Work Item ID；
+- 关联PRD和需求ID；
+- 背景与证据；
+- 范围与非目标；
+- 实现要求；
+- 测试矩阵；
+- 验收场景；
+- 风险与回退；
+- 文档同步清单；
+- 验证命令和完成条件。
+
+## 状态
+
+```text
+Draft → Ready → In Progress → Blocked / Accepted → Archived
+```
+
+实现前编写或更新测试；实现后把实际测试路径写入traceability，把执行结果写入PROGRESS或验收报告。
+
+## Agent提示词规则
+
+Agent提示词只在对话中交付，禁止写入Work Item正文、验收报告或其他开发文档。Work Item只保存范围、权限边界、测试、验收和回退条件。
+
+## 当前Work Item
+
+| Work Item | 状态 | 用途 |
+| --- | --- | --- |
+| `WI-20260913-01-shanghai-rag-runtime-closure.md` | Ready | 23份上海原件MinIO持久化、真实索引、内部检索和Web对话来源链 |
+| `WI-20260911-01-shanghai-evidence-policy-correction.md` | Reopened | ensure期间冲突对象竞态与运行时原件闭环待修复 |
+| `WI-20260911-02-rcl-gen-2-cases-docs-api-ui.md` | Ready for user testing | 36条案例V2生成、文档、API与页面；技术范围不变 |
+| `WI-20260911-03-case-rewrite-0019-isolated-acceptance.md` | Ready for user testing | 0019与V1→V2受控改写；技术范围不变，持久执行未授权 |
+| `WI-20260909-01-task34-final-integration.md` | Accepted | 任务3/4最终集成分支已以显式merge commit合入重构分支 |
+| `WI-20260907-02-task3-temporal-entry-hardening.md` | Accepted | 空黄金测试、停用地区绑定和replay三方hash已完成第二轮修复验收 |
+| `WI-20260907-03-regional-policy-case-rebuild.md` | Accepted | 地区化案例库代码、隔离演练和持久验收均已闭环 |
+| `WI-20260907-04-persistent-case-library-replacement.md` | Accepted | repair-forward执行、幂等、可信归档及40表/20 sequence恢复已独立复审通过 |
+| `WI-20260907-01-sichuan-policy-followup.md` | Blocked | 四川三项正式权威来源到位后独立开发、物化、审核和候选快照验收 |
+| `WI-20260906-02-stage-e-persistent-repair.md` | Accepted | 已完成本机0014迁移、四包draft快照repair及前后完整恢复对账 |
+| `WI-20260906-01-stage-e-pack-repair-hardening.md` | Accepted | 已加固政策包快照repair的事务、指纹、审计与集成测试；持久库执行见WI-20260906-02 |
+| `WI-20260901-01-docs-reorganization.md` | Accepted | Docs目录重组与当前文档治理 |

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { RuleDefinition, TraceEntry } from "@/types/engine";
 import { executeSingleRuleInMemory, orchestrateInMemory } from "./orchestrator";
-import { getEffectiveRules, getEffectiveParams } from "@/lib/db/queries";
+import { rulesReads } from "@/server/modules/rules/application";
 
 export interface TestCase {
   rule_id?: string | null;
@@ -31,6 +31,9 @@ export interface DiffEntry {
 /**
  * Run a single test case.
  *
+ * `asOfDate` 省略时全量用例按"当天日期"执行（结果随日期漂移）；
+ * 黄金基线与回归比较必须显式传入固定日期。
+ *
  * CRITICAL dual params resolution:
  * 1. Start with baseParams from DB (or empty)
  * 2. Merge input.params on top (if present in test input)
@@ -40,31 +43,30 @@ export function runTestCase(
   testCase: TestCase,
   allRules: RuleDefinition[],
   baseParams: Record<string, unknown>,
+  asOfDate?: string,
 ): TestResult {
   const testName =
     testCase.example_name ?? testCase.name ?? testCase.rule_id ?? "unnamed";
 
-  // Build merged params
-  const mergedParams = { ...baseParams };
-
-  // Merge input.params if present
+  // CORE-FR-007 输入隔离：深拷贝后再并入规则写入（setDeep 直写 ctx），
+  // 保证复用同一输入对象跨调用重复执行时结果确定且输入不被污染。
+  // 浅拷贝会让 params 内嵌表行数组与调用方共享引用，规则写 params.* 路径时会穿透。
+  const mergedParams = structuredClone(baseParams);
   if (testCase.input.params && typeof testCase.input.params === "object") {
-    Object.assign(mergedParams, testCase.input.params);
+    Object.assign(mergedParams, structuredClone(testCase.input.params));
   }
-
-  // Merge params_override if present and non-null
   if (
     testCase.params_override &&
     typeof testCase.params_override === "object"
   ) {
-    Object.assign(mergedParams, testCase.params_override);
+    Object.assign(mergedParams, structuredClone(testCase.params_override));
   }
 
   // Build user input (remove params from input to avoid confusion)
   const userInput: Record<string, any> = {};
   for (const [key, value] of Object.entries(testCase.input)) {
     if (key !== "params") {
-      userInput[key] = value;
+      userInput[key] = structuredClone(value);
     }
   }
 
@@ -113,7 +115,7 @@ export function runTestCase(
     };
   } else {
     // Full rule set test
-    resultCtx = orchestrateInMemory(allRules, mergedParams, userInput);
+    resultCtx = orchestrateInMemory(allRules, mergedParams, userInput, asOfDate);
   }
 
   // Build the actual result to compare against expected
@@ -144,6 +146,7 @@ export function runTestSuite(
   testCases: TestCase[],
   allRules: RuleDefinition[],
   baseParams: Record<string, unknown>,
+  asOfDate?: string,
 ): {
   total: number;
   passed: number;
@@ -151,7 +154,9 @@ export function runTestSuite(
   pass_rate: number;
   results: TestResult[];
 } {
-  const results = testCases.map((tc) => runTestCase(tc, allRules, baseParams));
+  const results = testCases.map((tc) =>
+    runTestCase(tc, allRules, baseParams, asOfDate),
+  );
   const passed = results.filter((r) => r.pass).length;
 
   return {
@@ -242,6 +247,9 @@ export function dbRuleToDefinition(r: any): RuleDefinition {
   };
 }
 
+/** 国家baseline参数包：所有地区解析的参数底层（地区包按键覆盖）。 */
+export const NATIONAL_PARAM_PACK_ID = "CN-BASELINE";
+
 /**
  * Load the effective rules + flattened params from the DB for a given date.
  * Shared by runTest (single) and runDbTestSuite (batch) so both run the engine
@@ -249,6 +257,10 @@ export function dbRuleToDefinition(r: any): RuleDefinition {
  *
  * 规则按"规则集声明顺序"排序，使内存编排 (orchestrateInMemory) 与生产 orchestrate()
  * 的执行顺序一致——规则输出会喂给后续规则，执行顺序对结果有意义。
+ *
+ * 参数按继承链扁平化（NRP-FR-005/006）：先装载国家baseline参数包，再以地区包
+ * 覆盖同名键——国家表（退休年龄/最低缴费年限/失业金法定档）由CN提供，地区执行
+ * 值通过显式overlay（add/replace）落地。
  */
 export async function loadEffectiveEngine(asOfDate?: string): Promise<{
   allRules: RuleDefinition[];
@@ -258,10 +270,12 @@ export async function loadEffectiveEngine(asOfDate?: string): Promise<{
   const ruleSetId = "RS-SHANGHAI-PLAN-V1";
   const policyPackId = "SHANGHAI_BASE";
 
-  const [{ ruleSet, rules: dbRules }, dbParams] = await Promise.all([
-    getEffectiveRules(ruleSetId, date),
-    getEffectiveParams(policyPackId, date),
-  ]);
+  const [{ ruleSet, rules: dbRules }, nationalParams, regionalParams] =
+    await Promise.all([
+      rulesReads.getEffectiveRules(ruleSetId, date),
+      rulesReads.getEffectiveParams(NATIONAL_PARAM_PACK_ID, date),
+      rulesReads.getEffectiveParams(policyPackId, date),
+    ]);
 
   let allRules: RuleDefinition[] = dbRules.map(dbRuleToDefinition);
 
@@ -276,7 +290,7 @@ export async function loadEffectiveEngine(asOfDate?: string): Promise<{
   }
 
   const baseParams: Record<string, unknown> = {};
-  for (const p of dbParams) {
+  for (const p of [...nationalParams, ...regionalParams]) {
     const paramId = (p as any).paramId;
     const type = (p as any).type;
     if (type === "table" || type === "timeline") {

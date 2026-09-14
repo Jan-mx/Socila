@@ -1,0 +1,275 @@
+{
+  "tests": [
+    {
+      "rule_id": "R-310-MI-WAITING-PERIOD",
+      "example_name": "断缴2个月 <=3 -> 0等待期",
+      "input": {
+        "calc": {
+          "mi": {
+            "gap_months": 2
+          }
+        },
+        "params": {
+          "P-SH-MI-GAP-WAIVER-MONTHS": 3,
+          "P-SH-MI-WAITING-PERIOD-MONTHS": 6
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "mi": {
+            "waiting_period_months": 0,
+            "waiting_required": false
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-310-MI-WAITING-PERIOD",
+      "example_name": "断缴5个月 -> 6个月等待期",
+      "input": {
+        "calc": {
+          "mi": {
+            "gap_months": 5
+          }
+        },
+        "params": {
+          "P-SH-MI-GAP-WAIVER-MONTHS": 3,
+          "P-SH-MI-WAITING-PERIOD-MONTHS": 6
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "mi": {
+            "waiting_period_months": 6,
+            "waiting_required": true
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-500-4050-ELIGIBILITY",
+      "example_name": "已认定就业困难 + 灵活就业 -> eligible",
+      "input": {
+        "user": {
+          "subsidy": {
+            "has_employment_difficulty_cert": true
+          },
+          "status": {
+            "employment_status": "flexible"
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "4050_eligible": true
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-510-4050-AMOUNT",
+      "example_name": "下限基数7546、费率0.3、补贴50% -> 1131.9",
+      "input": {
+        "calc": {
+          "subsidy": {
+            "4050_eligible": true
+          }
+        },
+        "params": {
+          "P-SH-CONTRIB-BASE-LOWER": 7546,
+          "P-SH-PENSION-RATE-FLEX": 0.2,
+          "P-SH-MEDICAL-RATE-FLEX": 0.1,
+          "P-SH-4050-SUBSIDY-RATE": 0.5
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "flex_cost_est": 2263.8,
+            "4050_amount_est": 1131.9
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+      "example_name": "就业困难认定且被单位吸纳 -> eligible",
+      "input": {
+        "user": {
+          "subsidy": {
+            "has_employment_difficulty_cert": true
+          },
+          "status": {
+            "employment_status": "employed"
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "job_eligible": true
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-521-JOB-SUBSIDY-AMOUNT",
+      "example_name": "最低工资2740、比例50% -> 1370",
+      "input": {
+        "calc": {
+          "subsidy": {
+            "job_eligible": true
+          }
+        },
+        "params": {
+          "P-SH-MIN-WAGE": 2740,
+          "P-SH-JOB-SUBSIDY-RATE-MINWAGE": 0.5
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "job_amount_est": 1370
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-530-OLDER-UI-PENSION-FUND-COVERAGE",
+      "example_name": "领失业金且距退休10个月 -> eligible",
+      "input": {
+        "user": {
+          "status": {
+            "on_unemployment_benefit": true
+          },
+          "subsidy": {
+            "months_to_legal_retire": 10
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "older_ui_pension_fund_eligible": true
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-540-SUBSIDY-MUTUAL-EXCLUSION",
+      "example_name": "min_cost 且 job金额>4050 -> 选job",
+      "input": {
+        "calc": {
+          "subsidy": {
+            "4050_eligible": true,
+            "job_eligible": true,
+            "older_ui_pension_fund_eligible": false,
+            "4050_amount_est": 1000,
+            "job_amount_est": 1370
+          }
+        },
+        "user": {
+          "objective": "min_cost"
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "selected_option": "job_subsidy"
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-600-PAY-GAP-REMINDER",
+      "example_name": "新基数生效后按旧基数缴费2个月 -> 需要补差提醒",
+      "input": {
+        "user": {
+          "social": {
+            "months_paid_at_old_base": 2
+          }
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "contribution": {
+            "pay_gap_needed": true,
+            "pay_gap_months": 2
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-SH-UI-AMOUNT",
+      "example_name": "第1-12个月领取 -> 2340",
+      "input": {
+        "user": {
+          "social": {
+            "ui_benefit_stage": "1-12"
+          }
+        },
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        },
+        "params": {
+          "P-SH-UNEMPLOYMENT-BENEFIT-TIER1": 2340,
+          "P-SH-UNEMPLOYMENT-BENEFIT-TIER2": 1872,
+          "P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED": 1690
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "unemployment": {
+            "benefit_stage": "1-12",
+            "monthly_amount_est": 2340
+          }
+        }
+      }
+    },
+    {
+      "rule_id": "R-SH-FLEX-CONTRIBUTION",
+      "example_name": "按下限基数7546缴费 -> 养老1509.2/医保754.6/合计2263.8",
+      "input": {
+        "user": {
+          "status": {
+            "employment_status": "flexible"
+          },
+          "social": {
+            "flex_contrib_base": 7546
+          }
+        },
+        "params": {
+          "P-SH-CONTRIB-BASE-LOWER": 7546,
+          "P-SH-CONTRIB-BASE-UPPER": 37731,
+          "P-SH-PENSION-RATE-FLEX": 0.2,
+          "P-SH-MEDICAL-RATE-FLEX": 0.1
+        }
+      },
+      "params_override": null,
+      "expected": {
+        "calc": {
+          "flex": {
+            "applicable": true,
+            "contrib_base": 7546,
+            "pension_monthly": 1509.2,
+            "medical_monthly": 754.6,
+            "total_monthly": 2263.8
+          }
+        }
+      }
+    }
+  ]
+}

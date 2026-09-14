@@ -1,0 +1,14 @@
+# 200 https://www.gov.cn/zhengce/content/2019-04/04/content_5379629.htm
+access-control-allow-credentials: true
+access-control-allow-headers: DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type
+access-control-allow-methods: GET,POST,OPTIONS
+access-control-allow-origin: *
+connection: keep-alive
+content-encoding: gzip
+content-type: text/html
+date: Sat, 05 Sep 2026 13:41:35 GMT
+set-cookie: SERVERID=adb2d3a906b8c5e3f02ddd9c20949df0|1788615695|1788615695;Path=/
+transfer-encoding: chunked
+vary: Accept-Encoding
+x-cache: MISS from i2580100_c29070(cloudsvr)
+x-ser: i25047_c2919, i2580100_c29070

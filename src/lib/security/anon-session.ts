@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-export const ANON_SESSION_COOKIE_NAME = "ssp-anon-session";
+export const ANON_SESSION_COOKIE_NAME = "socila-anon-session";
 
 const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 

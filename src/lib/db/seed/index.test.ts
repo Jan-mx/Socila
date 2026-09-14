@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { LEGACY_DSL_DIR_ID_FRAGMENT } from "@/lib/naming/socila-naming-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const seedMocks = vi.hoisted(() => ({
@@ -16,7 +18,8 @@ vi.mock("@/lib/import/excel-import", () => ({
   importRegressionTests: seedMocks.importRegressionTests,
 }));
 
-describe("seed runner", () => {
+// PMG-FR-007：seed 动态导入只在自身设置 15 秒上限，不提高全项目默认 timeout。
+describe("seed runner", { timeout: 15_000 }, () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
@@ -52,5 +55,24 @@ describe("seed runner", () => {
     await vi.waitFor(() => {
       expect(process.exit).toHaveBeenCalledWith(1);
     });
+  });
+});
+
+// 09-05 SDL-FR-004/012：生产Seed经地区Manifest发现资产（不硬编码上海目录/310000），
+// 且不再写入粤川示例（GD-EXAMPLE-BASE/SC-EXAMPLE-BASE移入测试夹具）。
+describe("seed runner structure contract (SDL-FR-004/012)", () => {
+  const source = readFileSync("src/lib/db/seed/index.ts", "utf8");
+
+  it("经地区Manifest发现装载资产，不硬编码上海目录或310000", () => {
+    expect(source).toContain("discoverRegionDsl");
+    expect(source).not.toMatch(
+      new RegExp(`\\bdsl\\/${LEGACY_DSL_DIR_ID_FRAGMENT}\\b`),
+    );
+    expect(source).not.toMatch(/\b310000\b/);
+  });
+
+  it("生产Seed不再包含粤川区域示例写入", () => {
+    expect(source).not.toContain("seed-regional");
+    expect(source).not.toContain("seedRegionalExamples");
   });
 });

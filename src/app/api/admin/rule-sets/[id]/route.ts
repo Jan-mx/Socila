@@ -1,8 +1,6 @@
+import { sanitizeRuleSetEdit } from "@/lib/admin/entity-edit-policy";
+import { rulesReads, rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { ruleSets } from "@/lib/db/schema";
-import { desc, eq } from "drizzle-orm";
-import { updateRuleSet } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -12,20 +10,26 @@ async function handleUpdate(
 ) {
   try {
     const { id } = await paramsPromise;
-    const body = await req.json();
+    const body = (await req.json()) as Record<string, unknown>;
+    // 审查缺陷2：规则集编辑白名单——status/jurisdiction/version等受控字段拒绝。
+    const sanitized = sanitizeRuleSetEdit(body);
+    if (!sanitized.ok) {
+      return NextResponse.json(
+        {
+          error: "请求包含不允许修改的字段（NRP-FR-021白名单）",
+          controlledFields: sanitized.controlledFields,
+          unknownFields: sanitized.unknownFields,
+        },
+        { status: 400 },
+      );
+    }
 
-    const rows = await db
-      .select()
-      .from(ruleSets)
-      .where(eq(ruleSets.ruleSetId, id))
-      .orderBy(desc(ruleSets.version))
-      .limit(1);
+    const existing = await rulesReads.getLatestRuleSetVersion(id);
 
-    if (rows.length === 0) {
+    if (!existing) {
       return NextResponse.json({ error: "未找到规则集" }, { status: 404 });
     }
 
-    const existing = rows[0];
     if (existing.status !== "draft") {
       return NextResponse.json(
         { error: "只能更新草稿状态的规则集" },
@@ -33,17 +37,8 @@ async function handleUpdate(
       );
     }
 
-    const payload: Record<string, unknown> = {};
-    if (Array.isArray(body.rules)) payload.rules = body.rules;
-    if (
-      Object.prototype.hasOwnProperty.call(body, "description") &&
-      (typeof body.description === "string" || body.description === null)
-    ) {
-      payload.description = body.description;
-    }
-    if (Object.prototype.hasOwnProperty.call(body, "conflictResolution")) {
-      payload.conflictResolution = body.conflictResolution;
-    }
+    // 白名单后的字段直接构成更新载荷。
+    const payload: Record<string, unknown> = { ...sanitized.fields };
 
     if (Object.keys(payload).length === 0) {
       return NextResponse.json(
@@ -52,7 +47,7 @@ async function handleUpdate(
       );
     }
 
-    const updated = await updateRuleSet(existing.id, payload);
+    const updated = await rulesWrites.updateRuleSet(existing.id, payload);
     return NextResponse.json({ rule_set: updated });
   } catch {
     return NextResponse.json(

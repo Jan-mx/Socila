@@ -1,0 +1,8 @@
+# PolicyOps 对外入口（REL-FR-002：仅此代理对企业网络开放）
+# 默认 :80 供内网 Demo；设置 SITE_ADDRESS=域名 后 Caddy 自动签发 HTTPS。
+{$SITE_ADDRESS::80} {
+	reverse_proxy web:3000
+
+	# 不缓存动态响应；日志交由 Docker logging driver 轮转
+	encode gzip
+}

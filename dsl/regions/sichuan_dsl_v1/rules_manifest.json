@@ -1,0 +1,10 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "region_slug": "sichuan",
+  "jurisdiction_code": "510000",
+  "bundle_version": 1,
+  "params_file": "params/policy_params_sichuan_base.json",
+  "rule_set_file": "rule_sets/rule_set_sichuan_plan_v1.json",
+  "tests_file": "tests/rule_examples_as_tests.json",
+  "rules": []
+}

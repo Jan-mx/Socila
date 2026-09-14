@@ -70,7 +70,7 @@ export default function HomePage() {
               href="/cases"
               className="inline-flex cursor-pointer items-center rounded-xl border border-border bg-background-elevated px-7 py-4 text-base font-medium text-foreground transition-colors hover:border-primary/35 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:text-[1.05rem]"
             >
-              浏览真实案例
+              浏览合成政策案例
             </Link>
           </div>
 

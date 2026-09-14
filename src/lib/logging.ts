@@ -1,5 +1,5 @@
 /**
- * Structured logging for SSP application.
+ * Structured logging for Socila application.
  *
  * Outputs JSON to stdout for Vercel/production environments.
  * Each log entry includes a request_id for correlation.

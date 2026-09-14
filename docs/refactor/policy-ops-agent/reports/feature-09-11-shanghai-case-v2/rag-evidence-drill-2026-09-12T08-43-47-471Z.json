@@ -1,0 +1,173 @@
+{
+  "drill": "rag-evidence-sync",
+  "container": "shv2-ctrl-pg",
+  "port": "54957",
+  "primaryMinio": "127.0.0.1:54962",
+  "restoreMinio": "127.0.0.1:54963",
+  "database": "rag_drill_7b1e18",
+  "restoreDatabase": "rag_drill_7b1e18_restore",
+  "finishedAt": "2026-09-12T08:43:47.470Z",
+  "failed": false,
+  "results": [
+    {
+      "name": "全新演练库（agent.migrate含rag schema与角色）+ 清空隔离bucket",
+      "ok": true,
+      "ms": 1897,
+      "detail": {
+        "database": "rag_drill_7b1e18",
+        "primaryEndpoint": "127.0.0.1:54962",
+        "restoreEndpoint": "127.0.0.1:54963"
+      }
+    },
+    {
+      "name": "audit预态：23对象缺失+rag记录缺失 → exit 4",
+      "ok": true,
+      "ms": 766,
+      "detail": {
+        "docs": 23,
+        "missingObjects": 23
+      }
+    },
+    {
+      "name": "plan：确定性输出（两次一致）、23 uploads、planHash/targetFingerprint/codeSha齐全",
+      "ok": true,
+      "ms": 2186,
+      "detail": {
+        "plannedUploads": 23,
+        "deterministic": true,
+        "planHash": "dfd6ee5eff6b26ad…"
+      }
+    },
+    {
+      "name": "守卫反例A：apply缺--i-am-authorized → exit 2零写入",
+      "ok": true,
+      "ms": 209,
+      "detail": {
+        "exit": 2,
+        "zeroWrite": true
+      }
+    },
+    {
+      "name": "守卫反例B：错planHash → exit 4零写入",
+      "ok": true,
+      "ms": 567,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true
+      }
+    },
+    {
+      "name": "守卫反例C：错targetFingerprint → exit 4零写入",
+      "ok": true,
+      "ms": 608,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true
+      }
+    },
+    {
+      "name": "守卫反例D：plan后对象漂移（植入受管冲突对象）→ exit 4零写入",
+      "ok": true,
+      "ms": 1865,
+      "detail": {
+        "exit": 4,
+        "zeroWrite": true,
+        "plantedKeyRemoved": true
+      }
+    },
+    {
+      "name": "守卫反例E：audit缺数据库连接 → exit 2",
+      "ok": true,
+      "ms": 184,
+      "detail": {
+        "exit": 2
+      }
+    },
+    {
+      "name": "apply：23对象上传+rag登记（单持锁事务）",
+      "ok": true,
+      "ms": 1551,
+      "detail": {
+        "uploaded": 23,
+        "fetches": 23,
+        "versions": 23,
+        "manifestEntries": 23
+      }
+    },
+    {
+      "name": "verify：四方对账通过（Git/meta/DSL已在collect固化+对象SHA+rag记录）",
+      "ok": true,
+      "ms": 1075,
+      "detail": {
+        "ok": true,
+        "objects": 23,
+        "scope": "four-way"
+      }
+    },
+    {
+      "name": "幂等：复跑同一计划 → noop:true",
+      "ok": true,
+      "ms": 1287,
+      "detail": {
+        "noop": true,
+        "uploaded": 0
+      }
+    },
+    {
+      "name": "object-only verify：显式降级标记（scope/degraded/dbChecked）",
+      "ok": true,
+      "ms": 675,
+      "detail": {
+        "scope": "object-only",
+        "degraded": true
+      }
+    },
+    {
+      "name": "冲突对象拒绝覆盖（对象字节不变；清除后复跑恢复）",
+      "ok": true,
+      "ms": 5881,
+      "detail": {
+        "conflictRefused": true,
+        "objectPreserved": true,
+        "repairedViaReplan": true
+      }
+    },
+    {
+      "name": "备份：pg_dump + 逐对象下载（sha256清单）",
+      "ok": true,
+      "ms": 718,
+      "detail": {
+        "dumpBytes": 36225,
+        "backupObjects": 23
+      }
+    },
+    {
+      "name": "恢复：全新数据库pg_restore + 全新MinIO回填",
+      "ok": true,
+      "ms": 12901,
+      "detail": {
+        "restoreDb": "rag_drill_7b1e18_restore",
+        "restoredObjects": 23
+      }
+    },
+    {
+      "name": "恢复副本四方对账：verify ok + 同计划apply noop",
+      "ok": true,
+      "ms": 2608,
+      "detail": {
+        "ok": true,
+        "objects": 23,
+        "database": "rag_drill_7b1e18_restore",
+        "restoredNoop": true
+      }
+    },
+    {
+      "name": "残留敏感扫描：证据文件与演练输出零密钥",
+      "ok": true,
+      "ms": 0,
+      "detail": {
+        "filesScanned": 4
+      }
+    }
+  ]
+}

@@ -1,10 +1,9 @@
 import fs from "fs";
-import path from "path";
 import { db } from "@/lib/db";
 import { rules } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-
-const RULES_DIR = path.join(process.cwd(), "dsl/ssp_dsl_v1/rules");
+import { CANONICAL_DSL_VERSION, type DiscoveredRegion } from "@/lib/dsl/region-manifest";
+import { parseOverlayOperation } from "@/lib/dsl/overlay-operation";
 
 interface RuleFile {
   dsl_version: string;
@@ -23,29 +22,60 @@ interface RuleFile {
   outputs: unknown[];
   examples: unknown[];
   evidence?: unknown[];
+  operation?: string;
+  target_business_key?: string | null;
 }
 
-export async function seedRules() {
-  const files = fs
-    .readdirSync(RULES_DIR)
-    .filter((f) => f.endsWith(".json"))
-    .sort();
+/**
+ * 按地区Manifest装载规则（SDL-FR-004）：规则文件、地区代码全部来自
+ * DiscoveredRegion，装载器不硬编码地区目录或行政区划。
+ */
+export async function seedRules(region: DiscoveredRegion) {
+  const jurisdictionCode = region.manifest.jurisdiction_code;
 
-  console.log(`Seeding ${files.length} rules...`);
+  console.log(
+    `Seeding ${region.ruleFiles.length} rules for ${region.manifest.region_slug} (${jurisdictionCode})...`,
+  );
 
-  for (const file of files) {
-    const filePath = path.join(RULES_DIR, file);
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const rule: RuleFile = JSON.parse(raw);
+  for (const ruleFile of region.ruleFiles) {
+    const rule = JSON.parse(fs.readFileSync(ruleFile.absolutePath, "utf-8")) as RuleFile;
+    if (rule.rule_id !== ruleFile.ruleId) {
+      throw new Error(
+        `规则文件 ${ruleFile.fileName} 的 rule_id 与 Manifest 不一致（${rule.rule_id} != ${ruleFile.ruleId}）`,
+      );
+    }
+    if (rule.dsl_version !== CANONICAL_DSL_VERSION) {
+      throw new Error(
+        `规则 ${rule.rule_id} 的 dsl_version 不是规范值 ${CANONICAL_DSL_VERSION}`,
+      );
+    }
+    // NRP-FR-007：显式overlay操作，不得按地区推断。
+    const overlay = parseOverlayOperation(
+      "rule",
+      rule.rule_id,
+      rule.operation,
+      rule.target_business_key,
+      jurisdictionCode,
+    );
 
+    // 地区作用域upsert（09-05复审纠正）：同一rule_id+version在不同地区必须各自成行，
+    // 绝不跨地区更新覆盖。
     const existing = await db
       .select({ id: rules.id })
       .from(rules)
-      .where(and(eq(rules.ruleId, rule.rule_id), eq(rules.version, 1)))
+      .where(
+        and(
+          eq(rules.jurisdictionCode, jurisdictionCode),
+          eq(rules.ruleId, rule.rule_id),
+          eq(rules.version, 1),
+        ),
+      )
       .limit(1);
 
     const data = {
       ruleId: rule.rule_id,
+      jurisdictionCode,
+      businessKey: rule.rule_id,
       name: rule.name,
       module: rule.module ?? "",
       dslVersion: rule.dsl_version,
@@ -62,13 +92,21 @@ export async function seedRules() {
       evidence: rule.evidence ?? [],
       notes: rule.notes ?? null,
       version: 1,
+      operation: overlay.operation,
+      targetBusinessKey: overlay.targetBusinessKey,
     };
 
     if (existing.length > 0) {
       await db
         .update(rules)
         .set({ ...data, updatedAt: new Date() })
-        .where(and(eq(rules.ruleId, rule.rule_id), eq(rules.version, 1)));
+        .where(
+          and(
+            eq(rules.jurisdictionCode, jurisdictionCode),
+            eq(rules.ruleId, rule.rule_id),
+            eq(rules.version, 1),
+          ),
+        );
       console.log(`  Updated rule: ${rule.rule_id}`);
     } else {
       await db.insert(rules).values(data);

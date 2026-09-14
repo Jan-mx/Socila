@@ -1,0 +1,16 @@
+# 200 https://hsa.gd.gov.cn/zwgk/zfxxgkml/bmwj/gfxwj/content/post_3953355.html
+connection: keep-alive
+content-encoding: gzip
+content-security-policy: manifest-src 'self';, manifest-src 'self';
+content-type: text/html; charset=utf-8
+date: Sat, 05 Sep 2026 15:48:09 GMT
+referrer-policy: origin, origin
+server: nginx
+set-cookie: Path=/; HttpOnly; Secure
+Path=/; HttpOnly; Secure
+transfer-encoding: chunked
+vary: Accept-Encoding, Accept-Encoding
+x-download-options: noopen, noopen
+x-frame-options: SAMEORIGIN, SAMEORIGIN
+x-permitted-cross-domain-policies: none, none
+x-xss-protection: 1;mode=block, 1;mode=block

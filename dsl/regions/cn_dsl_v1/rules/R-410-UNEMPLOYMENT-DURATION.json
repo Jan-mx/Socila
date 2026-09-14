@@ -1,0 +1,267 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-410-UNEMPLOYMENT-DURATION",
+  "name": "失业金可领取月数核算（按失业险年限查表 + 上限）",
+  "module": "unemployment",
+  "status": "published",
+  "priority": 410,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "国家法定期限上限（社会保险法第四十六条、失业保险条例第十七条）：按累计缴费年限分档的最高领取月数。实际执行标准由参保地规定，地区可通过 replace 覆盖期限表 T-UNEMPLOYMENT-DURATION-BY-YEARS。",
+  "inputs": [
+    {
+      "key": "calc.unemployment.eligible",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "key": "user.social.unemployment_insurance_years",
+      "type": "number",
+      "required": false
+    },
+    {
+      "key": "params.P-UNEMPLOYMENT-MAX-MONTHS",
+      "type": "number",
+      "required": true
+    }
+  ],
+  "parameter_refs": [
+    {
+      "param_id": "T-UNEMPLOYMENT-DURATION-BY-YEARS",
+      "purpose": "失业金领取月数表"
+    },
+    {
+      "param_id": "P-UNEMPLOYMENT-MAX-MONTHS",
+      "purpose": "失业金上限月数"
+    }
+  ],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_not_eligible",
+        "when": {
+          "==": [
+            {
+              "var": "calc.unemployment.eligible"
+            },
+            false
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.duration_months",
+              "value": 0
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_unknown",
+        "when": {
+          "==": [
+            {
+              "var": "calc.unemployment.eligible"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.duration_months",
+              "value": null
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_missing_years",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.social.unemployment_insurance_years"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.unemployment.duration_months",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-UI-YEARS",
+                "text": "缺少失业险缴费年限，无法核算可领失业金月数。",
+                "field": "user.social.unemployment_insurance_years"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_4_lookup",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "calc.unemployment.eligible"
+                },
+                true
+              ]
+            },
+            {
+              "!=": [
+                {
+                  "var": "user.social.unemployment_insurance_years"
+                },
+                null
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "lookup",
+              "table_param_id": "T-UNEMPLOYMENT-DURATION-BY-YEARS",
+              "key": {
+                "insured_years": {
+                  "var": "user.social.unemployment_insurance_years"
+                }
+              },
+              "into": "calc.unemployment.duration_months_raw"
+            },
+            {
+              "type": "set",
+              "path": "calc.unemployment.duration_months",
+              "value": {
+                "min": [
+                  {
+                    "var": "calc.unemployment.duration_months_raw"
+                  },
+                  {
+                    "var": "params.P-UNEMPLOYMENT-MAX-MONTHS"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.unemployment.duration_months",
+      "type": "number"
+    },
+    {
+      "key": "calc.unemployment.duration_months_raw",
+      "type": "number"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "失业险8年 -> 24月(上限)",
+      "input": {
+        "calc": {
+          "unemployment": {
+            "eligible": true
+          }
+        },
+        "user": {
+          "social": {
+            "unemployment_insurance_years": 8
+          }
+        },
+        "params": {
+          "P-UNEMPLOYMENT-MAX-MONTHS": 24,
+          "T-UNEMPLOYMENT-DURATION-BY-YEARS": [
+            {
+              "insured_years_min": 8,
+              "insured_years_max": 99,
+              "months": 24
+            }
+          ]
+        }
+      },
+      "expected": {
+        "calc": {
+          "unemployment": {
+            "duration_months": 24
+          }
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "document_id": "DOC-CN-SOCIAL-INSURANCE-LAW",
+      "jurisdiction_code": "CN",
+      "title": "中华人民共和国社会保险法（2018修正）",
+      "authority": "全国人民代表大会常务委员会",
+      "official_url": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fl/202011/t20201102_394629.html",
+      "fetched_at": "2026-09-05T13:38:56.250Z",
+      "content_sha256": "b69d5d490f9b6b70394dfb670c2e1a0a959f306e70380bb678ee4866f947d464",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-SOCIAL-INSURANCE-LAW/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "article",
+        "reference": "第四十六条"
+      },
+      "excerpt": "失业人员失业前用人单位和本人累计缴费满一年不足五年的，领取失业保险金的期限最长为十二个月；累计缴费满五年不足十年的，领取失业保险金的期限最长为十八个月；累计缴费十年以上的，领取失业保险金的期限最长为二十四个月。"
+    },
+    {
+      "document_id": "DOC-CN-UNEMPLOYMENT-REGULATION",
+      "jurisdiction_code": "CN",
+      "title": "失业保险条例（国务院令第258号）",
+      "authority": "国务院",
+      "official_url": "https://www.mohrss.gov.cn/xxgk2020/fdzdgknr/zcfg/fg/202011/t20201103_394936.html",
+      "fetched_at": "2026-09-05T13:43:01.660Z",
+      "content_sha256": "b8187965656565984549569e9894a62cb3960f5a64aacac3749b80be2d7a3e04",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-UNEMPLOYMENT-REGULATION/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "article",
+        "reference": "第十七条"
+      },
+      "excerpt": "失业人员失业前所在单位和本人按照规定累计缴费时间满1年不足5年的，领取失业保险金的期限最长为12个月；累计缴费时间满5年不足10年的，领取失业保险金的期限最长为18个月；累计缴费时间10年以上的，领取失业保险金的期限最长为24个月。"
+    }
+  ],
+  "operation": "baseline"
+}

@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { createChatStream } from "@/lib/ai/agent";
+import { createChatStream, formatServerDate } from "@/lib/ai/agent";
 import type { ChatContext } from "@/lib/ai/agent";
 import type { UIMessage } from "ai";
 import { convertToModelMessages } from "ai";
 import { createRequestLogger } from "@/lib/logging";
+import { requireActor } from "@/lib/auth/require-actor";
+import { conversationReads } from "@/server/modules/conversation/application";
+import { conversationWrites } from "@/server/modules/conversation/application";
+import { getOwnedConversation } from "@/server/modules/conversation/application/conversation.use-case";
 import {
-  createConversation,
-  getConversation,
-  updateConversation,
-} from "@/lib/db/queries";
-import {
-  attachAnonymousSessionCookie,
-  ensureAnonymousSession,
-} from "@/lib/security/anon-session";
+  extractConfirmedJurisdiction,
+  readProfile,
+} from "@/server/modules/conversation/application/jurisdiction-profile.use-case";
 import {
   applyRateLimitHeaders,
   checkRateLimit,
@@ -31,6 +30,43 @@ const MAX_REQUEST_BYTES = 1_048_576; // 1 MB — reject oversized bodies before 
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * 任务3 JRP-FR-015/NFR-008：客户端画像中的 jurisdiction（含候选）不可信——
+ * 权威确认地区只存在于服务端会话画像（经专用确认接口写入）。注入模型上下文
+ * 与持久化前一律剥离，防止客户端/模型伪造或覆盖服务端确认结果。
+ */
+function sanitizeClientProfile(
+  profile: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!profile) return undefined;
+  const copy = { ...profile };
+  delete copy.jurisdiction;
+  delete copy.jurisdiction_code;
+  delete copy.derived_state;
+  return copy;
+}
+
+/**
+ * 持久化画像 = 客户端非地区字段 ∪ 服务端权威地区字段（服务端字段优先）。
+ * 保证确认地区在会话恢复/计算期间不因客户端画像整体覆盖而丢失。
+ */
+function mergeServerProfile(
+  serverProfile: unknown,
+  clientProfile: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {
+    ...(clientProfile ?? {}),
+  };
+  const server = isObjectRecord(serverProfile) ? serverProfile : {};
+  if (isObjectRecord(server.jurisdiction)) {
+    merged.jurisdiction = server.jurisdiction;
+  }
+  if (isObjectRecord(server.derived_state)) {
+    merged.derived_state = server.derived_state;
+  }
+  return merged;
 }
 
 function estimateMessageChars(messages: unknown[]): number {
@@ -82,6 +118,13 @@ function exceedsSingleMessageLimit(messages: unknown[]): boolean {
 export async function POST(req: NextRequest) {
   const logger = createRequestLogger();
 
+  // 09-02 AUTH-FR-003/006：匿名访客不得调用对话 API；新流程只使用认证用户。
+  const gate = await requireActor();
+  if (!gate.ok) {
+    return gate.response;
+  }
+  const actor = gate.actor;
+
   // Reject oversized bodies before parsing them into memory (DoS guard).
   const contentLengthRaw = req.headers.get("content-length");
   const contentLength = contentLengthRaw ? parseInt(contentLengthRaw, 10) : 0;
@@ -110,10 +153,7 @@ export async function POST(req: NextRequest) {
 
   const typedBody = body as Record<string, unknown>;
   const rawMessages = typedBody.messages as unknown[];
-  const legacySessionId =
-    typeof typedBody.sessionId === "string" ? typedBody.sessionId : undefined;
 
-  const { sessionId, isNewSession } = ensureAnonymousSession(req, legacySessionId);
   const clientIp = getClientIp(req);
   const rateLimit = checkRateLimit(`chat:${clientIp}`, {
     limit: CHAT_RATE_LIMIT,
@@ -123,14 +163,12 @@ export async function POST(req: NextRequest) {
   const respondJson = (payload: unknown, init?: ResponseInit) => {
     const response = NextResponse.json(payload, init);
     applyRateLimitHeaders(response, rateLimit, CHAT_RATE_LIMIT);
-    if (isNewSession) {
-      attachAnonymousSessionCookie(response, sessionId);
-    }
     return response;
   };
 
   if (!rateLimit.allowed) {
-    logger.warn("chat.rate_limited", { session_id: sessionId, client_ip: clientIp });
+    // 日志不记录完整 IP（AUTH-NFR-006）
+    logger.warn("chat.rate_limited", {});
     return respondJson({ error: "请求过于频繁，请稍后重试" }, { status: 429 });
   }
 
@@ -184,6 +222,8 @@ export async function POST(req: NextRequest) {
     : isObjectRecord(metadataCustom?.userProfile)
       ? (metadataCustom.userProfile as Record<string, unknown>)
       : undefined;
+  // JRP-FR-015：客户端画像中的地区字段不可信，剥离后注入模型与持久化。
+  const sanitizedProfile = sanitizeClientProfile(userProfile);
   const questions = Array.isArray(typedBody.questions)
     ? typedBody.questions
     : Array.isArray(metadataCustom?.questions)
@@ -192,31 +232,39 @@ export async function POST(req: NextRequest) {
 
   const context: ChatContext = {
     questions: questions as ChatContext["questions"],
-    userProfile: userProfile as ChatContext["userProfile"],
-    sessionId,
+    userProfile: sanitizedProfile as ChatContext["userProfile"],
+    ownerUserId: actor.userId,
+    // 一次请求只读取一次服务器时钟；提示词与工具共享同一日期，模型不得猜测。
+    currentDate: formatServerDate(new Date()),
   };
 
   logger.info("chat.request", {
     message_count: rawMessages.length,
-    session_id: sessionId,
+    owner_user_id: actor.userId,
   });
 
   try {
+    // 09-02 AUTH-FR-005：会话归属校验与创建只使用 owner_user_id（不存在匿名创建）。
     const conversation = requestedConversationId
-      ? await getConversation(requestedConversationId).then(async (existing) => {
-          if (existing) {
-            if (!existing.sessionId || existing.sessionId !== sessionId) {
-              return null;
-            }
-            return existing;
+      ? await getOwnedConversation(
+          { read: conversationReads, write: conversationWrites },
+          requestedConversationId,
+          { userId: actor.userId },
+        ).then(async (access) => {
+          if (access.access === "granted") {
+            return access.conversation;
           }
-
-          return createConversation({
-            id: requestedConversationId,
-            sessionId,
-          });
+          if (access.access === "not-found") {
+            return conversationWrites.createConversation({
+              id: requestedConversationId,
+              ownerUserId: actor.userId,
+            });
+          }
+          return null;
         })
-      : await createConversation({ sessionId });
+      : await conversationWrites.createConversation({
+          ownerUserId: actor.userId,
+        });
 
     if (requestedConversationId && conversation === null) {
       return respondJson({ error: "无权限访问该会话" }, { status: 403 });
@@ -226,13 +274,41 @@ export async function POST(req: NextRequest) {
       return respondJson({ error: "无法创建会话" }, { status: 500 });
     }
 
+    // 任务3 JRP-FR-018/NFR-008：聊天发起计算时，请求地区必须与会话画像中的
+    // 已确认地区一致；不一致时拒绝计算（409），不得覆盖画像或回退上海。
+    const confirmed = extractConfirmedJurisdiction(readProfile(conversation));
+    const requestedCode =
+      typeof typedBody.jurisdictionCode === "string"
+        ? typedBody.jurisdictionCode
+        : typeof typedBody.metadata === "object" &&
+            typedBody.metadata !== null &&
+            typeof (typedBody.metadata as Record<string, unknown>).custom ===
+              "object" &&
+            (typedBody.metadata as Record<string, unknown>).custom !== null
+          ? ((typedBody.metadata as Record<string, unknown>).custom as Record<
+              string,
+              unknown
+            >).jurisdictionCode
+          : undefined;
+    if (typeof requestedCode === "string" && requestedCode.length > 0) {
+      if (!confirmed || confirmed.code !== requestedCode) {
+        return respondJson(
+          { error: "JURISDICTION_CONTEXT_MISMATCH" },
+          { status: 409 },
+        );
+      }
+    }
+    // 已确认地区注入 AI 工具上下文：computePlan 工具校验调用代码一致性；
+    // 会话无确认地区时不注入，工具返回 JURISDICTION_REQUIRED（首次计算前必须确认）。
+    context.confirmedJurisdictionCode = confirmed?.code;
+
     const uiMessages = rawMessages as UIMessage[];
 
     // 先保存本轮输入快照，避免流式中断时会话完全丢失。
     try {
-      await updateConversation(conversation.id, {
+      await conversationWrites.updateConversation(conversation.id, {
         messages: uiMessages as unknown[],
-        userProfile,
+        userProfile: mergeServerProfile(conversation.userProfile, sanitizedProfile),
       });
     } catch (persistErr) {
       logger.warn("chat.persist_snapshot_failed", {
@@ -274,9 +350,9 @@ export async function POST(req: NextRequest) {
       originalMessages: uiMessages,
       onFinish: async ({ messages: persistedMessages }) => {
         try {
-          await updateConversation(conversation.id, {
+          await conversationWrites.updateConversation(conversation.id, {
             messages: persistedMessages as unknown[],
-            userProfile,
+            userProfile: mergeServerProfile(conversation.userProfile, sanitizedProfile),
           });
         } catch (persistErr) {
           logger.warn("chat.persist_finish_failed", {
@@ -298,9 +374,6 @@ export async function POST(req: NextRequest) {
     response.headers.set("x-request-id", logger.requestId);
     response.headers.set("x-conversation-id", conversation.id);
     applyRateLimitHeaders(response, rateLimit, CHAT_RATE_LIMIT);
-    if (isNewSession) {
-      attachAnonymousSessionCookie(response, sessionId);
-    }
 
     return response;
   } catch (err) {

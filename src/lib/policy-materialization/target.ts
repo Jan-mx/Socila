@@ -1,0 +1,399 @@
+/**
+ * NRP-NFR-009 / NRP-FR-017 目标保护：
+ * - 数据库目标只来自进程级DATABASE_URL，禁止任何dotenv/.env回退；
+ * - 阶段E只允许本机 localhost:5432/policyops；
+ * - 目标指纹 = 对既有政策行与固定计数的规范化哈希（不含连接串/口令/完整URL）。
+ */
+import { createHash } from "node:crypto";
+import { parse as parsePgConnectionString } from "pg-connection-string";
+import { payloadShapeHash } from "./shapes";
+
+export interface MaterializationTarget {
+  host: string;
+  port: string;
+  database: string;
+}
+
+export class TargetGuardError extends Error {}
+
+/** 解析并校验目标：必须显式设置进程级DATABASE_URL（不得dotenv回退）。
+ * 加固（审查缺陷1/NRP-NFR-009）：
+ * - 仅接受postgresql/postgres协议；
+ * - host仅localhost/127.0.0.1/::1（含方括号IPv6形式），port精确5432，
+ *   database精确policyops（或测试显式注入的演练库）；
+ * - 拒绝一切search params、fragment、Unix socket与连接目标覆盖参数
+ *   （node-postgres连接串解析会让?host=/?port=覆盖authority——已实证）；
+ * - 校验结果与node-postgres最终连接配置交叉一致；
+ * - 路径不做percent解码（pg不解码，编码路径不得伪装成policyops）；
+ * - 异常消息不含连接串与口令。
+ * 测试可通过allowedDatabases注入演练库名，生产CLI不传任何放宽参数。 */
+export function resolveTarget(
+  env: Partial<NodeJS.ProcessEnv> = process.env,
+  options: { allowedDatabases?: string[]; allowedPorts?: string[] } = {},
+): MaterializationTarget {
+  const allowedDatabases = options.allowedDatabases ?? ["policyops"];
+  const allowedPorts = options.allowedPorts ?? ["5432"];
+  const url = env.DATABASE_URL;
+  if (!url || url.trim().length === 0) {
+    throw new TargetGuardError(
+      "[materialize-target] DATABASE_URL 未在进程环境中显式设置（禁止dotenv/.env回退，NRP-FR-017）",
+    );
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new TargetGuardError("[materialize-target] DATABASE_URL 不是合法连接串");
+  }
+
+  const protocol = parsed.protocol.replace(/:$/, "");
+  if (protocol !== "postgresql" && protocol !== "postgres") {
+    throw new TargetGuardError(
+      "[materialize-target] 仅允许postgresql/postgres协议（NRP-NFR-009）",
+    );
+  }
+  if (parsed.search.length > 0) {
+    throw new TargetGuardError(
+      "[materialize-target] 连接串禁止携带查询参数（host/port/dbname等覆盖参数会改变实际连接目标，NRP-NFR-009）",
+    );
+  }
+  if (parsed.hash.length > 0) {
+    throw new TargetGuardError(
+      "[materialize-target] 连接串禁止携带fragment（NRP-NFR-009）",
+    );
+  }
+
+  // host：URL.hostname对IPv6带方括号；归一化后仅允许本机回环。
+  const rawHost = parsed.hostname;
+  const host = rawHost.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"]);
+  const isSocketPath = /%2f/i.test(rawHost);
+  if (!localHosts.has(host) || isSocketPath) {
+    throw new TargetGuardError(
+      "[materialize-target] 目标不在授权范围（仅允许本机 localhost:5432/policyops，NRP-NFR-009）",
+    );
+  }
+  const port = parsed.port || "5432";
+  if (!allowedPorts.includes(port)) {
+    throw new TargetGuardError(
+      "[materialize-target] 目标端口不在授权范围（生产固定5432，NRP-NFR-009）",
+    );
+  }
+  // database：路径不做percent解码，必须字面精确。
+  const database = parsed.pathname.replace(/^\//, "");
+  if (!allowedDatabases.includes(database)) {
+    throw new TargetGuardError(
+      "[materialize-target] 目标不在授权范围（仅允许本机 localhost:5432/policyops，NRP-NFR-009）",
+    );
+  }
+
+  // 交叉校验：与node-postgres最终连接配置一致（query覆盖已拒，此处兜底防解析分歧）。
+  const pgParsed = parsePgConnectionString(url);
+  const pgHost = (pgParsed.host ?? "")
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+    .toLowerCase();
+  if (
+    pgHost !== host ||
+    String(pgParsed.port ?? "5432") !== port ||
+    pgParsed.database !== database
+  ) {
+    throw new TargetGuardError(
+      "[materialize-target] 连接串解析分歧：URL authority与node-postgres实际连接目标不一致（NRP-NFR-009）",
+    );
+  }
+
+  return { host, port, database };
+}
+
+/** 规范化JSON（键排序）——与快照/黄金对账同一哈希口径。 */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(sortKeys(value));
+}
+
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeys);
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(value as Record<string, unknown>).sort()) {
+      out[k] = sortKeys((value as Record<string, unknown>)[k]);
+    }
+    return out;
+  }
+  return value;
+}
+
+export function sha256(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/** 最小SQL接口（便于单测注入假实现）。 */
+export interface SqlLike {
+  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+}
+
+/** 固定计数核对表（NRP-AC-015 / PRD §9）。
+ * 任务2分地区首期（ADR-0010）：候选快照前目标 50/75/6/5——即当前持久库
+ * 49/70/5/4 之上只允许广东delta：5参数+1规则+1规则集版本+1政策包版本。 */
+export const EXPECTED_TOTAL_COUNTS = {
+  rules: 50,
+  params: 75,
+  rule_sets: 6,
+  policy_pack_versions: 5,
+  tests: 528,
+  cases: 851,
+  showcase_cases: 117,
+  policy_snapshots: 0,
+} as const;
+
+export interface ExistingState {
+  counts: Record<string, number>;
+  /** published政策行的规范化哈希（旧行保护，NFR-012）。 */
+  publishedRowsHash: string;
+  /** (jurisdiction, entity_type, business_key) → 最大版本。 */
+  maxVersions: Map<string, number>;
+  /** 已存在的 pack (jurisdiction, packId) → 最大版本。 */
+  packVersions: Map<string, number>;
+  /** draft政策包目标绑定（WI-20260906-01）：repair指纹必须绑定待修复行。 */
+  packTargets: PackTargetBinding[];
+  /** 已落库实体载荷形状哈希（任务2增量物化）：(jurisdiction|entity_type|
+   * business_key) → 已存在内容哈希集合；内容相同则零新增。 */
+  existingEntityHashes: Map<string, Set<string>>;
+}
+
+/** repair目标绑定（WI-20260906-01实现要求1）：draft政策包行ID、地区、pack ID、
+ * 版本、状态、param_snapshot规范化哈希及对应批次成员行ID与内容哈希。
+ * 只含业务身份与哈希，不含连接串/口令（NRP-NFR-009）。 */
+export interface PackTargetBinding {
+  rowId: number;
+  jurisdictionCode: string;
+  packId: string;
+  version: number;
+  status: string;
+  snapshotHash: string;
+  memberRowId: number | null;
+  memberHash: string | null;
+}
+
+interface CountRow {
+  table_name: string;
+  n: string;
+}
+
+/**
+ * 读取既有状态：固定计数、published行规范化哈希、每键最大版本。
+ * published行哈希覆盖 rules/params/rule_sets 的全部业务列（旧行保护基线）。
+ */
+export async function loadExistingState(sql: SqlLike): Promise<ExistingState> {
+  const countRows = await sql.query(
+    `select 'rules' as table_name, count(*)::text as n from rules
+     union all select 'params', count(*)::text from params
+     union all select 'rule_sets', count(*)::text from rule_sets
+     union all select 'policy_pack_versions', count(*)::text from policy_pack_versions
+     union all select 'tests', count(*)::text from tests
+     union all select 'cases', count(*)::text from cases
+     union all select 'showcase_cases', count(*)::text from showcase_cases
+     union all select 'policy_snapshots', count(*)::text from policy_snapshots`,
+  );
+  const counts: Record<string, number> = {};
+  for (const row of countRows.rows as unknown as CountRow[]) {
+    counts[row.table_name] = Number(row.n);
+  }
+
+  // 旧行保护哈希（审查缺陷8）：整行规范化对象哈希——to_jsonb在服务器端
+  // 确定性序列化（日期/JSONB/UUID等由PG统一渲染），避免维护字段清单遗漏；
+  // 统一UTC会话时区保证跨实例一致；只覆盖published行（NFR-012：新draft
+  // 不得改变既有published内容）。
+  await sql.query("set time zone 'UTC'");
+  const publishedRuleRows = await sql.query(
+    `select to_jsonb(r) as row from rules r where r.status = 'published' order by r.id`,
+  );
+  const publishedParamRows = await sql.query(
+    `select to_jsonb(p) as row from params p where p.status = 'published' order by p.id`,
+  );
+  const publishedRuleSetRows = await sql.query(
+    `select to_jsonb(rs) as row from rule_sets rs where rs.status = 'published' order by rs.id`,
+  );
+
+  const hash = sha256(
+    canonicalJson({
+      rules: publishedRuleRows.rows.map((r) => r.row),
+      params: publishedParamRows.rows.map((r) => r.row),
+      rule_sets: publishedRuleSetRows.rows.map((r) => r.row),
+    }),
+  );
+
+  // 版本解析需要看到全部行（含draft）——幂等重跑不得复用已存在的draft版本号。
+  const allRuleRows = await sql.query(
+    `select rule_id as business_key, jurisdiction_code, version from rules order by id`,
+  );
+  const allParamRows = await sql.query(
+    `select param_id as business_key, jurisdiction_code, version from params order by id`,
+  );
+  const allRuleSetRows = await sql.query(
+    `select rule_set_id as business_key, jurisdiction_code, version from rule_sets order by id`,
+  );
+
+  const maxVersions = new Map<string, number>();
+  for (const row of [
+    ...allRuleRows.rows,
+    ...allParamRows.rows,
+    ...allRuleSetRows.rows,
+  ]) {
+    const key = `${row.jurisdiction_code}|${row.business_key}`;
+    const current = maxVersions.get(key) ?? 0;
+    maxVersions.set(key, Math.max(current, Number(row.version)));
+  }
+
+  const packRows = await sql.query(
+    `select jurisdiction_code, policy_pack_id, version from policy_pack_versions`,
+  );
+  const packVersions = new Map<string, number>();
+  for (const row of packRows.rows) {
+    const key = `${row.jurisdiction_code}|${row.policy_pack_id}`;
+    packVersions.set(key, Math.max(packVersions.get(key) ?? 0, Number(row.version)));
+  }
+
+  const packTargets = await loadPackTargets(sql);
+  const existingEntityHashes = await loadExistingEntityHashes(sql);
+
+  return {
+    counts,
+    publishedRowsHash: hash,
+    maxVersions,
+    packVersions,
+    packTargets,
+    existingEntityHashes,
+  };
+}
+
+/** 已落库实体载荷形状哈希（任务2增量物化）：全部规则/参数/规则集行按
+ * (jurisdiction|entity_type|business_key)归组，内容集合供计划器判定零新增。
+ * 形状与Git侧规范化契约见shapes.ts（日期/缺省/强制draft语义一致）。 */
+export async function loadExistingEntityHashes(
+  sql: SqlLike,
+): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  const add = (jur: unknown, kind: string, key: unknown, hash: string) => {
+    const k = `${jur ?? ""}|${kind}|${key ?? ""}`;
+    let set = out.get(k);
+    if (!set) {
+      set = new Set();
+      out.set(k, set);
+    }
+    set.add(hash);
+  };
+
+  const ruleRows = await sql.query(
+    `select jurisdiction_code, rule_id,
+            name, module, dsl_version, priority, effective_from,
+            effective_to, supersedes, inputs, parameter_refs, decision_table,
+            outputs, examples, evidence, notes, operation, target_business_key
+     from rules order by id`,
+  );
+  for (const row of ruleRows.rows as Array<Record<string, unknown>>) {
+    add(
+      row.jurisdiction_code,
+      "rule",
+      row.rule_id,
+      payloadShapeHash("rule", row as Record<string, unknown>),
+    );
+  }
+
+  const paramRows = await sql.query(
+    `select jurisdiction_code, param_id,
+            param_id, type, value, unit, effective_from, effective_to,
+            source, key_fields, value_fields, rows, note, evidence,
+            operation, target_business_key
+     from params order by id`,
+  );
+  for (const row of paramRows.rows as Array<Record<string, unknown>>) {
+    add(
+      row.jurisdiction_code,
+      "param",
+      row.param_id,
+      payloadShapeHash("param", row as Record<string, unknown>),
+    );
+  }
+
+  const ruleSetRows = await sql.query(
+    `select jurisdiction_code, rule_set_id,
+            rule_set_id, description, effective_from, rules,
+            conflict_resolution, operation, target_business_key
+     from rule_sets order by id`,
+  );
+  for (const row of ruleSetRows.rows as Array<Record<string, unknown>>) {
+    add(
+      row.jurisdiction_code,
+      "rule_set",
+      row.rule_set_id,
+      payloadShapeHash("rule_set", row as Record<string, unknown>),
+    );
+  }
+
+  return out;
+}
+
+/** draft政策包目标绑定读取（WI-20260906-01）：全部包行按rowId排序，成员取
+ * entity_row_id对应的最大成员行（最新审计），成员缺失时为null。 */
+export async function loadPackTargets(sql: SqlLike): Promise<PackTargetBinding[]> {
+  const packRows = await sql.query(
+    `select p.id as row_id, p.jurisdiction_code, p.policy_pack_id, p.version,
+            p.status, p.param_snapshot
+     from policy_pack_versions p order by p.id`,
+  );
+  const memberRows = await sql.query(
+    `select m.id as member_id, m.entity_row_id, m.content_hash
+     from policy_import_batch_members m
+     where m.entity_type = 'policy_pack_version'
+     order by m.id`,
+  );
+  // 同一包行可能存在多条成员（原物化+修复审计）；按成员行ID取最新一条。
+  const latestMemberByRow = new Map<number, { memberRowId: number; hash: string }>();
+  for (const row of memberRows.rows) {
+    latestMemberByRow.set(Number(row.entity_row_id), {
+      memberRowId: Number(row.member_id),
+      hash: String(row.content_hash),
+    });
+  }
+  return packRows.rows.map((row) => {
+    const member = latestMemberByRow.get(Number(row.row_id)) ?? null;
+    return {
+      rowId: Number(row.row_id),
+      jurisdictionCode: String(row.jurisdiction_code ?? ""),
+      packId: String(row.policy_pack_id),
+      version: Number(row.version),
+      status: String(row.status),
+      snapshotHash: sha256(canonicalJson(row.param_snapshot)),
+      memberRowId: member?.memberRowId ?? null,
+      memberHash: member?.hash ?? null,
+    };
+  });
+}
+
+/** 目标指纹：主机:端口/库名 + 固定计数 + published行哈希 + draft包目标绑定
+ * （WI-20260906-01：repair指纹必须绑定待修复行，audit后任何draft变化都改变指纹）
+ * + 已落库实体载荷形状哈希（任务2增量物化：audit绑定全部draft/published内容，
+ * 计划零新增的判定基线也随指纹一起被固化，任何内容变化都必须重新audit；
+ * 不含连接串/口令/完整URL，NRP-NFR-009）。 */
+export function computeTargetFingerprint(
+  target: MaterializationTarget,
+  state: ExistingState,
+): string {
+  const entityHashes: Record<string, string[]> = {};
+  for (const [key, set] of [...state.existingEntityHashes.entries()].sort(
+    ([a], [b]) => (a < b ? -1 : a > b ? 1 : 0),
+  )) {
+    entityHashes[key] = [...set].sort();
+  }
+  return sha256(
+    canonicalJson({
+      target: `${target.host}:${target.port}/${target.database}`,
+      counts: state.counts,
+      publishedRowsHash: state.publishedRowsHash,
+      packTargets: state.packTargets,
+      existingEntityHashes: entityHashes,
+    }),
+  );
+}

@@ -1,45 +1,37 @@
+import { conversationReads, conversationWrites } from "@/server/modules/conversation/application";
+import { requireActor } from "@/lib/auth/require-actor";
+import { mapRouteError } from "@/lib/api/route-errors";
+import { deleteOwnedConversation } from "@/server/modules/conversation/application/conversation.use-case";
 import { NextRequest, NextResponse } from "next/server";
-import { deleteConversation, getConversation } from "@/lib/db/queries";
-import {
-  attachAnonymousSessionCookie,
-  ensureAnonymousSession,
-} from "@/lib/security/anon-session";
 
 export const dynamic = "force-dynamic";
 
-/** DELETE /api/conversations/:conversationId */
+/** DELETE /api/conversations/:conversationId：归属受控删除（09-02，仅本人）。 */
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> },
 ) {
-  const legacySessionId = req.headers.get("x-legacy-session-id") ?? undefined;
-  const { sessionId, isNewSession } = ensureAnonymousSession(
-    req,
-    legacySessionId,
-  );
+  const gate = await requireActor();
+  if (!gate.ok) {
+    return gate.response;
+  }
   const { conversationId } = await params;
 
-  const respondJson = (body: unknown, init?: ResponseInit) => {
-    const response = NextResponse.json(body, init);
-    if (isNewSession) {
-      attachAnonymousSessionCookie(response, sessionId);
-    }
-    return response;
-  };
-
   try {
-    const conv = await getConversation(conversationId);
-    if (!conv) {
-      return respondJson({ error: "会话不存在" }, { status: 404 });
+    const result = await deleteOwnedConversation(
+      { read: conversationReads, write: conversationWrites },
+      conversationId,
+      { userId: gate.actor.userId },
+    );
+    if (result === "not-found") {
+      return NextResponse.json({ error: "会话不存在" }, { status: 404 });
     }
-
-    if (!conv.sessionId || conv.sessionId !== sessionId) {
-      return respondJson({ error: "无权限删除该会话" }, { status: 403 });
+    if (result === "forbidden") {
+      return NextResponse.json({ error: "无权限删除该会话" }, { status: 403 });
     }
-
-    await deleteConversation(conversationId);
-    return respondJson({ success: true });
-  } catch {
-    return respondJson({ error: "服务器内部错误" }, { status: 500 });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const mapped = mapRouteError(err, { operation: "conversation.delete" });
+    return NextResponse.json(mapped.body, { status: mapped.status });
   }
 }

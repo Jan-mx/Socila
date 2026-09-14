@@ -1,0 +1,219 @@
+{
+  "dsl_version": "SOCILA-DSL-1.0",
+  "rule_id": "R-520-JOB-SUBSIDY-ELIGIBILITY",
+  "name": "用人单位吸纳就业困难人员岗位补贴资格初判",
+  "module": "subsidy",
+  "status": "published",
+  "priority": 520,
+  "effective_from": "2024-01-01",
+  "effective_to": null,
+  "supersedes": [],
+  "notes": "用人单位吸纳经认定的就业困难人员、签订1年以上劳动合同并足额缴费的，可申请岗位补贴（沪人社规〔2022〕8号二，有效期至2026-12-31）。原“距退休≤36个月窗口”无正式原文依据，已删除。",
+  "inputs": [
+    {
+      "key": "user.subsidy.has_employment_difficulty_cert",
+      "type": "boolean",
+      "required": false,
+      "desc": "是否已认定就业困难人员"
+    },
+    {
+      "key": "user.status.employment_status",
+      "type": "string",
+      "required": true,
+      "desc": "employed=被用人单位吸纳"
+    }
+  ],
+  "parameter_refs": [],
+  "decision_table": {
+    "hit_policy": "first",
+    "rows": [
+      {
+        "row_id": "row_1_cert_unknown",
+        "when": {
+          "==": [
+            {
+              "var": "user.subsidy.has_employment_difficulty_cert"
+            },
+            null
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_eligible",
+              "value": null
+            },
+            {
+              "type": "set",
+              "path": "calc.needs_agent",
+              "value": true
+            },
+            {
+              "type": "emit_question",
+              "value": {
+                "question_id": "Q-EMPLOYMENT-DIFF",
+                "text": "是否已做“就业困难人员”认定？这将决定用人单位能否申请吸纳岗位补贴。",
+                "field": "user.subsidy.has_employment_difficulty_cert"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_2_not_difficulty",
+        "when": {
+          "==": [
+            {
+              "var": "user.subsidy.has_employment_difficulty_cert"
+            },
+            false
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_eligible",
+              "value": false
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_3_eligible",
+        "when": {
+          "and": [
+            {
+              "==": [
+                {
+                  "var": "user.subsidy.has_employment_difficulty_cert"
+                },
+                true
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "user.status.employment_status"
+                },
+                "employed"
+              ]
+            }
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_eligible",
+              "value": true
+            },
+            {
+              "type": "emit_caveat",
+              "value": {
+                "caveat_id": "C-JOB-SUBSIDY-EMPLOYER",
+                "text": "岗位补贴由用人单位申请（签订1年以上劳动合同并足额缴费）；补贴期限累计一般不超过3年，期满且距法定退休年龄不足2年的可延长至退休。"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "row_id": "row_4_not_employed_by_unit",
+        "when": {
+          "==": [
+            {
+              "var": "user.subsidy.has_employment_difficulty_cert"
+            },
+            true
+          ]
+        },
+        "then": {
+          "actions": [
+            {
+              "type": "set",
+              "path": "calc.subsidy.job_eligible",
+              "value": false
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "calc.subsidy.job_eligible",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.needs_agent",
+      "type": "boolean"
+    },
+    {
+      "key": "calc.agent_questions",
+      "type": "array"
+    },
+    {
+      "key": "calc.caveats",
+      "type": "array"
+    }
+  ],
+  "examples": [
+    {
+      "name": "就业困难认定且被单位吸纳 -> eligible",
+      "input": {
+        "user": {
+          "subsidy": {
+            "has_employment_difficulty_cert": true
+          },
+          "status": {
+            "employment_status": "employed"
+          }
+        }
+      },
+      "expected": {
+        "calc": {
+          "subsidy": {
+            "job_eligible": true
+          }
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "document_id": "DOC-SH-EMPLOYMENT-ASSISTANCE-2022",
+      "jurisdiction_code": "310000",
+      "title": "关于进一步做好本市就业援助工作的若干意见（沪人社规〔2022〕8号）",
+      "authority": "上海市人力资源和社会保障局 上海市财政局 上海市民政局 上海市残疾人联合会",
+      "official_url": "https://rsj.sh.gov.cn/tjypx_17728/20220311/t0035_1406349.html",
+      "fetched_at": "2026-09-11T04:01:44.294Z",
+      "content_sha256": "c926b5086af8fa4217b388e613d3f569e49081457b01513e236fcd16278e55cd",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYMENT-ASSISTANCE-2022/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "paragraph",
+        "reference": "二"
+      },
+      "excerpt": "本市企事业单位、社会团体、民办非企业、个体工商户等用人单位（劳务派遣公司除外）吸纳经认定的“就业困难人员”，签订1年以上劳动合同并按时足额缴纳社会保险费的，可按规定申请补贴。"
+    },
+    {
+      "document_id": "DOC-SH-EMPLOYER-SUBSIDY-DURATION-2024",
+      "jurisdiction_code": "310000",
+      "title": "用人单位享受岗位补贴和社会保险费补贴的期限是多久？（上海市人力资源和社会保障局）",
+      "authority": "上海市人力资源和社会保障局",
+      "official_url": "https://rsj.sh.gov.cn/tcjjyyhzc_17545/20240408/t0035_1423424.html",
+      "fetched_at": "2026-09-11T03:47:13.380Z",
+      "content_sha256": "0be56a245e0f361ba736efdb0fbdd4241242039fd7111446b2cc9332f31a3ae9",
+      "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/310000/DOC-SH-EMPLOYER-SUBSIDY-DURATION-2024/original.html",
+      "parse_version": "extracted-text-v1",
+      "locator": {
+        "type": "body",
+        "reference": "答"
+      },
+      "excerpt": "对于同一名“就业困难人员”，在其劳动年龄段内，上述补贴与本意见出台前用人单位享受的一次性补贴的期限累计一般不超过3年，用人单位吸纳“就业困难人员”补贴期满，且该“就业困难人员”距法定退休年龄不足2年的，补贴期限最长可延长至该“就业困难人员”到达法定退休年龄。"
+    }
+  ],
+  "operation": "add"
+}
