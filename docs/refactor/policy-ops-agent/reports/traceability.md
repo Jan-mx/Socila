@@ -345,6 +345,17 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | 最终回答持久化 | `e2e/shv2-rag-chat.spec.ts`经对话读取API断言非空assistant text part；全新验收库Chromium 28/28 | 自动化通过 |
 | 生产部署 | `d936526`、`web:deepseek-d936526`（`b520e9ae79c3…`），仅重建socila-web；真实Provider两步探测200/200且最终包含2340/1872/1690；RAG 23/23/185/185与其他容器不变 | 已部署，待页面人工测试 |
 
+## WI-20260913-01最终人工验收（2026-09-14）
+
+| 验收项 | 用户验证 | 状态 |
+| --- | --- | --- |
+| 原崩溃会话恢复 | 刷新后页面不再出现`e.trim is not a function`或崩溃页 | 通过 |
+| 结构化警告展示 | 字符串与对象warning均正常显示 | 通过 |
+| 第三轮对话与持久化 | 可继续发送、收到回复且消息持久化正常 | 通过 |
+| Worktree收尾 | `codex/shanghai-case-v2@30f507c`已合入refactor；允许移除worktree并保留分支 | 已授权 |
+
+`WI-20260913-01`状态为**Accepted**。政策release、持久0019、V1→V2案例改写及main合并仍为Deferred/未执行。
+
 ## 结构化警告渲染崩溃修复（2026-09-14第三轮UAT）
 
 | 需求/阻断 | 实现与证据 | 状态 |

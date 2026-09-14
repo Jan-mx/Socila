@@ -678,3 +678,10 @@
 - **完整门禁（全部本地新鲜执行）**：`npx vitest run tool-result-card.test.ts` 7/7；`npm test` 88文件/904用例零失败零skip；`npx tsc --noEmit` 0；`npx eslint src e2e` 0 error（8条既有warning）；`npm run build`退出0；Chromium E2E 29/29（全新PG17验收库：migration、bootstrap-admin、seed、`CREATE EXTENSION vector`、e2e-rcl-setup批次6aa3fa29…36/36/80后完整套件）；`node scripts/scan-secrets.mjs --all` 953文件零命中；`git diff --check`通过。未复用历史E2E库。
 - **生产部署**：仅更新Web——回退标签`web:rollback-pre-6b43421`保留（=旧`web:latest`/`web:deepseek-d936526`，镜像`b520e9ae79c3…`）；从本提交HEAD（`6b43421bc5653dd39910ed216be3214b4f0e84e2`）构建`web:warnfix-6b43421`并标记`web:latest`（镜像`933f3b9ab971…`），仅执行`docker compose up -d --no-deps --force-recreate web`；agent/worker/beat/postgres/minio/redis及数据卷、RAG索引、MinIO对象、用户密码不触碰；无migration、不改.env。部署后验证（复验完成）：socila-web healthy（新容器`2f7190cb6594`）；agent/worker/beat/postgres/minio/redis/proxy容器ID与部署前逐一相同；23 versions/23 trees/185 chunks/185 embeddings不变；新Web容器日志零error/unhandled/exception；健康端点`{"status":"ok","database":"ok"}`；现有失败会话未删除。
 - **状态**：修复已部署后仍为**等待用户人工测试**——人工步骤：①打开原第二轮崩溃会话并刷新；②确认页面不再崩溃；③确认警告文本正常显示；④再发送第三轮问题；⑤确认回复与会话持久化正常。人工测试通过前不标记Feature最终Accepted、不删除`F:\Socila-shanghai-case-v2` worktree与功能分支、不合并main、不创建PR/tag/Release、不执行政策release、0019或案例持久改写。
+
+## 2026-09-14用户人工验收通过与worktree收尾授权
+
+- 用户确认原崩溃会话刷新正常、结构化警告正确显示、第三轮对话及持久化正常；`WI-20260913-01`状态更新为**Accepted**。
+- 当前生产Web为结构化警告修复镜像且healthy；生产RAG保持23 versions/23 trees/185 chunks/185 embeddings。
+- `codex/shanghai-case-v2@30f507c`已经是`refactor/policy-ops-agent-platform`祖先，不再创建重复merge；用户授权删除`F:\Socila-shanghai-case-v2` worktree，保留本地与远端功能分支。
+- 09-11 Feature整体保持Active：政策release、持久0019、V1→V2案例改写继续Deferred；不合并main、不创建PR/tag/Release。

@@ -1,8 +1,8 @@
 # 09-11 Feature：上海政策纠偏与36条案例V2全量重建 — 验收报告
 
 > Author: Jan
-> Status: Ready for user testing（§10记录WI-20260913-01运行时RAG闭环交付；等待用户人工测试；不标记最终Accepted）
-> Updated: 2026-09-13
+> Status: Accepted for WI-20260913-01（运行时MinIO/RAG与用户人工验收完成；09-11 Feature的政策release、持久0019及V1→V2案例改写保持Deferred）
+> Updated: 2026-09-14
 
 ## 1. WI-20260911-01 上海官方原文采集与政策纠偏
 
@@ -457,3 +457,7 @@ rewrite-v2恢复演练：`rcl-rewrite-drill-v2.mjs` 10步全ok（证据`rewrite-
 TDD与门禁：单元RED 7/7→GREEN 7/7（`tool-result-card.test.ts`）；Chromium E2E新增验收库fixture混合warning恢复测试（零pageerror、警告归一化显示、去重、非法值隐藏、第三轮可继续），全新PG17验收库29/29；npm test 88文件/904、tsc 0、eslint 0 error、build退出0、scan-secrets 953文件零命中、git diff --check通过。生产仅更新`socila-web`：回退标签`web:rollback-pre-6b43421`（旧镜像`b520e9ae79c3…`）保留；从HEAD`6b43421`构建`web:warnfix-6b43421`=`web:latest`（镜像`933f3b9ab971…`）；部署后socila-web healthy（容器`2f7190cb6594`），其余容器ID不变，23 versions/23 trees/185 chunks/185 embeddings不变，新容器日志零error；不删除现有失败会话。
 
 状态：**等待用户人工测试**（①刷新原崩溃会话不崩溃；②警告文本正常显示；③第三轮对话与持久化正常）。通过前不标记最终Accepted。
+
+### 10.11 用户人工验收通过（2026-09-14）
+
+用户确认三项生产人工验收全部通过：原崩溃会话刷新不再崩溃、结构化警告文本正常显示、第三轮对话与消息持久化正常。结合§10.7～§10.10的生产同步、索引、恢复、DeepSeek多步调用和前端渲染证据，`WI-20260913-01`最终Accepted。功能分支已合入refactor并授权清理worktree；功能分支引用保留。政策release、持久0019、V1→V2案例改写、main合并、PR、tag及Release仍未执行，不据此标记09-11 Feature整体最终Accepted。

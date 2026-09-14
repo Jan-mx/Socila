@@ -1,8 +1,8 @@
 # WI-20260913-01：上海政策原件与对话RAG运行闭环
 
 > Author: Jan
-> Status: Ready for user testing（开发、隔离验收、独立复审、完整门禁与推送完成；不标记09-11 Feature最终Accepted）
-> Updated: 2026-09-13
+> Status: Accepted（生产MinIO/RAG、对话来源链、三轮UAT修复及用户人工测试均完成；09-11 Feature的Deferred事项不在本Work Item内）
+> Updated: 2026-09-14
 
 ## Work Item
 
@@ -158,7 +158,11 @@ Web下载必须要求登录并代理Agent原件流；不得返回MinIO内部地�
 
 ### 边界与状态
 
-未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；`F:\Socila-shanghai-case-v2` worktree保留待用户测试确认。状态：**生产同步与索引完成，等待用户人工测试**（09-11 Feature最终Accepted仍待用户测试）。
+未执行政策release、0019、V1→V2持久改写、main合并、PR、tag或Release；`F:\Socila-shanghai-case-v2` worktree当时保留待用户测试确认。当时状态：**生产同步与索引完成，等待用户人工测试**；最终状态见下一节。
+
+## 最终人工验收与收尾（2026-09-14）
+
+用户已确认：原结构化警告崩溃会话刷新后可正常显示、警告文本正确、第三轮对话与消息持久化正常。`WI-20260913-01`据此标记**Accepted**。功能分支`codex/shanghai-case-v2@30f507c`已是当前`refactor/policy-ops-agent-platform`祖先，无需重复merge；允许移除`F:\Socila-shanghai-case-v2` worktree并保留本地/远端功能分支。政策release、持久0019、V1→V2案例改写和main合并继续保持未执行。
 
 ## UAT阻断修复记录（2026-09-14；提交39fbd00「fix: 修复DeepSeek工具调用与登录限流」）
 

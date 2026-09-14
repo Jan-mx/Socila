@@ -1,8 +1,8 @@
 # 上海政策纠偏与36条案例V2全量重建PRD
 
 > Author: Jan
-> Status: Ready for user testing（运行时RAG闭环已由WI-20260913-01开发、隔离验收与独立复审完成并推送；等待用户人工测试；不标记Accepted；未合并目标分支）
-> Updated: 2026-09-13
+> Status: Active（运行时MinIO/RAG与用户人工验收已Accepted；政策release、持久0019及V1→V2案例改写保持Deferred，不标记Feature整体最终Accepted）
+> Updated: 2026-09-14
 
 ## 1. 文档元数据
 
@@ -13,9 +13,9 @@
 | 目标分支 | `codex/shanghai-case-v2` |
 | 基线分支 | `origin/refactor/policy-ops-agent-platform` |
 | 已确认基线SHA | `0885613f2fbb68bf361d55c3b89694dc1024d1b4` |
-| 当前状态 | 功能分支已推进至`d32b812`并完成运行时RAG闭环的隔离实现与复审；生产MinIO bucket=0、RAG七张表=0仍是未写入事实，当前停在用户人工测试，未合并目标分支 |
+| 当前状态 | 功能分支已合入`refactor/policy-ops-agent-platform`；生产MinIO/RAG同步、索引、恢复验收及用户人工测试已完成；政策release、持久0019及V1→V2案例改写仍为Deferred |
 | 实施顺序 | 上海证据与政策纠偏 → 案例V2生成与展示 → 受控原位改写与隔离验收 |
-| 合并约束 | 功能分支交付后等待用户独立测试；未经明确指令不得合入`refactor/policy-ops-agent-platform` |
+| 合并约束 | 功能分支已合入`refactor/policy-ops-agent-platform`；不合并`main`，Deferred事项仍需各自fresh授权 |
 
 ## 2. 背景与问题证据
 
