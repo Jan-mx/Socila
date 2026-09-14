@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-12
+> Updated: 2026-09-14
 
 ## 当前Profile
 
@@ -108,6 +108,12 @@ current/previous双Secret支持无中断轮换，严格串行，任何一步失�
 生产迁移、停写、入口或DNS切换、删除数据和Secret轮换必须获得用户明确授权。
 
 历史演练与切换细节见[Stage 07报告](./reports/stage-07/acceptance-report.md)和[Runbook](./reports/stage-07/runbook.md)。
+
+## CI容器门禁边界与镜像来源风险（WI-20260914-01，2026-09-14）
+
+- **CI Compose叠加**：`container-gates`以`COMPOSE_FILE=docker-compose.yml:docker-compose.ci.yml`叠加生产文件与`infra/prod/docker-compose.ci.yml`，`COMPOSE_PROJECT_NAME=socila-ci-<run_id>-<run_attempt>`唯一；生产文件运行语义不变。override只表达CI差异：移除全部固定`container_name`（容器名由项目名派生）、数据卷改为项目级临时卷`<project>_ci-{pg,minio,caddy}-data`（生产卷键`pg-data/minio-data/caddy-data`声明为`external: true`且不被任何CI服务挂载，`down -v`永不触及`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`）、不绑定80/443/5432/6380/9000/9001宿主固定端口（postgres仅随机发布供冒烟前migration），保留服务间内部DNS、健康检查与服务JWT必填插值。
+- **失败诊断与清理顺序**：任一步失败时`if: failure()`在清理前采集`compose ps -a`、`logs --no-color`、各容器`State.Status/Health.Status/ExitCode`、`docker info`、`docker system df`、监听端口、项目网络/卷清单与有效配置并上传artifact `compose-diagnostics-<run_id>-<attempt>`；随后无条件`down -v --remove-orphans`并核验项目标签下容器/网络/卷为零残留（残留即失败）。
+- **镜像来源风险（需用户决策，本任务未改生产文件）**：2026-09-14经Docker Hub API核实`minio/minio`仓库已不存在（`object not found`），CI #23 `compose up`因此拉取被拒。生产`infra/prod/docker-compose.yml`仍引用`minio/minio:RELEASE.2025-09-07T16-13-09Z`——本机与生产在用镜像已缓存（RepoDigest `sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e`），当前运行不受影响；但**全新服务器部署或本机镜像被清理后将无法拉取**。MinIO官方Quay仓库`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z`的manifest list digest与该RepoDigest完全一致（同一release、字节相同），CI override已按该digest固定。建议另行授权的生产配置变更：将生产文件minio镜像切换为`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493…`（同digest，零运行时差异），并在服务器部署门禁第2步核验镜像可拉取。
 
 ## 阶段E 受控物化runbook（09-05 NRP，仅本机policyops）
 

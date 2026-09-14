@@ -2,7 +2,8 @@
  * WI-20260911-03（SHV2-FR-019～023、AC-015～018）受控原位改写CLI真实演练：
  *
  * 前提：SOCILA_TEST_DATABASE_URL 指向已迁移（含0019）+已seed的全新PG17+pgvector库；
- * RCL_DRILL_PG_CONTAINER 提供pg_dump容器（与rcl-cli集成测试同约定）。
+ * RCL_DRILL_PG_CONTAINER 提供pg_dump/pg_restore容器（与rcl-cli集成测试同约定：
+ * 容器ID无默认值，psql/pg_restore以URL用户连接——WI-20260914-01 CIG-FR-005）。
  *
  * 流程：清理并重建V1基线（seed→激活沪粤3区间→V1 CLI七模式替换为36/36/80）
  *   → generate-v2（真实快照）→ rewrite audit → 缺授权/错planHash/错targetFingerprint拒绝
@@ -10,7 +11,6 @@
  *   → verify → 复跑noop → 篡改drift → before JSON状态重置 → 并发一执行一noop
  *   → 故障点注入回滚。
  */
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +19,13 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db, closeDatabase } from "@/lib/db";
 import { buildVerifiedRestoreReport } from "@/lib/case-governance/reconcile";
+import {
+  dockerPgRestoreArgs,
+  dockerPsqlArgs,
+  resolveDrillPgEnv,
+  type DrillPgEnv,
+} from "@/lib/case-governance/drill-pg-env";
+import { runSubprocess } from "@/lib/case-governance/run-subprocess";
 import {
   jurisdictionPlanningReleases,
   caseArchiveBatches,
@@ -40,7 +47,7 @@ import { activateJurisdictionRelease } from "@/server/modules/publishing/applica
 import { DrizzleRulesReadRepository } from "@/server/modules/rules/infrastructure/drizzle/rules-read.repository";
 
 const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
-const DOCKER_PG = process.env.RCL_DRILL_PG_CONTAINER ?? "jrp-drill-pg";
+let drillPg: DrillPgEnv;
 const TSX_CLI = join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
 const RCL_CLI = join(process.cwd(), "scripts", "rcl-case-library.ts");
 const REWRITE_CLI = join(process.cwd(), "scripts", "rcl-case-rewrite-v2.mjs");
@@ -51,13 +58,13 @@ interface CliResult {
   stderr: string;
 }
 
-function runCli(script: string, args: string[], extraEnv: Record<string, string> = {}): CliResult {
-  const r = spawnSync(process.execPath, [TSX_CLI, script, ...args], {
+/** 异步运行CLI（WI-20260914-01：不以spawnSync阻塞vitest worker事件循环，避免birpc 60秒RPC超时）。 */
+async function runCli(script: string, args: string[], extraEnv: Record<string, string> = {}): Promise<CliResult> {
+  const r = await runSubprocess(process.execPath, [TSX_CLI, script, ...args], {
     env: { ...process.env, DATABASE_URL: DRILL_URL!, ...extraEnv },
-    encoding: "utf-8",
-    timeout: 420_000,
+    timeoutMs: 420_000,
   });
-  return { code: r.status ?? -1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return { code: r.code, stdout: r.stdout, stderr: r.stderr };
 }
 
 function parseOut<T>(r: CliResult, marker: string): T {
@@ -158,6 +165,12 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     if (!DRILL_URL) {
       throw new Error("SOCILA_TEST_DATABASE_URL 未设置：改写演练需要已迁移（含0019）+已seed的全新PG17库");
     }
+    // CIG-FR-005：容器ID与psql/pg_restore连接参数前置解析，缺失即明确失败。
+    drillPg = resolveDrillPgEnv({
+      container: process.env.RCL_DRILL_PG_CONTAINER,
+      databaseUrl: DRILL_URL,
+      databaseUrlVar: "SOCILA_TEST_DATABASE_URL",
+    });
     process.env.DATABASE_URL = DRILL_URL;
     storageDir = mkdtempSync(join(tmpdir(), "rcl-rewrite-"));
 
@@ -169,42 +182,43 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     await db.delete(jurisdictionPlanningReleases);
     await db.delete(plans).where(eq(plans.ownerUserId, "rcl-cli-user"));
     await db.delete(tests).where(sql`name like 'RPCT-%'`);
-    const seed = spawnSync(process.execPath, [TSX_CLI, join(process.cwd(), "src", "lib", "db", "seed", "index.ts")], {
+    const seed = await runSubprocess(process.execPath, [TSX_CLI, join(process.cwd(), "src", "lib", "db", "seed", "index.ts")], {
       env: { ...process.env, DATABASE_URL: DRILL_URL! },
-      encoding: "utf-8",
-      timeout: 300_000,
+      timeoutMs: 300_000,
     });
-    expect(seed.status, seed.stderr?.slice(0, 400)).toBe(0);
+    expect(seed.code, seed.stderr.slice(0, 400)).toBe(0);
     await activateRegion("310000", "2026-09-01");
     await activateRegion("440000", "2026-09-01", "2029-12-31");
     await activateRegion("440000", "2030-01-01");
 
-    const run = (args: string[], label: string): string => {
-      const r = runCli(RCL_CLI, args);
+    const run = async (args: string[], label: string): Promise<string> => {
+      const r = await runCli(RCL_CLI, args);
       if (r.code !== 0) {
         throw new Error(`V1基线 ${label} 退出码${r.code}：${r.stderr.slice(0, 400)}｜stdout：${r.stdout.slice(0, 600)}`);
       }
       return r.stdout;
     };
-    run(["generate", "--storage", storageDir], "generate");
-    run(["plan-replacement", "--storage", storageDir], "plan-replacement");
-    const prepareOut = run(["prepare-archive", "--storage", storageDir, "--pgdump-docker", DOCKER_PG], "prepare-archive");
+    await run(["generate", "--storage", storageDir], "generate");
+    await run(["plan-replacement", "--storage", storageDir], "plan-replacement");
+    const prepareOut = await run(["prepare-archive", "--storage", storageDir, "--pgdump-docker", drillPg.container], "prepare-archive");
     const prepared = JSON.parse(prepareOut) as { batchId: string };
 
     // 真实恢复演练（verify-archive前置，与e2e-rcl-setup同流程）：第二实例pg_restore
     // → buildVerifiedRestoreReport写verified报告 → 重算sha256sums。
+    // psql/pg_restore以URL用户连接并显式-d（不假设postgres角色）；任一步失败立即抛错。
     const { randomUUID } = await import("node:crypto");
     const restoreDbName = `rcl_rewrite_restore_${randomUUID().slice(0, 8)}`;
-    const docker = (args: string[], input?: Buffer): Buffer =>
-      spawnSync("docker", ["exec", input ? "-i" : "", DOCKER_PG, ...args].filter(Boolean), {
-        input,
-        maxBuffer: 512 * 1024 * 1024,
-        encoding: "buffer",
-      }).stdout;
-    docker(["psql", "-U", "postgres", "-c", `DROP DATABASE IF EXISTS "${restoreDbName}" WITH (FORCE)`]);
-    docker(["psql", "-U", "postgres", "-c", `CREATE DATABASE "${restoreDbName}"`]);
+    const docker = async (label: string, args: string[], input?: Buffer): Promise<string> => {
+      const r = await runSubprocess("docker", args, { input });
+      if (r.code !== 0) {
+        throw new Error(`${label} 失败（exit ${r.code}）：${r.stderr.slice(0, 500)}`);
+      }
+      return r.stdout;
+    };
+    await docker("drop restore db", dockerPsqlArgs(drillPg, `DROP DATABASE IF EXISTS "${restoreDbName}" WITH (FORCE)`));
+    await docker("create restore db", dockerPsqlArgs(drillPg, `CREATE DATABASE "${restoreDbName}"`));
     const dumpFile = join(storageDir, "policyops-fc.dump");
-    docker(["pg_restore", "-U", "postgres", "-d", restoreDbName, "--clean", "--if-exists"], readFileSync(dumpFile));
+    await docker("pg_restore", dockerPgRestoreArgs(drillPg, restoreDbName), readFileSync(dumpFile));
     const { drizzle } = await import("drizzle-orm/node-postgres");
     const { default: pg } = await import("pg");
     const restoreUrl = new URL(DRILL_URL!);
@@ -228,17 +242,17 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
       finalFiles.map((f) => `${createHash("sha256").update(readFileSync(join(storageDir, f))).digest("hex")}  ${f}`).join("\n") + "\n",
     );
 
-    run(["verify-archive", "--storage", storageDir, "--batch-id", prepared.batchId], "verify-archive");
-    run(["apply", "--storage", storageDir, "--batch-id", prepared.batchId, "--i-am-authorized"], "apply");
-    const vr = parseOut<{ ok: boolean }>(runCli(RCL_CLI, ["verify", "--storage", storageDir]), "v1-verify");
+    await run(["verify-archive", "--storage", storageDir, "--batch-id", prepared.batchId], "verify-archive");
+    await run(["apply", "--storage", storageDir, "--batch-id", prepared.batchId, "--i-am-authorized"], "apply");
+    const vr = parseOut<{ ok: boolean }>(await runCli(RCL_CLI, ["verify", "--storage", storageDir]), "v1-verify");
     expect(vr.ok).toBe(true);
 
     // ── V2生成与改写计划 ────────────────────────────────────────────────
-    run(["generate-v2", "--storage", storageDir], "generate-v2");
+    await run(["generate-v2", "--storage", storageDir], "generate-v2");
     generated = join(storageDir, "generated-scenarios-v2.json");
 
     const audit = parseOut<{ state: string; sourceFingerprint: string; mismatches: string[]; existingBatches: unknown[]; allV1: boolean; counts: { cases: number; showcases: number; regressionTests: number; exampleTests: number } }>(
-      runCli(REWRITE_CLI, ["audit", "--generated", generated], DIRTY_ENV),
+      await runCli(REWRITE_CLI, ["audit", "--generated", generated], DIRTY_ENV),
       "rewrite-audit",
     );
     expect(audit.mismatches, JSON.stringify(audit.mismatches)).toEqual([]);
@@ -248,7 +262,7 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     targetFingerprint = audit.sourceFingerprint;
 
     const planOut = parseOut<{ planHash: string; targetFingerprint: string; finalFingerprint: string; entries: number }>(
-      runCli(REWRITE_CLI, ["plan", "--generated", generated, "--out", storageDir], DIRTY_ENV),
+      await runCli(REWRITE_CLI, ["plan", "--generated", generated, "--out", storageDir], DIRTY_ENV),
       "rewrite-plan",
     );
     expect(planOut.entries).toBe(108);
@@ -277,11 +291,11 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
 
   it("apply缺授权/错planHash/错targetFingerprint → 零写入拒绝", async () => {
     const batchesBefore = (await db.select({ n: sql<number>`count(*)` }).from(caseRewriteBatches))[0].n;
-    const noAuth = runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated).filter((a) => a !== "--i-am-authorized"), DIRTY_ENV);
+    const noAuth = await runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated).filter((a) => a !== "--i-am-authorized"), DIRTY_ENV);
     expect(noAuth.code).toBe(2);
-    const badHash = runCli(REWRITE_CLI, APPLY_ARGS(planFile, "0".repeat(64), targetFingerprint, generated), DIRTY_ENV);
+    const badHash = await runCli(REWRITE_CLI, APPLY_ARGS(planFile, "0".repeat(64), targetFingerprint, generated), DIRTY_ENV);
     expect(badHash.code).toBe(3);
-    const badFp = runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, "0".repeat(64), generated), DIRTY_ENV);
+    const badFp = await runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, "0".repeat(64), generated), DIRTY_ENV);
     expect(badFp.code).toBe(4);
     const batchesAfter = (await db.select({ n: sql<number>`count(*)` }).from(caseRewriteBatches))[0].n;
     expect(batchesAfter).toBe(batchesBefore);
@@ -292,17 +306,19 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
   it("行漂移（apply前篡改任一case）→ 指纹失配拒绝且零写入；恢复后apply成功", async () => {
     const target = (await db.select({ id: cases.id, scenarioKey: cases.scenarioKey, caseText: cases.caseText }).from(cases).orderBy(cases.id))[5];
     await db.update(cases).set({ caseText: (target.caseText ?? "") + "drift" }).where(eq(cases.id, target.id));
-    const drift = runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
+    const drift = await runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
     expect(drift.code).toBe(4);
     expect(await countBatches()).toBe(0);
     await db.update(cases).set({ caseText: target.caseText }).where(eq(cases.id, target.id));
 
-    const apply = runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
+    const apply = await runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
     expect(apply.code, JSON.stringify({ stderr: apply.stderr.slice(0, 800), stdout: apply.stdout.slice(0, 800) })).toBe(0);
-    const out = parseOut<{ applied: boolean; noop: boolean; entries: number }>(apply, "apply");
+    const out = parseOut<{ applied: boolean; noop: boolean; entries: number; finalFingerprint: string }>(apply, "apply");
     expect(out.applied).toBe(true);
     expect(out.noop).toBe(false);
     expect(out.entries).toBe(108);
+    // 计划声明的终态指纹必须原样进入apply结果（plan与apply同一finalFingerprint）。
+    expect(out.finalFingerprint).toBe(finalFingerprint);
 
     // 108行原位升级：整数ID保留、V2 UID、case_text非空、transcript NULL。
     const caseIdsAfter = (await db.select({ id: cases.id }).from(cases).orderBy(cases.id)).map((r) => r.id);
@@ -341,6 +357,7 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     const batches = await db.select().from(caseRewriteBatches);
     expect(batches).toHaveLength(1);
     expect(batches[0].planHash).toBe(planHash);
+    expect(batches[0].finalFingerprint).toBe(finalFingerprint);
     expect(batches[0].status).toBe("applied");
     expect(batches[0].targetGeneratorVersion).toBe("RCL-GEN-2.0");
     const entries = await db.select().from(caseRewriteEntries);
@@ -372,8 +389,8 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     expect(cols.rows).toHaveLength(0);
   });
 
-  it("verify：最终状态、批次与entries审计一致 → ok", () => {
-    const r = runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
+  it("verify：最终状态、批次与entries审计一致 → ok", async () => {
+    const r = await runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
     expect(r.code, r.stderr.slice(0, 400)).toBe(0);
     const out = parseOut<{ ok: boolean; problems: string[] }>(r, "verify");
     expect(out.ok).toBe(true);
@@ -382,7 +399,7 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
 
   it("复跑同一计划 → noop:true且不新增批次/entries", async () => {
     const before = await countBatchesWithEntries();
-    const r = runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
+    const r = await runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
     expect(r.code, r.stderr.slice(0, 400)).toBe(0);
     const out = parseOut<{ noop: boolean; applied: boolean }>(r, "noop");
     expect(out.noop).toBe(true);
@@ -397,17 +414,17 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     const scEntry = (await db.select().from(caseRewriteEntries).where(eq(caseRewriteEntries.entityType, "showcase_case")).limit(1))[0];
     // 篡改case业务hash（该列不在指纹与排除hash内，仅verify逐条核对可发现）。
     await db.execute(sql`UPDATE cases SET content_hash = ${"f".repeat(64)} WHERE id = ${caseEntry.entityId}`);
-    const badCase = runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
+    const badCase = await runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
     expect(badCase.code, badCase.stdout.slice(0, 400)).toBe(5);
     expect(parseOut<{ ok: boolean; problems: string[] }>(badCase, "verify-bad-case").problems.some((p) => /content_hash/i.test(p))).toBe(true);
     await db.execute(sql`UPDATE cases SET content_hash = ${caseEntry.newContentHash} WHERE id = ${caseEntry.entityId}`);
     // 篡改showcase业务hash。
     await db.execute(sql`UPDATE showcase_cases SET content_hash = ${"e".repeat(64)} WHERE id = ${scEntry.entityId}`);
-    const badSc = runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
+    const badSc = await runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
     expect(badSc.code).toBe(5);
     expect(parseOut<{ ok: boolean; problems: string[] }>(badSc, "verify-bad-sc").problems.some((p) => /content_hash/i.test(p))).toBe(true);
     await db.execute(sql`UPDATE showcase_cases SET content_hash = ${scEntry.newContentHash} WHERE id = ${scEntry.entityId}`);
-    const ok = runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
+    const ok = await runCli(REWRITE_CLI, ["verify", "--generated", generated, "--plan-file", planFile], DIRTY_ENV);
     expect(ok.code, ok.stderr.slice(0, 400)).toBe(0);
     expect(parseOut<{ ok: boolean }>(ok, "verify-restored").ok).toBe(true);
   });
@@ -417,14 +434,14 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     const after = victim.after as Record<string, unknown>;
     const originalCaseText = String(after.case_text);
     await db.execute(sql`UPDATE cases SET case_text = case_text || 'x' WHERE id = ${victim.entityId}`);
-    const drift = runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
+    const drift = await runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
     expect(drift.code).toBe(5);
     const restored = await db.execute(sql`SELECT case_text FROM cases WHERE id = ${victim.entityId}`);
     await db.execute(
       sql`UPDATE cases SET case_text = ${originalCaseText} WHERE id = ${victim.entityId}`,
     );
     void restored;
-    const rerun = runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
+    const rerun = await runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
     expect(rerun.code).toBe(0);
     expect(parseOut<{ noop: boolean }>(rerun, "rerun").noop).toBe(true);
   });
@@ -432,7 +449,7 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
   it("并发两个相同apply（重置到V1后）：一方applied、另一方noop", { timeout: 600_000 }, async () => {
     await resetToV1FromEntries(planFile);
     const fp = parseOut<{ sourceFingerprint: string }>(
-      runCli(REWRITE_CLI, ["audit", "--generated", generated], DIRTY_ENV),
+      await runCli(REWRITE_CLI, ["audit", "--generated", generated], DIRTY_ENV),
       "audit-2",
     );
     expect(fp.sourceFingerprint).toBe(targetFingerprint);
@@ -459,7 +476,7 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
   it("故障点注入：事务内失败整体回滚（无批次、业务行保持V1、指纹与业务content_hash不变）", { timeout: 600_000 }, async () => {
     await resetToV1FromEntries(planFile);
     const hashBefore = await db.execute(sql`SELECT id, content_hash FROM cases ORDER BY id`);
-    const inject = runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), {
+    const inject = await runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), {
       ...DIRTY_ENV,
       RCL_REWRITE_INJECT_FAILURE_AT: "after_updates",
     });
@@ -471,25 +488,24 @@ describe.sequential("受控原位改写CLI真实演练（WI-20260911-03）", () 
     const hashAfter = await db.execute(sql`SELECT id, content_hash FROM cases ORDER BY id`);
     expect(JSON.stringify(hashAfter.rows)).toBe(JSON.stringify(hashBefore.rows));
     const audit = parseOut<{ sourceFingerprint: string }>(
-      runCli(REWRITE_CLI, ["audit", "--generated", generated], DIRTY_ENV),
+      await runCli(REWRITE_CLI, ["audit", "--generated", generated], DIRTY_ENV),
       "audit-3",
     );
     expect(audit.sourceFingerprint).toBe(targetFingerprint);
     // 注入回滚后正常apply仍成功（幂等入口未被破坏）。
-    const apply = runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
+    const apply = await runCli(REWRITE_CLI, APPLY_ARGS(planFile, planHash, targetFingerprint, generated), DIRTY_ENV);
     expect(apply.code, apply.stderr.slice(0, 400)).toBe(0);
     expect(parseOut<{ applied: boolean }>(apply, "apply-2").applied).toBe(true);
   });
 
-  it("持久库名policyops默认拒绝（RCL_REWRITE_ALLOW_PERSISTENT未设置时零写入）", () => {
+  it("持久库名policyops默认拒绝（RCL_REWRITE_ALLOW_PERSISTENT未设置时零写入）", async () => {
     const fakeUrl = "postgresql://postgres:postgres@localhost:5432/policyops";
-    const r = spawnSync(process.execPath, [TSX_CLI, REWRITE_CLI, ...APPLY_ARGS(planFile, planHash, targetFingerprint, generated)], {
+    const r = await runSubprocess(process.execPath, [TSX_CLI, REWRITE_CLI, ...APPLY_ARGS(planFile, planHash, targetFingerprint, generated)], {
       env: { ...process.env, DATABASE_URL: fakeUrl, ...DIRTY_ENV },
-      encoding: "utf-8",
-      timeout: 120_000,
+      timeoutMs: 120_000,
     });
     // 守卫在连接前触发：退出码2且未发生任何写入（目标库不可达也无妨）。
-    expect(r.status, JSON.stringify({ stdout: (r.stdout ?? "").slice(0, 400), stderr: (r.stderr ?? "").slice(0, 400) })).toBe(2);
+    expect(r.code, JSON.stringify({ stdout: r.stdout.slice(0, 400), stderr: r.stderr.slice(0, 400) })).toBe(2);
   });
 });
 

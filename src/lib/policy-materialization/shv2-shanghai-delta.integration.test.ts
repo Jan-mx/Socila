@@ -4,8 +4,12 @@
  * 前提：SOCILA_TEST_DATABASE_URL 指向全新PG17+pgvector演练服务器（CI/DB门禁提供）。
  * 流程：
  *   1. 独立数据库执行migration；
- *   2. 以基线提交 d7fd63a（PRD确认基线）构建manifest并经真实 applyMaterialization
- *      物化四地区资产（模拟"SHV2之前的持久库"）；
+ *   2. 以基线提交 d7fd63a（PRD确认基线）的版本化夹具构建manifest并经真实
+ *      applyMaterialization物化四地区资产（模拟"SHV2之前的持久库"）——
+ *      WI-20260914-01 CIG-FR-004：夹具由本地Git对象一次性只读提取并固化为
+ *      `__fixtures__/policy-baseline-d7fd63a.json`，加载时校验schema/版本/
+ *      sourceCommit/内容SHA-256/预期计数；测试不再执行`git show`，
+ *      squash后的main与fresh clone无需可达该历史对象；
  *   3. 以当前工作树构建manifest执行audit——计划必须只含上海
  *      （10规则v2 + 31参数窗口 + 1规则集v2 + 1包v2），CN/广东/四川零实体；
  *   4. apply后只有上海批次携带成员；复跑audit/apply均为no-op。
@@ -15,6 +19,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { Client } from "pg";
+import {
+  DEFAULT_POLICY_BASELINE_FIXTURE_PATH,
+  assertFixtureBaselineCounts,
+  fixtureGitReader,
+  loadPolicyBaselineFixture,
+} from "./baseline-fixture";
 
 const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
 const BASELINE_COMMIT = "d7fd63a0de5b4da7d48ea66445223ee51666e620";
@@ -31,18 +41,16 @@ function requireDrill(): void {
   }
 }
 
-function gitReaderAt(commit: string) {
-  return {
-    showHead: (p: string): string =>
-      p === "COMMIT"
-        ? commit
-        : execFileSync("git", ["show", `${commit}:${p}`], {
-            cwd: process.cwd(),
-            maxBuffer: 64 * 1024 * 1024,
-          }).toString("utf8"),
-    listCommittedFiles: (): string[] => [],
-    isWorktreeDirty: (): boolean => false,
-  };
+/** 基线读取器：来自版本化夹具（加载即校验schema/SHA-256，计数在此显式核对）。 */
+function gitReaderBaseline() {
+  const fixture = loadPolicyBaselineFixture(DEFAULT_POLICY_BASELINE_FIXTURE_PATH);
+  if (fixture.sourceCommit !== BASELINE_COMMIT) {
+    throw new Error(
+      `政策基线夹具 sourceCommit=${fixture.sourceCommit} 与SHV2-AC-004基线 ${BASELINE_COMMIT} 不一致`,
+    );
+  }
+  assertFixtureBaselineCounts(fixture);
+  return fixtureGitReader(fixture);
 }
 
 function gitReaderWorktree() {
@@ -71,15 +79,6 @@ async function matClient(): Promise<Client> {
   c.on("error", (err) => console.error("[test] mat client error:", err.message));
   await c.connect();
   return c;
-}
-
-async function matQuery(text: string, values: unknown[] = []) {
-  const c = await matClient();
-  try {
-    return (await c.query(text, values)) as { rows: Record<string, unknown>[] };
-  } finally {
-    await c.end();
-  }
 }
 
 function matOpts() {
@@ -120,13 +119,14 @@ afterAll(async () => {
   }
 });
 
-describe("SHV2-AC-004：上海delta隔离（基线d7fd63a镜像 → 当前仓库audit）", () => {
-  // 基线物化含 git show 子进程 + 四地区全量apply，全量套件并行负载下可能超过5秒默认值
+describe("SHV2-AC-004：上海delta隔离（基线d7fd63a夹具 → 当前仓库audit）", () => {
+  // 基线物化含四地区全量apply，全量套件并行负载下可能超过5秒默认值
   // （identity-container 30秒显式放宽同策略；断言不变，不以超时掩盖失败）。
   it("基线四地区物化：26规则/46参数/4规则集/4包", { timeout: 30_000 }, async () => {
     const { buildManifest, manifestHash } = await import("./manifest");
     const { applyMaterialization, auditMaterialization } = await import("./materialize");
-    const manifest = buildManifest(gitReaderAt(BASELINE_COMMIT));
+    const manifest = buildManifest(gitReaderBaseline());
+    expect(manifest.sourceCommit).toBe(BASELINE_COMMIT);
     const hash = manifestHash(manifest);
     const audit = await auditMaterialization(manifest, true, matOpts());
     expect(audit.plan.counts).toEqual({ rules: 26, params: 46, ruleSets: 4, packs: 4 });

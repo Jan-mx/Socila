@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-13
+> Updated: 2026-09-14
 
 ## 用途
 
@@ -55,6 +55,7 @@ Agent提示词只在对话中交付，禁止写入Work Item正文、验收报告
 
 | Work Item | 状态 | 用途 |
 | --- | --- | --- |
+| `WI-20260914-01-ci-release-gates-closure.md` | Accepted | 闭环CI #23四项门禁失败：显式路由签名、零ESLint warning、d7fd63a基线夹具、RCL演练容器解析、E2E初始化与诊断、CI Compose override与失败诊断；独立复审与GitHub运行#29通过 |
 | `WI-20260913-01-shanghai-rag-runtime-closure.md` | Ready | 23份上海原件MinIO持久化、真实索引、内部检索和Web对话来源链 |
 | `WI-20260911-01-shanghai-evidence-policy-correction.md` | Reopened | ensure期间冲突对象竞态与运行时原件闭环待修复 |
 | `WI-20260911-02-rcl-gen-2-cases-docs-api-ui.md` | Ready for user testing | 36条案例V2生成、文档、API与页面；技术范围不变 |

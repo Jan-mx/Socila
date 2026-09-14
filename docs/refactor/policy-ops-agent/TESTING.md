@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-12
+> Updated: 2026-09-14
 
 ## 测试先行
 
@@ -114,11 +114,11 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 
 | Job | 本地等价命令 | 通过条件 |
 | --- | --- | --- |
-| `gates` | `npx tsc --noEmit`、`npx eslint src`、`npm test` | 退出0；单元skip为0 |
+| `gates` | `npx tsc --noEmit`（干净checkout、无`.next`）、`npx eslint src e2e --max-warnings 0`、`npm test` | 退出0；单元skip为0；ESLint零warning |
 | `agent-gates` | ruff、mypy、`pytest -m "not integration"`、pip-audit | 退出0；skip为0、未解释warning为0 |
-| `database-gates` | 全新PG17：migration×2、引导×2、seed、`npm run test:db`、`agent.migrate --with-roles`、`pytest -m integration` | 幂等no-op；集成skip为0 |
-| `e2e-gates` | `npm run test:e2e:auth`（standalone构建+mock模型+全新库） | 10项Auth流程与助手回复通过 |
-| `container-gates` | 构建web/agent镜像；合成env+临时卷`compose up`→健康检查→SJWT-AC-017双向冒烟（合法双向调用200、伪造服务名/错误方向/重放401）→`down -v`；Trivy 0.74.0 | 健康通过、双向冒烟通过、临时资源删除、可修复HIGH/CRITICAL为0 |
+| `database-gates` | 全新PG17：migration×2、引导×2、seed、`CREATE EXTENSION vector`、`npm run test:db`（`RCL_DRILL_PG_CONTAINER=${{ job.services.postgres.id }}`）、`agent.migrate --with-roles`、`pytest -m integration` | 幂等no-op；集成skip为0；RCL演练在service容器内真实pg_dump/pg_restore |
+| `e2e-gates` | 全新PG17：migration、Jan引导、seed、`CREATE EXTENSION vector`、`npx tsx scripts/e2e-rcl-setup.ts`（容器ID同上）、`npm run build`、`npm run test:e2e:auth`（standalone构建+mock模型） | 29项Chromium契约通过；失败时artifact含playwright-report/test-results（trace）/Web与mock日志 |
+| `container-gates` | 构建web/agent镜像；`COMPOSE_FILE=docker-compose.yml:docker-compose.ci.yml`+唯一`COMPOSE_PROJECT_NAME`+合成env `compose up`→健康检查→8服务running/6 healthy→随机端口core migration→SJWT-AC-017双向冒烟（合法双向调用200、伪造服务名/错误方向/重放401）→失败时`if: failure()`诊断并上传→`down -v`→零残留核验；Trivy 0.74.0 | 健康通过、双向冒烟通过、任务专属容器/网络/卷零残留、可修复HIGH/CRITICAL为0 |
 | `security-gates` | `node scripts/scan-secrets.mjs --all`；Gitleaks 8.29.1完整历史（09-05起使用`.gitleaks.toml`：默认规则集+精确路径/规则allowlist） | 除7个已核实fingerprint与`.gitleaks.toml`已核实测试合成值allowlist外0发现 |
 
 ## SiliconFlow
@@ -363,3 +363,17 @@ uv run --project services/agent pytest -m "not integration"   # 含 test_service
 - 单元RED→GREEN：新增`src/components/chat/tool-result-card.test.ts` 7例（混合string/结构化/非法值归一化、顶层在前calc在后的合并顺序、规范化文本去重、上限4条、非对象/非数组输入零抛错、传入对象不被修改）；旧实现7/7失败（`collectWarningTexts`缺失），实现后7/7。契约：`collectWarningTexts(result: unknown): string[]`——外部边界不可信，仅接受trim后非空的string或含非空string `text`的非数组对象，任何unknown值先经`typeof`检查才可调用`trim()`，不使用`String()`强转。
 - E2E新增（`e2e/shv2-rag-chat.spec.ts`，共29例）：验收库fixture写入属于测试用户的会话（user消息+assistant的`tool-computePlan` part，warnings混合string与对象）；打开`/chat?conversationId=<id>`验证历史恢复——页面零pageerror、无"This page couldn't load"、字符串与结构化警告均显示、重复只显示一次、非法值不显示，且发送第三轮消息仍可继续对话。测试复用该spec已注册用户（注册限流5次/小时为套件级共享资源，不新增注册）。
 - 新鲜门禁：`npx vitest run tool-result-card.test.ts` 7/7（先RED后GREEN）；`npm test` 88文件/904零失败零skip；tsc 0；eslint 0 error（8条既有warning）；build退出0；全新PG17验收库（migration/bootstrap-admin/seed/e2e-rcl-setup 36/36/80）Chromium E2E 29/29；scan-secrets --all 953文件零命中；git diff --check通过。
+
+## v1.0.1发布CI门禁闭环（WI-20260914-01，2026-09-14）
+
+CI #23（`main@6411ea6`，六项门禁工作流首次在GitHub-hosted runner运行）四项失败的根因与专用测试：
+
+- **路由签名契约**（`src/app/api/rag/originals/[documentVersionId]/__tests__/route-signature.contract.test.ts` 3例）：`route.ts`不得引用`next build`生成的全局`RouteContext`（`.next/types/routes.d.ts`），第二参数必须是显式`{ params: Promise<{ documentVersionId: string }> }`；行为契约（401/400/附件头/404/502）仍由同目录`route.test.ts` 4例覆盖。CIG-AC-001以fresh clone（无`.next`）`npx tsc --noEmit`退出0为准。
+- **ESLint零warning**：`npx eslint src e2e --max-warnings 0`；未使用符号删除或参与真实断言（`MOCK_ASSISTANT_REPLY`进入E2E断言、`finalFingerprint`断言apply结果与批次行`final_fingerprint`），`identityQuery`进入`useEffect`依赖（不禁用规则）。
+- **政策基线夹具**（`src/lib/policy-materialization/baseline-fixture.test.ts` 11例，零DB）：`__fixtures__/policy-baseline-d7fd63a.json`由`scripts/build-policy-baseline-fixture.ts`从本地Git对象一次性只读提取（38文件：四地区rules_manifest/rules/params/rule_set，不含tests）；加载校验schema=`socila.policy-baseline-fixture`、fixtureVersion=1、40位sourceCommit、`contentSha256=sha256(canonicalJson(files))`、`expectedCounts {26,46,4,4}`（用当前`buildManifest`重建核对）；篡改内容/声明hash/schema/版本/提交/计数/缺文件均失败关闭。`shv2-shanghai-delta.integration.test.ts`不再执行`git show`，业务断言不变（基线26/46/4/4、当前只产生上海delta 10/31/1/1、CN/广东/四川零新增、复跑no-op）；CIG-AC-003在不含`d7fd63a`对象的fresh clone上通过。
+- **RCL演练环境解析**（`src/lib/case-governance/__tests__/drill-pg-env.test.ts` 11例）：`resolveDrillPgEnv`只从`RCL_DRILL_PG_CONTAINER`取容器ID（无默认值，不回退`jrp-drill-pg`）、只从实际数据库URL取用户名/库名/端口（不假设`postgres`角色）；缺失即抛`DrillPgEnvError`并指明缺失项；`dockerPsqlArgs`/`dockerPgRestoreArgs`使用URL用户并显式`-d`。`rcl-cli.integration.test.ts`、`rcl-rewrite-cli.integration.test.ts`与`scripts/e2e-rcl-setup.ts`全部经该解析器前置解析（改写测试的docker步骤改为非零退出立即抛错，消除计数级联失败）。
+- **CI Compose override与工作流契约**（`src/lib/env/ci-compose-override-contract.test.ts` 12例，零Docker）：生产文件语义未变（固定`socila-*`容器名、生产卷名、Docker Hub标签、固定端口保持）；`docker-compose.ci.yml`对每个服务`container_name: !reset null`、不引用生产卷名（生产卷键`external: true`且不挂载）、`ci-*`临时卷、proxy/redis/minio `ports: !reset []`、postgres仅`!override ["5432"]`随机发布、minio改`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493…`；`ci.yml`触发条件/只读权限、ESLint命令、两处`RCL_DRILL_PG_CONTAINER`、两处`CREATE EXTENSION vector`、e2e初始化顺序与失败上传、container-gates唯一项目名/诊断→上传→`down -v`→零残留顺序、无`continue-on-error`、第三方Action全部固定40位SHA。
+- **来源排序平台确定性**（`src/lib/case-governance/__tests__/dsl-evidence-index.test.ts` 2例）：`resolvePolicySources`对全部36场景返回的policySources必须为UTF-16 code-unit元组序（documentId→locator.reference→excerpt），与宿主默认locale无关；GitHub运行#24证明`localeCompare`中文排序在Windows与Linux不同会使已提交manifest跨平台不一致。已提交案例库（`shanghai-guangdong-v2.md`/`.manifest.json`）按确定性顺序重建（manifestHash `d4a2b01c…`）。禁止在进入已提交产物或hash的排序中使用无locale参数的`localeCompare`比较非ASCII文本。
+- **Compose健康检查就绪条件**：container-gates对web `/api/health`与agent `/internal/health`都以`wait_for`轮询就绪（各≤180秒），禁止对刚启动的服务做单次无等待探测（GitHub运行#25：agent uvicorn未就绪即`Connection refused`）。
+- **Trivy版本形态**：`aquasecurity/trivy-action`的`version`输入必须带`v`前缀（`v0.74.0`），契约测试断言两处一致。
+- **本地等价命令**：`MSYS_NO_PATHCONV=1 docker run --rm -v "F:/Socila:/repo" -w /repo rhysd/actionlint:1.7.7`（工作流静态校验）；`cd infra/prod && COMPOSE_PROJECT_NAME=<唯一> COMPOSE_FILE=docker-compose.yml:docker-compose.ci.yml docker compose --env-file <合成env> config --quiet`；database-gates/e2e-gates本地复现须显式`RCL_DRILL_PG_CONTAINER=<任务专属容器ID>`且容器`POSTGRES_USER`与URL用户一致（非`postgres`）。

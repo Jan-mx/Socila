@@ -181,12 +181,16 @@ export function resolvePolicySources(input: ResolvePolicySourcesInput): PolicySo
     seen.add(key);
     sources.push(p);
   }
+  // 平台无关的确定性排序：UTF-16 code unit比较。不得使用无locale参数的localeCompare——
+  // 中文文本的比较结果依赖宿主默认locale（Windows zh-CN与Linux runner不同），会使
+  // 已提交manifest与内存生成产物跨平台不一致（WI-20260914-01，CI #24 gates根因）。
+  const byCodeUnit = (x: string, y: string): number => (x < y ? -1 : x > y ? 1 : 0);
   sources.sort((a, b) =>
     a.documentId !== b.documentId
-      ? a.documentId.localeCompare(b.documentId)
+      ? byCodeUnit(a.documentId, b.documentId)
       : a.locator.reference !== b.locator.reference
-        ? a.locator.reference.localeCompare(b.locator.reference)
-        : a.excerpt.localeCompare(b.excerpt),
+        ? byCodeUnit(a.locator.reference, b.locator.reference)
+        : byCodeUnit(a.excerpt, b.excerpt),
   );
   return sources;
 }

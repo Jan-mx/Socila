@@ -15,13 +15,6 @@ const DRILL_URL = process.env.SOCILA_TEST_DATABASE_URL;
 const MAT_DB = `nrp_fix_${Date.now().toString(36)}`;
 let matUrl = "";
 
-const LEGACY_RULE_KEYS = [
-  "R-010-PARSE-BIRTH-YEAR",
-  "R-110-LOOKUP-LEGAL-RETIRE-AGE",
-  "R-310-MI-WAITING-PERIOD",
-  "R-900-FINAL-GATE",
-];
-
 async function client(): Promise<Client> {
   const c = new Client({ connectionString: DRILL_URL });
   await c.connect();
@@ -69,14 +62,6 @@ describe("0014约束与并发幂等（审查缺陷11）", () => {
       await admin.end();
     }
   });
-
-  function execMigrations(): void {
-    execFileSync("node", ["scripts/run-migrations.mjs"], {
-      cwd: process.cwd(),
-      env: { ...process.env, DATABASE_URL: matUrl },
-      stdio: "pipe",
-    });
-  }
 
   it("0014迁移幂等（全新库与已执行0013的副本）", async () => {
     const c = await matClient();

@@ -9,8 +9,10 @@
  *
  * 使E2E能精确断言：公开36条、沪粤18/18、治理字段非空、管理过滤与权限。
  *
- * 用法：SOCILA_E2E_DATABASE_URL=<连接串> [RCL_DRILL_PG_CONTAINER=<容器>]
+ * 用法：SOCILA_E2E_DATABASE_URL=<连接串> RCL_DRILL_PG_CONTAINER=<容器ID/名称>
  *   npx tsx scripts/e2e-rcl-setup.ts
+ * 容器ID无默认值（CI传入 job.services.postgres.id）；psql/pg_restore以URL用户连接
+ * （WI-20260914-01 CIG-FR-005）。
  * 输出：仓库根 .e2e-rcl-state.json（{batchId, manifestHash, counts}；跑完即删）。
  */
 import { spawnSync } from "node:child_process";
@@ -38,6 +40,12 @@ import { DrizzleJurisdictionReleaseWriteRepository } from "@/server/modules/publ
 import { activateJurisdictionRelease } from "@/server/modules/publishing/application/jurisdiction-release.use-case";
 import { DrizzleRulesReadRepository } from "@/server/modules/rules/infrastructure/drizzle/rules-read.repository";
 import { buildVerifiedRestoreReport } from "@/lib/case-governance/reconcile";
+import {
+  DrillPgEnvError,
+  dockerPgRestoreArgs,
+  dockerPsqlArgs,
+  resolveDrillPgEnv,
+} from "@/lib/case-governance/drill-pg-env";
 
 const E2E_URL = process.env.SOCILA_E2E_DATABASE_URL;
 if (!E2E_URL) {
@@ -46,10 +54,23 @@ if (!E2E_URL) {
 }
 process.env.DATABASE_URL = E2E_URL!;
 
+// CIG-FR-005：容器ID与psql/pg_restore连接参数前置解析，缺失即明确失败（不回退开发容器名）。
+const drillPg = (() => {
+  try {
+    return resolveDrillPgEnv({
+      container: process.env.RCL_DRILL_PG_CONTAINER,
+      databaseUrl: E2E_URL,
+      databaseUrlVar: "SOCILA_E2E_DATABASE_URL",
+    });
+  } catch (err) {
+    console.error(`[e2e-rcl-setup] ${err instanceof DrillPgEnvError ? err.message : String(err)}`);
+    process.exit(1);
+  }
+})();
+
 const ROOT = resolve(process.cwd());
 const CLI = join(ROOT, "scripts", "rcl-case-library.ts");
 const TSX_CLI = join(ROOT, "node_modules", "tsx", "dist", "cli.mjs");
-const DOCKER_PG = process.env.RCL_DRILL_PG_CONTAINER ?? "jrp-drill-pg";
 
 function runCli(args: string[]): { code: number; stdout: string; stderr: string } {
   const r = spawnSync(process.execPath, [TSX_CLI, CLI, ...args], {
@@ -147,18 +168,19 @@ async function main() {
 
   run(["generate", "--storage", storageDir], 0, "generate");
   run(["plan-replacement", "--storage", storageDir], 0, "plan-replacement");
-  const prepareOut = run(["prepare-archive", "--storage", storageDir, "--pgdump-docker", DOCKER_PG], 0, "prepare-archive");
+  const prepareOut = run(["prepare-archive", "--storage", storageDir, "--pgdump-docker", drillPg.container], 0, "prepare-archive");
   const prepared = JSON.parse(prepareOut) as { batchId: string };
 
   // 3) 真实恢复演练：dump → 第二实例 pg_restore → reconcile 对账 → verified restore-report。
+  //    psql/pg_restore以URL用户连接并显式-d（不假设postgres角色）。
   const restoreDbName = `rcl_e2e_restore_${randomUUID().slice(0, 8)}`;
-  const drop = spawnSync("docker", ["exec", DOCKER_PG, "psql", "-U", "postgres", "-c", `DROP DATABASE IF EXISTS "${restoreDbName}" WITH (FORCE)`], { encoding: "utf-8" });
+  const drop = spawnSync("docker", dockerPsqlArgs(drillPg, `DROP DATABASE IF EXISTS "${restoreDbName}" WITH (FORCE)`), { encoding: "utf-8" });
   if (drop.status !== 0) throw new Error(`drop restore db失败：${drop.stderr?.slice(0, 300)}`);
-  const create = spawnSync("docker", ["exec", DOCKER_PG, "psql", "-U", "postgres", "-c", `CREATE DATABASE "${restoreDbName}"`], { encoding: "utf-8" });
+  const create = spawnSync("docker", dockerPsqlArgs(drillPg, `CREATE DATABASE "${restoreDbName}"`), { encoding: "utf-8" });
   if (create.status !== 0) throw new Error(`create restore db失败：${create.stderr?.slice(0, 300)}`);
 
   const dumpFile = join(storageDir, "policyops-fc.dump");
-  const restore = spawnSync("docker", ["exec", "-i", DOCKER_PG, "pg_restore", "-U", "postgres", "-d", restoreDbName, "--clean", "--if-exists"], {
+  const restore = spawnSync("docker", dockerPgRestoreArgs(drillPg, restoreDbName), {
     input: readFileSync(dumpFile),
     maxBuffer: 512 * 1024 * 1024,
     encoding: "buffer",

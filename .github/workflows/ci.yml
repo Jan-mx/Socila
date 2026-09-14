@@ -1,4 +1,4 @@
-# PolicyOps 合并质量门禁（09-03 PMG-FR-020～029）
+# PolicyOps 合并质量门禁（09-03 PMG-FR-020～029；WI-20260914-01 CIG-FR-002/006～011 闭环）
 #
 # 六项必需检查：gates / agent-gates / database-gates / e2e-gates /
 # container-gates / security-gates。全部只使用合成凭据与全新数据库，
@@ -9,6 +9,18 @@
 # Gitleaks 关闭 PR 评论，不授予写权限。
 #
 # 第三方 Action 固定完整提交 SHA 并保留版本注释（PMG-FR-027）。
+#
+# WI-20260914-01（CI #23 闭环）：
+# - gates：ESLint 零 warning（`--max-warnings 0`，含 e2e 目录）；
+# - database-gates / e2e-gates：全新库显式 `CREATE EXTENSION vector`；RCL 演练容器
+#   经 `RCL_DRILL_PG_CONTAINER=${{ job.services.postgres.id }}` 显式传入（无默认容器名）；
+#   database-gates 为 Python 集成套件临时启动两个隔离 MinIO（零环境 skip）；
+# - e2e-gates：初始化顺序与仓库验收文档一致（migration→bootstrap→seed→vector→
+#   e2e-rcl-setup→build→E2E），失败时上传 playwright-report/test-results/trace/
+#   Web 与 mock 日志；
+# - container-gates：生产 Compose 叠加 CI override（唯一项目名、无固定 container_name、
+#   临时卷、无固定宿主端口、Quay 同 digest minio），`down -v` 前 `if: failure()` 采集
+#   诊断并上传 artifact，成功或失败均无条件清理并核验零残留。
 name: CI
 
 on:
@@ -29,7 +41,7 @@ env:
   UV_VERSION: "0.12.7"
 
 jobs:
-  # PMG-FR-020：npm ci → ESLint → TypeScript → 单元测试（零skip）→ 生产构建
+  # PMG-FR-020：npm ci → ESLint（零warning）→ TypeScript → 单元测试（零skip）→ 生产构建
   gates:
     name: gates
     runs-on: ubuntu-latest
@@ -51,8 +63,10 @@ jobs:
           cache: npm
       - name: npm ci
         run: npm ci
+      # PMG-NFR-005 / CIG-FR-002：src 与 e2e 均零 warning。
       - name: ESLint
-        run: npx eslint src
+        run: npx eslint src e2e --max-warnings 0
+      # CIG-FR-001：干净 checkout（无 .next 生成类型）下必须通过。
       - name: TypeScript
         run: npx tsc --noEmit
       - name: unit tests
@@ -87,7 +101,10 @@ jobs:
   # PMG-FR-022（初始化顺序 PMG-FR-015～019）：
   # 全新 pgvector/pgvector:pg17 + 合成口令；
   # Core migration ×2（第二次必须幂等no-op）→ 管理员引导 ×2 → seed ×1 →
-  # 完整 Node 数据库套件 → Agent migration + 角色授权 → 完整 Python 数据库套件
+  # pgvector 扩展（恢复对账读取 pg_extension）→ 完整 Node 数据库套件
+  # （RCL 演练经 service 容器 ID 执行 pg_dump/pg_restore）→
+  # Agent migration + 角色授权 → 两个隔离 MinIO（RAG 同步/恢复用例，零环境 skip）→
+  # 完整 Python 数据库套件 → 删除 MinIO
   database-gates:
     name: database-gates
     runs-on: ubuntu-latest
@@ -134,17 +151,52 @@ jobs:
         run: node scripts/bootstrap-admin.mjs
       - name: seed
         run: npm run seed
+      # 核心 migration 不创建 vector 扩展；恢复对账（reconcile）读取 pg_extension 并断言
+      # pgvector 版本非空——与本地 db-gate 演练脚本一致，在全新库显式创建。
+      - name: pgvector extension (fresh database)
+        run: docker exec ${{ job.services.postgres.id }} psql -U ci_db_user -d policyops_ci -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector"
+      # CIG-FR-005/006：RCL 受控 CLI 演练在 service 容器内执行 pg_dump/pg_restore/psql；
+      # 容器 ID 显式传入，psql/pg_restore 用户来自 SOCILA_TEST_DATABASE_URL。
       - name: Node database suite
+        env:
+          RCL_DRILL_PG_CONTAINER: ${{ job.services.postgres.id }}
         run: npm run test:db
       - name: Agent migration + role grants
         working-directory: services/agent
         run: uv run python -m agent.migrate --with-roles
+      # PMG-NFR-004（零环境skip）：Python集成套件中的RAG原件同步/索引用例需要两个隔离MinIO
+      # （同步实例+恢复实例）。以MinIO官方Quay仓库同digest镜像临时启动，仅监听回环随机高位端口，
+      # 合成凭据；套件结束后无条件删除。
+      - name: isolated MinIO instances (RAG evidence sync tests)
+        run: |
+          set -euo pipefail
+          IMG="quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+          docker run -d --name rag-minio-a -e MINIO_ROOT_USER=ci_minio -e MINIO_ROOT_PASSWORD=ci-synthetic-minio-pw-not-real -p 127.0.0.1:19000:9000 "$IMG" server /data
+          docker run -d --name rag-minio-b -e MINIO_ROOT_USER=ci_minio -e MINIO_ROOT_PASSWORD=ci-synthetic-minio-pw-not-real -p 127.0.0.1:19001:9000 "$IMG" server /data
+          for port in 19000 19001; do
+            for _ in $(seq 1 30); do
+              if curl -sf "http://127.0.0.1:${port}/minio/health/live" >/dev/null; then break; fi
+              sleep 1
+            done
+            curl -sf "http://127.0.0.1:${port}/minio/health/live" >/dev/null
+            echo "minio ready on ${port}"
+          done
       - name: Python database suite
         working-directory: services/agent
+        env:
+          RAG_SYNC_TEST_MINIO_ENDPOINT: 127.0.0.1:19000
+          RAG_SYNC_TEST_MINIO_RESTORE_ENDPOINT: 127.0.0.1:19001
+          RAG_SYNC_TEST_MINIO_ACCESS_KEY: ci_minio
+          RAG_SYNC_TEST_MINIO_SECRET_KEY: ci-synthetic-minio-pw-not-real
         run: uv run pytest -q -m integration
+      - name: remove isolated MinIO instances
+        if: always()
+        run: docker rm -f rag-minio-a rag-minio-b >/dev/null 2>&1 || true
 
-  # PMG-FR-023：Chromium + 系统依赖；全新 PostgreSQL 17 → migration → 引导 →
-  # seed → build → npm run test:e2e:auth
+  # PMG-FR-023 / CIG-FR-007/008：Chromium + 系统依赖；全新 PostgreSQL 17 →
+  # migration → 引导 → seed → pgvector 扩展 → e2e-rcl-setup（沪粤快照激活 +
+  # 受控替换为 36/36/80 案例库）→ build → npm run test:e2e:auth（29 项契约）；
+  # 失败时上传 playwright-report / test-results（含 trace）/ Web 与 mock 日志。
   e2e-gates:
     name: e2e-gates
     runs-on: ubuntu-latest
@@ -197,24 +249,65 @@ jobs:
         env:
           DATABASE_URL: ${{ env.SOCILA_E2E_DATABASE_URL }}
         run: npm run seed
+      - name: pgvector extension (fresh database)
+        run: docker exec ${{ job.services.postgres.id }} psql -U ci_db_user -d policyops_ci -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector"
+      # CIG-FR-007：与仓库验收文档一致——沪粤快照激活 + 受控 CLI 七模式替换
+      # （真实 pg_dump → 第二实例 pg_restore → 对账），使公开案例精确 36/18/18、
+      # 规划入口有活动 release（CI #23 三个失败用例的根因）。
+      - name: e2e-rcl-setup (regional snapshots + case library 36/36/80)
+        env:
+          RCL_DRILL_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: npx tsx scripts/e2e-rcl-setup.ts
       - name: production build
         run: npm run build
       - name: auth E2E
-        run: npm run test:e2e:auth
+        run: |
+          set -o pipefail
+          mkdir -p e2e-artifacts
+          # Playwright webServer stdout/stderr（standalone Web 与 mock OpenAI/Agent）已在
+          # playwright.config.ts 设为 pipe，随测试输出一并落盘。
+          npm run test:e2e:auth 2>&1 | tee e2e-artifacts/e2e-run.log
+      # CIG-FR-008：失败必产出可下载诊断。
+      - name: upload E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            playwright-report/
+            test-results/
+            e2e-artifacts/
+            .e2e-rcl-state.json
+            .e2e-task3-state.json
 
-  # PMG-FR-024：构建 web:latest 与 agent:latest；合成 env + 临时卷启动
+  # PMG-FR-024 / CIG-FR-009～011：构建 web:latest 与 agent:latest；生产 Compose 叠加
+  # CI override（infra/prod/docker-compose.ci.yml：无固定 container_name、任务专属临时卷、
+  # 无固定宿主端口、Quay 同 digest minio），合成 env 启动
   # proxy/web/agent/worker/beat/postgres/redis/minio；检查 /api/health 与
   # /internal/health；SJWT-AC-017 双向服务JWT冒烟（合法调用通过、伪造服务名失败）；
-  # 无条件 docker compose down -v。
-  # PMG-FR-029：Trivy 0.74.0 扫描两个最终运行镜像（结果属于本门禁）。
+  # 失败时在清理前采集并上传诊断；成功或失败均无条件 down -v 并核验零残留。
+  # PMG-FR-029：Trivy v0.74.0 扫描两个最终运行镜像（结果属于本门禁）。trivy-action 的
+  # version 输入必须与 GitHub release tag 同形（带 v 前缀）——CI #24 真实失败：
+  # "0.74.0" 使 install.sh 报 unable to find '0.74.0'。
   container-gates:
     name: container-gates
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      COMPOSE_PROJECT_NAME: socila-ci
+      # CIG-FR-010：任务唯一项目名（容器/网络/卷均由此派生），生产文件 + CI override 叠加。
+      COMPOSE_PROJECT_NAME: socila-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # SJWT 冒烟前的 core migration 由宿主 node 执行（drizzle/pg 依赖）。
+      - name: npm ci
+        run: npm ci
       - name: build web:latest
         run: docker build -f Dockerfile -t web:latest .
       - name: build agent:latest
@@ -231,8 +324,6 @@ jobs:
           NEXTAUTH_SECRET=ci-synthetic-nextauth
           AUTH_REFRESH_PEPPER=ci-synthetic-pepper
           NEXTAUTH_URL=http://localhost
-          ADMIN_USERNAME=ci-admin
-          ADMIN_PASSWORD_HASH=$2a$12$abcdefghijklmnopqrstuv0123456789012345678901234567890
           # SJWT-FR-001/NFR-003/AC-010：合成Secret必须≥32 UTF-8字节，否则
           # web/agent/worker/beat 启动失败（模块级强制校验）。
           AGENT_SERVICE_JWT_CURRENT=ci-synthetic-jwt-current-secret-0123456789ab
@@ -248,58 +339,79 @@ jobs:
       - name: compose config (required interpolation must pass)
         working-directory: infra/prod
         run: docker compose --env-file .ci.env config --quiet
+      # CIG-FR-010 契约核验：有效配置无 container_name、无生产卷名、无固定宿主端口。
+      - name: compose CI override contract
+        working-directory: infra/prod
+        run: |
+          set -euo pipefail
+          docker compose --env-file .ci.env config > /tmp/effective-compose.yml
+          if grep -q "container_name" /tmp/effective-compose.yml; then echo "FAIL: container_name present"; exit 1; fi
+          if grep -qE "socila_(pg|minio|caddy)-data" /tmp/effective-compose.yml; then echo "FAIL: production volume name present"; exit 1; fi
+          if grep -qE "published: \"?(80|443|5432|6380|9000|9001)\"?$" /tmp/effective-compose.yml; then echo "FAIL: fixed host port present"; exit 1; fi
+          if ! grep -q "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e" /tmp/effective-compose.yml; then echo "FAIL: minio image not pinned to Quay digest"; exit 1; fi
+          echo "OK: CI override contract"
       - name: compose up (synthetic env, temporary volumes)
         working-directory: infra/prod
         run: docker compose --env-file .ci.env up -d proxy web agent worker beat postgres redis minio
+      # 就绪条件轮询（web 与 agent 各最多 180 秒）。CI #25 真实失败：web 首轮即就绪后，
+      # agent /internal/health 只做单次无等待探测，在 uvicorn 完成启动前返回
+      # Connection refused（容器无重启、exitCode 0）——改为对两者都等待就绪条件。
       - name: health checks
         working-directory: infra/prod
         run: |
-          ok=0
-          for _ in $(seq 1 36); do
-            if docker compose --env-file .ci.env exec -T web wget -qO- http://127.0.0.1:3000/api/health | grep -q '"status":"ok"'; then
-              ok=1
-              break
-            fi
-            sleep 5
-          done
-          if [ "$ok" != "1" ]; then
-            docker compose --env-file .ci.env logs
-            exit 1
-          fi
-          docker compose --env-file .ci.env exec -T agent \
+          wait_for() {
+            local name="$1"; shift
+            for _ in $(seq 1 36); do
+              if "$@" >/dev/null 2>&1; then
+                echo "OK: $name ready"
+                return 0
+              fi
+              sleep 5
+            done
+            echo "FAIL: $name not ready within 180s"
+            return 1
+          }
+          wait_for "web /api/health" bash -c \
+            'docker compose --env-file .ci.env exec -T web wget -qO- http://127.0.0.1:3000/api/health | grep -q "\"status\":\"ok\""'
+          wait_for "agent /internal/health" docker compose --env-file .ci.env exec -T agent \
             python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8100/internal/health', timeout=4)"
       - name: service state assertions (all 8 services)
         working-directory: infra/prod
         run: |
           set -euo pipefail
-          for c in socila-proxy socila-web socila-agent socila-worker socila-beat socila-postgres socila-redis socila-minio; do
-            state=$(docker inspect -f '{{.State.Status}}' "$c")
+          for svc in proxy web agent worker beat postgres redis minio; do
+            cid=$(docker compose --env-file .ci.env ps -q "$svc")
+            if [ -z "$cid" ]; then echo "FAIL: $svc has no container"; exit 1; fi
+            state=$(docker inspect -f '{{.State.Status}}' "$cid")
             if [ "$state" != "running" ]; then
-              echo "FAIL: $c state=$state (expected running)"
-              docker compose --env-file .ci.env logs --tail 100 "$c" || true
+              echo "FAIL: $svc state=$state (expected running)"
               exit 1
             fi
-            echo "OK: $c state=$state"
+            echo "OK: $svc state=$state"
           done
-          for c in socila-web socila-agent socila-worker socila-postgres socila-redis socila-minio; do
+          for svc in web agent worker postgres redis minio; do
+            cid=$(docker compose --env-file .ci.env ps -q "$svc")
             ok=0
             health=starting
             for _ in $(seq 1 24); do
-              health=$(docker inspect -f '{{.State.Health.Status}}' "$c")
+              health=$(docker inspect -f '{{.State.Health.Status}}' "$cid")
               if [ "$health" = "healthy" ]; then ok=1; break; fi
               sleep 5
             done
             if [ "$ok" != "1" ]; then
-              echo "FAIL: $c health=$health (expected healthy)"
-              docker compose --env-file .ci.env logs --tail 100 "$c" || true
+              echo "FAIL: $svc health=$health (expected healthy)"
               exit 1
             fi
-            echo "OK: $c health=healthy"
+            echo "OK: $svc health=healthy"
           done
-      - name: core migration for SJWT smoke (compose postgres via published port)
-        env:
-          DATABASE_URL: postgresql://ci_postgres:ci-synthetic-pg-pw@localhost:5432/policyops_ci
-        run: npm run db:migrate
+      # postgres 仅发布随机宿主端口（CI override）：从 compose 读取实际端口。
+      - name: core migration for SJWT smoke (compose postgres via random published port)
+        run: |
+          set -euo pipefail
+          PG_PORT=$(cd infra/prod && docker compose --env-file .ci.env port postgres 5432 | awk -F: '{print $NF}')
+          if [ -z "$PG_PORT" ]; then echo "FAIL: postgres published port not found"; exit 1; fi
+          echo "postgres published port: $PG_PORT"
+          DATABASE_URL="postgresql://ci_postgres:ci-synthetic-pg-pw@127.0.0.1:${PG_PORT}/policyops_ci" npm run db:migrate
       # SJWT-AC-017：完整Compose启动后双向合法调用通过、伪造服务名失败。
       # 从agent容器验证：health豁免、业务端点缺JWT/仅X-Service-Name统一401、
       # 合法Next→Agent 200、合法Agent→Core物化200入台账、同JTI重放401、错误方向401。
@@ -379,14 +491,61 @@ jobs:
           assert s == 401 and b == {"error": "SERVICE_AUTH_INVALID"}, (s, b)
           print("SJWT-AC-017 smoke: OK")
           PY
+      # CIG-FR-009：任一步失败时，在清理前保留完整诊断（也打印到日志）。
+      - name: compose diagnostics (on failure, before cleanup)
+        if: failure()
+        working-directory: infra/prod
+        run: |
+          D=ci-diagnostics
+          mkdir -p "$D"
+          docker compose --env-file .ci.env ps -a > "$D/compose-ps.txt" 2>&1 || true
+          docker compose --env-file .ci.env logs --no-color > "$D/compose-logs.txt" 2>&1 || true
+          : > "$D/container-state.txt"
+          for cid in $(docker compose --env-file .ci.env ps -aq); do
+            docker inspect -f '{{.Name}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} error={{.State.Error}} image={{.Config.Image}}' "$cid" >> "$D/container-state.txt" 2>&1 || true
+            name=$(docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's#^/##')
+            docker inspect "$cid" > "$D/inspect-${name:-$cid}.json" 2>&1 || true
+          done
+          docker info > "$D/docker-info.txt" 2>&1 || true
+          docker system df > "$D/docker-system-df.txt" 2>&1 || true
+          (ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null) > "$D/listening-ports.txt" || true
+          docker network ls --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" > "$D/networks.txt" 2>&1 || true
+          docker volume ls --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" > "$D/volumes.txt" 2>&1 || true
+          docker compose --env-file .ci.env config > "$D/effective-compose-config.yml" 2>&1 || true
+          echo "===== compose ps -a ====="; cat "$D/compose-ps.txt"
+          echo "===== container state ====="; cat "$D/container-state.txt"
+          echo "===== compose logs (tail 200) ====="; tail -n 200 "$D/compose-logs.txt"
+      - name: upload compose diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compose-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: infra/prod/ci-diagnostics/
       - name: compose down -v (unconditional)
         if: always()
         working-directory: infra/prod
-        run: docker compose --env-file .ci.env down -v
+        run: docker compose --env-file .ci.env down -v --remove-orphans
+      # CIG-FR-010：任务专属容器/网络/卷必须为零残留（生产卷名从未被引用）。
+      - name: verify zero task residue
+        if: always()
+        run: |
+          set -euo pipefail
+          c=$(docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" | wc -l)
+          n=$(docker network ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" | wc -l)
+          v=$(docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" | wc -l)
+          echo "residue containers=$c networks=$n volumes=$v"
+          if [ "$c" != "0" ] || [ "$n" != "0" ] || [ "$v" != "0" ]; then
+            docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" | xargs -r docker volume rm || true
+            docker network ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" | xargs -r docker network rm || true
+            echo "FAIL: task residue remained after down -v"
+            exit 1
+          fi
       - name: Trivy web:latest
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          version: "0.74.0"
+          version: "v0.74.0"
           image-ref: web:latest
           scanners: vuln
           severity: HIGH,CRITICAL
@@ -395,7 +554,7 @@ jobs:
       - name: Trivy agent:latest
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          version: "0.74.0"
+          version: "v0.74.0"
           image-ref: agent:latest
           scanners: vuln
           severity: HIGH,CRITICAL
