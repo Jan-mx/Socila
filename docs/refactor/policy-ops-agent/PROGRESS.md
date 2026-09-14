@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-14
+> Updated: 2026-09-15
 
 ## 当前结论
 
@@ -712,6 +712,12 @@ GitHub运行#24（<https://github.com/Jan-mx/Socila/actions/runs/34854340650>，
 
 GitHub运行#25（<https://github.com/Jan-mx/Socila/actions/runs/34857595911>，提交`689469f`）：gates、agent-gates、security-gates、database-gates（RCL演练经service容器+Python集成131/0 skip）、e2e-gates（29/29）成功；container-gates在Compose全部启动后失败于健康检查——web首轮就绪后agent `/internal/health`单次无等待探测早于uvicorn就绪（诊断artifact证明8容器running、exitCode 0、无重启），健康检查改为web/agent双就绪条件轮询（契约测试RED→GREEN）。
 
-**GitHub Actions全绿运行#26：<https://github.com/Jan-mx/Socila/actions/runs/34859661518>（提交`087cf8f`）——gates、agent-gates、database-gates、e2e-gates、container-gates、security-gates六项全部success。**最终提交与`087cf8f`仅相差本URL记录；最终SHA的确认运行为该分支Actions页的下一运行（#27）。
+GitHub Actions运行记录（`workflow_dispatch`功能分支）：
+
+- **#26 <https://github.com/Jan-mx/Socila/actions/runs/34859661518>（SHA=`087cf8f19144d2b0120d7b0e9e4565932aae06e1`）：gates、agent-gates、database-gates、e2e-gates、container-gates、security-gates六项全部success。**
+- #27 <https://github.com/Jan-mx/Socila/actions/runs/34861445884>（SHA同为`087cf8f…`，与#26内容相同）：状态**cancelled**（同ref并发组取消），不能作为验收证据。
+- **#28 <https://github.com/Jan-mx/Socila/actions/runs/34861667883>（SHA=`20007c5547ba5f030d2df4ff4bdcfef7b9d71b5a`）：gates、agent-gates、database-gates、e2e-gates、container-gates、security-gates全部success——这是代码交付提交`20007c5`的最终有效验收证据。**
+
+本docs-only事实修正提交（只改Markdown，不改任何代码/CI/Compose）不改变`20007c5`的验证结论；该修正提交自身的CI运行结果记录于交付报告，不在本文档循环记录自身运行URL。
 
 边界：`main`、`refactor/*`、`v1.0.0`、`v1.0.1`未修改；未创建PR/tag/Release；生产容器、生产PostgreSQL/MinIO/RAG与`socila_*`卷未连接未修改；`infra/prod/docker-compose.yml`未修改（Docker Hub minio仓库消失对全新部署的风险见`OPERATIONS.md`，切换生产镜像来源需另行授权）。状态：**Ready for independent review**（等待独立审查）。

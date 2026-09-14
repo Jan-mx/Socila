@@ -1,8 +1,8 @@
 # WI-20260914-01：闭环v1.0.1发布CI门禁
 
 > Author: Jan
-> Status: Ready for independent review（本地全部门禁新鲜复现；GitHub运行#26六项job全部success）
-> Updated: 2026-09-14
+> Status: Ready for independent review（本地全部门禁新鲜复现；GitHub运行#28验证代码交付提交`20007c5`，六项job全部success）
+> Updated: 2026-09-15
 
 ## Work Item
 
@@ -25,7 +25,7 @@
 | `database-gates` | Node database suite | `shv2-shanghai-delta.integration.test.ts`：`Command failed: git show d7fd63a0de5b4da7d48ea66445223ee51666e620:dsl/regions/cn_dsl_v1/rules_manifest.json` / `fatal: path ... exists on disk, but not in 'd7fd63a…'` | 测试硬编码`git show`历史提交`d7fd63a`；squash后的`main`不可达该对象（git对不存在对象亦输出该提示，本地已复现） |
 | `database-gates` | Node database suite | `rcl-cli.integration.test.ts`与`rcl-rewrite-cli.integration.test.ts`：`Error response from daemon: No such container: jrp-drill-pg`（prepare-archive `docker exec jrp-drill-pg pg_dump -U ci_db_user -Fc policyops_ci`） | 测试默认容器名`jrp-drill-pg`（本机开发容器）；CI未传入GitHub service容器ID；恢复演练还硬编码`-U postgres`（CI管理用户为`ci_db_user`） |
 | `e2e-gates` | auth E2E | 29用例：3失败/19通过/7未运行。①`shv2-case-copy.spec.ts:46` `expect(locator('[data-case-card]')).toHaveCount(10)` Received 0；②`task3-regional.spec.ts:171` compute `Expected: 200 Received: 422`；③`task4-case-library.spec.ts:74` `expect(res.cases.length).toBe(36)` Received 0 | e2e-gates初始化只做migration/bootstrap/seed，缺少仓库验收文档要求的`npx tsx scripts/e2e-rcl-setup.ts`（激活沪粤快照+受控替换为36/36/80案例库）——公开案例0条、无活动release导致规划422 |
-| `container-gates` | compose up | `minio Error pull access denied for minio/minio, repository does not exist or may require 'docker login': denied: requested access to the resource is denied`（redis/postgres/proxy随之Interrupted） | GitHub-hosted runner匿名拉取Docker Hub `minio/minio:RELEASE.2025-09-07T16-13-09Z`被拒（共享出口IP匿名配额/访问拒绝的典型表现）；现有工作流在`down -v`前未保留容器日志与状态，无诊断artifact |
+| `container-gates` | compose up | `minio Error pull access denied for minio/minio, repository does not exist or may require 'docker login': denied: requested access to the resource is denied`（redis/postgres/proxy随之Interrupted） | GitHub-hosted runner匿名拉取Docker Hub `minio/minio:RELEASE.2025-09-07T16-13-09Z`被拒——后续经Docker Hub API核验该仓库已不可用（`object not found`，非单纯限流/配额问题）；CI改用Quay同digest镜像（生产`docker-compose.yml`未修改，镜像源切换为单独待处理事项）；现有工作流在`down -v`前未保留容器日志与状态，无诊断artifact |
 
 本地RED复现：`npx eslint src e2e --max-warnings 0`退出非0（8 warning）；`git show 0123…:dsl/regions/cn_dsl_v1/rules_manifest.json`对不存在对象输出与CI相同的`exists on disk, but not in`提示；`.next/types/routes.d.ts:137`确认`RouteContext`为构建生成类型。
 
@@ -57,7 +57,7 @@
 - **CIG-FR-008 E2E诊断artifact**：E2E失败（`if: failure()`）上传`playwright-report/`、`test-results/`（含trace）、standalone Web日志与mock OpenAI/Agent日志。
 - **CIG-FR-009 Compose诊断**：container-gates在`down -v`前增加`if: failure()`步骤输出并保存`docker compose ps -a`、`logs --no-color`、各容器`State.Status/Health.Status/ExitCode`、`docker info`、`docker system df`、已占用端口、Compose网络与volume清单，并以artifact上传后才清理。
 - **CIG-FR-010 CI Compose override**：新增`infra/prod/docker-compose.ci.yml`：移除固定`container_name`、使用项目级临时volume（不使用`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`）、不绑定80/443/5432/6380/9000/9001宿主固定端口（需要宿主访问的端口改为随机映射）、保留服务间内部DNS/健康检查/服务JWT冒烟；`COMPOSE_PROJECT_NAME`含`run_id`唯一；成功或失败均无条件清理任务专属容器/网络/volume。
-- **CIG-FR-011 镜像拉取首错修复**：依据CI #23真实首错（minio/minio匿名拉取被拒）做最小修复，不在未知根因下同时改多个服务。
+- **CIG-FR-011 镜像拉取首错修复**：依据CI #23真实首错（`pull access denied for minio/minio, repository does not exist or may require 'docker login'`；后续经Docker Hub API核验仓库不可用）做最小修复，不在未知根因下同时改多个服务。
 - **CIG-NFR-001 干净可复现**：全部测试在fresh clone（仅main squash历史，不含`d7fd63a`对象）与fresh PG17+pgvector上可复现。
 - **CIG-NFR-002 不引入临时触发**：最终提交的`ci.yml`触发条件保持`pull_request`/`main` push/`workflow_dispatch`；验证功能分支使用`workflow_dispatch`指定ref。
 
@@ -91,7 +91,7 @@
 
 - 夹具体积：四地区DSL原文约数百KB，作为测试夹具进入仓库；回退为删除夹具与测试改动（单一提交revert）。
 - Compose override与生产文件分离，生产`docker compose up`不受影响；CI仅经`-f docker-compose.yml -f docker-compose.ci.yml`叠加。
-- 镜像拉取修复若仍受Docker Hub限流影响，诊断artifact可精确定位；不以重试掩盖。
+- 镜像拉取修复（Quay同digest镜像）若仍不可达，诊断artifact可精确定位；不以重试掩盖。
 - 全部改动可通过revert单一提交恢复到`6411ea6`。
 
 ## 文档同步清单
@@ -166,7 +166,9 @@ git diff --check
 
 - 运行#24 <https://github.com/Jan-mx/Socila/actions/runs/34854340650>（提交`aaee1ed`，首次dispatch）：agent-gates/security-gates/database-gates/e2e-gates成功；gates失败于`case-library-doc.test.ts`（跨平台排序）、container-gates失败于Trivy安装（版本前缀）——两项根因已如上修复并重新验证。
 - 运行#25 <https://github.com/Jan-mx/Socila/actions/runs/34857595911>（提交`689469f`）：gates/agent-gates/security-gates/database-gates/e2e-gates成功（5/6）；container-gates在Compose up后失败于agent就绪竞态（诊断artifact `compose-diagnostics-34857595911-1`已按设计上传）——已修复。
-- **修复后全绿运行：<https://github.com/Jan-mx/Socila/actions/runs/34859661518>（运行#26，提交`087cf8f`，六项job全部success；最终提交与该提交仅相差本证据记录）。最终提交的确认运行见分支Actions页（运行#27，SHA=本提交HEAD）。**
+- **运行#26 <https://github.com/Jan-mx/Socila/actions/runs/34859661518>（SHA=`087cf8f19144d2b0120d7b0e9e4565932aae06e1`）：gates、agent-gates、database-gates、e2e-gates、container-gates、security-gates六项全部success。**
+- 运行#27 <https://github.com/Jan-mx/Socila/actions/runs/34861445884>（SHA同为`087cf8f…`，与#26内容相同）：状态**cancelled**（同ref并发组取消），**不能作为验收证据**。
+- **运行#28 <https://github.com/Jan-mx/Socila/actions/runs/34861667883>（SHA=`20007c5547ba5f030d2df4ff4bdcfef7b9d71b5a`）：gates、agent-gates、database-gates、e2e-gates、container-gates、security-gates全部success——这是代码交付提交`20007c5`的最终有效验收证据。**本docs-only事实修正提交不改变任何代码；其CI运行结果记录于交付报告，不在本文档循环记录自身运行URL。
 
 ### 边界
 
