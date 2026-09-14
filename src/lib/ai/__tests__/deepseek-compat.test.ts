@@ -5,11 +5,12 @@
  * - deepseek-v4.1-flash：/models与真实请求均400（账号无此模型），禁止使用；
  * - deepseek-flash与deepseek-v4-flash（当前别名）行为一致：
  *   默认thinking下强制tool_choice→400 "Thinking mode does not support this tool_choice"；
- *   显式thinking={type:"disabled"}后强制工具调用→200并正确返回searchPolicy调用。
+ *   显式thinking={type:"disabled"}后强制工具调用→200；工具结果后的auto步骤若恢复
+ *   默认thinking，则因缺少reasoning_content返回400。
  *
  * 契约（SHV2/UAT修复）：适配器仅匹配DeepSeek模型+/chat/completions、仅修改JSON请求体、
- * 仅在显式tool_choice（对象形式）存在时注入thinking={type:"disabled"}；
- * 其他Provider、普通请求、非JSON body原样转发；不记录Authorization或完整请求正文。
+ * 在携带非空tools数组的整个多步工具循环注入thinking={type:"disabled"}；
+ * 其他Provider、不带tools的请求、非JSON body原样转发；不记录Authorization或完整请求正文。
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 
@@ -133,7 +134,7 @@ describe("withDeepSeekCompat（DeepSeek强制工具调用兼容）", () => {
     expect(bodies[0].tool_choice).toEqual(FORCED_TOOL_CHOICE);
   });
 
-  it("tool_choice=auto不注入thinking（默认thinking保持）", async () => {
+  it("tool_choice=auto且携带tools时关闭thinking，覆盖工具结果后的生成步骤", async () => {
     const { upstream, bodies } = deepseekLikeUpstream();
     const fetchWithCompat = withDeepSeekCompat(upstream as unknown as typeof fetch);
     const resp = await fetchWithCompat(CHAT_URL, jsonInit({
@@ -143,7 +144,69 @@ describe("withDeepSeekCompat（DeepSeek强制工具调用兼容）", () => {
       tool_choice: "auto",
     }));
     expect(resp.status).toBe(200);
-    expect(bodies[0].thinking).toBeUndefined();
+    expect(bodies[0].thinking).toEqual({ type: "disabled" });
+  });
+
+  it("两步工具循环在强制检索和auto最终回答阶段都关闭thinking", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const upstream = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      bodies.push(body);
+      const thinkingOff =
+        (body.thinking as { type?: string } | undefined)?.type === "disabled";
+      if (!thinkingOff) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: "invalid_request_error",
+              message:
+                "The `reasoning_content` in the thinking mode must be passed back to the API.",
+            },
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const fetchWithCompat = withDeepSeekCompat(upstream as unknown as typeof fetch);
+
+    const first = await fetchWithCompat(CHAT_URL, jsonInit({
+      model: "deepseek-v4-flash",
+      messages: [{ role: "user", content: "上海失业保险金标准是多少？" }],
+      tools: [SEARCH_POLICY_TOOL],
+      tool_choice: FORCED_TOOL_CHOICE,
+    }));
+    const second = await fetchWithCompat(CHAT_URL, jsonInit({
+      model: "deepseek-v4-flash",
+      messages: [
+        { role: "user", content: "上海失业保险金标准是多少？" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "searchPolicy", arguments: '{"query":"Q"}' },
+            },
+          ],
+        },
+        { role: "tool", tool_call_id: "call_1", content: '{"hits":[]}' },
+      ],
+      tools: [SEARCH_POLICY_TOOL],
+      tool_choice: "auto",
+    }));
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(bodies).toHaveLength(2);
+    expect(bodies.map((body) => body.thinking)).toEqual([
+      { type: "disabled" },
+      { type: "disabled" },
+    ]);
   });
 
   it("无tool_choice的普通对话不注入thinking", async () => {

@@ -6,16 +6,18 @@
  * - deepseek-flash与deepseek-v4-flash（当前别名）行为一致：
  *   默认thinking下强制tool_choice→400 "Thinking mode does not support this tool_choice"；
  *   显式thinking={type:"disabled"}→200并正确返回searchPolicy工具调用；
- *   tool_choice="auto"与普通对话在默认thinking下均200。
+ *   单次tool_choice="auto"与普通对话在默认thinking下可返回200，但工具结果后的
+ *   多步auto请求要求回传AI SDK未保留的reasoning_content，生产实测返回400。
  *
- * 因此按固定决策规则：保留实际可用模型，仅在DeepSeek Chat Completions请求携带
- * 显式tool_choice（对象形式，如首步强制searchPolicy）时注入thinking={type:"disabled"}；
- * 普通对话与tool_choice="auto"继续使用默认thinking；首步强制searchPolicy来源门禁不变。
+ * 因此按固定决策规则：保留实际可用模型；DeepSeek Chat Completions只要携带
+ * 非空tools数组，就在整个多步工具循环注入thinking={type:"disabled"}。这同时覆盖
+ * 首步强制searchPolicy和工具结果后的tool_choice="auto"最终回答；不带tools的普通
+ * 请求继续使用默认thinking，首步强制searchPolicy来源门禁不变。
  *
  * 适配器约束：
  * - 仅匹配DeepSeek模型（模型ID含deepseek）与/chat/completions端点；
  * - 仅修改JSON请求体（非JSON body原样转发）；
- * - 仅在存在显式tool_choice时关闭thinking；
+ * - 仅在存在非空tools数组时关闭thinking；
  * - 其他Provider、普通请求和调用形态原样转发；
  * - 不记录Authorization或完整请求正文（日志零输出）。
  */
@@ -37,11 +39,11 @@ function needsThinkingDisabled(body: unknown): body is { thinking?: unknown } & 
   if (typeof candidate.model !== "string" || !DEEPSEEK_MODEL_PATTERN.test(candidate.model)) {
     return false;
   }
-  return isExplicitToolChoice(candidate.tool_choice);
+  return Array.isArray(candidate.tools) && candidate.tools.length > 0;
 }
 
 /**
- * 包装fetch：对DeepSeek /chat/completions且携带显式tool_choice的JSON请求
+ * 包装fetch：对DeepSeek /chat/completions且携带非空tools数组的JSON请求
  * 注入thinking={type:"disabled"}后转发；其余一切原样转发给底层fetch。
  */
 export function withDeepSeekCompat(baseFetch: typeof fetch = fetch): typeof fetch {

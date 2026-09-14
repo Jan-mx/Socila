@@ -359,10 +359,10 @@ export function createChatStream(
   onFinish?: (result: { text: string }) => void | Promise<void>,
 ) {
   const { apiKey, baseURL, model } = getOpenAIConfig();
-  // DeepSeek兼容（2026-09-14探测矩阵）：默认thinking拒绝强制tool_choice（生产UAT
-  // 阻断"Thinking mode does not support this tool_choice"）。适配器仅对DeepSeek
-  // /chat/completions且显式tool_choice的JSON请求注入thinking={type:"disabled"}；
-  // 普通对话与tool_choice=auto保持默认thinking；首步强制searchPolicy来源门禁不变。
+  // DeepSeek兼容（2026-09-14生产UAT）：默认thinking拒绝强制tool_choice，且工具结果
+  // 后的auto步骤要求回传AI SDK未保留的reasoning_content。适配器对DeepSeek
+  // /chat/completions中携带非空tools数组的整个工具循环注入thinking={type:"disabled"}；
+  // 不带tools的普通请求保持默认thinking，首步强制searchPolicy来源门禁不变。
   const openai = createOpenAI({ apiKey, baseURL, fetch: withDeepSeekCompat(fetch) });
 
   const currentDate = context?.currentDate ?? formatServerDate();

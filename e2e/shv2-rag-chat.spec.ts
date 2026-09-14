@@ -73,6 +73,32 @@ test.describe.serial("SHV2 对话RAG来源链（AC-027）", () => {
       page.getByText(`归档原件：/api/rag/originals/${MOCK_DOC_VERSION_ID}`),
     ).toBeVisible();
 
+    // 流式回答完成后必须保存非空assistant消息；生产缺reasoning_content时会在此之前
+    // 中断并留下空会话，不能只验证RAG内部接口曾返回200。
+    const conversationId = new URL(page.url()).searchParams.get("conversationId");
+    expect(conversationId).toMatch(/^[0-9a-f-]{36}$/i);
+    const saved = await page.evaluate(async (id) => {
+      const res = await fetch(`/api/chat/${id}`);
+      return { status: res.status, body: await res.json() };
+    }, conversationId);
+    expect(saved.status).toBe(200);
+    const persistedMessages = saved.body.conversation.messages as Array<{
+      role?: string;
+      parts?: Array<{ type?: string; text?: unknown }>;
+    }>;
+    expect(
+      persistedMessages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.parts?.some(
+            (part) =>
+              part.type === "text" &&
+              typeof part.text === "string" &&
+              part.text.trim().length > 0,
+          ) === true,
+      ),
+    ).toBe(true);
+
     // 登录态下载：附件安全头 + 字节来自Agent原件流（mock 2340文本）。
     const download = await page.evaluate(async (id) => {
       const res = await fetch(`/api/rag/originals/${id}`);
