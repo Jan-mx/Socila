@@ -411,3 +411,19 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 
 - 边界：未修改数据库、MinIO、RAG索引、生产容器、环境变量或政策发布状态；用户工作树中的`AGENTS.md`修改不纳入本任务提交。
 - 隔离环境：任务专属`atr-e2e-pg`（pgvector/pgvector:pg17，127.0.0.1:55199）用于Chromium E2E，验收后删除并核验零残留；生产`socila-*`容器与三个数据卷未触碰。
+
+## ATR复审修复映射（2026-09-15第二轮；PRD Updating版，分支`codex/atr-autonomous-tool-routing`第二提交）
+
+| 需求 | 实现 | 测试/证据 | 状态 |
+| --- | --- | --- | --- |
+| ATR-FR-001扩展（来源分工） | `src/lib/ai/prompts.ts`新增"来源边界"段：用户事实/规划数值仅computePlan/政策事实仅searchPolicy/画像更新updateProfile/同轮组合不得串用；核心规则重排1～12，`computePlan`规则收敛为"规划计算数值" | `autonomous-tool-routing.test.ts`"提示词来源边界"2例（RED：旧提示词含"所有数值结论必须来自 computePlan"等冲突表述） | 已实现 |
+| ATR-FR-007扩展（限制不扩大为整轮回答） | 规则11改写：`searchPolicy`限制"只约束政策事实部分，不排除同一轮使用用户画像、computePlan 规划结果或其他工具的合法结果" | 同上第2例；单元混合工具行为测试（画像+规划+政策三来源同轮保留，mock按各工具实际输出组合作答） | 已实现 |
+| ATR-FR-009扩展（残留静态政策事实） | 删除《国务院关于渐进式延迟法定退休年龄的办法》（2024年9月）与"缴费基数每年7月调整"；`buildContextPrompt`画像标签改"普通工人（worker50）/管理岗/干部（cadre55）"；`tools.ts` female_retire_type/retire_preference描述与validateField校验文案去除"50岁/55岁/提前最多3年/最多3年"；"4050补贴"俗称改中性表述 | "无残留静态政策事实"3例（提示词禁词、`buildContextPrompt`标签、`tools.ts`源码契约；RED→GREEN） | 已实现 |
+| ATR-AC-002三场景 | 提示词规则9保持；无服务端拦截 | 单元行为3例："你好"寒暄零工具调用、能力询问直接回答、补充画像允许updateProfile且不调用searchPolicy（注入fetch零调用证明） | 已实现 |
+| ATR-AC-004混合工具 | 无新服务端逻辑（模型自主组合） | 单元混合工具行为测试：同轮updateProfile+computePlan+searchPolicy（vi.mock规划用例固定结果），最终回答同时含画像、`养老缺口 -24 个月`（computePlan calc值）与searchPolicy机关/标题/双链；E2E政策问题29/29 | 已实现 |
+| ATR-AC-005工具不可用完整循环 | 无新服务端逻辑（工具失败关闭已存在） | 单元：注入fetch 503→模型循环完成、最终回答"暂时不可用"且无http/归档路径/文号/gov.cn、两步请求均auto；E2E新增"检索不可用场景"（mock Agent 500）29/29 | 已实现 |
+| ATR-AC-008（含`git diff --check`） | — | AI聚焦4文件/51；`npm test` 94文件/954零skip；tsc 0；eslint 0；build 0（1条既有warning）；全新`atr-fix-e2e-pg` Chromium E2E 29/29；`git diff --check`对4ed78d7与最终提交内容（暂存区等价）执行退出0——首轮曾误记`4ed78d7..2209a4e`为通过（实际退出2：该提交PRD文件EOF空行，已在本轮修正），字面范围`4ed78d7..HEAD`在最终提交后复验 | 通过 |
+| 独立复审 | — | 首轮只读复审（覆盖`2209a4e`+全部未提交改动）：代码层检查单A~I全PASS，发现Important×2（均为文档证据：预写复审结论、`git diff --check`记录不实）与Minor×1（范围外UI/引擎文案）；修正后复审通过：Critical=0、Important=0、Minor=1（Minor-2为两处“PRD §3.2”指针错误，实为§6 ATR-FR-009“本条的范围边界”段，已按复审建议在提交前更正，无其他已知Minor） | 通过 |
+| 边界 | 未恢复requiresPolicyProvenance/getPolicySearchStep/requiresPolicyOutputProvenance/evaluatePolicyProvenance/policyProvenanceTransform或替代实现；toolChoice保持显式"auto"；未降低searchPolicy校验；未修改数据库/MinIO/RAG/环境变量/生产容器；AGENTS.md用户修改未纳入 | `agent.ts`源码契约（ATR-AC-006）保持通过；本次diff仅prompts.ts/tools.ts/测试/mock/文档 | 遵守 |
+
+- 隔离环境：任务专属`atr-fix-e2e-pg`（pgvector/pgvector:pg17，127.0.0.1:55198），E2E后删除并核验`atr*`容器/卷/网络零残留；生产`socila-*`容器与数据卷未触碰，ATR未生产部署。

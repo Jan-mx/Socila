@@ -12,6 +12,8 @@
  *   /api/rag/originals/<documentVersionId>归档原件链接（ATR-AC-004）；
  * - 登录态下载返回attachment/nosniff/private no-store与正确字节；
  * - 无可靠命中（生育津贴场景）时模型如实说明，不编造链接（ATR-AC-005）；
+ * - searchPolicy 失败关闭（“检索不可用场景”→mock Agent 500）时，模型消费 success:false
+ *   结果后完成整个循环，如实说明不可用且不伪造官网/文号/归档路径（ATR-AC-005）；
  * - 恢复含混合warning工具消息的会话不崩溃且可继续对话（UAT 2026-09-14）。
  *
  * 注册只发生一次（套件共享 /api/auth/register 的IP限流，上限5次/小时）：
@@ -185,6 +187,45 @@ test.describe.serial("SHV2 对话RAG来源链（AC-027）", () => {
     ).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText(/官网原文：/)).toHaveCount(0);
     await expect(page.getByText(/归档原件：/)).toHaveCount(0);
+  });
+
+  test("searchPolicy不可用时完成整个模型循环：失败说明可理解且不伪造来源（ATR-AC-005）", async ({
+    page,
+  }) => {
+    await login(page, E2E_USER_RAG, E2E_PASSPHRASE);
+    await confirmShanghai(page);
+
+    // “检索不可用场景”触发词使mock Agent检索端点返回500：searchPolicy失败关闭
+    // （success:false），模型消费失败结果后必须如实说明，不得编造官网/文号/归档路径。
+    await page.locator("#chat-input").fill("上海失业保险金标准是多少？检索不可用场景");
+    await page.getByRole("button", { name: "发送" }).click();
+
+    await expect(page.getByText(/暂时不可用/)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/官网原文：/)).toHaveCount(0);
+    await expect(page.getByText(/归档原件：/)).toHaveCount(0);
+    await expect(page.getByText(/gov\.cn/)).toHaveCount(0);
+    await expect(page.getByText(/〔\d{4}〕/)).toHaveCount(0);
+
+    // 持久化：最终assistant文本非空且不含任何链接（完整循环未被服务端改写）。
+    const conversationId = new URL(page.url()).searchParams.get("conversationId");
+    expect(conversationId).toMatch(/^[0-9a-f-]{36}$/i);
+    const saved = await page.evaluate(async (id) => {
+      const res = await fetch(`/api/chat/${id}`);
+      return { status: res.status, body: await res.json() };
+    }, conversationId);
+    expect(saved.status).toBe(200);
+    const persistedMessages = saved.body.conversation.messages as Array<{
+      role?: string;
+      parts?: Array<{ type?: string; text?: unknown }>;
+    }>;
+    const finalText = persistedMessages
+      .filter((m) => m.role === "assistant")
+      .at(-1)
+      ?.parts?.find((part) => part.type === "text")?.text;
+    expect(typeof finalText).toBe("string");
+    expect(String(finalText)).toContain("暂时不可用");
+    expect(String(finalText)).not.toMatch(/https?:\/\//i);
+    expect(String(finalText)).not.toContain("/api/rag/originals/");
   });
 });
 

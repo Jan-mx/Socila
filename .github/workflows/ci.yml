@@ -195,7 +195,7 @@ jobs:
 
   # PMG-FR-023 / CIG-FR-007/008：Chromium + 系统依赖；全新 PostgreSQL 17 →
   # migration → 引导 → seed → pgvector 扩展 → e2e-rcl-setup（沪粤快照激活 +
-  # 受控替换为 36/36/80 案例库）→ build → npm run test:e2e:auth（28 项契约）；
+  # 受控替换为 36/36/80 案例库）→ build → npm run test:e2e:auth（29 项契约）；
   # 失败时上传 playwright-report / test-results（含 trace）/ Web 与 mock 日志。
   e2e-gates:
     name: e2e-gates

@@ -63,6 +63,13 @@ const server = createServer((req, res) => {
       } catch {
         query = "";
       }
+      // ATR-AC-005：“不可用场景”触发Agent检索故障（500），用于验证模型如何消费
+      // searchPolicy 的 success:false 结果并形成最终回答（不伪造来源）。
+      if (query.includes("不可用场景")) {
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "RAG_SEARCH_INTERNAL_ERROR" }));
+        return;
+      }
       // “生育津贴”触发空命中场景：无可靠命中必须显式返回，不得编造。
       const hits =
         query.includes("生育津贴")
@@ -140,6 +147,7 @@ const server = createServer((req, res) => {
       // ── ATR（LLM自主工具路由）：searchPolicy由模型在tool_choice=auto下自主发起 ──────
       // 触发词“失业保险金标准”→第一轮发起searchPolicy工具调用；
       // “生育津贴”触发词命中空场景→工具返回空hits后如实说明不编造来源；
+      // “检索不可用场景”→工具经Agent 500失败关闭（success:false）→模型如实说明不可用；
       // 第二轮（messages含tool结果）→把命中中的官网URL与归档原件下载路径写进回复；
       // “你是谁”→依据系统提示词直接回答人设（不调用任何工具）。
       const lastUser = [...messages].reverse().find((m) => m?.role === "user");
@@ -179,11 +187,13 @@ const server = createServer((req, res) => {
         return;
       }
 
-      const searchTrigger = lastUserText.includes("失业保险金标准")
-        ? "上海市失业保险金标准是多少"
-        : lastUserText.includes("生育津贴")
-          ? "上海生育津贴标准是多少"
-          : null;
+      const searchTrigger = lastUserText.includes("检索不可用场景")
+        ? "上海市失业保险金标准是多少？不可用场景"
+        : lastUserText.includes("失业保险金标准")
+          ? "上海市失业保险金标准是多少"
+          : lastUserText.includes("生育津贴")
+            ? "上海生育津贴标准是多少"
+            : null;
 
       if (!toolMessage && searchTrigger !== null) {
         const systemText = messages

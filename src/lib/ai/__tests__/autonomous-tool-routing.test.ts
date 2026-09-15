@@ -29,6 +29,21 @@ import {
   __setSearchPolicyFetcherForTest,
 } from "../search-policy";
 
+// 混合工具场景：computePlan 的规则引擎用例依赖数据库（单元层零DB），
+// 以固定结果替换该外部边界；工具自身的地区一致性校验仍真实执行。
+vi.mock("@/server/modules/planning/application", () => ({
+  createJurisdictionComputePlan: () => async () => ({
+    planId: "plan-atr-mixed",
+    needsAgent: false,
+    questions: [],
+    warnings: [],
+    caveats: [],
+    plan: {},
+    calc: { pension: { gap_months: -24 } },
+    meta: { as_of_date: "2026-09-15" },
+  }),
+}));
+
 // ─── 本地 OpenAI 兼容 mock（记录请求体并按场景回复）────────────────────────────
 
 /** PRD §2.2根因复现：人设表达自然带出"社保政策""相关规定"，旧输出正则误判为政策事实。 */
@@ -54,7 +69,12 @@ const MOCK_HIT = {
 interface CapturedBody {
   tool_choice?: unknown;
   tools?: Array<{ function?: { name?: string } }>;
-  messages?: Array<{ role?: string; content?: unknown }>;
+  messages?: Array<{
+    role?: string;
+    content?: unknown;
+    tool_calls?: Array<{ id?: string; function?: { name?: string } }>;
+    tool_call_id?: string;
+  }>;
 }
 
 type MockToolHit = typeof MOCK_HIT & { originalDownloadPath: string };
@@ -63,8 +83,10 @@ function startMockOpenAI(): Promise<{
   server: Server;
   baseUrl: string;
   bodies: CapturedBody[];
+  emittedToolCalls: string[];
 }> {
   const bodies: CapturedBody[] = [];
+  const emittedToolCalls: string[] = [];
   const server = createServer((req, res) => {
     if (req.method !== "POST" || !req.url?.endsWith("/chat/completions")) {
       res.writeHead(404, { "content-type": "application/json" });
@@ -111,80 +133,185 @@ function startMockOpenAI(): Promise<{
         res.write("data: [DONE]\n\n");
         res.end();
       };
-
-      // 场景1：身份问题 → 模型依据系统提示词直接回答人设（不调用工具）。
-      if (lastUserText.includes("你是谁")) {
+      const replyText = (reply: string) => {
         sseHead();
-        writeChunk({ role: "assistant", content: PERSONA_REPLY }, null);
+        writeChunk({ role: "assistant", content: reply }, null);
         writeChunk({}, "stop");
         sseEnd();
-        return;
-      }
-
-      // 场景2：政策问题第一轮 → 模型自主发起searchPolicy工具调用。
-      if (!toolMessage) {
+      };
+      const replyToolCalls = (
+        calls: Array<{ name: string; args: Record<string, unknown> }>,
+      ) => {
         sseHead();
         writeChunk(
           {
             role: "assistant",
-            tool_calls: [
-              {
-                index: 0,
-                id: `call_atr_${created}`,
-                type: "function",
-                function: { name: "searchPolicy", arguments: "" },
-              },
-            ],
+            tool_calls: calls.map((c, i) => ({
+              index: i,
+              id: `call_atr_${created}_${i}`,
+              type: "function",
+              function: { name: c.name, arguments: "" },
+            })),
           },
           null,
         );
         writeChunk(
           {
-            tool_calls: [
-              {
-                index: 0,
-                function: {
-                  arguments: JSON.stringify({
-                    query: "上海失业保险金标准是多少",
-                    jurisdiction_code: "310000",
-                    as_of_date: "2026-09-15",
-                    top_k: 5,
-                  }),
-                },
-              },
-            ],
+            tool_calls: calls.map((c, i) => ({
+              index: i,
+              function: { arguments: JSON.stringify(c.args) },
+            })),
           },
           null,
         );
         writeChunk({}, "tool_calls");
         sseEnd();
+        for (const c of calls) emittedToolCalls.push(c.name);
+      };
+      const policyCall = (query: string) => [
+        {
+          name: "searchPolicy",
+          args: {
+            query,
+            jurisdiction_code: "310000",
+            as_of_date: "2026-09-15",
+            top_k: 5,
+          },
+        },
+      ];
+
+      // 场景1：身份问题 → 模型依据系统提示词直接回答人设（不调用工具）。
+      if (lastUserText.includes("你是谁")) {
+        replyText(PERSONA_REPLY);
         return;
       }
 
-      // 场景3：工具结果回传 → 模型基于真实命中生成最终回答（双链引用）。
-      let toolOutput: { hits?: MockToolHit[] } = {};
-      try {
-        toolOutput = JSON.parse(
-          typeof toolMessage.content === "string" ? toolMessage.content : "{}",
-        );
-      } catch {
-        toolOutput = {};
+      // 场景2：寒暄 → 直接回答，零工具调用（ATR-AC-002）。
+      if (lastUserText.includes("你好")) {
+        replyText("你好！很高兴见到你，想聊社保的时候随时告诉我。");
+        return;
       }
-      const hit = toolOutput.hits?.[0];
-      const reply = hit
-        ? `根据${hit.authority}发布的《${hit.documentTitle}》：${hit.text}` +
-          `官网原文：${hit.officialUrl}；归档原件：${hit.originalDownloadPath}。`
-        : "未在官方原文库中检索到可靠依据，请咨询12333。";
-      sseHead();
-      writeChunk({ role: "assistant", content: reply }, null);
-      writeChunk({}, "stop");
-      sseEnd();
+
+      // 场景3：能力询问 → 直接回答，零工具调用（ATR-AC-002）。
+      if (lastUserText.includes("你能做什么")) {
+        replyText(
+          "我可以帮你制定社保规划：收集你的信息、用规则引擎计算方案，" +
+            "并在需要时检索官方政策原文。",
+        );
+        return;
+      }
+
+      // 场景4：补充画像 → 允许updateProfile，不调用searchPolicy（ATR-AC-002）。
+      if (!toolMessage && lastUserText.includes("记住我的信息")) {
+        replyToolCalls([
+          {
+            name: "updateProfile",
+            args: { basic: { gender: "female", birth_year: 1975, birth_month: 8 } },
+          },
+        ]);
+        return;
+      }
+
+      // 场景5：混合来源 → 同轮调用updateProfile+computePlan+searchPolicy（ATR-AC-004）。
+      if (!toolMessage && lastUserText.includes("帮我做规划并查政策")) {
+        replyToolCalls([
+          {
+            name: "updateProfile",
+            args: { basic: { gender: "female", birth_year: 1975, birth_month: 8 } },
+          },
+          {
+            name: "computePlan",
+            args: {
+              jurisdiction_code: "310000",
+              basic: { gender: "female", birth_year: 1975 },
+            },
+          },
+          ...policyCall("上海失业保险金标准是多少"),
+        ]);
+        return;
+      }
+
+      // 场景6：政策问题第一轮 → 模型自主发起searchPolicy工具调用。
+      if (!toolMessage) {
+        const query = lastUserText.includes("生育津贴")
+          ? "上海生育津贴标准是多少"
+          : "上海失业保险金标准是多少";
+        replyToolCalls(policyCall(query));
+        return;
+      }
+
+      // 场景7：工具结果回传 → 模型基于各工具实际输出组合最终回答；
+      // searchPolicy 失败时如实说明不可用（ATR-AC-005），不伪造来源。
+      const assistantWithCalls = [...messages]
+        .reverse()
+        .find(
+          (m) => m?.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length > 0,
+        );
+      const nameById = new Map(
+        ((assistantWithCalls?.tool_calls ?? []) as Array<{
+          id?: string;
+          function?: { name?: string };
+        }>).map((tc) => [tc.id, tc.function?.name]),
+      );
+      const outputs = messages
+        .slice(lastUserIndex + 1)
+        .filter((m) => m?.role === "tool")
+        .map((m) => {
+          const content = (m as { content?: unknown }).content;
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(typeof content === "string" ? content : "{}");
+          } catch {
+            parsed = {};
+          }
+          return {
+            name: nameById.get((m as { tool_call_id?: string }).tool_call_id),
+            body: parsed as Record<string, unknown>,
+          };
+        });
+      const searchOut = outputs.find((o) => o.name === "searchPolicy")?.body;
+      const profileOut = outputs.find((o) => o.name === "updateProfile")?.body;
+      const planOut = outputs.find((o) => o.name === "computePlan")?.body;
+
+      let reply: string;
+      if (searchOut && searchOut.success === false) {
+        reply = "政策检索服务暂时不可用，请稍后重试或咨询12333。";
+      } else {
+        const parts: string[] = [];
+        if (profileOut && profileOut.updated === true) {
+          const basic = (profileOut.profile as { basic?: Record<string, unknown> })?.basic ?? {};
+          parts.push(
+            `已记录：性别 ${String(basic.gender ?? "未知")}，出生 ${String(basic.birth_year ?? "?")}年${String(basic.birth_month ?? "?")}月。`,
+          );
+        }
+        if (planOut && planOut.success === true) {
+          const calc = planOut.calc as { pension?: { gap_months?: number } } | undefined;
+          parts.push(`规划已完成，养老缺口 ${calc?.pension?.gap_months} 个月。`);
+        }
+        const hits = (searchOut?.hits as Array<MockToolHit> | undefined) ?? [];
+        if (searchOut && searchOut.success === true && hits.length > 0) {
+          const hit = hits[0];
+          parts.push(
+            `根据${hit.authority}发布的《${hit.documentTitle}》：${hit.text}` +
+              `官网原文：${hit.officialUrl}；归档原件：${hit.originalDownloadPath}。`,
+          );
+        } else if (searchOut && searchOut.success === true) {
+          parts.push("未在官方原文库中检索到可靠依据，请咨询12333。");
+        }
+        reply = parts.length > 0 ? parts.join("") : "你好，我是本地 mock。";
+      }
+      replyText(reply);
     });
   });
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address() as AddressInfo;
-      resolve({ server, baseUrl: `http://127.0.0.1:${port}/v1`, bodies });
+      resolve({
+        server,
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        bodies,
+        emittedToolCalls,
+      });
     });
   });
 }
@@ -206,6 +333,7 @@ afterAll(() => {
 
 beforeEach(() => {
   mock.bodies.length = 0;
+  mock.emittedToolCalls.length = 0;
 });
 
 afterEach(() => {
@@ -356,4 +484,144 @@ describe("无服务端强制路由与整段替换（ATR-AC-006源码契约）", 
       expect(agentSource).not.toContain(removedSymbol);
     }
   });
+});
+
+// ─── 复审修复：提示词来源边界与残留静态政策事实（ATR-FR-001/007/009扩展）──────
+
+describe("提示词来源边界（复审修复）", () => {
+  it("规划数值与政策事实来源分工明确且不冲突", () => {
+    // 旧表述把一切数值结论/政策细节都限定给computePlan，与searchPolicy来源冲突
+    expect(SYSTEM_PROMPT).not.toContain("所有数值结论必须来自 computePlan");
+    expect(SYSTEM_PROMPT).not.toContain("超出 computePlan 工具返回结果的政策细节");
+    expect(SYSTEM_PROMPT).not.toContain("不得自行估算政策口径数字");
+    // 明确分工：规划数值→computePlan；政策事实→searchPolicy
+    expect(SYSTEM_PROMPT).toContain("仅来自 computePlan");
+    expect(SYSTEM_PROMPT).toContain("仅来自 searchPolicy");
+  });
+
+  it("searchPolicy来源限制不扩大为整轮回答（同轮可组合画像与规划结果）", () => {
+    expect(SYSTEM_PROMPT).toMatch(/只约束政策事实/);
+    expect(SYSTEM_PROMPT).toContain("不排除同一轮");
+    expect(SYSTEM_PROMPT).toMatch(/不得因此丢弃|不得丢弃/);
+  });
+});
+
+describe("无残留静态政策事实（复审修复）", () => {
+  it("系统提示词不含固定政策文件、发布日期、调整月份、政策年龄与弹性年限", () => {
+    for (const banned of [
+      "渐进式延迟法定退休年龄",
+      "2024年9月",
+      "每年7月调整",
+      "50 岁退休",
+      "50岁退休",
+      "55 岁退休",
+      "55岁退休",
+      "提前最多3年",
+      "最多3年",
+    ]) {
+      expect(SYSTEM_PROMPT).not.toContain(banned);
+    }
+  });
+
+  it("画像上下文标签不再附带政策年龄", () => {
+    const prompt = buildContextPrompt(
+      [],
+      { basic: { birth_year: 1975, gender: "female", female_retire_type: "worker50" } },
+      "2026-09-15",
+    );
+    expect(prompt).toContain("worker50");
+    expect(prompt).not.toMatch(/50\s*岁退休/);
+    expect(prompt).not.toMatch(/55\s*岁退休/);
+  });
+
+  it("工具Schema描述与校验文案不附带政策年龄与弹性年限（源码契约）", () => {
+    const toolsSource = readFileSync(
+      join(fileURLToPath(new URL("..", import.meta.url)), "tools.ts"),
+      "utf8",
+    );
+    for (const banned of ["50岁退休", "55岁退休", "50 岁退休", "55 岁退休", "提前最多3年", "最多3年"]) {
+      expect(toolsSource).not.toContain(banned);
+    }
+  });
+});
+
+// ─── 复审修复：普通交流、画像更新、工具失败消费与混合来源（ATR-AC-002/004/005）──
+
+describe("普通交流与画像更新（ATR-AC-002复审补强）", () => {
+  const ctx = { confirmedJurisdictionCode: "310000", currentDate: "2026-09-15" };
+
+  it("“你好”寒暄直接回答，零工具调用", async () => {
+    const text = await runChat([{ role: "user", content: "你好" }] as ModelMessage[], ctx);
+    expect(text).toContain("你好");
+    expect(mock.bodies).toHaveLength(1);
+    expect(mock.emittedToolCalls).toEqual([]);
+    expect(mock.bodies[0].tool_choice).toBe("auto");
+  }, 30_000);
+
+  it("能力询问直接回答，不调用searchPolicy", async () => {
+    const text = await runChat([{ role: "user", content: "你能做什么？" }] as ModelMessage[], ctx);
+    expect(text).toContain("社保规划");
+    expect(mock.emittedToolCalls).toEqual([]);
+    expect(mock.bodies).toHaveLength(1);
+  }, 30_000);
+
+  it("补充画像时允许updateProfile且不调用searchPolicy", async () => {
+    const searchFetcher = vi.fn();
+    __setSearchPolicyFetcherForTest(searchFetcher as unknown as typeof fetch);
+    const text = await runChat(
+      [{ role: "user", content: "请记住我的信息：我是女的，1975年8月出生" }] as ModelMessage[],
+      ctx,
+    );
+    expect(text).toContain("已记录");
+    expect(text).toContain("female");
+    expect(mock.emittedToolCalls).toEqual(["updateProfile"]);
+    expect(searchFetcher).not.toHaveBeenCalled();
+  }, 30_000);
+});
+
+describe("工具失败消费与混合来源（ATR-AC-004/005复审补强）", () => {
+  const ctx = { confirmedJurisdictionCode: "310000", currentDate: "2026-09-15" };
+
+  it("searchPolicy不可用时完成整个模型循环：最终回答说明检索不可用且无伪造来源", async () => {
+    __setSearchPolicyFetcherForTest(
+      (async () => new Response("{}", { status: 503 })) as unknown as typeof fetch,
+    );
+    const text = await runChat(
+      [{ role: "user", content: "上海失业保险金标准是多少？" }] as ModelMessage[],
+      ctx,
+    );
+    expect(text).toContain("暂时不可用");
+    expect(text).not.toMatch(/https?:\/\//i);
+    expect(text).not.toContain("/api/rag/originals/");
+    expect(text).not.toContain("gov.cn");
+    expect(text).not.toMatch(/〔\d{4}〕/);
+    // 完整循环：首步工具调用请求 + 工具结果后的最终回答请求，且都保持auto
+    expect(mock.bodies).toHaveLength(2);
+    expect(mock.bodies[0].tool_choice).toBe("auto");
+    expect(mock.bodies[1].tool_choice).toBe("auto");
+  }, 30_000);
+
+  it("混合工具回答同时保留画像、computePlan与searchPolicy结果", async () => {
+    __setSearchPolicyFetcherForTest((async () => ragHitResponse()) as unknown as typeof fetch);
+    const text = await runChat(
+      [
+        {
+          role: "user",
+          content: "我是女的，1975年8月出生，帮我做规划并查政策",
+        },
+      ] as ModelMessage[],
+      ctx,
+    );
+    // 画像来自updateProfile结果
+    expect(text).toContain("已记录");
+    expect(text).toContain("female");
+    expect(text).toContain("1975");
+    // 规划数值来自computePlan结果
+    expect(text).toContain("养老缺口 -24 个月");
+    // 政策事实与双链来自searchPolicy命中
+    expect(text).toContain("上海市人力资源和社会保障局");
+    expect(text).toContain(MOCK_HIT.officialUrl);
+    expect(text).toContain(`/api/rag/originals/${MOCK_HIT.documentVersionId}`);
+    expect(mock.emittedToolCalls).toEqual(["updateProfile", "computePlan", "searchPolicy"]);
+  }, 30_000);
 });

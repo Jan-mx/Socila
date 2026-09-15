@@ -741,3 +741,22 @@ PRD `docs/prd/09-15-feature-llm-autonomous-tool-routing.md`。根因（PRD §2.2
 | Docker零任务残留 | 见提交前记录：任务专属`atr-e2e-pg`容器（含匿名卷）删除后枚举零残留；`socila-*`九个容器与`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`卷未删除未重建 |
 
 状态：**Ready for user testing**（代码门禁全过；PRD ATR-AC-001～008均有新鲜证据；用户人工测试与生产部署另行授权）。自主工具模式明确接受：服务端不再对政策幻觉提供确定性拦截，不得以新正则或隐藏路由重新引入。
+
+## 2026-09-15 ATR复审修复：提示词来源边界收紧与验收覆盖补齐（第二提交）
+
+用户复审在`2209a4e`基础上指出两类缺陷：①系统提示词"所有数值结论必须来自 computePlan"与政策事实须来自 searchPolicy 的来源冲突，且"最终回复只使用 searchPolicy 返回内容"可能被扩大为排除画像与其他工具结果；②残留静态政策事实（固定政策文件名称与发布日期、"每年7月调整"、`female_retire_type`标签"50岁/55岁退休"、工具描述"提前最多3年"）。PRD 已由用户更新为 Updating（ATR-FR-001/007/009扩展、测试矩阵与AC-002/004/005补强），本轮按更新后PRD修复。
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red（`autonomous-tool-routing.test.ts`扩至18例） | 已记录；旧实现5失败/13通过——来源分工2例+残留静态3例（精确命中冲突表述与残留字符串清单）；"你好"/能力询问/updateProfile画像/工具失败完整循环/混合来源5例行为测试作为防回归覆盖（当前架构无服务端改写机制，预期即为绿） |
+| 实现 | `prompts.ts`：新增"来源边界"段（用户事实/规划数值仅computePlan/政策事实仅searchPolicy/画像更新updateProfile/同轮组合不得串用），核心规则重排1～12，`searchPolicy`限制改为"只约束政策事实部分，不排除同一轮使用画像与computePlan结果"，删除《国务院关于渐进式延迟法定退休年龄的办法》（2024年9月）与"缴费基数每年7月调整"，画像标签只留枚举名，"超出 computePlan 的政策细节"表述改为按来源分工表述；`tools.ts`：female_retire_type/retire_preference描述与validateField文案去除政策年龄与弹性年限、"4050补贴"改中性表述（枚举值与校验行为不变）；mock与E2E场景扩展 |
+| AI聚焦 | PASS；4文件/51通过（autonomous 18、search-policy 10、deepseek-compat 11、tools-jurisdiction 12）零skip |
+| Node单元（`npm test`） | PASS；94文件/954通过、零失败零skip |
+| TypeScript / ESLint / Build | PASS；tsc 0；`eslint src e2e --max-warnings 0` 0；build退出0（仅1条既有citation-verifier warning，历史基线） |
+| Chromium E2E（任务专属全新`atr-fix-e2e-pg` pgvector/pgvector:pg17 @127.0.0.1:55198：migration×2幂等/Jan引导/seed/vector扩展/e2e-rcl-setup 36/36/80） | PASS；29/29（恢复29项：auth 10+SHV2 4+rag-chat 6+task3 5+task4 4）；新增"searchPolicy不可用时完成整个模型循环"——mock Agent 500→工具失败关闭→模型如实说明"暂时不可用"，页面与持久化文本零伪造官网/文号/归档路径 |
+| Docker零任务残留 | `atr-fix-e2e-pg`容器及匿名卷删除后枚举`atr*`容器/卷/网络全0；`socila-*`九容器（Up 9 hours，healthy）与三个数据卷未删除未重建；本任务零Docker构建、零镜像产出 |
+| 边界 | 未恢复任何已删除的服务端正则/强制路由/兜底替换或替代实现；toolChoice保持显式"auto"；searchPolicy校验未降低；未修改数据库/Migration/MinIO/RAG索引/政策数据/环境变量；AGENTS.md用户修改保留且不入提交 |
+
+独立复审（2026-09-15，只读）首轮：覆盖`2209a4e`及本轮全部未提交工作树改动——代码层全PASS（无门禁回潮、toolChoice保持auto、来源分工与PRD §7一致、范围内残留静态事实清零、新测试具备判别力、searchPolicy校验零改动、无测试降级、AGENTS.md未纳入）；发现Important×2（均为文档证据问题：本节曾预写尚不存在的复审结论且引用空区间`2209a4e..HEAD`；traceability曾把`git diff --check`记为退出0，而`4ed78d7..2209a4e`实际因PRD文件EOF空行退出2）与Minor×1（ATR-FR-009范围外的首页/ToolResultCard文案与引擎场景标签仍含"4050""岁退休"表述）。两项Important已修正（本节改为如实记录、traceability改为提交后按真实范围与退出码回填），范围归属已在PRD §6 ATR-FR-009“本条的范围边界”段明示。修正后复审（第二轮）：**Critical=0、Important=0**；报告Minor×1为两处"PRD §3.2"指针错误（实为§6 ATR-FR-009"本条的范围边界"段），已按复审建议在提交前更正，无其他已知Minor。
+
+状态：**Ready for user testing**（PRD恢复Active；代码门禁全过，独立复审Critical/Important均为0）；生产仍运行旧Web镜像，ATR尚未生产部署，`socila-web`更新需用户单独授权。

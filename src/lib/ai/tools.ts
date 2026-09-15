@@ -97,14 +97,14 @@ export const computePlanSchema = z.object({
       .enum(["worker50", "cadre55", "unknown"])
       .optional()
       .describe(
-        "女性退休口径：worker50=普通工人（50岁退休），cadre55=管理岗/干部（55岁退休），unknown=不确定",
+        "女性退休口径：worker50=普通工人，cadre55=管理岗/干部，unknown=不确定",
       ),
     target_city: z.string().optional().describe("目标城市自由文本（仅作原始表达保留，不参与政策选择）"),
     retire_preference: z
       .enum(["earliest", "standard", "latest"])
       .optional()
       .describe(
-        "退休偏好：earliest=最早退休（提前最多3年），standard=法定退休，latest=延迟退休（最多3年）",
+        "退休偏好：earliest=最早退休，standard=法定退休，latest=延迟退休",
       ),
   }),
   social: z
@@ -161,7 +161,7 @@ export const computePlanSchema = z.object({
       has_employment_difficulty_cert: z
         .boolean()
         .optional()
-        .describe("是否持有就业困难人员认定证（4050补贴申请所需）"),
+        .describe("是否持有就业困难人员认定证（申请就业困难人员社保补贴所需）"),
       months_to_legal_retire: z
         .number()
         .int()
@@ -502,7 +502,7 @@ function validateFieldValue(
       if (!validValues.includes(String(value))) {
         return {
           valid: false,
-          error: `女性退休口径必须是 worker50（普通工人50岁退休）或 cadre55（管理岗/干部55岁退休），您输入的是 "${value}"`,
+          error: `女性退休口径必须是 worker50（普通工人）或 cadre55（管理岗/干部），您输入的是 "${value}"`,
         };
       }
       return { valid: true, normalized: String(value) };
