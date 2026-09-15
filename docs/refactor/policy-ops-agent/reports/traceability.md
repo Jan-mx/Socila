@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-14
+> Updated: 2026-09-15
 
 ## 用途
 
@@ -386,3 +386,28 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | container-gates Trivy安装（运行#24） | trivy-action `version: "0.74.0"`缺`v`前缀→`unable to find '0.74.0'` | `.github/workflows/ci.yml`两处`version: "v0.74.0"` | `ci-compose-override-contract.test.ts`（版本断言先RED后GREEN） |
 | container-gates 健康检查就绪竞态（运行#25） | agent `/internal/health`单次无等待探测早于uvicorn就绪→Connection refused | `.github/workflows/ci.yml` `health checks`改为web/agent双就绪条件轮询`wait_for` | `ci-compose-override-contract.test.ts`（`wait_for`断言先RED后GREEN）；诊断artifact证明容器无重启 |
 | 文档 | — | `docs/work-items/WI-20260914-01-ci-release-gates-closure.md`、`PROGRESS.md`、`TESTING.md`、`OPERATIONS.md`、本文件 | Markdown相对链接检查、`git diff --check` |
+
+## LLM自主工具路由与对话回答恢复映射（ATR，2026-09-15；PRD `docs/prd/09-15-feature-llm-autonomous-tool-routing.md`，分支`codex/atr-autonomous-tool-routing`）
+
+| 需求 | 实现位置 | 测试/证据路径 | 状态 |
+| --- | --- | --- | --- |
+| ATR-FR-001 系统提示词权威性 | `src/lib/ai/prompts.ts`（角色、支持范围、画像累积、地区确认、规划计算与工具使用原则；规则10“普通对话直接回答”） | `src/lib/ai/__tests__/autonomous-tool-routing.test.ts`（提示词契约：角色+身份/寒暄直接回答规则） | 已实现 |
+| ATR-FR-002 自动工具选择 / ATR-AC-003 | `src/lib/ai/agent.ts`（`tools`全部注册+显式`toolChoice: "auto"`，无`prepareStep`） | 同上（政策问题下每个请求`tool_choice==="auto"`且四工具齐全；源码契约无`prepareStep`） | 已实现 |
+| ATR-FR-003 禁止输入正则强制检索 | `src/lib/ai/agent.ts`删除`requiresPolicyProvenance`/`getPolicySearchStep`/`prepareStep` | 同上（源码契约+行为断言） | 已实现 |
+| ATR-FR-004 禁止输出正则整段替换 | `src/lib/ai/agent.ts`删除`requiresPolicyOutputProvenance`/`evaluatePolicyProvenance`/`trustedPolicyHits`/`extractRenderedDestinations`/`policyProvenanceTransform`/`SAFE_NO_POLICY_SOURCE_RESPONSE`及`experimental_transform` | 同上（“你是谁”人设原文本原样返回；源码契约） | 已实现 |
+| ATR-FR-005 普通对话直接回答 / ATR-AC-001～002 | `src/lib/ai/prompts.ts`规则10；`src/lib/ai/agent.ts`无改写 | 聚焦套件“你是谁”2例（RED：旧实现收到兜底语）；E2E `e2e/shv2-rag-chat.spec.ts`“你是谁”场景（角色说明可见、零工具part、无兜底语） | 已实现 |
+| ATR-FR-006 LLM自主判断检索 / ATR-AC-004 | `src/lib/ai/prompts.ts`规则11；`src/lib/ai/tools.ts` `searchPolicy`描述（适用场景/输入约束/返回能力） | 聚焦套件auto模式两步工具循环（mock模型自主发起searchPolicy→最终回答含真实机关/标题/双链）；E2E政策问题场景`step_count=2` | 已实现 |
+| ATR-FR-007 工具结果使用约束 / ATR-AC-005 | `src/lib/ai/prompts.ts`规则12～13；`src/lib/ai/tools.ts`描述 | E2E空命中场景（模型如实说明、无来源链接）；`search-policy.test.ts`来源结构校验 | 已实现（模型行为由提示词/工具描述约束，非服务端正则） |
+| ATR-FR-008 保留工具边界校验 | `src/lib/ai/search-policy.ts`（未改动） | `src/lib/ai/__tests__/search-policy.test.ts` 10例（地区/日期/Schema/政府URL/哈希/归档路径/失败关闭）保持通过 | 不变边界已复验 |
+| ATR-FR-009 移除静态政策事实 | `src/lib/ai/prompts.ts`删除“2025 政策要点”段落及其数字 | 聚焦套件提示词契约（“2025 政策要点”与9项静态数字不存在） | 已实现 |
+| ATR-FR-010 保持消息与工具循环 / ATR-AC-007 | `src/lib/ai/agent.ts`（`stopWhen: stepCountIs(8)`、`experimental_context`、`onFinish`）；`src/app/api/chat/route.ts`未改动 | E2E 28/28（含混合warning会话恢复与第三轮继续、持久化非空assistant文本）；聚焦套件两步循环 | 已实现 |
+| ATR-NFR-001 日志与隐私 | 无新增日志；`route.ts`既有request_id/conversation_id/步数/Token日志保持 | 代码审阅（本次diff无日志新增） | 遵守 |
+| ATR-NFR-002 RAG与数据兼容 | 未修改RAG API、数据库、MinIO、索引、原件下载接口、政策发布状态或持久案例；`searchPolicy` Schema与结果类型不变 | `search-policy.test.ts`、`src/app/api/rag/originals/[documentVersionId]/route.test.ts`保持通过；本次diff不含migration/Python/Compose | 遵守 |
+| ATR-NFR-003 Provider兼容 | `src/lib/ai/deepseek-compat.ts`（行为不变，仅注释同步） | `deepseek-compat.test.ts` 11/11（auto步骤与两步循环均thinking disabled） | 遵守 |
+| ATR-AC-006 无隐藏来源门禁 | `src/lib/ai/agent.ts` | 聚焦套件源码契约2例 | 已实现 |
+| ATR-AC-008 项目门禁 | — | `npm test` 94文件/944零失败零skip；tsc 0；`eslint src e2e --max-warnings 0` 0；build退出0（1条既有warning）；全新PG17验收库Chromium E2E 28/28 | 通过 |
+| 移除的验收目标 | `e2e/shv2-rag-chat.spec.ts`删除“跳过检索→服务端替换”“编造URL→服务端替换”两个负向场景；`e2e/mock-openai.mjs`删除对应分支；`src/lib/ai/__tests__/policy-provenance-enforcement.test.ts`删除 | PRD §11.6/§10（自主工具模式接受的取舍） | 已移除 |
+| 文档 | `ARCHITECTURE.md`（对话工具路由）、`TESTING.md`（ATR门禁）、`PROGRESS.md`、本文件、`.github/workflows/ci.yml`注释（E2E 28项） | Markdown相对链接、`git diff --check` | 已同步 |
+
+- 边界：未修改数据库、MinIO、RAG索引、生产容器、环境变量或政策发布状态；用户工作树中的`AGENTS.md`修改不纳入本任务提交。
+- 隔离环境：任务专属`atr-e2e-pg`（pgvector/pgvector:pg17，127.0.0.1:55199）用于Chromium E2E，验收后删除并核验零残留；生产`socila-*`容器与三个数据卷未触碰。

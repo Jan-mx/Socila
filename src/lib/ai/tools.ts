@@ -425,7 +425,7 @@ export const searchPolicyTool = tool<
   Awaited<ReturnType<typeof executeSearchPolicy>>
 >({
   description:
-    "检索官方政策原文库（RAG）。凡回答政策金额、比例、资格条件、期限、有效期或政策来源（依据哪份文件）的问题时必须调用此工具，不得凭记忆作答。每个命中同时给出官网原文链接与归档原件下载链接；无可靠命中时如实说明，不得编造来源。",
+    "检索官方政策原文库（RAG）。适用场景：回答依赖当前、地区性、时效性或需要官方原文支持的政策事实，如政策金额、比例、资格条件、期限、有效期、文件依据或政策来源（依据哪份文件）；身份介绍、寒暄、能力说明和用户画像交流不需要调用。输入约束：jurisdiction_code 必须使用会话已确认地区，as_of_date 必须使用系统提示中注入的当前服务器日期。返回：每个命中包含发布机关、文件标题、原文片段、官网原文链接与归档原件下载链接；noReliableHits=true 表示无可靠命中，须如实说明且不得编造来源。",
   inputSchema: zodSchema(searchPolicySchema),
   execute: (params: SearchPolicyInput, options?: { experimental_context?: unknown }) => {
     const ctx = options?.experimental_context as

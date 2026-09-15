@@ -137,10 +137,11 @@ const server = createServer((req, res) => {
       const id = `chatcmpl-e2e-${Date.now()}`;
       const created = Math.floor(Date.now() / 1000);
 
-      // ── WI-20260913-01任务4：searchPolicy工具调用编排（SHV2-AC-027 E2E）──────
+      // ── ATR（LLM自主工具路由）：searchPolicy由模型在tool_choice=auto下自主发起 ──────
       // 触发词“失业保险金标准”→第一轮发起searchPolicy工具调用；
       // “生育津贴”触发词命中空场景→工具返回空hits后如实说明不编造来源；
-      // 第二轮（messages含tool结果）→把命中中的官网URL与归档原件下载路径写进回复。
+      // 第二轮（messages含tool结果）→把命中中的官网URL与归档原件下载路径写进回复；
+      // “你是谁”→依据系统提示词直接回答人设（不调用任何工具）。
       const lastUser = [...messages].reverse().find((m) => m?.role === "user");
       const lastUserText = typeof lastUser?.content === "string"
         ? lastUser.content
@@ -152,18 +153,19 @@ const server = createServer((req, res) => {
       const lastUserIndex = messages.lastIndexOf(lastUser);
       const toolMessage = messages.slice(lastUserIndex + 1).find((m) => m?.role === "tool");
 
-      // 负向模型A：明知是政策事实问题却跳过工具并直接输出数字/伪造URL。
-      // 服务端来源门禁必须缓存并替换整段文本，不能让首个token泄漏到浏览器。
-      if (!toolMessage && lastUserText.includes("跳过检索负向测试")) {
-        const unsafeReply =
-          "上海失业保险金标准为9999元。官网原文：https://example.com/invented-policy";
+      // 身份问题（ATR-AC-001）：模型的人设回答自然带出“社保政策”“相关规定”等表达；
+      // 服务端不得据此把回答替换为知识库兜底语，也不得为此发起检索。
+      if (!toolMessage && lastUserText.includes("你是谁")) {
+        const personaReply =
+          "您好！我是社保规划助手。我的职责是帮助您理解社保政策和相关规定。" +
+          "需要了解具体政策时我会先检索官方原文。";
         if (stream) {
           res.writeHead(200, {
             "content-type": "text/event-stream",
             "cache-control": "no-cache",
             connection: "keep-alive",
           });
-          res.write(`data: ${JSON.stringify(sseChunk(id, created, unsafeReply, null))}\n\n`);
+          res.write(`data: ${JSON.stringify(sseChunk(id, created, personaReply, null))}\n\n`);
           res.write(`data: ${JSON.stringify(sseChunk(id, created, null, "stop"))}\n\n`);
           res.write("data: [DONE]\n\n");
           res.end();
@@ -171,7 +173,7 @@ const server = createServer((req, res) => {
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify({
             id, object: "chat.completion", created, model: "e2e-mock-model",
-            choices: [{ index: 0, message: { role: "assistant", content: unsafeReply }, finish_reason: "stop" }],
+            choices: [{ index: 0, message: { role: "assistant", content: personaReply }, finish_reason: "stop" }],
           }));
         }
         return;
@@ -297,10 +299,9 @@ const server = createServer((req, res) => {
         let reply;
         if (toolOutput?.success && hits.length > 0) {
           const hit = hits[0];
-          reply = lastUserText.includes("伪造链接负向测试")
-            ? "上海失业金标准为9999元。官网原文：https://example.com/fake；归档原件：/api/rag/originals/22222222-2222-4222-8222-222222222222"
-            : `根据${hit.authority}发布的《${hit.documentTitle}》：${hit.text}官网原文：${hit.officialUrl}；` +
-              `归档原件：${hit.originalDownloadPath}（登录后可下载）。`;
+          reply =
+            `根据${hit.authority}发布的《${hit.documentTitle}》：${hit.text}官网原文：${hit.officialUrl}；` +
+            `归档原件：${hit.originalDownloadPath}（登录后可下载）。`;
         } else if (toolOutput?.success) {
           reply = "未在官方原文库中检索到可靠依据，请咨询12333或当地社保窗口。";
         } else {
