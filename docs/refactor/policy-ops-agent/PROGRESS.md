@@ -781,4 +781,14 @@ PRD `docs/prd/09-15-feature-llm-autonomous-tool-routing.md`。根因（PRD §2.2
 | 资源清理 | PowerShell `finally`精确删除`atr-final-e2e-pg`/`atr-final-e2e-pg-data`与最终复跑`atr-final2-e2e-pg`/`atr-final2-e2e-pg-data`；两轮均未创建任务网络；最终枚举`atr*`零残留，生产`socila-*`与三个持久卷未进入操作范围 |
 | 独立复审 | 只读审查覆盖`6fc6894`及本轮全部任务改动（排除用户`AGENTS.md`）；确认来源分工一致、精确与语义断言具备判别力、`toolChoice="auto"`及无隐藏门禁契约保持、文档事实与范围准确；Critical=0、Important=0、Minor=0 |
 
-当前状态：**Ready for user testing**。PRD已恢复Active；生产仍运行旧Web镜像，ATR尚未生产部署，`socila-web`更新需用户单独授权。
+当前状态（已被下述生产部署与UAT记录取代）：第三轮代码修复已通过，等待用户测试。
+
+### ATR本机生产Web部署与用户UAT（2026-09-16，用户明确授权）
+
+- 构建输入：干净detached worktree `F:\Socila-atr-deploy-daf3909`精确绑定`daf390934453c496058973bfadd2d9ccc0631966`；`npm ci`后基线`npm test` 94文件/954通过；主工作树用户`AGENTS.md`修改未进入Docker上下文。
+- 镜像与回退：旧`web:latest`镜像`933f3b9ab971…`保留为`web:rollback-pre-atr-daf3909`；新`web:atr-daf3909`=`web:latest`镜像`0ce032d80de0…`；仅以`--no-deps --force-recreate web`替换`socila-web`为容器`890a40976199…`并healthy。
+- 自动部署核验：`/api/health`返回应用与数据库ok；运行Bundle旧`policy-provenance-enforced`标记消失且ATR新提示词存在；部署后日志无DeepSeek Thinking、`reasoning_content`、stream_error或未处理异常。
+- 用户UAT：用户确认身份、能力、上海政策查询、刷新及继续追问四项通过。脱敏日志实证同一会话前两轮均`step_count=1`，政策问题`step_count=2`；RAG retrieval audit从11增至12。
+- 数据与容器边界：sources/fetches/versions/trees/chunks/embeddings保持`2/23/23/23/185/185`；除Web外agent/worker/beat/postgres/redis/proxy/minio容器ID逐项不变，三个生产持久卷不变；未执行migration、seed、RAG同步或索引。
+
+状态：**UAT通过，Ready for PR CI**。下一步仅追加本docs-only验收提交并推送，创建ATR→main PR；六项GitHub CI必须精确绑定最终PR HEAD并全部success后才允许squash合并。当前不创建Tag或Release。

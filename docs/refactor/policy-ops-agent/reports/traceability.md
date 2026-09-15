@@ -442,3 +442,13 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | ATR-AC-008 第三轮门禁 | 无接口或数据变更 | AI聚焦4文件/51；完整Node 94文件/954零skip；tsc、eslint、build退出0；最终全新`atr-final2-e2e-pg` Chromium E2E 29/29；两轮任务容器与卷均finally清理且`atr*`零残留 | 通过 |
 | 第三轮修复独立复审 | 无接口或数据变更 | 只读覆盖`6fc6894`及全部任务改动（排除用户`AGENTS.md`）：来源分工、测试判别力、toolChoice auto、无隐藏门禁、文档与边界逐项核验 | Critical=0、Important=0、Minor=0；Ready for user testing |
 | 交付边界 | 未恢复服务端正则、强制searchPolicy或整段兜底；未修改RAG、数据库、MinIO、migration或Docker；生产Web未重建 | 工作树/完整diff与Docker资源范围复核 | 遵守 |
+
+### ATR本机生产Web部署与用户UAT（2026-09-16）
+
+| 验收项 | 执行与证据 | 结果 |
+| --- | --- | --- |
+| 精确构建与回退 | detached worktree精确绑定`daf3909`；旧镜像`933f3b9ab971…`保留为`web:rollback-pre-atr-daf3909`；新镜像`web:atr-daf3909`=`0ce032d80de0…` | 通过 |
+| Web-only部署 | 仅重建`socila-web`为`890a40976199…`，health与数据库均ok；运行Bundle旧门禁消失、ATR提示词存在 | 通过 |
+| 用户人工UAT | “你是谁”与能力询问均单步；上海政策问题两步并调用searchPolicy；刷新与继续追问正常 | 通过 |
+| RAG与容器不变量 | RAG派生计数保持`2/23/23/23/185/185`，audit按唯一政策检索`11→12`；其他容器ID与三个持久卷不变 | 通过 |
+| 后续边界 | 尚未创建PR、运行最终PR六项CI或合并main；不创建Tag/Release | Ready for PR CI |

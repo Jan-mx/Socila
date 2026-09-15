@@ -12,7 +12,7 @@
 | 需求标识 | ATR（Autonomous Tool Routing） |
 | 影响范围 | Web 对话 Agent 的系统提示词、工具选择与流式输出编排 |
 | 关联能力 | `searchPolicy`、`computePlan`、`validateField`、`updateProfile` |
-| 当前阶段 | 第三轮数值来源冲突已按TDD修复，本地门禁与独立复审（Critical=0、Important=0、Minor=0）通过，Ready for user testing；生产未部署 |
+| 当前阶段 | 本地门禁、独立复审和本机生产Web人工UAT通过；等待PR六项CI与main squash合并 |
 
 本文定义对话 Agent 从“服务端正则决定检索与回答放行”调整为“LLM 根据系统提示词自主选择工具”的目标行为。本文只定义需求、边界、修复方案和验收条件，不记录执行日志、测试结果或提交历史。
 
@@ -374,3 +374,12 @@ AI 聚焦测试、完整 Node 测试、TypeScript、ESLint、生产 Build 和 Ch
 - 最终提交范围的 `git diff --check` 退出 0，文档和证据不得保留与实际结果不一致的“已通过”声明。
 - 完成修复后必须进行独立代码复审；Critical 和 Important 均为 0 后，才可请求用户授权生产部署。
 - 代码任务验收后按仓库规范创建单一提交并推送选定上游分支；不自动创建 PR、合并或部署。
+
+## 16. 本机生产Web部署与用户验收（2026-09-16）
+
+- 用户另行授权按`daf3909`精确构建并只替换`socila-web`；构建使用干净detached worktree `F:\Socila-atr-deploy-daf3909`，未夹带主工作树中的`AGENTS.md`修改。
+- 部署前Web镜像`933f3b9ab971…`已保留为`web:rollback-pre-atr-daf3909`；新镜像`web:atr-daf3909`=`web:latest`（`0ce032d80de0…`），新容器`890a40976199…`为healthy。
+- 自动核验：运行Bundle不再含`policy-provenance-enforced`且包含ATR新提示词；Web健康端点数据库与应用均为ok；部署以来Web日志无DeepSeek Thinking、`reasoning_content`、流式中断或未处理异常。
+- 用户人工UAT通过：同一会话中“你是谁”和“你能做什么”均为`step_count=1`；确认上海后的政策问题为`step_count=2`并真实调用`searchPolicy`；刷新与继续追问正常。
+- RAG检索前后：sources/fetches/versions/trees/chunks/embeddings保持`2/23/23/23/185/185`，retrieval audit因唯一政策检索从11增至12；其他`socila-*`容器ID和`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`均不变。
+- 当前Feature代码与本机生产UAT已通过，尚未完成PR六项GitHub CI和main squash合并；不创建Tag或GitHub Release。
