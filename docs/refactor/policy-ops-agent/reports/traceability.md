@@ -427,3 +427,18 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | 边界 | 未恢复requiresPolicyProvenance/getPolicySearchStep/requiresPolicyOutputProvenance/evaluatePolicyProvenance/policyProvenanceTransform或替代实现；toolChoice保持显式"auto"；未降低searchPolicy校验；未修改数据库/MinIO/RAG/环境变量/生产容器；AGENTS.md用户修改未纳入 | `agent.ts`源码契约（ATR-AC-006）保持通过；本次diff仅prompts.ts/tools.ts/测试/mock/文档 | 遵守 |
 
 - 隔离环境：任务专属`atr-fix-e2e-pg`（pgvector/pgvector:pg17，127.0.0.1:55198），E2E后删除并核验`atr*`容器/卷/网络零残留；生产`socila-*`容器与数据卷未触碰，ATR未生产部署。
+
+### ATR第三轮独立复审待修复项（2026-09-15，起点`6fc6894`）
+
+| 复审结论 | 未关闭需求 | 证据 | 当前状态 |
+| --- | --- | --- | --- |
+| Critical=0、Important=1 | ATR-FR-001/007：回复强约束“数值仅引用computePlan”仍未限定为规划数值，与政策事实数值仅来自searchPolicy冲突 | `src/lib/ai/prompts.ts`回复表达规范；`autonomous-tool-routing.test.ts`原断言仅排除历史精确句式 | Updating；修复、全量门禁与再次独立复审前不得标记Ready或部署 |
+
+### ATR第三轮复审修复映射（2026-09-15，起点`6fc6894`）
+
+| 需求 | 实现 | 测试/证据 | 状态 |
+| --- | --- | --- | --- |
+| ATR-FR-001/007 数值来源分工最终收口 | `src/lib/ai/prompts.ts`回复强约束分别限定规划模板数值→computePlan、政策事实数值→searchPolicy；标准注意事项只列规划结果字段 | `autonomous-tool-routing.test.ts`新增精确与语义级反例：禁止未限定的“数值仅引用/所有数值来自/全部数值来自computePlan”，并拒绝整条规则以这些短语开头；RED=1失败/17通过，GREEN=18/18 | 已修复并通过独立复审 |
+| ATR-AC-008 第三轮门禁 | 无接口或数据变更 | AI聚焦4文件/51；完整Node 94文件/954零skip；tsc、eslint、build退出0；最终全新`atr-final2-e2e-pg` Chromium E2E 29/29；两轮任务容器与卷均finally清理且`atr*`零残留 | 通过 |
+| 第三轮修复独立复审 | 无接口或数据变更 | 只读覆盖`6fc6894`及全部任务改动（排除用户`AGENTS.md`）：来源分工、测试判别力、toolChoice auto、无隐藏门禁、文档与边界逐项核验 | Critical=0、Important=0、Minor=0；Ready for user testing |
+| 交付边界 | 未恢复服务端正则、强制searchPolicy或整段兜底；未修改RAG、数据库、MinIO、migration或Docker；生产Web未重建 | 工作树/完整diff与Docker资源范围复核 | 遵守 |

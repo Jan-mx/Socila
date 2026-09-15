@@ -12,7 +12,7 @@
 | 需求标识 | ATR（Autonomous Tool Routing） |
 | 影响范围 | Web 对话 Agent 的系统提示词、工具选择与流式输出编排 |
 | 关联能力 | `searchPolicy`、`computePlan`、`validateField`、`updateProfile` |
-| 当前阶段 | 复审修复完成：代码门禁与独立复审（Critical=0、Important=0）通过，Ready for user testing；生产未部署 |
+| 当前阶段 | 第三轮数值来源冲突已按TDD修复，本地门禁与独立复审（Critical=0、Important=0、Minor=0）通过，Ready for user testing；生产未部署 |
 
 本文定义对话 Agent 从“服务端正则决定检索与回答放行”调整为“LLM 根据系统提示词自主选择工具”的目标行为。本文只定义需求、边界、修复方案和验收条件，不记录执行日志、测试结果或提交历史。
 

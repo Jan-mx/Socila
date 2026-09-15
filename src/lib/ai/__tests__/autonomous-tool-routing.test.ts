@@ -494,6 +494,14 @@ describe("提示词来源边界（复审修复）", () => {
     expect(SYSTEM_PROMPT).not.toContain("所有数值结论必须来自 computePlan");
     expect(SYSTEM_PROMPT).not.toContain("超出 computePlan 工具返回结果的政策细节");
     expect(SYSTEM_PROMPT).not.toContain("不得自行估算政策口径数字");
+    expect(SYSTEM_PROMPT).not.toContain("数值仅引用 computePlan");
+    expect(SYSTEM_PROMPT).not.toContain("所有数值来自 computePlan");
+    expect(SYSTEM_PROMPT).not.toContain("全部数值来自 computePlan");
+    // 复审第三轮：不能只排除历史原句；任何未限定为“规划”的数值→computePlan
+    // 同义表述都会与政策数值→searchPolicy冲突。
+    expect(SYSTEM_PROMPT).not.toMatch(
+      /(?:^|\n)-\s*(?:数值仅|所有数值|全部数值)[^。；\n]*computePlan/,
+    );
     // 明确分工：规划数值→computePlan；政策事实→searchPolicy
     expect(SYSTEM_PROMPT).toContain("仅来自 computePlan");
     expect(SYSTEM_PROMPT).toContain("仅来自 searchPolicy");
