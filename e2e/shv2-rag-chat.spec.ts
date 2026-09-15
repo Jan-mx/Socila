@@ -1,13 +1,19 @@
 /**
- * SHV2运行时RAG对话闭环E2E（SHV2-AC-027，WI-20260913-01任务4）。
+ * SHV2运行时RAG对话闭环E2E（SHV2-AC-027，WI-20260913-01任务4）
+ * 与 ATR LLM自主工具路由验收（ATR-AC-001/004/005/007，
+ * docs/prd/09-15-feature-llm-autonomous-tool-routing.md）。
  *
  * 在真实Next（standalone构建）+ mock模型 + mock Agent内部API上验证：
  * - 未登录调用 /api/rag/originals/:id 一律401；
- * - 登录用户确认地区后提问政策事实问题 → 模型调用searchPolicy工具 →
+ * - 登录用户输入“你是谁”→ 模型依据系统提示词直接回答角色说明，本轮无工具调用，
+ *   回答不被知识库兜底语覆盖（ATR-AC-001）；
+ * - 登录用户确认地区后提问政策事实问题 → 模型在tool_choice=auto下自主调用searchPolicy →
  *   工具经服务JWT调用Agent检索 → 最终回复同时展示官网原文链接与
- *   /api/rag/originals/<documentVersionId>归档原件链接；
+ *   /api/rag/originals/<documentVersionId>归档原件链接（ATR-AC-004）；
  * - 登录态下载返回attachment/nosniff/private no-store与正确字节；
- * - 无可靠命中（生育津贴场景）时如实说明，不编造链接；
+ * - 无可靠命中（生育津贴场景）时模型如实说明，不编造链接（ATR-AC-005）；
+ * - searchPolicy 失败关闭（“检索不可用场景”→mock Agent 500）时，模型消费 success:false
+ *   结果后完成整个循环，如实说明不可用且不伪造官网/文号/归档路径（ATR-AC-005）；
  * - 恢复含混合warning工具消息的会话不崩溃且可继续对话（UAT 2026-09-14）。
  *
  * 注册只发生一次（套件共享 /api/auth/register 的IP限流，上限5次/小时）：
@@ -60,7 +66,7 @@ test.describe.serial("SHV2 对话RAG来源链（AC-027）", () => {
     expect(res.status()).toBe(401);
   });
 
-  test("政策事实问题调用searchPolicy并展示官网与归档原件链接；登录态下载字节一致", async ({
+  test("政策事实问题由模型在auto模式自主调用searchPolicy并展示官网与归档原件链接；登录态下载字节一致（ATR-AC-004）", async ({
     page,
   }) => {
     await registerAndLogin(page, E2E_USER_RAG, E2E_PASSPHRASE);
@@ -69,7 +75,7 @@ test.describe.serial("SHV2 对话RAG来源链（AC-027）", () => {
     await page.locator("#chat-input").fill("上海失业保险金标准是多少？");
     await page.getByRole("button", { name: "发送" }).click();
 
-    // mock模型第二轮把searchPolicy命中的双链写进最终回复（AC-027）。
+    // mock模型第一轮在tool_choice=auto下自主发起searchPolicy，第二轮把命中的双链写进最终回复（AC-027/ATR-AC-004）。
     await expect(
       page.getByText(`官网原文：${MOCK_OFFICIAL_URL}`),
     ).toBeVisible({ timeout: 60_000 });
@@ -121,7 +127,53 @@ test.describe.serial("SHV2 对话RAG来源链（AC-027）", () => {
     expect(download.body).toContain("2340");
   });
 
-  test("无可靠命中时不编造来源（AC-027无命中分支）", async ({ page }) => {
+  test("“你是谁”返回角色说明，本轮无工具调用且不被知识库兜底语覆盖（ATR-AC-001）", async ({
+    page,
+  }) => {
+    await login(page, E2E_USER_RAG, E2E_PASSPHRASE);
+    // 已确认地区是更严格的场景：即使具备检索条件，身份问题也不得被强制路由到searchPolicy。
+    await confirmShanghai(page);
+
+    await page.locator("#chat-input").fill("你是谁");
+    await page.getByRole("button", { name: "发送" }).click();
+
+    // mock模型依据系统提示词直接回答人设；其自然表达含“社保政策”“相关规定”，
+    // 旧输出正则会据此把整段替换为兜底语（PRD §2.2根因），新链路必须原样展示。
+    await expect(page.getByText(/我是社保规划助手/)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/帮助您理解社保政策和相关规定/)).toBeVisible();
+    await expect(page.getByText(/未在官方原文库中检索到可靠依据/)).toHaveCount(0);
+    await expect(page.getByText(/官网原文：/)).toHaveCount(0);
+    await expect(page.getByText(/归档原件：/)).toHaveCount(0);
+
+    // 持久化会话：assistant消息只有文本part，不存在任何工具调用part（本轮零工具调用）。
+    const conversationId = new URL(page.url()).searchParams.get("conversationId");
+    expect(conversationId).toMatch(/^[0-9a-f-]{36}$/i);
+    const saved = await page.evaluate(async (id) => {
+      const res = await fetch(`/api/chat/${id}`);
+      return { status: res.status, body: await res.json() };
+    }, conversationId);
+    expect(saved.status).toBe(200);
+    const persistedMessages = saved.body.conversation.messages as Array<{
+      role?: string;
+      parts?: Array<{ type?: string; text?: unknown }>;
+    }>;
+    const assistantMessages = persistedMessages.filter((m) => m.role === "assistant");
+    expect(assistantMessages.length).toBeGreaterThan(0);
+    for (const message of assistantMessages) {
+      for (const part of message.parts ?? []) {
+        expect(String(part.type)).not.toMatch(/^tool-/);
+        expect(part.type).not.toBe("dynamic-tool");
+      }
+    }
+    const finalText = assistantMessages
+      .at(-1)
+      ?.parts?.find((part) => part.type === "text")?.text;
+    expect(typeof finalText).toBe("string");
+    expect(String(finalText)).toContain("我是社保规划助手");
+    expect(String(finalText)).not.toContain("未在官方原文库中检索到可靠依据");
+  });
+
+  test("无可靠命中时模型如实说明且不编造来源（ATR-AC-005）", async ({ page }) => {
     // 复用同一注册用户（注册限流为套件级共享资源）；新上下文重新登录。
     await login(page, E2E_USER_RAG, E2E_PASSPHRASE);
     await confirmShanghai(page);
@@ -129,7 +181,7 @@ test.describe.serial("SHV2 对话RAG来源链（AC-027）", () => {
     await page.locator("#chat-input").fill("上海生育津贴标准是多少？");
     await page.getByRole("button", { name: "发送" }).click();
 
-    // searchPolicy返回空hits：最终回复必须如实说明且不含任何来源链接。
+    // searchPolicy返回空hits：模型的最终回复如实说明且不含任何来源链接（不再由服务端改写）。
     await expect(
       page.getByText(/未在官方原文库中检索到可靠依据/),
     ).toBeVisible({ timeout: 60_000 });
@@ -137,29 +189,43 @@ test.describe.serial("SHV2 对话RAG来源链（AC-027）", () => {
     await expect(page.getByText(/归档原件：/)).toHaveCount(0);
   });
 
-  test("负向模型跳过searchPolicy时由服务端替换为安全无来源答复", async ({ page }) => {
+  test("searchPolicy不可用时完成整个模型循环：失败说明可理解且不伪造来源（ATR-AC-005）", async ({
+    page,
+  }) => {
     await login(page, E2E_USER_RAG, E2E_PASSPHRASE);
     await confirmShanghai(page);
-    await page.locator("#chat-input").fill("上海失业保险金标准是多少？跳过检索负向测试");
-    await page.getByRole("button", { name: "发送" }).click();
-    await expect(
-      page.getByText(/未在官方原文库中检索到可靠依据，无法提供政策事实或来源链接/),
-    ).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText(/9999/)).toHaveCount(0);
-    await expect(page.getByText(/example\.com/)).toHaveCount(0);
-  });
 
-  test("负向模型在真实检索后编造URL时由服务端整段替换", async ({ page }) => {
-    await login(page, E2E_USER_RAG, E2E_PASSPHRASE);
-    await confirmShanghai(page);
-    await page.locator("#chat-input").fill("上海失业保险金标准是多少？伪造链接负向测试");
+    // “检索不可用场景”触发词使mock Agent检索端点返回500：searchPolicy失败关闭
+    // （success:false），模型消费失败结果后必须如实说明，不得编造官网/文号/归档路径。
+    await page.locator("#chat-input").fill("上海失业保险金标准是多少？检索不可用场景");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(
-      page.getByText(/未在官方原文库中检索到可靠依据，无法提供政策事实或来源链接/),
-    ).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText(/9999/)).toHaveCount(0);
-    await expect(page.getByText(/example\.com/)).toHaveCount(0);
-    await expect(page.getByText(/22222222-2222/)).toHaveCount(0);
+
+    await expect(page.getByText(/暂时不可用/)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/官网原文：/)).toHaveCount(0);
+    await expect(page.getByText(/归档原件：/)).toHaveCount(0);
+    await expect(page.getByText(/gov\.cn/)).toHaveCount(0);
+    await expect(page.getByText(/〔\d{4}〕/)).toHaveCount(0);
+
+    // 持久化：最终assistant文本非空且不含任何链接（完整循环未被服务端改写）。
+    const conversationId = new URL(page.url()).searchParams.get("conversationId");
+    expect(conversationId).toMatch(/^[0-9a-f-]{36}$/i);
+    const saved = await page.evaluate(async (id) => {
+      const res = await fetch(`/api/chat/${id}`);
+      return { status: res.status, body: await res.json() };
+    }, conversationId);
+    expect(saved.status).toBe(200);
+    const persistedMessages = saved.body.conversation.messages as Array<{
+      role?: string;
+      parts?: Array<{ type?: string; text?: unknown }>;
+    }>;
+    const finalText = persistedMessages
+      .filter((m) => m.role === "assistant")
+      .at(-1)
+      ?.parts?.find((part) => part.type === "text")?.text;
+    expect(typeof finalText).toBe("string");
+    expect(String(finalText)).toContain("暂时不可用");
+    expect(String(finalText)).not.toMatch(/https?:\/\//i);
+    expect(String(finalText)).not.toContain("/api/rag/originals/");
   });
 });
 

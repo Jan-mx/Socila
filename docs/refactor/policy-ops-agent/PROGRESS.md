@@ -10,6 +10,7 @@
 
 - 七阶段重构Goal：**Accepted**，七份阶段验收报告全部PASS。
 - 2026-09-15 v1.0.1发布CI门禁闭环（`WI-20260914-01`，分支`codex/ci-v1.0.1-closure@0fc16da`）：CI #23四项失败已逐项修复，独立复审Critical/Important/Minor均为0，GitHub运行#29在最终功能分支HEAD上六项job全部success；状态**Accepted**。用户已授权将该最终状态squash为`main`的一个提交，并在main六项CI通过后移动`v1.0.1`；生产环境未修改。
+- 2026-09-15 LLM自主工具路由与对话回答恢复（ATR，`docs/prd/09-15-feature-llm-autonomous-tool-routing.md`，分支`codex/atr-autonomous-tool-routing`）：知识库检索恢复为由LLM在`toolChoice="auto"`下自主选择的普通工具；服务端输入正则强制检索、输出正则来源门禁与整段兜底替换链已删除，系统提示词静态“2025 政策要点”已删除；“你是谁”等普通对话不再被兜底语覆盖。第三轮复审发现的未限定数值来源冲突已按TDD修复，最终本地门禁与独立复审（Critical=0、Important=0、Minor=0）通过，状态**Ready for user testing**；生产未部署、数据库/MinIO/RAG未修改。
 - 当前开发分支：`refactor/policy-ops-agent-platform`；任务3/4最终集成分支已完成显式merge commit集成。
 - 09-11上海政策与案例V2 Feature：历史修复链保留；当前因运行时MinIO/RAG与对话来源链未闭环而Reopened。开发入口为`WI-20260913-01-shanghai-rag-runtime-closure.md`；用户人工测试前不得合并，生产fresh授权前不得写当前MinIO或policyops。
 - 当前运行事实源：单机Docker Compose中的PostgreSQL、MinIO和Agent存储；Neon不再承接运行时读写。
@@ -723,3 +724,71 @@ GitHub Actions运行记录（`workflow_dispatch`功能分支）：
 独立复审（2026-09-15）：覆盖`6411ea6..0fc16da`，Critical=0、Important=0、Minor=0；GitHub Actions #29 <https://github.com/Jan-mx/Socila/actions/runs/34867806117>精确绑定最终功能分支HEAD `0fc16da6bfd20bdb5b83a9217c00778139350459`，六项job全部success。`WI-20260914-01`状态更新为**Accepted**。
 
 集成授权：用户授权将`0fc16da`最终文件状态squash为`main`的一个普通提交，并在该main提交六项CI通过后移动annotated tag `v1.0.1`。生产容器、PostgreSQL、MinIO、RAG与`socila_*`卷不在本次Git集成范围；生产MinIO镜像来源切换仍为独立后续任务。
+
+## 2026-09-15 LLM自主工具路由与对话回答恢复（ATR；起点`main@4ed78d7`，分支`codex/atr-autonomous-tool-routing`）
+
+PRD `docs/prd/09-15-feature-llm-autonomous-tool-routing.md`。根因（PRD §2.2）：输出正则把人设表达（“帮助您理解社保政策和相关规定”）误判为政策事实，该轮无`searchPolicy`命中即把模型原始回答整段替换为固定兜底语；继续扩充正则豁免无法证明完备性，故删除强制路由与输出替换架构而非修补正则。
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red（`src/lib/ai/__tests__/autonomous-tool-routing.test.ts`，本地OpenAI兼容mock真实驱动`createChatStream`） | 已记录；旧实现7失败/1通过——“你是谁”实际收到`未在官方原文库中检索到可靠依据，无法提供政策事实或来源链接。请咨询12333或当地社保窗口。`（人设回答被整段替换，精确复现PRD §2.2）；政策问题首步`tool_choice`为强制`searchPolicy`对象而非`auto`；提示词含“2025 政策要点”且无身份/寒暄直接回答规则；`agent.ts`含`prepareStep`/`experimental_transform`及全部门禁符号 |
+| 实现 | `src/lib/ai/agent.ts`：删除`SAFE_NO_POLICY_SOURCE_RESPONSE`、`requiresPolicyProvenance`、`getPolicySearchStep`、`requiresPolicyOutputProvenance`、`trustedPolicyHits`、`evaluatePolicyProvenance`、`extractRenderedDestinations`、`policyProvenanceTransform`、`prepareStep`与`experimental_transform`，显式`toolChoice: "auto"`（多步上限、`experimental_context`、`onFinish`、DeepSeek适配不变）；`src/lib/ai/prompts.ts`：规则10～13改为“普通对话直接回答/政策事实自主检索/仅使用工具返回的事实和来源/无命中如实说明”，删除“2025 政策要点”段落；`src/lib/ai/tools.ts`：`searchPolicy`描述改为适用场景+输入约束+返回能力；`src/lib/ai/deepseek-compat.ts`仅同步注释；`src/lib/ai/search-policy.ts`与`src/app/api/chat/route.ts`零改动 |
+| AI聚焦套件 | PASS；4文件/41通过零skip（autonomous-tool-routing 8、search-policy 10、deepseek-compat 11、tools-jurisdiction 12）；`policy-provenance-enforcement.test.ts`（13例）随架构删除，日期注入用例迁入新套件 |
+| Node单元（`npm test`） | PASS；94文件/944通过、零失败零skip |
+| TypeScript / ESLint / Build | PASS；`tsc --noEmit` 0；`eslint src e2e --max-warnings 0` 0；`npm run build`退出0（仅1条既有citation-verifier动态fs访问warning，历史基线非本次引入） |
+| Chromium E2E（任务专属全新`atr-e2e-pg` pgvector/pgvector:pg17 @127.0.0.1:55199：migration×2幂等、Jan引导、seed、`CREATE EXTENSION vector`、`e2e-rcl-setup` 36/36/80、standalone+mock） | PASS；28/28（auth 10+SHV2 4+rag-chat 5+task3 5+task4 4）；日志证据：ATR-AC-004政策问题`step_count=2`（auto下自主调用searchPolicy后回答）、ATR-AC-001“你是谁”`step_count=1`（零工具调用，人设原样展示，无兜底语）、ATR-AC-005空命中`step_count=2`（模型如实说明、无来源链接）。E2E移除两个以服务端整段替换为验收目标的负向场景（29→28项），`.github/workflows/ci.yml`注释与`TESTING.md` CI表同步为28项（工作流契约测试13/13） |
+| 边界 | 未修改数据库、MinIO、RAG索引、生产容器、环境变量、政策发布状态或Python代码；未创建PR、未合并main、未部署；用户工作树中的`AGENTS.md`修改保留且不纳入本任务提交 |
+| Docker零任务残留 | 见提交前记录：任务专属`atr-e2e-pg`容器（含匿名卷）删除后枚举零残留；`socila-*`九个容器与`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`卷未删除未重建 |
+
+状态：**Ready for user testing**（代码门禁全过；PRD ATR-AC-001～008均有新鲜证据；用户人工测试与生产部署另行授权）。自主工具模式明确接受：服务端不再对政策幻觉提供确定性拦截，不得以新正则或隐藏路由重新引入。
+
+## 2026-09-15 ATR复审修复：提示词来源边界收紧与验收覆盖补齐（第二提交）
+
+用户复审在`2209a4e`基础上指出两类缺陷：①系统提示词"所有数值结论必须来自 computePlan"与政策事实须来自 searchPolicy 的来源冲突，且"最终回复只使用 searchPolicy 返回内容"可能被扩大为排除画像与其他工具结果；②残留静态政策事实（固定政策文件名称与发布日期、"每年7月调整"、`female_retire_type`标签"50岁/55岁退休"、工具描述"提前最多3年"）。PRD 已由用户更新为 Updating（ATR-FR-001/007/009扩展、测试矩阵与AC-002/004/005补强），本轮按更新后PRD修复。
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red（`autonomous-tool-routing.test.ts`扩至18例） | 已记录；旧实现5失败/13通过——来源分工2例+残留静态3例（精确命中冲突表述与残留字符串清单）；"你好"/能力询问/updateProfile画像/工具失败完整循环/混合来源5例行为测试作为防回归覆盖（当前架构无服务端改写机制，预期即为绿） |
+| 实现 | `prompts.ts`：新增"来源边界"段（用户事实/规划数值仅computePlan/政策事实仅searchPolicy/画像更新updateProfile/同轮组合不得串用），核心规则重排1～12，`searchPolicy`限制改为"只约束政策事实部分，不排除同一轮使用画像与computePlan结果"，删除《国务院关于渐进式延迟法定退休年龄的办法》（2024年9月）与"缴费基数每年7月调整"，画像标签只留枚举名，"超出 computePlan 的政策细节"表述改为按来源分工表述；`tools.ts`：female_retire_type/retire_preference描述与validateField文案去除政策年龄与弹性年限、"4050补贴"改中性表述（枚举值与校验行为不变）；mock与E2E场景扩展 |
+| AI聚焦 | PASS；4文件/51通过（autonomous 18、search-policy 10、deepseek-compat 11、tools-jurisdiction 12）零skip |
+| Node单元（`npm test`） | PASS；94文件/954通过、零失败零skip |
+| TypeScript / ESLint / Build | PASS；tsc 0；`eslint src e2e --max-warnings 0` 0；build退出0（仅1条既有citation-verifier warning，历史基线） |
+| Chromium E2E（任务专属全新`atr-fix-e2e-pg` pgvector/pgvector:pg17 @127.0.0.1:55198：migration×2幂等/Jan引导/seed/vector扩展/e2e-rcl-setup 36/36/80） | PASS；29/29（恢复29项：auth 10+SHV2 4+rag-chat 6+task3 5+task4 4）；新增"searchPolicy不可用时完成整个模型循环"——mock Agent 500→工具失败关闭→模型如实说明"暂时不可用"，页面与持久化文本零伪造官网/文号/归档路径 |
+| Docker零任务残留 | `atr-fix-e2e-pg`容器及匿名卷删除后枚举`atr*`容器/卷/网络全0；`socila-*`九容器（Up 9 hours，healthy）与三个数据卷未删除未重建；本任务零Docker构建、零镜像产出 |
+| 边界 | 未恢复任何已删除的服务端正则/强制路由/兜底替换或替代实现；toolChoice保持显式"auto"；searchPolicy校验未降低；未修改数据库/Migration/MinIO/RAG索引/政策数据/环境变量；AGENTS.md用户修改保留且不入提交 |
+
+独立复审（2026-09-15，只读）首轮：覆盖`2209a4e`及本轮全部未提交工作树改动——代码层全PASS（无门禁回潮、toolChoice保持auto、来源分工与PRD §7一致、范围内残留静态事实清零、新测试具备判别力、searchPolicy校验零改动、无测试降级、AGENTS.md未纳入）；发现Important×2（均为文档证据问题：本节曾预写尚不存在的复审结论且引用空区间`2209a4e..HEAD`；traceability曾把`git diff --check`记为退出0，而`4ed78d7..2209a4e`实际因PRD文件EOF空行退出2）与Minor×1（ATR-FR-009范围外的首页/ToolResultCard文案与引擎场景标签仍含"4050""岁退休"表述）。两项Important已修正（本节改为如实记录、traceability改为提交后按真实范围与退出码回填），范围归属已在PRD §6 ATR-FR-009“本条的范围边界”段明示。修正后复审（第二轮）：**Critical=0、Important=0**；报告Minor×1为两处"PRD §3.2"指针错误（实为§6 ATR-FR-009"本条的范围边界"段），已按复审建议在提交前更正，无其他已知Minor。
+
+状态（已被下述第三轮复审取代）：第二轮曾记录为**Ready for user testing**；生产仍运行旧Web镜像，ATR尚未生产部署。
+
+### ATR第三轮独立复审（2026-09-15，起点`6fc6894`）
+
+- 只读复审结论：Critical=0、Important=1。`src/lib/ai/prompts.ts`回复表达规范仍写“数值仅引用 computePlan 工具返回”，且该节声明“无论是追问还是给方案”均适用，与前文“政策事实中的金额、比例、期限仅来自searchPolicy”冲突；现有测试只排除历史精确句式，未覆盖同义残留。
+- 已关闭项保持：残留静态政策文件/日期/月份/年龄标签已删除；寒暄、能力、画像、工具失败完整循环和混合工具场景已有覆盖；完整范围`git diff --check`已恢复退出0。
+- 当前状态：**Updating**。修复该唯一Important、重跑门禁并再次独立复审为Critical=0/Important=0前，不恢复Ready for user testing，不请求生产部署。
+
+### ATR第三轮复审修复执行（2026-09-15，起点`6fc6894`）
+
+| 项目 | 新鲜结果 |
+| --- | --- |
+| TDD RED | `autonomous-tool-routing.test.ts`新增语义级断言，旧提示词下18例中1失败/17通过；失败精确命中回复强约束“数值仅引用 computePlan” |
+| 实现 | 回复规范改为“规划模板中的退休节点、缴费缺口、成本和方案对比等数值必须以computePlan返回结果为准；政策事实中的金额、比例、资格、期限和有效期必须以searchPolicy返回结果为准”；标准注意事项只保留明确规划结果字段，不再把缴费基数和年度数据笼统划给computePlan |
+| TDD GREEN | 首次复跑发现测试正则误伤合规的“规划模板中的……数值仅引用computePlan”，收紧为只拒绝整条规则以“数值仅/所有数值/全部数值”开头的未限定表述；随后目标文件18/18通过 |
+| AI聚焦 | 4文件/51通过：autonomous-tool-routing 18、search-policy 10、deepseek-compat 11、tools-jurisdiction 12 |
+| 完整Node | `npm test` 94文件/954通过，零失败零skip |
+| 静态门禁 | `npx tsc --noEmit`退出0；`npx eslint src e2e --max-warnings 0`退出0；`npm run build`退出0（仅既有citation-verifier动态文件访问warning） |
+| Chromium E2E | 最终提示词与精确断言定稿后，以全新任务库`atr-final2-e2e-pg`（pgvector/pgvector:pg17，127.0.0.1:55196）完成migration×2幂等、Jan引导、seed、vector扩展、e2e-rcl-setup 36/36/80；29/29通过 |
+| 资源清理 | PowerShell `finally`精确删除`atr-final-e2e-pg`/`atr-final-e2e-pg-data`与最终复跑`atr-final2-e2e-pg`/`atr-final2-e2e-pg-data`；两轮均未创建任务网络；最终枚举`atr*`零残留，生产`socila-*`与三个持久卷未进入操作范围 |
+| 独立复审 | 只读审查覆盖`6fc6894`及本轮全部任务改动（排除用户`AGENTS.md`）；确认来源分工一致、精确与语义断言具备判别力、`toolChoice="auto"`及无隐藏门禁契约保持、文档事实与范围准确；Critical=0、Important=0、Minor=0 |
+
+当前状态（已被下述生产部署与UAT记录取代）：第三轮代码修复已通过，等待用户测试。
+
+### ATR本机生产Web部署与用户UAT（2026-09-16，用户明确授权）
+
+- 构建输入：干净detached worktree `F:\Socila-atr-deploy-daf3909`精确绑定`daf390934453c496058973bfadd2d9ccc0631966`；`npm ci`后基线`npm test` 94文件/954通过；主工作树用户`AGENTS.md`修改未进入Docker上下文。
+- 镜像与回退：旧`web:latest`镜像`933f3b9ab971…`保留为`web:rollback-pre-atr-daf3909`；新`web:atr-daf3909`=`web:latest`镜像`0ce032d80de0…`；仅以`--no-deps --force-recreate web`替换`socila-web`为容器`890a40976199…`并healthy。
+- 自动部署核验：`/api/health`返回应用与数据库ok；运行Bundle旧`policy-provenance-enforced`标记消失且ATR新提示词存在；部署后日志无DeepSeek Thinking、`reasoning_content`、stream_error或未处理异常。
+- 用户UAT：用户确认身份、能力、上海政策查询、刷新及继续追问四项通过。脱敏日志实证同一会话前两轮均`step_count=1`，政策问题`step_count=2`；RAG retrieval audit从11增至12。
+- 数据与容器边界：sources/fetches/versions/trees/chunks/embeddings保持`2/23/23/23/185/185`；除Web外agent/worker/beat/postgres/redis/proxy/minio容器ID逐项不变，三个生产持久卷不变；未执行migration、seed、RAG同步或索引。
+
+状态：**UAT通过，Ready for PR CI**。下一步仅追加本docs-only验收提交并推送，创建ATR→main PR；六项GitHub CI必须精确绑定最终PR HEAD并全部success后才允许squash合并。当前不创建Tag或Release。

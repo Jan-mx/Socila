@@ -10,9 +10,9 @@
  *   多步auto请求要求回传AI SDK未保留的reasoning_content，生产实测返回400。
  *
  * 因此按固定决策规则：保留实际可用模型；DeepSeek Chat Completions只要携带
- * 非空tools数组，就在整个多步工具循环注入thinking={type:"disabled"}。这同时覆盖
- * 首步强制searchPolicy和工具结果后的tool_choice="auto"最终回答；不带tools的普通
- * 请求继续使用默认thinking，首步强制searchPolicy来源门禁不变。
+ * 非空tools数组，就在整个多步工具循环注入thinking={type:"disabled"}。对话编排
+ * 以tool_choice="auto"注册全部工具（ATR-FR-002），该规则覆盖模型自主发起工具调用
+ * 的步骤与工具结果后的最终回答步骤；不带tools的普通请求继续使用默认thinking。
  *
  * 适配器约束：
  * - 仅匹配DeepSeek模型（模型ID含deepseek）与/chat/completions端点；
@@ -26,8 +26,8 @@ const CHAT_COMPLETIONS_PATH = "/chat/completions";
 const DEEPSEEK_MODEL_PATTERN = /deepseek/i;
 
 /** 显式tool_choice：对象形式（{type:"function",...}/{type:"tool",...}）；"auto"/"none"/缺失不算。
- * 注：字符串"required"同样属DeepSeek thinking拒绝的强制模式，但当前代码库唯一强制
- * 路径是对象形式（getPolicySearchStep的{type:"tool"}），如未来引入required需同步此处。 */
+ * 注：字符串"required"同样属DeepSeek thinking拒绝的强制模式。当前对话编排不使用强制
+ * tool_choice（ATR-FR-002），本判定只描述适配器对显式对象形式的识别，与调用方无关。 */
 export function isExplicitToolChoice(toolChoice: unknown): boolean {
   return typeof toolChoice === "object" && toolChoice !== null;
 }

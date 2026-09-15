@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-14
+> Updated: 2026-09-15
 
 ## 测试先行
 
@@ -377,3 +377,23 @@ CI #23（`main@6411ea6`，六项门禁工作流首次在GitHub-hosted runner运�
 - **Compose健康检查就绪条件**：container-gates对web `/api/health`与agent `/internal/health`都以`wait_for`轮询就绪（各≤180秒），禁止对刚启动的服务做单次无等待探测（GitHub运行#25：agent uvicorn未就绪即`Connection refused`）。
 - **Trivy版本形态**：`aquasecurity/trivy-action`的`version`输入必须带`v`前缀（`v0.74.0`），契约测试断言两处一致。
 - **本地等价命令**：`MSYS_NO_PATHCONV=1 docker run --rm -v "F:/Socila:/repo" -w /repo rhysd/actionlint:1.7.7`（工作流静态校验）；`cd infra/prod && COMPOSE_PROJECT_NAME=<唯一> COMPOSE_FILE=docker-compose.yml:docker-compose.ci.yml docker compose --env-file <合成env> config --quiet`；database-gates/e2e-gates本地复现须显式`RCL_DRILL_PG_CONTAINER=<任务专属容器ID>`且容器`POSTGRES_USER`与URL用户一致（非`postgres`）。
+
+## LLM自主工具路由与对话回答恢复（ATR，2026-09-15）
+
+PRD：`docs/prd/09-15-feature-llm-autonomous-tool-routing.md`。对话Agent从“服务端正则决定检索与回答放行”调整为“LLM依据系统提示词自主选择工具”。
+
+- **聚焦套件**（`src/lib/ai/__tests__/autonomous-tool-routing.test.ts` 8例，本地OpenAI兼容mock服务真实驱动`createChatStream`）：身份问题“你是谁”返回人设原文本、不被固定兜底语整段替换（ATR-AC-001/005）、本轮零工具调用（ATR-FR-005）；政策问题下每个请求携带全部四工具且`tool_choice="auto"`、无首步强制（ATR-FR-002/AC-003），模型自主调用`searchPolicy`后最终回答使用工具返回的真实机关/标题/双链（ATR-AC-004/FR-010）；系统提示词仍定义“社保规划助手”且新增身份/寒暄直接回答规则（ATR-FR-001）、不再包含静态“2025 政策要点”及动态政策数字（ATR-FR-009）；服务端日期注入与格式保持不变。RED：旧实现下“你是谁”实际收到`未在官方原文库中检索到可靠依据…`兜底语（7失败/1通过），实现后41/41（含既有search-policy 10、deepseek-compat 11、tools-jurisdiction 12）。
+- **无隐藏门禁源码契约**（同文件）：`agent.ts`不得再出现`prepareStep`、`experimental_transform`、`requiresPolicyProvenance`、`getPolicySearchStep`、`requiresPolicyOutputProvenance`、`evaluatePolicyProvenance`、`policyProvenanceTransform`、`trustedPolicyHits`、`SAFE_NO_POLICY_SOURCE_RESPONSE`或`policySubject`/`policyFact`语义正则标识，且必须显式`toolChoice: "auto"`（ATR-AC-006，防以新正则或隐藏路由回退）。
+- **移除的测试**：`policy-provenance-enforcement.test.ts`（13例）随输入/输出来源门禁架构一并删除；其日期注入用例迁入聚焦套件。E2E移除两个以“服务端整段替换”为验收目标的负向场景（跳过检索、编造URL），`e2e/mock-openai.mjs`同步删除对应分支并新增“你是谁”人设回复分支。
+- **对话E2E**（`e2e/shv2-rag-chat.spec.ts`，全套28项）：新增“你是谁”场景（ATR-AC-001）——已确认地区下返回角色说明、持久化assistant消息只有文本part（零工具part）、无兜底语；政策问题场景改为以auto自主调用与双链展示为断言（ATR-AC-004）；空命中场景断言模型如实说明且无来源链接（ATR-AC-005）；多步与持久化断言保持（ATR-AC-007）。
+- **保留不变的既有覆盖**：`searchPolicy` Schema/地区/日期/政府URL/哈希/归档路径校验与失败关闭（`search-policy.test.ts` 10例，ATR-FR-008）；DeepSeek工具循环thinking兼容（`deepseek-compat.test.ts` 11例，ATR-NFR-003）；工具地区上下文契约（`tools-jurisdiction.test.ts` 12例）。
+- **新鲜门禁（2026-09-15本地）**：`npm test` 94文件/944零失败零skip；`npx tsc --noEmit` 0；`npx eslint src e2e --max-warnings 0` 0；`npm run build`退出0（仅1条既有citation-verifier动态fs访问warning，历史基线）；全新PG17+pgvector验收库（migration×2幂等/bootstrap/seed/vector扩展/`e2e-rcl-setup` 36/36/80）Chromium E2E 28/28。Python侧零改动。
+
+### ATR复审修复（2026-09-15第二轮，独立复审后的提示词收紧）
+
+按更新后PRD（ATR-FR-001/007/009扩展）消除`computePlan`与`searchPolicy`数值来源冲突并清除残留静态政策事实；不恢复任何服务端正则/强制路由/兜底门禁。
+
+- **RED→GREEN**（`src/lib/ai/__tests__/autonomous-tool-routing.test.ts` 18例）：新增用例在旧实现上5失败/13通过——来源分工2例（旧提示词含"所有数值结论必须来自 computePlan""不要编造任何超出 computePlan 工具返回结果的政策细节""不得自行估算政策口径数字"且无"仅来自 searchPolicy"分工）、残留静态3例（旧提示词含《国务院关于渐进式延迟法定退休年龄的办法》（2024年9月）、"缴费基数每年7月调整"、`buildContextPrompt`画像标签"普通工人（50 岁退休）/管理岗/干部（55 岁退休）"、`tools.ts`描述与校验文案含"50岁退休/55岁退休/提前最多3年/最多3年"）。修复后全绿。"你好"寒暄、能力询问、updateProfile画像更新（允许且不触发searchPolicy）、searchPolicy失败（success:false）完整模型循环、画像+computePlan+searchPolicy混合来源等5例行为测试与mock新增场景作为防回归覆盖（当前架构无服务端改写机制，实现后即为绿）。
+- **提示词新契约**：新增"来源边界"段（用户事实/规划数值仅computePlan/政策事实仅searchPolicy/画像更新updateProfile/同轮可组合不得串用）；`searchPolicy`限制表述改为"只约束政策事实部分，不排除同一轮使用用户画像、computePlan 规划结果或其他工具的合法结果"；`computePlan`规则收敛为"规划计算数值"；删除固定政策文件名称/发布日期/调整月份；画像标签只保留枚举名（worker50/cadre55）；"4050补贴"俗称改中性"就业困难人员社保补贴"。
+- **E2E**（`e2e/shv2-rag-chat.spec.ts` 29项，全套恢复29项）：新增"searchPolicy不可用时完成整个模型循环"——mock Agent检索端点对"不可用场景"查询返回500，工具失败关闭（success:false）后模型消费失败结果如实说明"暂时不可用"，页面与持久化文本均无伪造官网/文号/归档路径。
+- **新鲜门禁（2026-09-15第二轮本地）**：AI聚焦4文件/51；`npm test` 94文件/954零失败零skip；tsc 0；`eslint src e2e --max-warnings 0` 0；build退出0（1条既有warning）；全新任务专属`atr-fix-e2e-pg`（pgvector/pgvector:pg17 @127.0.0.1:55198：migration×2幂等/bootstrap/seed/vector扩展/e2e-rcl-setup 36/36/80）Chromium E2E 29/29；容器与匿名卷删除后`atr*`零残留、`socila-*`未触碰。

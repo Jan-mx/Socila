@@ -97,14 +97,14 @@ export const computePlanSchema = z.object({
       .enum(["worker50", "cadre55", "unknown"])
       .optional()
       .describe(
-        "女性退休口径：worker50=普通工人（50岁退休），cadre55=管理岗/干部（55岁退休），unknown=不确定",
+        "女性退休口径：worker50=普通工人，cadre55=管理岗/干部，unknown=不确定",
       ),
     target_city: z.string().optional().describe("目标城市自由文本（仅作原始表达保留，不参与政策选择）"),
     retire_preference: z
       .enum(["earliest", "standard", "latest"])
       .optional()
       .describe(
-        "退休偏好：earliest=最早退休（提前最多3年），standard=法定退休，latest=延迟退休（最多3年）",
+        "退休偏好：earliest=最早退休，standard=法定退休，latest=延迟退休",
       ),
   }),
   social: z
@@ -161,7 +161,7 @@ export const computePlanSchema = z.object({
       has_employment_difficulty_cert: z
         .boolean()
         .optional()
-        .describe("是否持有就业困难人员认定证（4050补贴申请所需）"),
+        .describe("是否持有就业困难人员认定证（申请就业困难人员社保补贴所需）"),
       months_to_legal_retire: z
         .number()
         .int()
@@ -425,7 +425,7 @@ export const searchPolicyTool = tool<
   Awaited<ReturnType<typeof executeSearchPolicy>>
 >({
   description:
-    "检索官方政策原文库（RAG）。凡回答政策金额、比例、资格条件、期限、有效期或政策来源（依据哪份文件）的问题时必须调用此工具，不得凭记忆作答。每个命中同时给出官网原文链接与归档原件下载链接；无可靠命中时如实说明，不得编造来源。",
+    "检索官方政策原文库（RAG）。适用场景：回答依赖当前、地区性、时效性或需要官方原文支持的政策事实，如政策金额、比例、资格条件、期限、有效期、文件依据或政策来源（依据哪份文件）；身份介绍、寒暄、能力说明和用户画像交流不需要调用。输入约束：jurisdiction_code 必须使用会话已确认地区，as_of_date 必须使用系统提示中注入的当前服务器日期。返回：每个命中包含发布机关、文件标题、原文片段、官网原文链接与归档原件下载链接；noReliableHits=true 表示无可靠命中，须如实说明且不得编造来源。",
   inputSchema: zodSchema(searchPolicySchema),
   execute: (params: SearchPolicyInput, options?: { experimental_context?: unknown }) => {
     const ctx = options?.experimental_context as
@@ -502,7 +502,7 @@ function validateFieldValue(
       if (!validValues.includes(String(value))) {
         return {
           valid: false,
-          error: `女性退休口径必须是 worker50（普通工人50岁退休）或 cadre55（管理岗/干部55岁退休），您输入的是 "${value}"`,
+          error: `女性退休口径必须是 worker50（普通工人）或 cadre55（管理岗/干部），您输入的是 "${value}"`,
         };
       }
       return { valid: true, normalized: String(value) };

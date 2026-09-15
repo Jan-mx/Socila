@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-14
+> Updated: 2026-09-15
 
 ## 用途
 
@@ -386,3 +386,69 @@ SJWT-AC对应：AC-001～009由Node/Python单元测试与`testdata/service-jwt-v
 | container-gates Trivy安装（运行#24） | trivy-action `version: "0.74.0"`缺`v`前缀→`unable to find '0.74.0'` | `.github/workflows/ci.yml`两处`version: "v0.74.0"` | `ci-compose-override-contract.test.ts`（版本断言先RED后GREEN） |
 | container-gates 健康检查就绪竞态（运行#25） | agent `/internal/health`单次无等待探测早于uvicorn就绪→Connection refused | `.github/workflows/ci.yml` `health checks`改为web/agent双就绪条件轮询`wait_for` | `ci-compose-override-contract.test.ts`（`wait_for`断言先RED后GREEN）；诊断artifact证明容器无重启 |
 | 文档 | — | `docs/work-items/WI-20260914-01-ci-release-gates-closure.md`、`PROGRESS.md`、`TESTING.md`、`OPERATIONS.md`、本文件 | Markdown相对链接检查、`git diff --check` |
+
+## LLM自主工具路由与对话回答恢复映射（ATR，2026-09-15；PRD `docs/prd/09-15-feature-llm-autonomous-tool-routing.md`，分支`codex/atr-autonomous-tool-routing`）
+
+| 需求 | 实现位置 | 测试/证据路径 | 状态 |
+| --- | --- | --- | --- |
+| ATR-FR-001 系统提示词权威性 | `src/lib/ai/prompts.ts`（角色、支持范围、画像累积、地区确认、规划计算与工具使用原则；规则10“普通对话直接回答”） | `src/lib/ai/__tests__/autonomous-tool-routing.test.ts`（提示词契约：角色+身份/寒暄直接回答规则） | 已实现 |
+| ATR-FR-002 自动工具选择 / ATR-AC-003 | `src/lib/ai/agent.ts`（`tools`全部注册+显式`toolChoice: "auto"`，无`prepareStep`） | 同上（政策问题下每个请求`tool_choice==="auto"`且四工具齐全；源码契约无`prepareStep`） | 已实现 |
+| ATR-FR-003 禁止输入正则强制检索 | `src/lib/ai/agent.ts`删除`requiresPolicyProvenance`/`getPolicySearchStep`/`prepareStep` | 同上（源码契约+行为断言） | 已实现 |
+| ATR-FR-004 禁止输出正则整段替换 | `src/lib/ai/agent.ts`删除`requiresPolicyOutputProvenance`/`evaluatePolicyProvenance`/`trustedPolicyHits`/`extractRenderedDestinations`/`policyProvenanceTransform`/`SAFE_NO_POLICY_SOURCE_RESPONSE`及`experimental_transform` | 同上（“你是谁”人设原文本原样返回；源码契约） | 已实现 |
+| ATR-FR-005 普通对话直接回答 / ATR-AC-001～002 | `src/lib/ai/prompts.ts`规则10；`src/lib/ai/agent.ts`无改写 | 聚焦套件“你是谁”2例（RED：旧实现收到兜底语）；E2E `e2e/shv2-rag-chat.spec.ts`“你是谁”场景（角色说明可见、零工具part、无兜底语） | 已实现 |
+| ATR-FR-006 LLM自主判断检索 / ATR-AC-004 | `src/lib/ai/prompts.ts`规则11；`src/lib/ai/tools.ts` `searchPolicy`描述（适用场景/输入约束/返回能力） | 聚焦套件auto模式两步工具循环（mock模型自主发起searchPolicy→最终回答含真实机关/标题/双链）；E2E政策问题场景`step_count=2` | 已实现 |
+| ATR-FR-007 工具结果使用约束 / ATR-AC-005 | `src/lib/ai/prompts.ts`规则12～13；`src/lib/ai/tools.ts`描述 | E2E空命中场景（模型如实说明、无来源链接）；`search-policy.test.ts`来源结构校验 | 已实现（模型行为由提示词/工具描述约束，非服务端正则） |
+| ATR-FR-008 保留工具边界校验 | `src/lib/ai/search-policy.ts`（未改动） | `src/lib/ai/__tests__/search-policy.test.ts` 10例（地区/日期/Schema/政府URL/哈希/归档路径/失败关闭）保持通过 | 不变边界已复验 |
+| ATR-FR-009 移除静态政策事实 | `src/lib/ai/prompts.ts`删除“2025 政策要点”段落及其数字 | 聚焦套件提示词契约（“2025 政策要点”与9项静态数字不存在） | 已实现 |
+| ATR-FR-010 保持消息与工具循环 / ATR-AC-007 | `src/lib/ai/agent.ts`（`stopWhen: stepCountIs(8)`、`experimental_context`、`onFinish`）；`src/app/api/chat/route.ts`未改动 | E2E 28/28（含混合warning会话恢复与第三轮继续、持久化非空assistant文本）；聚焦套件两步循环 | 已实现 |
+| ATR-NFR-001 日志与隐私 | 无新增日志；`route.ts`既有request_id/conversation_id/步数/Token日志保持 | 代码审阅（本次diff无日志新增） | 遵守 |
+| ATR-NFR-002 RAG与数据兼容 | 未修改RAG API、数据库、MinIO、索引、原件下载接口、政策发布状态或持久案例；`searchPolicy` Schema与结果类型不变 | `search-policy.test.ts`、`src/app/api/rag/originals/[documentVersionId]/route.test.ts`保持通过；本次diff不含migration/Python/Compose | 遵守 |
+| ATR-NFR-003 Provider兼容 | `src/lib/ai/deepseek-compat.ts`（行为不变，仅注释同步） | `deepseek-compat.test.ts` 11/11（auto步骤与两步循环均thinking disabled） | 遵守 |
+| ATR-AC-006 无隐藏来源门禁 | `src/lib/ai/agent.ts` | 聚焦套件源码契约2例 | 已实现 |
+| ATR-AC-008 项目门禁 | — | `npm test` 94文件/944零失败零skip；tsc 0；`eslint src e2e --max-warnings 0` 0；build退出0（1条既有warning）；全新PG17验收库Chromium E2E 28/28 | 通过 |
+| 移除的验收目标 | `e2e/shv2-rag-chat.spec.ts`删除“跳过检索→服务端替换”“编造URL→服务端替换”两个负向场景；`e2e/mock-openai.mjs`删除对应分支；`src/lib/ai/__tests__/policy-provenance-enforcement.test.ts`删除 | PRD §11.6/§10（自主工具模式接受的取舍） | 已移除 |
+| 文档 | `ARCHITECTURE.md`（对话工具路由）、`TESTING.md`（ATR门禁）、`PROGRESS.md`、本文件、`.github/workflows/ci.yml`注释（E2E 28项） | Markdown相对链接、`git diff --check` | 已同步 |
+
+- 边界：未修改数据库、MinIO、RAG索引、生产容器、环境变量或政策发布状态；用户工作树中的`AGENTS.md`修改不纳入本任务提交。
+- 隔离环境：任务专属`atr-e2e-pg`（pgvector/pgvector:pg17，127.0.0.1:55199）用于Chromium E2E，验收后删除并核验零残留；生产`socila-*`容器与三个数据卷未触碰。
+
+## ATR复审修复映射（2026-09-15第二轮；PRD Updating版，分支`codex/atr-autonomous-tool-routing`第二提交）
+
+| 需求 | 实现 | 测试/证据 | 状态 |
+| --- | --- | --- | --- |
+| ATR-FR-001扩展（来源分工） | `src/lib/ai/prompts.ts`新增"来源边界"段：用户事实/规划数值仅computePlan/政策事实仅searchPolicy/画像更新updateProfile/同轮组合不得串用；核心规则重排1～12，`computePlan`规则收敛为"规划计算数值" | `autonomous-tool-routing.test.ts`"提示词来源边界"2例（RED：旧提示词含"所有数值结论必须来自 computePlan"等冲突表述） | 已实现 |
+| ATR-FR-007扩展（限制不扩大为整轮回答） | 规则11改写：`searchPolicy`限制"只约束政策事实部分，不排除同一轮使用用户画像、computePlan 规划结果或其他工具的合法结果" | 同上第2例；单元混合工具行为测试（画像+规划+政策三来源同轮保留，mock按各工具实际输出组合作答） | 已实现 |
+| ATR-FR-009扩展（残留静态政策事实） | 删除《国务院关于渐进式延迟法定退休年龄的办法》（2024年9月）与"缴费基数每年7月调整"；`buildContextPrompt`画像标签改"普通工人（worker50）/管理岗/干部（cadre55）"；`tools.ts` female_retire_type/retire_preference描述与validateField校验文案去除"50岁/55岁/提前最多3年/最多3年"；"4050补贴"俗称改中性表述 | "无残留静态政策事实"3例（提示词禁词、`buildContextPrompt`标签、`tools.ts`源码契约；RED→GREEN） | 已实现 |
+| ATR-AC-002三场景 | 提示词规则9保持；无服务端拦截 | 单元行为3例："你好"寒暄零工具调用、能力询问直接回答、补充画像允许updateProfile且不调用searchPolicy（注入fetch零调用证明） | 已实现 |
+| ATR-AC-004混合工具 | 无新服务端逻辑（模型自主组合） | 单元混合工具行为测试：同轮updateProfile+computePlan+searchPolicy（vi.mock规划用例固定结果），最终回答同时含画像、`养老缺口 -24 个月`（computePlan calc值）与searchPolicy机关/标题/双链；E2E政策问题29/29 | 已实现 |
+| ATR-AC-005工具不可用完整循环 | 无新服务端逻辑（工具失败关闭已存在） | 单元：注入fetch 503→模型循环完成、最终回答"暂时不可用"且无http/归档路径/文号/gov.cn、两步请求均auto；E2E新增"检索不可用场景"（mock Agent 500）29/29 | 已实现 |
+| ATR-AC-008（含`git diff --check`） | — | AI聚焦4文件/51；`npm test` 94文件/954零skip；tsc 0；eslint 0；build 0（1条既有warning）；全新`atr-fix-e2e-pg` Chromium E2E 29/29；`git diff --check`对4ed78d7与最终提交内容（暂存区等价）执行退出0——首轮曾误记`4ed78d7..2209a4e`为通过（实际退出2：该提交PRD文件EOF空行，已在本轮修正），字面范围`4ed78d7..HEAD`在最终提交后复验 | 通过 |
+| 独立复审 | — | 首轮只读复审（覆盖`2209a4e`+全部未提交改动）：代码层检查单A~I全PASS，发现Important×2（均为文档证据：预写复审结论、`git diff --check`记录不实）与Minor×1（范围外UI/引擎文案）；修正后复审通过：Critical=0、Important=0、Minor=1（Minor-2为两处“PRD §3.2”指针错误，实为§6 ATR-FR-009“本条的范围边界”段，已按复审建议在提交前更正，无其他已知Minor） | 通过 |
+| 边界 | 未恢复requiresPolicyProvenance/getPolicySearchStep/requiresPolicyOutputProvenance/evaluatePolicyProvenance/policyProvenanceTransform或替代实现；toolChoice保持显式"auto"；未降低searchPolicy校验；未修改数据库/MinIO/RAG/环境变量/生产容器；AGENTS.md用户修改未纳入 | `agent.ts`源码契约（ATR-AC-006）保持通过；本次diff仅prompts.ts/tools.ts/测试/mock/文档 | 遵守 |
+
+- 隔离环境：任务专属`atr-fix-e2e-pg`（pgvector/pgvector:pg17，127.0.0.1:55198），E2E后删除并核验`atr*`容器/卷/网络零残留；生产`socila-*`容器与数据卷未触碰，ATR未生产部署。
+
+### ATR第三轮独立复审待修复项（2026-09-15，起点`6fc6894`）
+
+| 复审结论 | 未关闭需求 | 证据 | 当前状态 |
+| --- | --- | --- | --- |
+| Critical=0、Important=1 | ATR-FR-001/007：回复强约束“数值仅引用computePlan”仍未限定为规划数值，与政策事实数值仅来自searchPolicy冲突 | `src/lib/ai/prompts.ts`回复表达规范；`autonomous-tool-routing.test.ts`原断言仅排除历史精确句式 | Updating；修复、全量门禁与再次独立复审前不得标记Ready或部署 |
+
+### ATR第三轮复审修复映射（2026-09-15，起点`6fc6894`）
+
+| 需求 | 实现 | 测试/证据 | 状态 |
+| --- | --- | --- | --- |
+| ATR-FR-001/007 数值来源分工最终收口 | `src/lib/ai/prompts.ts`回复强约束分别限定规划模板数值→computePlan、政策事实数值→searchPolicy；标准注意事项只列规划结果字段 | `autonomous-tool-routing.test.ts`新增精确与语义级反例：禁止未限定的“数值仅引用/所有数值来自/全部数值来自computePlan”，并拒绝整条规则以这些短语开头；RED=1失败/17通过，GREEN=18/18 | 已修复并通过独立复审 |
+| ATR-AC-008 第三轮门禁 | 无接口或数据变更 | AI聚焦4文件/51；完整Node 94文件/954零skip；tsc、eslint、build退出0；最终全新`atr-final2-e2e-pg` Chromium E2E 29/29；两轮任务容器与卷均finally清理且`atr*`零残留 | 通过 |
+| 第三轮修复独立复审 | 无接口或数据变更 | 只读覆盖`6fc6894`及全部任务改动（排除用户`AGENTS.md`）：来源分工、测试判别力、toolChoice auto、无隐藏门禁、文档与边界逐项核验 | Critical=0、Important=0、Minor=0；Ready for user testing |
+| 交付边界 | 未恢复服务端正则、强制searchPolicy或整段兜底；未修改RAG、数据库、MinIO、migration或Docker；生产Web未重建 | 工作树/完整diff与Docker资源范围复核 | 遵守 |
+
+### ATR本机生产Web部署与用户UAT（2026-09-16）
+
+| 验收项 | 执行与证据 | 结果 |
+| --- | --- | --- |
+| 精确构建与回退 | detached worktree精确绑定`daf3909`；旧镜像`933f3b9ab971…`保留为`web:rollback-pre-atr-daf3909`；新镜像`web:atr-daf3909`=`0ce032d80de0…` | 通过 |
+| Web-only部署 | 仅重建`socila-web`为`890a40976199…`，health与数据库均ok；运行Bundle旧门禁消失、ATR提示词存在 | 通过 |
+| 用户人工UAT | “你是谁”与能力询问均单步；上海政策问题两步并调用searchPolicy；刷新与继续追问正常 | 通过 |
+| RAG与容器不变量 | RAG派生计数保持`2/23/23/23/185/185`，audit按唯一政策检索`11→12`；其他容器ID与三个持久卷不变 | 通过 |
+| 后续边界 | 尚未创建PR、运行最终PR六项CI或合并main；不创建Tag/Release | Ready for PR CI |
