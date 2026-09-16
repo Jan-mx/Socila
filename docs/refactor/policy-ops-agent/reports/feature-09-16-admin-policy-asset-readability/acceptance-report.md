@@ -1,7 +1,7 @@
 # 后台政策资产中文可读化（APR）验收报告
 
 > Author: Jan
-> Status: Ready for user testing（修复轮终态；用户UAT前不标记Accepted）
+> Status: Accepted（2026-09-17：UAT通过、squash合入main、生产迁移与部署完成）
 > Updated: 2026-09-16
 >
 > **结论失效声明**：本报告中"四轮独立复审Critical=0、Important=0"（§3.14）与"Ready for user testing/Accepted"结论已被后续独立复审取代——复审发现Important×6（I1有效期上界方向、I2非成员overlay载体遗漏、I3显示字段污染政策快照contentHash、I4 Agent参数草案缺正式名称、I5参数引用跨地区去重覆盖、I6门禁不可拉取MinIO镜像）。下列§1～§4为基线`3272577`历史记录，非最终结论；修复以RED→GREEN逐项补齐后，须由最终HEAD新鲜门禁与新独立复审重新出具结论，用户UAT前至多Ready for user testing。
@@ -108,6 +108,16 @@
 | 独立复审终局 | 复审A：Critical=0、Important=0（I1～I6逐项关闭）；复审B：I1～I6确认关闭，新增I-B1/B2/B3/B6已修复（判别力测试RED→GREEN），B4/B5与预存在Minor登记于§5.2边界 |
 
 **终态：Ready for user testing（用户人工验收前不标记Accepted）。**
+
+### 5.5 合并与生产生效记录（2026-09-17）
+
+| 事项 | 结果 |
+| --- | --- |
+| 用户UAT | 通过（本地隔离演练环境：0020后全新库+standalone构建，Jan管理员实测四页与广东restrict分区展开） |
+| 合并 | PR#2以**squash单提交**合入main：`3f387db`（用户指定合并方式；e2e-gates首次运行失败经裁决为APR新增5个管理端用例的Jan登录打满用户级5次/5分钟限流窗口所致——`loginViaApi`增加按账号会话缓存后本地重演15/15全绿，CI重跑六项success） |
+| 生产迁移 | 0019+0020对持久policyops执行（`run-migrations`退出0）：journal 18→**20**；42表行数对账仅预期差异（账本+2、0019新增2张0行审计表），**全部业务表行数零变化**；rule_sets 6/6人工名、params 75行=55人工名+20编号回退+0空名 |
+| 生产部署 | `docker build` web:latest/agent:latest（源=3f387db检出；回滚锚web:pre-apr/agent:pre-apr已留）；`compose up -d web agent worker beat`滚动替换；九容器healthy（migrate为一次性Exited 0）；冒烟web `/api/health`={"status":"ok","database":"ok"}、agent `/internal/health`={"status":"ok"}、入口/api/health 200；容器BUILD_ID与APR chunk（contentRuleId/生效overlay）核验为本次构建 |
+| 生产备份 | `backup/db/policyops-pre-apr-20260917-024229.dump`+SHA-256（fe2624cf…），恢复对账42表一致 |
 
 ### 5.4 修复轮边界与未执行事项
 
