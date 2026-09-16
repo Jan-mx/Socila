@@ -1,5 +1,6 @@
 {
   "rule_set_id": "RS-SC-PLAN-V1",
+  "name": "四川规划主规则集",
   "description": "四川省规划规则集：继承国家baseline全部16条规则（四川v1无新增可执行地方规则；医保退休年限省级统一文件尚为征求意见状态，按PRD停止编码转人工裁决）",
   "status": "published",
   "effective_from": "2024-01-01",

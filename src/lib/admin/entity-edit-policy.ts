@@ -96,8 +96,10 @@ const RULE_EDITABLE = [
   "dsl_version",
 ] as const;
 
-/** 参数草稿可编辑业务字段。 */
+/** 参数草稿可编辑业务字段。APR-FR-010/§9：正式名称与说明可编辑，受控字段仍拒绝。 */
 const PARAM_EDITABLE = [
+  "name",
+  "description",
   "type",
   "value",
   "unit",
@@ -115,8 +117,9 @@ const PARAM_EDITABLE = [
   "evidence",
 ] as const;
 
-/** 规则集草稿可编辑业务字段。 */
+/** 规则集草稿可编辑业务字段。APR-FR-003/§9：正式中文名称可编辑。 */
 const RULE_SET_EDITABLE = [
+  "name",
   "description",
   "rules",
   "conflictResolution",

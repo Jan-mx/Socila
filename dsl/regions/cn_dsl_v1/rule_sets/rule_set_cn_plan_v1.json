@@ -1,5 +1,6 @@
 {
   "rule_set_id": "RS-CN-PLAN-V1",
+  "name": "国家规划主规则集",
   "description": "国家baseline规划主规则集：全国统一的归一化、退休、养老、医保、失业与门禁框架（地区overlay在继承链上叠加）",
   "status": "published",
   "effective_from": "2025-01-01",

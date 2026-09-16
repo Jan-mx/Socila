@@ -4,9 +4,13 @@ import { params } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import type { DiscoveredRegion } from "@/lib/dsl/region-manifest";
 import { parseOverlayOperation } from "@/lib/dsl/overlay-operation";
+import { assertDisplayMeta } from "@/lib/dsl/display-names";
 
 interface ScalarParamEntry {
   param_id: string;
+  // APR-FR-010/017：正式中文名称必填（缺失装载失败），说明可选。
+  name?: string;
+  description?: string | null;
   type: "number" | "boolean" | "string" | "array";
   value: unknown;
   unit?: string;
@@ -19,6 +23,9 @@ interface ScalarParamEntry {
 
 interface TableParamEntry {
   param_id: string;
+  // APR-FR-010/017：同上。
+  name?: string;
+  description?: string | null;
   type: "table" | "timeline";
   effective_from?: string;
   effective_to?: string | null;
@@ -77,6 +84,11 @@ export async function seedParams(region: DiscoveredRegion) {
       jurisdictionCode,
       businessKey: p.param_id,
       paramId: p.param_id,
+      // APR-FR-010/011：装载入口强制正式中文名称（缺失即装载失败）。
+      ...assertDisplayMeta(p.param_id, {
+        name: p.name,
+        description: p.description,
+      }),
       type: p.type,
       value: p.value,
       unit: p.unit ?? null,
@@ -139,6 +151,11 @@ export async function seedParams(region: DiscoveredRegion) {
       jurisdictionCode,
       businessKey: t.param_id,
       paramId: t.param_id,
+      // APR-FR-010/011：同上。
+      ...assertDisplayMeta(t.param_id, {
+        name: t.name,
+        description: t.description,
+      }),
       type: t.type,
       value: null,
       unit: null,

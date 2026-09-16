@@ -5,6 +5,8 @@
   "params": [
     {
       "param_id": "P-UNEMPLOYMENT-MAX-MONTHS",
+      "name": "失业保险金法定最长领取月数",
+      "description": "单次领取失业保险金的法定期限上限为24个月，重新就业后再次失业的期限与前次未领取期限合并计算（《社会保险法》第四十六条、《失业保险条例》第十七条）。",
       "type": "number",
       "value": 24,
       "unit": "months",
@@ -24,13 +26,18 @@
           "content_sha256": "b69d5d490f9b6b70394dfb670c2e1a0a959f306e70380bb678ee4866f947d464",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-SOCIAL-INSURANCE-LAW/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "article", "reference": "第四十六条" },
+          "locator": {
+            "type": "article",
+            "reference": "第四十六条"
+          },
           "excerpt": "重新就业后，再次失业的，缴费时间重新计算，领取失业保险金的期限与前次失业应当领取而尚未领取的失业保险金的期限合并计算，最长不超过二十四个月。"
         }
       ]
     },
     {
       "param_id": "P-CI-FLEX-CHOICE-LOWER-RATIO",
+      "name": "灵活就业人员缴费基数区间下限比例",
+      "description": "2019年5月起，灵活就业人员可在全省全口径城镇单位就业人员平均工资的60%至300%之间自愿选择养老保险缴费基数，本参数为区间下限比例60%。",
       "type": "number",
       "value": 0.6,
       "unit": "ratio",
@@ -50,15 +57,20 @@
           "content_sha256": "61791c8194888fdc379a7c47f71d33269073fff9f6df46acf37690fd6d968bb0",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-GOB-2019-13/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "section", "reference": "三、调整社保缴费基数政策" },
+          "locator": {
+            "type": "section",
+            "reference": "三、调整社保缴费基数政策"
+          },
           "excerpt": "个体工商户和灵活就业人员参加企业职工基本养老保险，可以在本省全口径城镇单位就业人员平均工资的60%至300%之间选择适当的缴费基数。"
         }
       ]
     },
     {
       "param_id": "P-CI-FLEX-CHOICE-UPPER-RATIO",
+      "name": "灵活就业人员缴费基数区间上限比例",
+      "description": "灵活就业人员养老保险缴费基数可选择区间的上限比例300%。",
       "type": "number",
-      "value": 3.0,
+      "value": 3,
       "unit": "ratio",
       "effective_from": "2019-05-01",
       "source": "doc:DOC-CN-GOB-2019-13#三、调整社保缴费基数政策",
@@ -76,7 +88,10 @@
           "content_sha256": "61791c8194888fdc379a7c47f71d33269073fff9f6df46acf37690fd6d968bb0",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-GOB-2019-13/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "section", "reference": "三、调整社保缴费基数政策" },
+          "locator": {
+            "type": "section",
+            "reference": "三、调整社保缴费基数政策"
+          },
           "excerpt": "个体工商户和灵活就业人员参加企业职工基本养老保险，可以在本省全口径城镇单位就业人员平均工资的60%至300%之间选择适当的缴费基数。"
         }
       ]
@@ -85,14 +100,32 @@
   "tables": [
     {
       "param_id": "T-UNEMPLOYMENT-DURATION-BY-YEARS",
+      "name": "失业保险金期限国家法定分档表",
+      "description": "按累计缴费年限分档确定最高领取月数的国家法定上限表（《社会保险法》第四十六条、《失业保险条例》第十七条）；实际执行标准由参保地规定，地区可通过显式replace覆盖本表。",
       "type": "table",
       "effective_from": "2011-07-01",
-      "key_fields": ["insured_years"],
-      "value_fields": ["months"],
+      "key_fields": [
+        "insured_years"
+      ],
+      "value_fields": [
+        "months"
+      ],
       "rows": [
-        { "insured_years_min": 1, "insured_years_max": 5, "months": 12 },
-        { "insured_years_min": 5, "insured_years_max": 10, "months": 18 },
-        { "insured_years_min": 10, "insured_years_max": 99, "months": 24 }
+        {
+          "insured_years_min": 1,
+          "insured_years_max": 5,
+          "months": 12
+        },
+        {
+          "insured_years_min": 5,
+          "insured_years_max": 10,
+          "months": 18
+        },
+        {
+          "insured_years_min": 10,
+          "insured_years_max": 99,
+          "months": 24
+        }
       ],
       "note": "国家法定期限上限：按累计缴费年限分档的最高领取月数（社保法第46条/失业保险条例第17条）。实际执行标准由参保地规定，地区可通过replace覆盖本表。",
       "source": "doc:DOC-CN-SOCIAL-INSURANCE-LAW#第四十六条",
@@ -109,7 +142,10 @@
           "content_sha256": "b69d5d490f9b6b70394dfb670c2e1a0a959f306e70380bb678ee4866f947d464",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-SOCIAL-INSURANCE-LAW/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "article", "reference": "第四十六条" },
+          "locator": {
+            "type": "article",
+            "reference": "第四十六条"
+          },
           "excerpt": "失业人员失业前用人单位和本人累计缴费满一年不足五年的，领取失业保险金的期限最长为十二个月；累计缴费满五年不足十年的，领取失业保险金的期限最长为十八个月；累计缴费十年以上的，领取失业保险金的期限最长为二十四个月。"
         },
         {
@@ -122,29 +158,80 @@
           "content_sha256": "b8187965656565984549569e9894a62cb3960f5a64aacac3749b80be2d7a3e04",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-UNEMPLOYMENT-REGULATION/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "article", "reference": "第十七条" },
+          "locator": {
+            "type": "article",
+            "reference": "第十七条"
+          },
           "excerpt": "失业人员失业前所在单位和本人按照规定累计缴费时间满1年不足5年的，领取失业保险金的期限最长为12个月；累计缴费时间满5年不足10年的，领取失业保险金的期限最长为18个月；累计缴费时间10年以上的，领取失业保险金的期限最长为24个月。"
         }
       ]
     },
     {
       "param_id": "T-MIN-PENSION-YEARS-BY-RETIRE-YEAR",
+      "name": "按月领取基本养老金最低缴费年限时间线",
+      "description": "按月领取基本养老金的最低缴费年限自2030年1月1日起由15年逐年提高至20年、每年提高6个月（国务院实施办法第二条、附件4）。",
       "type": "timeline",
       "effective_from": "2025-01-01",
-      "key_fields": ["retire_year"],
-      "value_fields": ["min_years"],
+      "key_fields": [
+        "retire_year"
+      ],
+      "value_fields": [
+        "min_years"
+      ],
       "rows": [
-        { "retire_year_max": 2029, "min_years": 15 },
-        { "retire_year_min": 2030, "retire_year_max": 2030, "min_years": 15.5 },
-        { "retire_year_min": 2031, "retire_year_max": 2031, "min_years": 16 },
-        { "retire_year_min": 2032, "retire_year_max": 2032, "min_years": 16.5 },
-        { "retire_year_min": 2033, "retire_year_max": 2033, "min_years": 17 },
-        { "retire_year_min": 2034, "retire_year_max": 2034, "min_years": 17.5 },
-        { "retire_year_min": 2035, "retire_year_max": 2035, "min_years": 18 },
-        { "retire_year_min": 2036, "retire_year_max": 2036, "min_years": 18.5 },
-        { "retire_year_min": 2037, "retire_year_max": 2037, "min_years": 19 },
-        { "retire_year_min": 2038, "retire_year_max": 2038, "min_years": 19.5 },
-        { "retire_year_min": 2039, "min_years": 20 }
+        {
+          "retire_year_max": 2029,
+          "min_years": 15
+        },
+        {
+          "retire_year_min": 2030,
+          "retire_year_max": 2030,
+          "min_years": 15.5
+        },
+        {
+          "retire_year_min": 2031,
+          "retire_year_max": 2031,
+          "min_years": 16
+        },
+        {
+          "retire_year_min": 2032,
+          "retire_year_max": 2032,
+          "min_years": 16.5
+        },
+        {
+          "retire_year_min": 2033,
+          "retire_year_max": 2033,
+          "min_years": 17
+        },
+        {
+          "retire_year_min": 2034,
+          "retire_year_max": 2034,
+          "min_years": 17.5
+        },
+        {
+          "retire_year_min": 2035,
+          "retire_year_max": 2035,
+          "min_years": 18
+        },
+        {
+          "retire_year_min": 2036,
+          "retire_year_max": 2036,
+          "min_years": 18.5
+        },
+        {
+          "retire_year_min": 2037,
+          "retire_year_max": 2037,
+          "min_years": 19
+        },
+        {
+          "retire_year_min": 2038,
+          "retire_year_max": 2038,
+          "min_years": 19.5
+        },
+        {
+          "retire_year_min": 2039,
+          "min_years": 20
+        }
       ],
       "note": "按月领取基本养老金最低缴费年限：2030年1月1日起由十五年逐步提高至二十年，每年提高六个月（渐进式延迟退休决定批准的国务院办法第二条、附件4）",
       "source": "doc:DOC-CN-NPC-DELAYED-RETIREMENT-2024#国务院办法第二条",
@@ -161,7 +248,10 @@
           "content_sha256": "69a02418f3ce5fbc6276135990e62731cfb6ae7c0b1524c3f2f855651ffa7d9b",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-NPC-DELAYED-RETIREMENT-2024/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "article", "reference": "国务院办法第二条" },
+          "locator": {
+            "type": "article",
+            "reference": "国务院办法第二条"
+          },
           "excerpt": "从2030年1月1日起，将职工按月领取基本养老金最低缴费年限由十五年逐步提高至二十年，每年提高六个月。职工达到法定退休年龄但不满最低缴费年限的，可以按照规定通过延长缴费或者一次性缴费的办法达到最低缴费年限，按月领取基本养老金。"
         },
         {
@@ -174,17 +264,30 @@
           "content_sha256": "b69d5d490f9b6b70394dfb670c2e1a0a959f306e70380bb678ee4866f947d464",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-SOCIAL-INSURANCE-LAW/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "article", "reference": "第十六条" },
+          "locator": {
+            "type": "article",
+            "reference": "第十六条"
+          },
           "excerpt": "参加基本养老保险的个人，达到法定退休年龄时累计缴费满十五年的，按月领取基本养老金。"
         }
       ]
     },
     {
       "param_id": "T-RETIREMENT-AGE-LOOKUP",
+      "name": "渐进式延迟法定退休年龄覆盖表",
+      "description": "渐进式延迟法定退休年龄改革的出生年月对照表（决定附件1至附件3口径），覆盖边界出生年份的法定退休年龄；表外出生年月由引擎按延迟规则推算。",
       "type": "table",
       "effective_from": "2025-01-01",
-      "key_fields": ["gender", "female_retire_type", "birth_year"],
-      "value_fields": ["legal_retire_age_years", "legal_retire_age_months", "original_retire_age_years"],
+      "key_fields": [
+        "gender",
+        "female_retire_type",
+        "birth_year"
+      ],
+      "value_fields": [
+        "legal_retire_age_years",
+        "legal_retire_age_months",
+        "original_retire_age_years"
+      ],
       "rows": [
         {
           "gender": "male",
@@ -250,7 +353,10 @@
           "content_sha256": "69a02418f3ce5fbc6276135990e62731cfb6ae7c0b1524c3f2f855651ffa7d9b",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/CN/DOC-CN-NPC-DELAYED-RETIREMENT-2024/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "article", "reference": "国务院办法第一条" },
+          "locator": {
+            "type": "article",
+            "reference": "国务院办法第一条"
+          },
           "excerpt": "从2025年1月1日起，男职工和原法定退休年龄为五十五周岁的女职工，法定退休年龄每四个月延迟一个月，分别逐步延迟至六十三周岁和五十八周岁；原法定退休年龄为五十周岁的女职工，法定退休年龄每二个月延迟一个月，逐步延迟至五十五周岁。"
         }
       ]

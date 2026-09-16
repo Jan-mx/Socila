@@ -1,5 +1,9 @@
 import { rulesReads } from "@/server/modules/rules/application";
 import { sanitizeRuleEdit } from "@/lib/admin/entity-edit-policy";
+import {
+  assertDisplayMeta,
+  DisplayMetaError,
+} from "@/lib/dsl/display-names";
 import { rulesWrites } from "@/server/modules/rules/application";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -74,6 +78,21 @@ async function handleUpdate(
         { error: "只能更新草稿状态的规则" },
         { status: 400 },
       );
+    }
+
+    // APR-FR-004/§9（二轮复审F1修复）：name提交时必须非空、无HTML尖括号——
+    // 白名单放行≠跳过校验（与规则集/参数入口同口径）。
+    if ("name" in sanitized.fields) {
+      try {
+        sanitized.fields.name = assertDisplayMeta(ruleId, {
+          name: sanitized.fields.name,
+        }).name;
+      } catch (err) {
+        if (err instanceof DisplayMetaError) {
+          return NextResponse.json({ error: err.message }, { status: 400 });
+        }
+        throw err;
+      }
     }
 
     const updated = await rulesWrites.updateRule(existing.id, sanitized.fields);

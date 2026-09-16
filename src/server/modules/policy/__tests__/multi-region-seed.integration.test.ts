@@ -72,6 +72,8 @@ function writeRegionAssets(
       params: [
         {
           param_id: SHARED_PARAM_ID,
+          name: `多地区共享参数（${slug}）`,
+          description: `多地区Seed隔离测试参数（${slug}）`,
           type: "number",
           value: paramValue,
           effective_from: "2025-01-01",
@@ -85,6 +87,7 @@ function writeRegionAssets(
     path.join(dir, "rule_sets", "rs.json"),
     JSON.stringify({
       rule_set_id: SHARED_RULE_SET_ID,
+      name: `多地区共享规则集（${slug}）`,
       description: `多地区共享规则集（${slug}）`,
       status: "published",
       effective_from: "2024-01-01",

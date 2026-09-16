@@ -7,6 +7,8 @@ interface PipelineEntity {
   entityType: string;
   jurisdictionCode: string | null;
   entityId: string;
+  /** APR-FR-015：精确版本的中文名称（发布卡片主展示；操作仍用稳定身份）。 */
+  displayName: string | null;
   status: string;
   version: number;
   updatedAt: string;
@@ -63,6 +65,7 @@ export async function GET() {
         entityType: "rule",
         jurisdictionCode: rule.jurisdictionCode,
         entityId: rule.ruleId,
+        displayName: rule.name ?? null,
         status: rule.status,
         version: rule.version,
         updatedAt: rule.updatedAt.toISOString(),
@@ -76,6 +79,7 @@ export async function GET() {
         entityType: "param",
         jurisdictionCode: param.jurisdictionCode,
         entityId: param.paramId,
+        displayName: param.name ?? null,
         status: param.status,
         version: param.version,
         updatedAt: param.updatedAt.toISOString(),
@@ -89,6 +93,7 @@ export async function GET() {
         entityType: "rule_set",
         jurisdictionCode: ruleSet.jurisdictionCode,
         entityId: ruleSet.ruleSetId,
+        displayName: ruleSet.name ?? null,
         status: ruleSet.status,
         version: ruleSet.version,
         updatedAt: ruleSet.updatedAt.toISOString(),

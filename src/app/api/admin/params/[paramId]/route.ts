@@ -5,6 +5,11 @@ import {
   validateParamRecord,
 } from "@/lib/admin/params-service";
 import { sanitizeParamEdit } from "@/lib/admin/entity-edit-policy";
+import {
+  assertDisplayDescription,
+  assertDisplayMeta,
+  DisplayMetaError,
+} from "@/lib/dsl/display-names";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +106,34 @@ async function handleUpdate(
         { error: "只能更新草稿状态的参数" },
         { status: 400 },
       );
+    }
+
+    // APR-FR-010/017/§9：白名单放行≠跳过校验——提交的name/description必须
+    // 非空（name）、无HTML尖括号；否则拒绝400（不静默落库）。
+    if ("name" in sanitized.fields) {
+      try {
+        sanitized.fields.name = assertDisplayMeta(paramId, {
+          name: sanitized.fields.name,
+        }).name;
+      } catch (err) {
+        if (err instanceof DisplayMetaError) {
+          return NextResponse.json({ error: err.message }, { status: 400 });
+        }
+        throw err;
+      }
+    }
+    if ("description" in sanitized.fields) {
+      try {
+        sanitized.fields.description = assertDisplayDescription(
+          paramId,
+          sanitized.fields.description,
+        );
+      } catch (err) {
+        if (err instanceof DisplayMetaError) {
+          return NextResponse.json({ error: err.message }, { status: 400 });
+        }
+        throw err;
+      }
     }
 
     const updated = await rulesWrites.updateParam(existing.id, sanitized.fields);

@@ -1,5 +1,6 @@
 {
   "rule_set_id": "RS-SHANGHAI-PLAN-V1",
+  "name": "上海规划主规则集",
   "description": "上海社保规划主规则集（SHV2纠偏：含失业金额与灵活缴费规则）",
   "status": "published",
   "effective_from": "2024-01-01",

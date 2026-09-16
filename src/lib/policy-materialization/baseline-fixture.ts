@@ -177,6 +177,52 @@ export function fixtureGitReader(fixture: PolicyBaselineFixture): GitReader {
   };
 }
 
+/**
+ * APR基线语义：为基线夹具的params/rule_set文件注入显示元数据回退名称
+ * （name=实体编号、description=null），等价于旧持久库执行0020迁移后的行状态。
+ *
+ * 这不改变任何政策内容：params/rule_set的contentHash剥离显示字段
+ * （manifest.policyContentOf），payloadShapeHash本就不含name/description，
+ * 因此基线→当前仓库的物化delta仍只反映真实政策内容变化（SHV2-AC-004契约保持）。
+ */
+export function fixtureGitReaderWithDisplayFallback(
+  fixture: PolicyBaselineFixture,
+): GitReader {
+  const base = fixtureGitReader(fixture);
+  const withFallback = (p: string, content: string): string => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      return content;
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return content;
+    }
+    const doc = parsed as Record<string, unknown>;
+    if (Array.isArray(doc.params) && Array.isArray(doc.tables) && typeof doc.policy_pack_id === "string") {
+      for (const list of [doc.params, doc.tables]) {
+        for (const entry of list as Array<Record<string, unknown>>) {
+          if (typeof entry.name !== "string") {
+            entry.name = String(entry.param_id ?? "");
+          }
+          if (entry.description === undefined) entry.description = null;
+        }
+      }
+      return JSON.stringify(doc);
+    }
+    if (typeof doc.rule_set_id === "string") {
+      if (typeof doc.name !== "string") doc.name = doc.rule_set_id;
+      return JSON.stringify(doc);
+    }
+    return content;
+  };
+  return {
+    ...base,
+    showHead: (p: string): string => withFallback(p, base.showHead(p)),
+  };
+}
+
 /** 用当前buildManifest重建基线manifest并核对四类计数（任一不符失败关闭）。 */
 export function assertFixtureBaselineCounts(fixture: PolicyBaselineFixture): void {
   const manifest = buildManifest(fixtureGitReader(fixture));

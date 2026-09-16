@@ -5,6 +5,8 @@
   "params": [
     {
       "param_id": "P-SC-CONTRIB-BASE-UPPER",
+      "name": "四川省2025年度职工社保缴费基数上限",
+      "description": "2025年度全省职工基本养老保险（含企业职工和机关事业单位）、失业保险、工伤保险缴费基数上限22938元/月（文件按自然年度编码）。",
       "type": "number",
       "value": 22938,
       "unit": "yuan/month",
@@ -25,13 +27,18 @@
           "content_sha256": "85b75a3157a594cfaf74038ae7612ddff572cd43c00f9c055d84726b885207b6",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/SC/DOC-SC-CONTRIBUTION-BASE-2025/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "body", "reference": "正文第一段" },
+          "locator": {
+            "type": "body",
+            "reference": "正文第一段"
+          },
           "excerpt": "2025年度全省职工基本养老保险（含企业职工基本养老保险和机关事业单位工作人员养老保险）、失业保险、工伤保险缴费基数上限为22938元/月，下限为4588元/月。"
         }
       ]
     },
     {
       "param_id": "P-SC-CONTRIB-BASE-LOWER",
+      "name": "四川省2025年度职工社保缴费基数下限",
+      "description": "2025年度全省职工基本养老保险、失业保险、工伤保险缴费基数下限4588元/月。",
       "type": "number",
       "value": 4588,
       "unit": "yuan/month",
@@ -52,13 +59,18 @@
           "content_sha256": "85b75a3157a594cfaf74038ae7612ddff572cd43c00f9c055d84726b885207b6",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/SC/DOC-SC-CONTRIBUTION-BASE-2025/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "body", "reference": "正文第一段" },
+          "locator": {
+            "type": "body",
+            "reference": "正文第一段"
+          },
           "excerpt": "2025年度全省职工基本养老保险（含企业职工基本养老保险和机关事业单位工作人员养老保险）、失业保险、工伤保险缴费基数上限为22938元/月，下限为4588元/月。"
         }
       ]
     },
     {
       "param_id": "P-SC-AVG-WAGE-2024",
+      "name": "四川省2024年度全省城镇单位就业人员平均工资",
+      "description": "上年度（2024年度）全省城镇全部单位就业人员平均工资7646元/月，作为灵活就业人员、领金期间失业人员等参加职工医保、生育保险和长期护理保险的缴费基数依据。",
       "type": "number",
       "value": 7646,
       "unit": "yuan/month",
@@ -79,7 +91,10 @@
           "content_sha256": "85b75a3157a594cfaf74038ae7612ddff572cd43c00f9c055d84726b885207b6",
           "artifact": "docs/refactor/policy-ops-agent/reports/stage-09-05-national-baseline-overlays/evidence/SC/DOC-SC-CONTRIBUTION-BASE-2025/original.html",
           "parse_version": "extracted-text-v1",
-          "locator": { "type": "body", "reference": "正文第二段" },
+          "locator": {
+            "type": "body",
+            "reference": "正文第二段"
+          },
           "excerpt": "2025年度灵活就业人员、领取失业保险金期间的人员等参加职工基本医疗保险、生育保险、长期护理保险，缴费涉及使用上年度全省城镇全部单位就业人员平均工资的，以7646元/月为依据执行。"
         }
       ]

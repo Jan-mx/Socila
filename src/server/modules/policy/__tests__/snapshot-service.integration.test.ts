@@ -82,6 +82,10 @@ describe("policy snapshot service (drill DB)", () => {
       jurisdictionCode: "310000",
       businessKey: "P-SH-MIN-WAGE",
       paramId: "P-SH-MIN-WAGE",
+      // 与Seed一致的人工正式名称与说明（APR-FR-010）。
+      name: "上海市月最低工资标准",
+      description:
+        "2024-07-01起执行的月最低工资标准2690元/月；沪人社规〔2025〕10号载明自2025-07-01起调整至2740元。",
       type: "number",
       value: 2690,
       status: "published",
@@ -110,6 +114,7 @@ describe("policy snapshot service (drill DB)", () => {
       jurisdictionCode: "310000",
       businessKey: target.businessKey,
       paramId: target.paramId,
+      name: target.name,
       type: target.type,
       value: { conflict: true },
       effectiveFrom: "2025-06-01",

@@ -22,7 +22,7 @@ import { Client } from "pg";
 import {
   DEFAULT_POLICY_BASELINE_FIXTURE_PATH,
   assertFixtureBaselineCounts,
-  fixtureGitReader,
+  fixtureGitReaderWithDisplayFallback,
   loadPolicyBaselineFixture,
 } from "./baseline-fixture";
 
@@ -41,7 +41,9 @@ function requireDrill(): void {
   }
 }
 
-/** 基线读取器：来自版本化夹具（加载即校验schema/SHA-256，计数在此显式核对）。 */
+/** 基线读取器：来自版本化夹具（加载即校验schema/SHA-256，计数在此显式核对）。
+ * 显示回退注入模拟0020迁移后旧持久库的真实行状态（name=编号回退、description=null）；
+ * 显示元数据不参与contentHash/payloadShape，基线→当前仓库的delta语义保持不变。 */
 function gitReaderBaseline() {
   const fixture = loadPolicyBaselineFixture(DEFAULT_POLICY_BASELINE_FIXTURE_PATH);
   if (fixture.sourceCommit !== BASELINE_COMMIT) {
@@ -50,7 +52,7 @@ function gitReaderBaseline() {
     );
   }
   assertFixtureBaselineCounts(fixture);
-  return fixtureGitReader(fixture);
+  return fixtureGitReaderWithDisplayFallback(fixture);
 }
 
 function gitReaderWorktree() {

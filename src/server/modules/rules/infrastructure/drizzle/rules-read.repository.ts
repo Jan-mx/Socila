@@ -7,7 +7,20 @@ import {
   tests,
   workflows,
 } from "@/lib/db/schema";
-import type { RulesReadRepository, RuleRow } from "../../application/ports";
+import type {
+  RulesReadRepository,
+  RuleRow,
+  RuleCandidateRow,
+} from "../../application/ports";
+import type { OverlayOperation } from "@/server/modules/policy/domain/overlay";
+
+/** date列（node-postgres返回Date或YYYY-MM-DD字符串）规范化为ISO日期字符串。 */
+function toIsoDate(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const text = String(value);
+  return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : text;
+}
 
 /** rules 域只读仓储的 Drizzle 实现（自 queries.ts 逐域迁移，行为保持一致）。 */
 export class DrizzleRulesReadRepository implements RulesReadRepository {
@@ -220,15 +233,82 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
     return rows[0] ?? null;
   }
 
-  async getLatestRuleSetVersion(ruleSetId: string) {
+  /** APR-FR-006：三元素精确身份，任何一项不符返回null（不跨地区/版本猜测）。 */
+  async getRuleSetExact(locator: {
+    ruleSetId: string;
+    jurisdictionCode: string;
+    version: number;
+  }): Promise<(typeof ruleSets.$inferSelect) | null> {
     const rows = await db
       .select()
       .from(ruleSets)
-      .where(eq(ruleSets.ruleSetId, ruleSetId))
-      .orderBy(desc(ruleSets.version))
+      .where(
+        and(
+          eq(ruleSets.ruleSetId, locator.ruleSetId),
+          eq(ruleSets.jurisdictionCode, locator.jurisdictionCode),
+          eq(ruleSets.version, locator.version),
+        ),
+      )
       .limit(1);
-
     return rows[0] ?? null;
+  }
+
+  /** APR-FR-007/NFR-002：成员解析/选择器候选的批量装载——
+   * 单查询取回继承链内、有效期覆盖asOfDate的published规则行。 */
+  async listRuleCandidates(locator: {
+    ruleIds: string[] | null;
+    jurisdictionCodes: string[];
+    asOfDate: string;
+  }): Promise<RuleCandidateRow[]> {
+    if (locator.jurisdictionCodes.length === 0) return [];
+    const conditions = [
+      eq(rules.status, "published"),
+      inArray(rules.jurisdictionCode, locator.jurisdictionCodes),
+      lte(rules.effectiveFrom, locator.asOfDate),
+      or(isNull(rules.effectiveTo), gte(sql`${locator.asOfDate}`, rules.effectiveTo!)),
+    ];
+    if (locator.ruleIds !== null) {
+      if (locator.ruleIds.length === 0) return [];
+      conditions.push(inArray(rules.ruleId, locator.ruleIds));
+    }
+    const rows = await db
+      .select()
+      .from(rules)
+      .where(and(...conditions));
+    return rows.map((row) => ({
+      ruleId: row.ruleId,
+      jurisdictionCode: row.jurisdictionCode ?? "",
+      // rules无policy_pack_id列：同地区同业务键的多版本行是版本更替而非跨包冲突
+      // （与getEffectiveRules去重语义一致），以地区为逻辑包标识。
+      policyPackId: `RULES:${row.jurisdictionCode ?? ""}`,
+      version: row.version,
+      name: row.name,
+      status: row.status,
+      operation: row.operation as OverlayOperation,
+      targetBusinessKey: row.targetBusinessKey ?? null,
+      effectiveFrom: toIsoDate(row.effectiveFrom) ?? "",
+      effectiveTo: toIsoDate(row.effectiveTo),
+    }));
+  }
+
+  /** APR-FR-012：参数引用反查索引——单查询取回全部规则的身份与parameter_refs。 */
+  async listRuleParamReferenceIndex() {
+    const rows = await db
+      .select({
+        ruleId: rules.ruleId,
+        name: rules.name,
+        jurisdictionCode: rules.jurisdictionCode,
+        version: rules.version,
+        parameterRefs: rules.parameterRefs,
+      })
+      .from(rules);
+    return rows.map((row) => ({
+      ruleId: row.ruleId,
+      name: row.name,
+      jurisdictionCode: row.jurisdictionCode,
+      version: row.version,
+      parameterRefs: row.parameterRefs,
+    }));
   }
 
   async listRuleSets(filters?: { jurisdictionCode?: string }) {

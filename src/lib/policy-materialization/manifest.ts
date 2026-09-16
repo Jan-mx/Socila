@@ -108,6 +108,26 @@ export const REGION_DIRS: ReadonlyArray<{ dir: string; jurisdiction: RegionJuris
 ];
 
 /**
+ * 参数内容哈希的载荷投影：剥离APR显示元数据。
+ *
+ * 名称/说明是纯显示字段（APR-FR-010/017），不属于政策内容：
+ * - 剥离后，补写名称的DSL文件与补写前产生相同contentHash，
+ *   既有持久库快照/批次成员哈希语义不漂移（APR-NFR-004）；
+ * - rules的name是规则既有业务字段，不做剥离；rule_set的description是原有详细说明，
+ *   仅剥离新增的name；params的name/description均为APR新增，一并剥离。
+ */
+function policyContentOf(
+  entry: Record<string, unknown>,
+  stripKeys: string[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...entry };
+  for (const key of stripKeys) {
+    delete out[key];
+  }
+  return out;
+}
+
+/**
  * 从已提交内容构建manifest。gitReader由调用方注入（生产用child_process执行git，
  * 测试注入假实现）。
  */
@@ -145,13 +165,18 @@ export function buildManifest(git: GitReader): PolicyMaterializationManifest {
       ...pack.params.map((p) => ({
         businessKey: p.param_id as string,
         kind: "scalar" as const,
-        contentHash: sha256(canonicalJson(p)),
+        // APR：内容哈希剥离显示元数据（name/description），政策内容漂移判定不受影响。
+        contentHash: sha256(
+          canonicalJson(policyContentOf(p as Record<string, unknown>, ["name", "description"])),
+        ),
         payload: p,
       })),
       ...pack.tables.map((t) => ({
         businessKey: t.param_id as string,
         kind: "table" as const,
-        contentHash: sha256(canonicalJson(t)),
+        contentHash: sha256(
+          canonicalJson(policyContentOf(t as Record<string, unknown>, ["name", "description"])),
+        ),
         payload: t,
       })),
     ];

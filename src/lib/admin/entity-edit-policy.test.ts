@@ -119,3 +119,32 @@ describe("规则集编辑白名单（审查缺陷2）", () => {
     expect(sanitizeRuleSetEdit({ rules: [], version: 3 }).ok).toBe(false);
   });
 });
+
+describe("APR-FR-003/010/§9：名称与说明进入编辑白名单，受控字段仍拒绝", () => {
+  it("参数草稿允许name与description", () => {
+    const out = sanitizeParamEdit({
+      name: "上海市最低工资标准",
+      description: "按人社局公布口径维护",
+    });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.fields.name).toBe("上海市最低工资标准");
+      expect(out.fields.description).toBe("按人社局公布口径维护");
+    }
+  });
+
+  it("规则集草稿允许name", () => {
+    const out = sanitizeRuleSetEdit({ name: "国家规划主规则集" });
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.fields.name).toBe("国家规划主规则集");
+  });
+
+  it("名称字段不放松受控字段：name+status仍整体拒绝", () => {
+    const out = sanitizeRuleSetEdit({ name: "x", status: "published" });
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.controlledFields).toContain("status");
+    const outParam = sanitizeParamEdit({ name: "x", jurisdiction_code: "CN" });
+    expect(outParam.ok).toBe(false);
+    if (!outParam.ok) expect(outParam.controlledFields).toContain("jurisdiction_code");
+  });
+});

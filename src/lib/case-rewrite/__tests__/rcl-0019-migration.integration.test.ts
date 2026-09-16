@@ -179,9 +179,11 @@ describe("0019 案例改写审计migration（SHV2-FR-017/AC-014）", () => {
       const journal = JSON.parse(
         readFileSync(path.join(process.cwd(), "drizzle", "meta", "_journal.json"), "utf8"),
       ) as { entries: Array<{ idx: number; when: number; tag: string }> };
-      const last = journal.entries[journal.entries.length - 1];
-      expect(last.tag).toBe("0019_case_rewrite_audit");
-      expect(last.when).toBe(1788797000000);
+      // SHV2契约：0019以固定when进入journal并保持整体严格单调。
+      // "0019是否最新条目"不属于本测试语义（journal单调与最新性由
+      // src/lib/db/migration-lf.contract.test.ts统一钉住；0020 APR显示元数据迁移在其后）。
+      const entry0019 = journal.entries.find((e) => e.tag === "0019_case_rewrite_audit");
+      expect(entry0019?.when).toBe(1788797000000);
       const ws = journal.entries.map((e) => e.when);
       for (let i = 1; i < ws.length; i++) expect(ws[i]).toBeGreaterThan(ws[i - 1]);
     });

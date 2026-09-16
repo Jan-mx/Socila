@@ -43,6 +43,7 @@ import {
   manifestHash as computeManifestHash,
   type PolicyMaterializationManifest,
 } from "./manifest";
+import { assertDisplayMeta } from "@/lib/dsl/display-names";
 import {
   buildPackSnapshotPayload,
   buildPlan,
@@ -346,6 +347,8 @@ async function insertEntity(
   }
   if (e.entityType === "param") {
     const p = e.payload as {
+      name?: unknown;
+      description?: unknown;
       type?: string;
       value?: unknown;
       unit?: string | null;
@@ -365,6 +368,12 @@ async function insertEntity(
         jurisdictionCode: e.jurisdictionCode,
         businessKey: e.businessKey,
         paramId: e.businessKey,
+        // APR-FR-010/017：物化入口强制正式中文名称。名称/说明是显示元数据，
+        // 不进入payloadShapeHash（shapes.ts），不参与内容漂移判定。
+        ...assertDisplayMeta(e.businessKey, {
+          name: p.name,
+          description: p.description,
+        }),
         type: (p.type as string) ?? "number",
         value: (p.value as unknown) ?? null,
         unit: (p.unit as string | null) ?? null,
@@ -386,7 +395,8 @@ async function insertEntity(
   }
   if (e.entityType === "rule_set") {
     const p = e.payload as {
-      description?: string;
+      name?: unknown;
+      description?: unknown;
       effective_from?: string;
       rules?: string[];
       conflict_resolution?: unknown;
@@ -396,6 +406,8 @@ async function insertEntity(
       .values({
         ruleSetId: e.businessKey,
         jurisdictionCode: e.jurisdictionCode,
+        // APR-FR-003/017：物化入口强制正式中文名称（显示元数据，不参与内容哈希）。
+        ...assertDisplayMeta(e.businessKey, { name: p.name }),
         description: (p.description as string) ?? null,
         status: "draft",
         effectiveFrom: (p.effective_from as string) ?? "2024-01-01",

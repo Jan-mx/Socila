@@ -16,6 +16,8 @@ interface RegionalExampleFixture {
   name: string;
   params: Array<{
     paramId: string;
+    // APR-FR-010/017：params.name NOT NULL——测试夹具同样提供正式名称。
+    name: string;
     type: "number";
     value: number;
     note: string;
@@ -28,8 +30,8 @@ export const REGIONAL_EXAMPLE_FIXTURES: RegionalExampleFixture[] = [
     packId: "GD-EXAMPLE-BASE",
     name: "广东省 overlay 示例包（阶段03 示例数据）",
     params: [
-      { paramId: "P-GD-MIN-WAGE-BASE", type: "number", value: 2300, note: "示例：广东最低工资基数（元/月）" },
-      { paramId: "P-GD-MEDICAL-CAP", type: "number", value: 7800, note: "示例：广东医保封顶线相关基数（元/月）" },
+      { paramId: "P-GD-MIN-WAGE-BASE", name: "示例广东最低工资基数参数", type: "number", value: 2300, note: "示例：广东最低工资基数（元/月）" },
+      { paramId: "P-GD-MEDICAL-CAP", name: "示例广东医保封顶线基数参数", type: "number", value: 7800, note: "示例：广东医保封顶线相关基数（元/月）" },
     ],
   },
   {
@@ -37,8 +39,8 @@ export const REGIONAL_EXAMPLE_FIXTURES: RegionalExampleFixture[] = [
     packId: "SC-EXAMPLE-BASE",
     name: "四川省 overlay 示例包（阶段03 示例数据）",
     params: [
-      { paramId: "P-SC-MIN-WAGE-BASE", type: "number", value: 2100, note: "示例：四川最低工资基数（元/月）" },
-      { paramId: "P-SC-MEDICAL-CAP", type: "number", value: 6600, note: "示例：四川医保封顶线相关基数（元/月）" },
+      { paramId: "P-SC-MIN-WAGE-BASE", name: "示例四川最低工资基数参数", type: "number", value: 2100, note: "示例：四川最低工资基数（元/月）" },
+      { paramId: "P-SC-MEDICAL-CAP", name: "示例四川医保封顶线基数参数", type: "number", value: 6600, note: "示例：四川医保封顶线相关基数（元/月）" },
     ],
   },
 ];
@@ -85,6 +87,7 @@ export async function installRegionalExampleFixtures(): Promise<void> {
           jurisdictionCode: fixture.jurisdictionCode,
           businessKey: p.paramId,
           paramId: p.paramId,
+          name: p.name,
           type: p.type,
           value: p.value,
           effectiveFrom: "2025-01-01",

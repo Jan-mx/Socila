@@ -50,6 +50,10 @@ const RuleDraftSchema = z.object({
 const ParamDraftSchema = z.object({
   temp_id: z.string(),
   param_id: z.string(),
+  // APR-FR-010/017：草案可携带正式中文名称与说明；缺失时按兼容回退
+  // （name=编号，UI标记"名称待补充"），人工审核入口补齐。
+  name: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
   business_key: z.string().nullable().optional(),
   type: z.string().default("number"),
   value: z.unknown(),
@@ -185,7 +189,15 @@ export async function materializeDraftBundle(
         .insert(rulesTable)
         .values({
           ruleId: r.rule_id,
-          name: r.name,
+          // 三轮复审M3：规则name与参数草案同口径——trim后非空且无HTML尖括号
+          // 才采用草案值，否则回退稳定rule_id（UI按isFallbackName标"名称待补充"）。
+          name:
+            typeof r.name === "string" &&
+            r.name.trim().length > 0 &&
+            !r.name.includes("<") &&
+            !r.name.includes(">")
+              ? r.name.trim()
+              : r.rule_id,
           module: r.module ?? "draft",
           dslVersion: "SOCILA-DSL-1.0",
           priority: r.priority ?? 0,
@@ -213,6 +225,24 @@ export async function materializeDraftBundle(
           jurisdictionCode: bundle.jurisdiction_code,
           businessKey: p.business_key ?? p.param_id,
           paramId: p.param_id,
+          // APR-FR-017：草案导入兼容回退——无正式名称时暂以编号占位
+          // （UI标记"名称待补充"），审核后经管理端白名单补齐。
+          // 二轮复审F2修复：草案显式携带的name/description同样拒绝HTML尖括号
+          // （§9统一口径；非法值回退编号/空说明，不中断草案导入）。
+          name:
+            typeof p.name === "string" &&
+            p.name.trim().length > 0 &&
+            !p.name.includes("<") &&
+            !p.name.includes(">")
+              ? p.name.trim()
+              : p.param_id,
+          description:
+            typeof p.description === "string" &&
+            p.description.trim().length > 0 &&
+            !p.description.includes("<") &&
+            !p.description.includes(">")
+              ? p.description.trim()
+              : null,
           type: p.type ?? "number",
           value: p.value ?? null,
           unit: p.unit ?? null,

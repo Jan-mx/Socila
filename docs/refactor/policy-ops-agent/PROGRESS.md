@@ -2,9 +2,11 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-15
+> Updated: 2026-09-16
 
 ## 当前结论
+
+> APR进展（2026-09-16）：后台政策资产中文可读化Feature（`docs/prd/09-16-feature-admin-policy-asset-readability.md`）在功能分支`codex/apr-policy-asset-readability`（基线main@a834d32）实现完成：规则集/参数显示元数据（0020迁移+DSL人工名称逐项补全）、成员解析与选择器、发布分组/卡片/历史名称真实性。新鲜门禁与独立复审证据见`reports/feature-09-16-admin-policy-asset-readability/acceptance-report.md`§3与下文"当前任务验证（09-16 APR）"小节。0020未对持久policyops执行（须另行fresh授权）。
 
 > SHV2进展（2026-09-13）：功能分支`codex/shanghai-case-v2@a85420f`重新进入Updating/Reopened。生产MinIO bucket=0、RAG七张表=0；同步器仅登记downloaded版本，尚无DocumentTree/chunks/embeddings，Web对话未接入RAG。ensure期间冲突对象仍可能在事务外verify前留下RAG登记。`WI-20260913-01`已定义最小运行闭环；本轮只更新文档，不写MinIO/数据库、不合并目标分支。
 
@@ -792,3 +794,19 @@ PRD `docs/prd/09-15-feature-llm-autonomous-tool-routing.md`。根因（PRD §2.2
 - 数据与容器边界：sources/fetches/versions/trees/chunks/embeddings保持`2/23/23/23/185/185`；除Web外agent/worker/beat/postgres/redis/proxy/minio容器ID逐项不变，三个生产持久卷不变；未执行migration、seed、RAG同步或索引。
 
 状态：**UAT通过，Ready for PR CI**。下一步仅追加本docs-only验收提交并推送，创建ATR→main PR；六项GitHub CI必须精确绑定最终PR HEAD并全部success后才允许squash合并。当前不创建Tag或Release。
+
+## 当前任务验证（09-16 APR 后台政策资产中文可读化，2026-09-16本地新鲜执行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD Red | 已记录；Batch1单元9文件首跑25失败/16通过（模块缺失+行为断言）；集成三套件与页面源码契约实现前Red |
+| Node单元（`npm test`） | PASS；103文件/1037通过、skip 0（APR新增/更新11文件97用例） |
+| 数据库门禁（`scripts/apr-db-gate.mjs`：任务专属apr-drill-pg全新PG17+pgvector+双MinIO） | PASS；migration×2/bootstrap×2/seed×2幂等+seed名称落库DO块核对；`npm run test:db` 32文件/176通过skip 0；agent.migrate --with-roles×2幂等；pytest -m integration 131通过skip 0 |
+| Python门禁（零Python改动） | PASS；ruff 0、mypy 36文件0错误、pytest非集成137通过（首轮jieba冷编译警告被error过滤器升级的环境现象——既有pyproject注释记载，缓存后复跑全过） |
+| TypeScript / ESLint / Build | PASS；tsc退出0；`eslint src e2e --max-warnings 0` 0问题；build退出0（仅1条既有citation-verifier warning） |
+| Chromium E2E | PASS；`e2e/apr-admin-readability.spec.ts` 4/4（全新apr_e2e3库+最终standalone构建；覆盖AC-001～005/007/008/009/010/011） |
+| Secret / 差异 / 案例库 | PASS；scan-secrets --all 988文件零命中；`git diff --check`退出0；案例库`--check` ok；diff 65文件全属APR范围 |
+| 独立复审（三轮+第四轮确认） | 第一轮Critical×1经od字节核实为误报（反例URL为斜杠非法日期`2026/01/01`，非重复断言），Important×2修复；第二轮Critical 0/Important 1（F1 PATCH判别力）修复+Minor×5全部处置（含规则name写路径统一校验、创建/编辑成员校验对齐、引用按地区链过滤、死入口删除）；第三轮Critical 0/Important 0/Minor 4（全部加固：maxBuffer、网络枚举、测试预清理、文档补记）；第四轮结论Critical=0、Important=0 |
+| 关键不变量 | 显示元数据（name/description）剥离出params contentHash与payloadShape——0020补写名称零物化/快照漂移（apr-display-metadata 3例+shv2-delta/materializer镜像集成证明）；规则引擎黄金回归、发布门禁、历史重放、地区隔离语义零变化；发布历史无法精确解析显示"名称不可用"不冒充 |
+| Docker/工作树零残留 | 门禁容器`apr-drill-pg`/`apr-drill-minio-a`/`apr-drill-minio-b`由脚本finally删除并容器/卷/网络枚举零残留；E2E容器`apr-e2e-pg`与辅助工作树`F:/Socila-apr-wt`在提交推送后清理（结果记于下方交付行） |
+| 交付 | 分支`codex/apr-policy-asset-readability`（基线main`a834d32`）单一提交；0020/持久数据补写/生产部署均未执行（待fresh授权）；未创建PR、未合并main、未创建Tag/Release |
