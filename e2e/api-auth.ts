@@ -8,7 +8,18 @@
  * 其余spec的“登录前置数据准备”统一改走NextAuth callback API（用户级
  * 5次/5分钟/规范化用户名限流依然生效，各spec独立用户名互不影响）。
  */
-import { expect, type Page } from "@playwright/test";
+import { expect, type Cookie, type Page } from "@playwright/test";
+
+/**
+ * 修复轮补充（e2e-gates修复）：按用户名的登录会话缓存。
+ * 背景：用户级登录限流为5次/5分钟/规范化用户名（AUTH-NFR-003）。APR新增的
+ * 管理端spec必须以Jan管理员登录且用例数≥5，会把5分钟窗口内Jan的登录配额
+ * 耗尽，导致其后auth.spec及shv2/task3/task4的管理员登录确定性429（两次CI
+ * 失败同4例的根因）。同一worker内同账号只做一次真实登录，后续用例复用
+ * session cookie（等价登录态，不绕过任何安全控制；auth.spec的页面流/负例
+ * 专测不经此助手，语义不变）。
+ */
+const sessionCookieCache = new Map<string, Cookie[]>();
 
 /** 通过API注册（响应201；409视为已存在，幂等复用）。 */
 export async function registerViaApi(
@@ -33,6 +44,11 @@ export async function loginViaApi(
   username: string,
   password: string,
 ): Promise<void> {
+  const cached = sessionCookieCache.get(username);
+  if (cached) {
+    await page.context().addCookies(cached);
+    return;
+  }
   const csrfRes = await page.context().request.get("/api/auth/csrf");
   expect(csrfRes.status()).toBe(200);
   const { csrfToken } = (await csrfRes.json()) as { csrfToken: string };
@@ -43,6 +59,7 @@ export async function loginViaApi(
   // 302重定向目标：成功→/或callbackUrl；失败→/login?error=...
   expect([302, 303]).toContain(res.status());
   expect(res.headersArray().some((h) => h.name.toLowerCase() === "location" && h.value.includes("error="))).toBe(false);
+  sessionCookieCache.set(username, await page.context().cookies());
 }
 
 /** 注册+登录+进入 /chat 的组合前置（替代逐用例的登录页表单提交）。 */
