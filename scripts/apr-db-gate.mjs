@@ -5,7 +5,7 @@
  * 行为：
  *   1. 创建任务专属容器 `apr-drill-pg`（pgvector/pgvector:pg17，
  *      POSTGRES_PASSWORD=postgres，仅127.0.0.1自动高位端口）与隔离MinIO
- *      `apr-drill-minio-a`/`apr-drill-minio-b`（minio/minio:latest）；
+ *      `apr-drill-minio-a`/`apr-drill-minio-b`（quay.io固定digest，与CI Compose同源）；
  *   2. 数据库 `apr_drill`：migration×2、bootstrap×2、seed×2（幂等验证）；
  *   3. `npm run test:db`全量（显式SOCILA_TEST_DATABASE_URL，零skip）；
  *   4. agent.migrate --with-roles×2幂等 + pytest -m integration（含RAG MinIO）；
@@ -13,11 +13,33 @@
  * 全程不使用、不删除、不重建任何 `socila-*` 容器或 socila_* 数据卷。
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 const TSX_CLI = path.join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
+
+// 修复轮I6：MinIO镜像复用仓库CI已批准的quay.io固定digest（单一来源=
+// infra/prod/docker-compose.ci.yml，运行时解析，禁止latest/自行猜测——
+// Docker Hub上的minio官方latest标签当前manifest inspect denied且不确定）。
+function approvedMinioImage() {
+  // 假设声明（复审A-Minor）：本解析假定compose中含"minio"与"image:"的首个服务块
+  // 即MinIO服务；若未来compose新增其他含小写"minio"子串且带image:的服务块，
+  // 形状校验（quay+RELEASE+@sha256:64hex）不符会直接抛错失败而非静默用错镜像。
+  const compose = readFileSync(
+    path.join(process.cwd(), "infra", "prod", "docker-compose.ci.yml"),
+    "utf-8",
+  );
+  const service = compose
+    .split("\n  ")
+    .find((block) => block.includes("minio") && block.includes("image:"));
+  const match = service?.match(/image:\s*(\S+)/);
+  if (!match || !/^quay\.io\/minio\/minio:RELEASE\..+@sha256:[0-9a-f]{64}$/.test(match[1])) {
+    throw new Error("无法从docker-compose.ci.yml解析CI批准的quay.io固定MinIO镜像");
+  }
+  return match[1];
+}
+const MINIO_IMAGE = approvedMinioImage();
 
 // —— 任务专属资源清单（AGENTS.md：创建前记录精确名称/路径）——
 const CONTAINERS = ["apr-drill-pg", "apr-drill-minio-a", "apr-drill-minio-b"];
@@ -133,7 +155,7 @@ function main() {
         "-e", "MINIO_ROOT_USER=minioadmin",
         "-e", "MINIO_ROOT_PASSWORD=minioadmin",
         "-p", "127.0.0.1::9000",
-        "minio/minio:latest",
+        MINIO_IMAGE,
         "server", "/data",
       ]);
     }

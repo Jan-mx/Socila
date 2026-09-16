@@ -45,6 +45,7 @@ interface Param {
   keyFields: string[] | null;
   valueFields: string[] | null;
   note: string | null;
+  evidence: unknown;
   version: number;
   status: string;
   operation: string | null;
@@ -88,7 +89,9 @@ function statusVariant(s: string): "published" | "draft" | "retired" | "info" {
 /** 参数展开区：说明、表格/时间线、来源、证据、overlay操作、引用规则（APR-FR-012）。 */
 function ParamExpanded({ p }: { p: Param }) {
   const refs = p.referencedByRules ?? [];
-  const evidence = Array.isArray(p.rows) && p.rows.length > 0;
+  const hasRows = Array.isArray(p.rows) && p.rows.length > 0;
+  // 修复轮I-B2（APR-FR-012）：展开必须显示证据（引用依据），而非复用行数据变量。
+  const evidenceItems = Array.isArray(p.evidence) ? (p.evidence as unknown[]) : [];
   return (
     <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 px-5 py-4 text-sm sm:px-6">
       <div>
@@ -110,7 +113,7 @@ function ParamExpanded({ p }: { p: Param }) {
           <p className="text-xs font-medium text-slate-500">
             表格 / 时间线数据
           </p>
-          {evidence ? (
+          {hasRows ? (
             <pre className="mt-1 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700">
               {JSON.stringify(p.rows, null, 2)}
             </pre>
@@ -140,6 +143,56 @@ function ParamExpanded({ p }: { p: Param }) {
       </div>
 
       <div>
+        <p className="text-xs font-medium text-slate-500">证据（引用依据）</p>
+        {evidenceItems.length === 0 ? (
+          <p className="mt-1 text-xs text-slate-500">（无证据记录）</p>
+        ) : (
+          <ul className="mt-1 space-y-1">
+            {evidenceItems.map((item, i) => {
+              const ev = item as Record<string, unknown>;
+              const title =
+                typeof ev.title === "string"
+                  ? ev.title
+                  : String(ev.document_id ?? `证据${i + 1}`);
+              const url =
+                typeof ev.official_url === "string" ? ev.official_url : null;
+              const authority =
+                typeof ev.authority === "string" ? ev.authority : null;
+              const docId =
+                typeof ev.document_id === "string" ? ev.document_id : null;
+              const fetchedAt =
+                typeof ev.fetched_at === "string" ? ev.fetched_at : null;
+              return (
+                <li key={`${title}-${i}`} className="text-xs text-slate-700">
+                  {url ? (
+                    <a
+                      className="text-primary underline underline-offset-2"
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {title}
+                    </a>
+                  ) : (
+                    <span>{title}</span>
+                  )}
+                  <span className="ml-2 text-slate-500">
+                    {[
+                      authority,
+                      docId,
+                      fetchedAt ? `抓取于 ${fetchedAt.slice(0, 10)}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div>
         <p className="text-xs font-medium text-slate-500">引用该规则的参数（只读）</p>
         {refs.length === 0 ? (
           <p className="mt-1 text-xs text-slate-500">当前没有规则引用该参数编号</p>
@@ -148,7 +201,7 @@ function ParamExpanded({ p }: { p: Param }) {
             {refs.map((ref) => {
               const display = assetDisplayName(ref.name, ref.ruleId);
               return (
-                <li key={`${ref.ruleId}-${ref.version}`} className="text-xs text-slate-700">
+                <li key={`${ref.jurisdictionCode ?? ""}-${ref.ruleId}-${ref.version}`} className="text-xs text-slate-700">
                   {display.primary}
                   <span className="ml-2 font-mono text-slate-500">
                     {ref.ruleId} @ {ref.jurisdictionCode ?? "-"} · v{ref.version}

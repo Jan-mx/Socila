@@ -13,7 +13,6 @@
  * 全部通过后 gateResults 才会记录真实逐项 pass；伪造 pass 无法绕过
  * （用例层不再允许直接写入 `snapshot_replay: "pass"`）。
  */
-import { createHash } from "node:crypto";
 import { validateRuleAgainstSchema } from "@/lib/dsl/schema-validator";
 import { verifyEvidenceIntegrity, collectEvidenceEntries } from "@/lib/dsl/citation-verifier";
 import {
@@ -85,21 +84,22 @@ export interface ReleaseGateOutput {
 }
 
 /**
- * 规范化成员哈希（与 snapshot-service 创建时完全一致：整体 members 数组经
- * canonical 键排序 + Date→ISO，成员按 entityType+businessKey 确定性排序）——
- * 执行期重算可复现（JRP-FR-026）。直接复用 snapshot-service 导出的 canonical。
+ * 规范化成员哈希（与 snapshot-service 创建时完全一致）：统一委托
+ * snapshotMembersContentHash——按 entityType+businessKey 确定性排序、
+ * 剥离显示元数据（修复轮I3：param name/description、rule_set name）、
+ * canonical 键排序 + Date→ISO + SHA-256。创建与所有重算端共享同一投影，
+ * 执行期重算可复现（JRP-FR-026）。
  */
-import { canonical as canonicalSort } from "@/server/modules/policy/application/snapshot-service";
+import { snapshotMembersContentHash } from "@/server/modules/policy/application/snapshot-service";
 
 export function canonicalMemberHash(
-  members: ReleaseGateSnapshot["members"],
+  members: Array<{
+    entityType: string;
+    businessKey: string;
+    payload: unknown;
+  }>,
 ): string {
-  const sorted = [...members].sort(
-    (a, b) =>
-      a.entityType.localeCompare(b.entityType) ||
-      a.businessKey.localeCompare(b.businessKey),
-  );
-  return createHash("sha256").update(canonicalSort(sorted)).digest("hex");
+  return snapshotMembersContentHash(members);
 }
 
 /** 从快照成员解析有序规则/参数/规则集（与 compute 用例同一语义）。 */

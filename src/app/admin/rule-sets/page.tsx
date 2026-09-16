@@ -40,14 +40,28 @@ interface RuleSetSummary {
   version: number;
 }
 
+/** 生效overlay载体精确身份（修复轮I2）：restrict/exempt载体不属于执行顺序，
+ * 但页面展开必须分区显示其内容，不得只展示内容来源而隐藏附加限制/豁免。 */
+interface MemberOverlayView {
+  operation: "restrict" | "exempt";
+  ruleId: string;
+  name: string | null;
+  jurisdictionCode: string;
+  version: number;
+  effectiveFrom: string;
+}
+
 interface MemberView {
   position: number;
   ruleId: string;
+  /** 内容来源行自身编号（修复轮I-B1）：replace生效时为载体行编号。 */
+  contentRuleId: string | null;
   name: string | null;
   jurisdictionCode: string | null;
   version: number | null;
   status: string | null;
   operation: string | null;
+  overlays: MemberOverlayView[];
   missing: boolean;
 }
 
@@ -85,6 +99,11 @@ function statusVariant(s: string): "published" | "draft" | "retired" | "info" {
 
 function identityPath(locator: { ruleSetId: string; jurisdictionCode: string; version: number }) {
   return `/api/admin/rule-sets/${locator.ruleSetId}?jurisdiction_code=${locator.jurisdictionCode}&version=${locator.version}`;
+}
+
+/** overlay展开内容缓存键：成员索引+载体精确身份（修复轮I2）。 */
+function overlayContentKey(index: number, o: MemberOverlayView): string {
+  return `${index}::${o.ruleId}@${o.jurisdictionCode}v${o.version}`;
 }
 
 /** 决策表等DSL节点的友好渲染回退：无法识别的结构统一用格式化JSON。 */
@@ -321,6 +340,10 @@ export default function RuleSetsPage() {
   const [ruleContents, setRuleContents] = useState<
     Record<number, { state: "loading" | "ok" | "err"; content?: RuleContent; error?: string }>
   >({});
+  // 修复轮I2：成员展开时overlay载体内容按 索引+载体身份 缓存分区加载。
+  const [overlayContents, setOverlayContents] = useState<
+    Record<string, { state: "loading" | "ok" | "err"; content?: RuleContent; error?: string }>
+  >({});
 
   const [candidateQuery, setCandidateQuery] = useState("");
   const [candidates, setCandidates] = useState<CandidateRule[] | null>(null);
@@ -371,6 +394,7 @@ export default function RuleSetsPage() {
         setAsOfDraft(body.asOfDate);
         setExpandedIndex(null);
         setRuleContents({});
+        setOverlayContents({});
       })
       .catch((err: unknown) => {
         setDetail(null);
@@ -464,6 +488,8 @@ export default function RuleSetsPage() {
         version: candidate.version,
         status: candidate.status,
         operation: null,
+        overlays: [],
+        contentRuleId: candidate.ruleId,
         missing: false,
       };
       setDetail({
@@ -481,32 +507,50 @@ export default function RuleSetsPage() {
     setExpandedIndex(index);
     const ruleId = orderRules[index];
     const member = memberByRuleId.get(ruleId);
-    if (!member || member.missing || ruleContents[index]?.state === "ok") return;
-    setRuleContents((prev) => ({
-      ...prev,
-      [index]: { state: "loading" },
-    }));
-    adminFetch(
-      `/api/admin/rules/${member.ruleId}?jurisdiction_code=${member.jurisdictionCode}&version=${member.version}`,
-      { method: "GET" },
-    )
-      .then(async (r) => {
-        const json = (await r.json()) as { rule?: RuleContent; error?: string };
-        if (!r.ok) throw new Error(json.error ?? "规则内容加载失败");
-        setRuleContents((prev) => ({
-          ...prev,
-          [index]: { state: "ok", content: json.rule ?? {} },
-        }));
-      })
-      .catch((err: unknown) => {
-        setRuleContents((prev) => ({
-          ...prev,
-          [index]: {
+    if (!member || member.missing) return;
+    const loadContent = (
+      url: string,
+      assign: (entry: {
+        state: "loading" | "ok" | "err";
+        content?: RuleContent;
+        error?: string;
+      }) => void,
+    ) => {
+      assign({ state: "loading" });
+      adminFetch(url, { method: "GET" })
+        .then(async (r) => {
+          const json = (await r.json()) as {
+            rule?: RuleContent;
+            error?: string;
+          };
+          if (!r.ok) throw new Error(json.error ?? "规则内容加载失败");
+          assign({ state: "ok", content: json.rule ?? {} });
+        })
+        .catch((err: unknown) => {
+          assign({
             state: "err",
             error: err instanceof Error ? err.message : "规则内容加载失败",
-          },
-        }));
-      });
+          });
+        });
+    };
+    // 基础内容=内容来源行（修复轮I-B1：replace生效时内容来源是载体行自身，
+    // 必须用contentRuleId精确定位，成员编号会404）。
+    if (ruleContents[index]?.state !== "ok") {
+      loadContent(
+        `/api/admin/rules/${member.contentRuleId ?? member.ruleId}?jurisdiction_code=${member.jurisdictionCode}&version=${member.version}`,
+        (entry) => setRuleContents((prev) => ({ ...prev, [index]: entry })),
+      );
+    }
+    // 修复轮I2：生效restrict/exempt载体分区加载，不得只展示内容来源而隐藏附加内容。
+    for (const overlay of member.overlays ?? []) {
+      const key = overlayContentKey(index, overlay);
+      if (overlayContents[key]?.state === "ok") continue;
+      loadContent(
+        `/api/admin/rules/${overlay.ruleId}?jurisdiction_code=${overlay.jurisdictionCode}&version=${overlay.version}`,
+        (entry) =>
+          setOverlayContents((prev) => ({ ...prev, [key]: entry })),
+      );
+    }
   };
 
   const dirty =
@@ -846,6 +890,11 @@ export default function RuleSetsPage() {
                         </div>
                         {expanded ? (
                           <div className="px-3 pb-3">
+                            {!isMissing && (member?.overlays?.length ?? 0) > 0 ? (
+                              <p className="mb-1 text-xs font-medium text-slate-500">
+                                基础内容（内容来源行）
+                              </p>
+                            ) : null}
                             {isMissing ? null : contentState?.state === "loading" ? (
                               <p className="p-4 text-xs text-slate-500">
                                 规则内容加载中...
@@ -859,12 +908,77 @@ export default function RuleSetsPage() {
                                 <RuleExpandedContent content={contentState.content} />
                                 <div className="border-t border-slate-100 bg-white px-4 py-2">
                                   <Link
-                                    href={`/admin/rules/${ruleId}?jurisdiction_code=${member?.jurisdictionCode ?? ""}&version=${member?.version ?? 1}`}
+                                    href={`/admin/rules/${member?.contentRuleId ?? ruleId}?jurisdiction_code=${member?.jurisdictionCode ?? ""}&version=${member?.version ?? 1}`}
                                     className="text-xs text-primary underline underline-offset-2"
                                   >
                                     查看完整规则详情（只读）
                                   </Link>
                                 </div>
+                              </div>
+                            ) : null}
+                            {!isMissing && (member?.overlays?.length ?? 0) > 0 ? (
+                              <div
+                                className="mt-3 space-y-2"
+                                role="group"
+                                aria-label={`规则 ${ruleId} 的生效overlay内容`}
+                              >
+                                <p className="text-xs font-medium text-slate-500">
+                                  生效overlay（地区载体附加，不计入执行顺序）：共{" "}
+                                  {member!.overlays.length} 项
+                                </p>
+                                {member!.overlays.map((o) => {
+                                  const oKey = overlayContentKey(i, o);
+                                  const oState = overlayContents[oKey];
+                                  const oDisplay = assetDisplayName(
+                                    o.name,
+                                    o.ruleId,
+                                  );
+                                  return (
+                                    <div
+                                      key={oKey}
+                                      className="overflow-hidden rounded-xl border border-amber-200"
+                                    >
+                                      <div className="flex flex-wrap items-center gap-2 bg-amber-50 px-3 py-1.5 text-xs text-slate-700">
+                                        <span className="rounded border border-amber-300 bg-white px-1.5 py-0.5 font-medium">
+                                          {OPERATION_LABELS[o.operation] ??
+                                            o.operation}
+                                        </span>
+                                        <span className="text-slate-900">
+                                          {oDisplay.primary}
+                                          {oDisplay.pending
+                                            ? `（${NAME_PENDING_LABEL}）`
+                                            : null}
+                                        </span>
+                                        <code className="font-mono text-slate-500">
+                                          {o.ruleId}
+                                        </code>
+                                        <span className="font-mono text-slate-400">
+                                          {`@ ${o.jurisdictionCode} · v${o.version}`}
+                                        </span>
+                                        <span className="text-slate-400">
+                                          自 {o.effectiveFrom} 生效
+                                        </span>
+                                      </div>
+                                      {oState?.state === "loading" ? (
+                                        <p className="p-3 text-xs text-slate-500">
+                                          overlay内容加载中...
+                                        </p>
+                                      ) : oState?.state === "err" ? (
+                                        <p
+                                          className="p-3 text-xs text-slate-600"
+                                          role="alert"
+                                        >
+                                          overlay内容加载失败：{oState.error}
+                                        </p>
+                                      ) : oState?.state === "ok" &&
+                                        oState.content ? (
+                                        <RuleExpandedContent
+                                          content={oState.content}
+                                        />
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ) : null}
                           </div>

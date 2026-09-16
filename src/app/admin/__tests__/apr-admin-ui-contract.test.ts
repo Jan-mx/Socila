@@ -59,6 +59,30 @@ describe("APR-FR-004～009：独立规则集页面", () => {
     expect(src).toContain("aria-expanded");
   });
 
+  it("修复轮I-B1：展开与详情链接使用内容来源行编号contentRuleId（replace载体rule_id≠成员键）", () => {
+    expect(src).toContain("contentRuleId");
+    expect(src).toMatch(
+      /\/api\/admin\/rules\/\$\{member\.contentRuleId \?\? member\.ruleId\}/,
+    );
+    expect(src).toMatch(/member\?\.contentRuleId \?\? ruleId/);
+  });
+
+  it("修复轮I2：展开分区显示内容来源与生效overlay载体内容（不隐藏restrict/exempt附加内容）", () => {
+    // 成员视图必须携带overlays并按载体精确身份逐个加载内容。
+    expect(src).toContain("overlays");
+    expect(src).toContain("overlayContentKey");
+    expect(src).toMatch(/for \(const overlay of member\.overlays/);
+    expect(src).toMatch(
+      /\/api\/admin\/rules\/\$\{overlay\.ruleId\}\?jurisdiction_code=\$\{overlay\.jurisdictionCode\}&version=\$\{overlay\.version\}/,
+    );
+    // 分区文案与可访问性：基础内容与overlay分区并存、明示不计入执行顺序。
+    expect(src).toContain("基础内容（内容来源行）");
+    expect(src).toContain("不计入执行顺序");
+    expect(src).toMatch(/aria-label=\{`规则 \$\{ruleId\} 的生效overlay内容`\}/);
+    // overlay内容用同一只读渲染组件（备注/决策表/证据等完整可见）。
+    expect(src).toMatch(/RuleExpandedContent\s*\n?\s*content=\{oState\.content\}/);
+  });
+
   it("搜索选择器添加规则（APR-FR-009）", () => {
     expect(src).toContain("/candidates");
     expect(src).toContain("aria-label");
@@ -83,6 +107,19 @@ describe("APR-FR-012：参数管理页面", () => {
     expect(src).toContain("aria-expanded");
     expect(src).toContain("referencedByRules");
     expect(src).toContain("/api/admin/params/");
+  });
+
+  it("修复轮I-B2：展开真实渲染证据（引用依据），不得以行数据变量冒充证据", () => {
+    expect(src).toContain("证据（引用依据）");
+    expect(src).toContain("evidenceItems");
+    expect(src).toMatch(/Array\.isArray\(p\.evidence\)/);
+    expect(src).toContain("official_url");
+    // 行式数据展示使用独立变量，语义不与证据混淆。
+    expect(src).toContain("hasRows");
+  });
+
+  it("修复轮M-B2：引用规则列表键含地区身份（跨地区同编号两身份并存）", () => {
+    expect(src).toMatch(/key=\{`\$\{ref\.jurisdictionCode/);
   });
 });
 

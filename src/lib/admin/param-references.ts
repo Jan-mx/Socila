@@ -2,7 +2,9 @@
  * APR-FR-012：参数引用反查索引（纯函数）。
  *
  * 输入为仓储单查询取回的全部规则身份与parameter_refs（禁止逐参数查询）；
- * 输出 param_id → 引用规则（同编号多版本去重保留最新版本，按ruleId稳定排序）。
+ * 输出 param_id → 引用规则。去重身份是 jurisdictionCode+ruleId（修复轮I5：
+ * 同一rule_id在CN与地区并存时两条身份都保留，版本比较只在同地区内进行），
+ * 排序按 (ruleId, jurisdictionCode) 双键确定，不依赖输入顺序。
  * parameter_refs兼容字符串与{param_id,...}对象两种形状。
  */
 
@@ -46,9 +48,11 @@ export function buildParamReferenceIndex(
     const version = Number.isInteger(rule.version) ? (rule.version as number) : 1;
     for (const paramId of refParamIds(rule.parameterRefs)) {
       const perRule = byParam.get(paramId) ?? new Map<string, ReferencingRule>();
-      const existing = perRule.get(rule.ruleId);
+      // I5：去重键必须含地区身份，否则CN与地区同编号互相覆盖。
+      const identityKey = `${rule.jurisdictionCode ?? ""}\u0000${rule.ruleId}`;
+      const existing = perRule.get(identityKey);
       if (!existing || version >= existing.version) {
-        perRule.set(rule.ruleId, {
+        perRule.set(identityKey, {
           ruleId: rule.ruleId,
           name: rule.name,
           jurisdictionCode: rule.jurisdictionCode,
@@ -62,8 +66,14 @@ export function buildParamReferenceIndex(
   for (const [paramId, perRule] of byParam) {
     out.set(
       paramId,
-      [...perRule.values()].sort((a, b) =>
-        a.ruleId < b.ruleId ? -1 : a.ruleId > b.ruleId ? 1 : 0,
+      [...perRule.values()].sort(
+        (a, b) =>
+          (a.ruleId < b.ruleId ? -1 : a.ruleId > b.ruleId ? 1 : 0) ||
+          ((a.jurisdictionCode ?? "") < (b.jurisdictionCode ?? "")
+            ? -1
+            : (a.jurisdictionCode ?? "") > (b.jurisdictionCode ?? "")
+              ? 1
+              : 0),
       ),
     );
   }

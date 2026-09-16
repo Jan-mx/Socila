@@ -35,13 +35,10 @@ export type RuleSetViewResult =
   | { ok: true; view: RuleSetDetailView }
   | { ok: false; status: 400 | 404; error: string };
 
-/** 服务器当前日期（YYYY-MM-DD，本地时区口径与管理端展示一致）。 */
+/** 服务器当前日期（YYYY-MM-DD，UTC口径——修复轮M-B9：与引擎/发布服务的
+ * as_of_date口径一致，避免UTC+8凌晨窗口内管理端显示与引擎解析差一天）。 */
 export function todayIsoDate(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return new Date().toISOString().slice(0, 10);
 }
 
 /** 合法ISO日期（用于as_of_date入参校验，APR-FR-007）。 */

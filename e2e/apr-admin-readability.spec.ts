@@ -57,16 +57,24 @@ test.describe("APR 后台政策资产中文可读化", () => {
   }) => {
     await loginViaApi(page, ADMIN_USERNAME, ADMIN_PASSPHRASE);
     // 选择器/编辑仅对草稿开放（published只读是APR设计）：先建草稿规则集（含国家基线成员）。
-    const create = await page.context().request.post("/api/admin/rule-sets", {
-      data: {
-        ruleSetId: "RS-APR-E2E-V1",
-        jurisdictionCode: "310000",
-        name: "APR演示草稿规则集",
-        rules: ["R-010-PARSE-BIRTH-YEAR", "R-200-MIN-PENSION-YEARS"],
-        effectiveFrom: "2024-01-01",
-      },
-    });
-    expect(create.status()).toBe(201);
+    // 修复轮M-B11：同库重跑幂等——已存在同名草稿则复用，不重复创建。
+    const existing = await page.context().request.get(
+      "/api/admin/rule-sets/RS-APR-E2E-V1?jurisdiction_code=310000&version=1",
+    );
+    if (existing.status() === 404) {
+      const create = await page.context().request.post("/api/admin/rule-sets", {
+        data: {
+          ruleSetId: "RS-APR-E2E-V1",
+          jurisdictionCode: "310000",
+          name: "APR演示草稿规则集",
+          rules: ["R-010-PARSE-BIRTH-YEAR", "R-200-MIN-PENSION-YEARS"],
+          effectiveFrom: "2024-01-01",
+        },
+      });
+      expect(create.status()).toBe(201);
+    } else {
+      expect(existing.status()).toBe(200);
+    }
     await page.goto("/admin/rule-sets");
     // 列表以中文名称为主（seed后必有正式名称）。
     const shEntry = page.getByRole("button", { name: /上海规划主规则集/ });
@@ -104,6 +112,38 @@ test.describe("APR 后台政策资产中文可读化", () => {
     await expect(
       page.getByText(/@ (CN|310000) · v/).first(),
     ).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("修复轮I2：广东规则集成员展开分区显示restrict载体内容（不隐藏附加限制）", async ({
+    page,
+  }) => {
+    await loginViaApi(page, ADMIN_USERNAME, ADMIN_PASSPHRASE);
+    await page.goto("/admin/rule-sets");
+    const gdEntry = page.getByRole("button", { name: /广东规划主规则集/ });
+    await expect(gdEntry.first()).toBeVisible({ timeout: 15_000 });
+    await gdEntry.first().click();
+    // R-220成员行必须显示restrict已生效（修复前误显示纯国家baseline）。
+    const memberRow = page.locator(
+      '[aria-label="展开规则 R-220-MEDICAL-LIFETIME-GAP 的内容"]',
+    );
+    await expect(memberRow).toBeVisible({ timeout: 15_000 });
+    await expect(memberRow).toContainText("地区限制");
+    await expect(memberRow).toContainText("@ CN");
+    await memberRow.click();
+    // 分区：基础内容 + 生效overlay（载体精确身份与其只读内容完整可见）。
+    await expect(page.getByText("基础内容（内容来源行）")).toBeVisible();
+    const overlayGroup = page.getByRole("group", {
+      name: "规则 R-220-MEDICAL-LIFETIME-GAP 的生效overlay内容",
+    });
+    await expect(overlayGroup).toBeVisible();
+    await expect(overlayGroup).toContainText(
+      "广东职工医保退休待遇附加条件（restrict国家框架）",
+    );
+    await expect(overlayGroup).toContainText("R-GD-MI-RETIRE-RESTRICT");
+    await expect(overlayGroup).toContainText("不计入执行顺序");
+    await expect(overlayGroup.getByText("说明与备注")).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test("APR-AC-008：参数管理以中文名称为主、编号为辅", async ({ page }) => {

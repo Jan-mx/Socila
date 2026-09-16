@@ -254,7 +254,10 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
   }
 
   /** APR-FR-007/NFR-002：成员解析/选择器候选的批量装载——
-   * 单查询取回继承链内、有效期覆盖asOfDate的published规则行。 */
+   * 单查询取回继承链内、有效期覆盖asOfDate的published规则行。
+   * ruleIds限定下（修复轮I2）：成员编号自身 + 指向成员编号的overlay载体行
+   * （restrict/exempt/replace的业务身份是被指向键，载体编号不在成员数组内，
+   * 只按编号过滤会把载体挡在merge之外，成员被误显示为纯上级baseline）。 */
   async listRuleCandidates(locator: {
     ruleIds: string[] | null;
     jurisdictionCodes: string[];
@@ -265,16 +268,29 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
       eq(rules.status, "published"),
       inArray(rules.jurisdictionCode, locator.jurisdictionCodes),
       lte(rules.effectiveFrom, locator.asOfDate),
-      or(isNull(rules.effectiveTo), gte(sql`${locator.asOfDate}`, rules.effectiveTo!)),
+      // 有限窗口（修复轮I1）：effective_from <= as_of AND (to IS NULL OR to >= as_of)。
+      or(isNull(rules.effectiveTo), gte(rules.effectiveTo, locator.asOfDate))!,
     ];
     if (locator.ruleIds !== null) {
       if (locator.ruleIds.length === 0) return [];
-      conditions.push(inArray(rules.ruleId, locator.ruleIds));
+      conditions.push(
+        or(
+          inArray(rules.ruleId, locator.ruleIds),
+          inArray(rules.targetBusinessKey, locator.ruleIds),
+        )!,
+      );
     }
     const rows = await db
       .select()
       .from(rules)
-      .where(and(...conditions));
+      .where(and(...conditions))
+      // 复审A-Minor：确定性行序——同（地区,版本）池内多条载体挂载顺序不随
+      // 查询计划抖动（APR-NFR-001；成员胜出仍由merge按effectiveFrom/version裁决）。
+      .orderBy(
+        asc(rules.jurisdictionCode),
+        asc(rules.ruleId),
+        asc(rules.version),
+      );
     return rows.map((row) => ({
       ruleId: row.ruleId,
       jurisdictionCode: row.jurisdictionCode ?? "",
@@ -291,7 +307,8 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
     }));
   }
 
-  /** APR-FR-012：参数引用反查索引——单查询取回全部规则的身份与parameter_refs。 */
+  /** APR-FR-012：参数引用反查索引——单查询取回published规则的身份与parameter_refs
+   * （修复轮M-B1：draft/retired规则不得作为有效引用展示）。 */
   async listRuleParamReferenceIndex() {
     const rows = await db
       .select({
@@ -301,7 +318,8 @@ export class DrizzleRulesReadRepository implements RulesReadRepository {
         version: rules.version,
         parameterRefs: rules.parameterRefs,
       })
-      .from(rules);
+      .from(rules)
+      .where(eq(rules.status, "published"));
     return rows.map((row) => ({
       ruleId: row.ruleId,
       name: row.name,

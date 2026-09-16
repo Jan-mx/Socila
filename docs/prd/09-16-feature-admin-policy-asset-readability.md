@@ -1,8 +1,8 @@
 # 后台政策资产中文可读化 Feature PRD
 
 > Author: Jan
-> Status: Active
-> Updated: 2026-09-16
+> Status: Ready for user testing
+> Updated: 2026-09-17
 
 ## 1. 文档元数据
 
@@ -11,7 +11,7 @@
 | Feature | 后台政策资产中文可读化 |
 | 需求标识 | APR（Admin Policy Readability） |
 | 影响范围 | 后台规则管理、规则集、参数管理、发布中心 |
-| 当前阶段 | 需求定稿，等待用户人工验收 |
+| 当前阶段 | 修复轮完成：后续独立复审Important×6（I1有效期上界、I2 overlay载体、I3快照哈希、I4 Agent草案名称、I5引用跨地区去重、I6门禁镜像）及复审再发现I-B1/B2/B3/B6全部经RED→GREEN修复并通过最终新鲜门禁与独立复审（Critical=0、Important=0）；等待用户人工验收，生产0020迁移与部署未执行 |
 
 本文定义后台政策资产的中文可读化改造。规则、参数和规则集继续使用稳定编号作为业务身份，后台页面以中文名称作为主要展示内容。
 
@@ -202,6 +202,17 @@ interface RuleSetMemberView {
   version: number | null;
   status: string | null;
   operation: string | null;
+  /** 内容来源行自身编号（修复轮I-B1）：replace生效时为载体行编号。 */
+  contentRuleId: string | null;
+  /** 按应用顺序排列的生效restrict/exempt载体精确身份（修复轮I2）。 */
+  overlays: Array<{
+    operation: "restrict" | "exempt";
+    ruleId: string;
+    name: string | null;
+    jurisdictionCode: string;
+    version: number;
+    effectiveFrom: string;
+  }>;
   missing: boolean;
 }
 

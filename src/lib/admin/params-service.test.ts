@@ -83,3 +83,26 @@ describe("参数类型契约（审查缺陷3）", () => {
     expect(validateParamRecord(rec({ type: "whatever", value: 1 })).valid).toBe(false);
   });
 });
+
+describe("校验识别名称未补全状态（修复轮I-B3，APR-FR-017）", () => {
+  it("name缺失/空白/编号回退：display_name检查项不通过且results.name_pending=true", () => {
+    for (const name of [null, "", "   ", "P-X"]) {
+      const r = validateParamRecord(
+        rec({ name: name === null ? undefined : name }),
+      );
+      const check = r.checks.find((c) => c.name === "display_name");
+      expect(check, `name=${JSON.stringify(name)}应有display_name检查项`).toBeDefined();
+      expect(check?.passed).toBe(false);
+      expect(r.results.name_pending).toBe(true);
+      // 兼容回退不得阻止读取/写入：valid聚合不含display_name（PRD FR-017）。
+      expect(r.valid).toBe(true);
+    }
+  });
+
+  it("正式名称已补全：display_name通过且name_pending=false", () => {
+    const r = validateParamRecord(rec({ name: "上海市月最低工资标准" }));
+    expect(r.checks.find((c) => c.name === "display_name")?.passed).toBe(true);
+    expect(r.results.name_pending).toBe(false);
+    expect(r.valid).toBe(true);
+  });
+});

@@ -43,6 +43,10 @@ class RuleDraft(BaseModel):
 class ParamDraft(BaseModel):
     temp_id: str
     param_id: str
+    # APR-FR-017（修复轮I4）：正式中文名称/说明为透传字段——权威强制在Core物化
+    # （缺name/含HTML的草案整体422拒绝，编号回退仅限0020迁移旧行）。
+    name: str | None = None
+    description: str | None = None
     business_key: str | None = None
     type: str = "number"
     value: Any = None
@@ -125,6 +129,18 @@ def verify_bundle(
     # 3) 地区/有效期确定性。
     if not bundle.effective_from:
         errors.append("effective_from undetermined")
+
+    # 3.5) 正式中文名称（修复轮I-B6，APR-FR-017）：与Core物化校验同口径——
+    # 参数草案缺name/空白/含HTML尖括号会被Core 422整体拒绝；在此识别使
+    # can_review=False，避免必然被拒的提案进入可批准状态。
+    for p in bundle.param_drafts:
+        draft_name = (p.name or "").strip()
+        if not draft_name:
+            errors.append(f"param {p.param_id} 缺少正式中文名称 (APR-FR-017)")
+        elif "<" in draft_name or ">" in draft_name:
+            errors.append(f"param {p.param_id} 名称包含HTML尖括号")
+        if p.description and ("<" in p.description or ">" in p.description):
+            errors.append(f"param {p.param_id} 说明包含HTML尖括号")
 
     # 4) 参数引用依赖。
     dependency_errors: list[str] = []

@@ -11,6 +11,7 @@
  */
 import {
   mergePolicyContext,
+  type EffectiveEntity,
   type MergeInputEntity,
   type EntityProvenanceEntry,
   type OverlayOperation,
@@ -32,6 +33,18 @@ export interface MemberRuleCandidate {
   effectiveTo: string | null;
 }
 
+/** 生效overlay载体精确身份（修复轮I2）：restrict/exempt载体不属于规则集
+ * 执行顺序，但决定成员的有效语义，必须随成员视图返回供页面展开只读显示。
+ * replace载体不在此列——replace后内容来源行即载体本身（contentOrigin指向它）。 */
+export interface RuleSetMemberOverlay {
+  operation: "restrict" | "exempt";
+  ruleId: string;
+  name: string | null;
+  jurisdictionCode: string;
+  version: number;
+  effectiveFrom: string;
+}
+
 /** API契约 RuleSetMemberView（PRD §8）。 */
 export interface RuleSetMemberView {
   position: number;
@@ -41,6 +54,12 @@ export interface RuleSetMemberView {
   version: number | null;
   status: string | null;
   operation: string | null;
+  /** 按应用顺序排列的生效restrict/exempt载体（无则空数组）。 */
+  overlays: RuleSetMemberOverlay[];
+  /** 内容来源行自身的稳定编号（修复轮I-B1）：baseline/add时=成员编号；
+   * replace生效时=替换载体行编号（其rule_id≠被指向键），供展开/详情按
+   * rule_id+jurisdiction+version精确取行。missing时null。 */
+  contentRuleId: string | null;
   missing: boolean;
 }
 
@@ -60,6 +79,8 @@ function missingView(position: number, ruleId: string): RuleSetMemberView {
     version: null,
     status: null,
     operation: null,
+    overlays: [],
+    contentRuleId: null,
     missing: true,
   };
 }
@@ -126,9 +147,78 @@ export function resolveRuleSetMembers(
       operation: entity.exempted
         ? "exempt"
         : lastProvenance?.operation ?? contentOrigin?.operation ?? null,
+      overlays: collectOverlays(entity, ruleId, usable),
+      // 内容来源行自身编号（payload.ruleId）：replace后=载体行编号（I-B1）。
+      contentRuleId:
+        typeof payload.ruleId === "string" && payload.ruleId.length > 0
+          ? payload.ruleId
+          : ruleId,
       missing: false,
     };
   });
+}
+
+/**
+ * 采集该成员实际生效的restrict/exempt载体（修复轮I2）。
+ * restrict：mergePolicyContext把载体payload挂载到目标restrictions（精确、
+ *   无损）；与provenance按（地区,版本）池化对齐，保持应用顺序。
+ * exempt：provenance只留身份三元组，从候选中按（地区,版本,目标键）匹配消费。
+ */
+function collectOverlays(
+  entity: EffectiveEntity,
+  ruleId: string,
+  usable: MemberRuleCandidate[],
+): RuleSetMemberOverlay[] {
+  const overlays: RuleSetMemberOverlay[] = [];
+  const restrictPool = new Map<string, MemberRuleCandidate[]>();
+  for (const raw of entity.restrictions) {
+    const c = raw as MemberRuleCandidate;
+    const key = `${c.jurisdictionCode}\u0000${c.version}`;
+    const list = restrictPool.get(key) ?? [];
+    list.push(c);
+    restrictPool.set(key, list);
+  }
+  const usedExempt = new Set<MemberRuleCandidate>();
+  for (const p of entity.provenance) {
+    if (p.operation === "restrict") {
+      const c = restrictPool
+        .get(`${p.jurisdictionCode}\u0000${p.version}`)
+        ?.shift();
+      if (c) overlays.push(overlayOf("restrict", c));
+    } else if (p.operation === "exempt") {
+      const c = usable.find(
+        (u) =>
+          !usedExempt.has(u) &&
+          u.operation === "exempt" &&
+          u.targetBusinessKey === ruleId &&
+          u.jurisdictionCode === p.jurisdictionCode &&
+          u.version === p.version,
+      );
+      if (c) {
+        usedExempt.add(c);
+        overlays.push(overlayOf("exempt", c));
+      }
+    }
+  }
+  return overlays;
+}
+
+function overlayOf(
+  operation: "restrict" | "exempt",
+  c: MemberRuleCandidate,
+): RuleSetMemberOverlay {
+  const name =
+    typeof c.name === "string" && c.name.trim().length > 0
+      ? c.name.trim()
+      : null;
+  return {
+    operation,
+    ruleId: c.ruleId,
+    name,
+    jurisdictionCode: c.jurisdictionCode,
+    version: c.version,
+    effectiveFrom: c.effectiveFrom,
+  };
 }
 
 /** 来源地区/版本 = 最近一次提供内容的实体（baseline/add/replace）。 */

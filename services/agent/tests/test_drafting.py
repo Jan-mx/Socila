@@ -107,6 +107,7 @@ def _valid_bundle() -> DraftBundle:
                 {
                     "temp_id": "p1",
                     "param_id": "P-DRAFT-1",
+                    "name": "补充材料年上限（天）",
                     "type": "number",
                     "value": 36549,
                     "effective_from": "2026-01-01",
@@ -172,3 +173,43 @@ def test_revise_marks_missing_citations_then_hits_limit():
     # 上限：attempt >= max → needs_human。
     result = revise_bundle(bundle, ["x"], attempt=2, max_attempts=2)
     assert result["needs_human"] is True
+
+def test_verify_requires_formal_param_name_i_b6():
+    """修复轮I-B6（APR-FR-017）：与Core物化同口径——参数草案缺正式名称、
+    空白名称、HTML名称或非法说明时verify不通过（can_review=False）。"""
+    bundle = _valid_bundle()
+    result = verify_bundle(bundle)
+    assert result["passed"] is True
+
+    bundle_no_name = parse_bundle(
+        {**bundle.model_dump(), "param_drafts": [
+            {**bundle.param_drafts[0].model_dump(), "name": None}
+        ]}
+    )
+    r1 = verify_bundle(bundle_no_name)
+    assert r1["passed"] is False
+    assert any("P-DRAFT-1" in e and "正式中文名称" in e for e in r1["errors"])
+
+    bundle_blank = parse_bundle(
+        {**bundle.model_dump(), "param_drafts": [
+            {**bundle.param_drafts[0].model_dump(), "name": "   "}
+        ]}
+    )
+    assert verify_bundle(bundle_blank)["passed"] is False
+
+    bundle_html = parse_bundle(
+        {**bundle.model_dump(), "param_drafts": [
+            {**bundle.param_drafts[0].model_dump(), "name": "<b>x</b>"}
+        ]}
+    )
+    r3 = verify_bundle(bundle_html)
+    assert r3["passed"] is False
+    assert any("HTML尖括号" in e for e in r3["errors"])
+
+    bundle_desc = parse_bundle(
+        {**bundle.model_dump(), "param_drafts": [
+            {**bundle.param_drafts[0].model_dump(),
+             "description": "<script>y</script>"}
+        ]}
+    )
+    assert verify_bundle(bundle_desc)["passed"] is False

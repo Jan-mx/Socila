@@ -1,8 +1,10 @@
 # 后台政策资产中文可读化（APR）验收报告
 
 > Author: Jan
-> Status: Active
+> Status: Ready for user testing（修复轮终态；用户UAT前不标记Accepted）
 > Updated: 2026-09-16
+>
+> **结论失效声明**：本报告中"四轮独立复审Critical=0、Important=0"（§3.14）与"Ready for user testing/Accepted"结论已被后续独立复审取代——复审发现Important×6（I1有效期上界方向、I2非成员overlay载体遗漏、I3显示字段污染政策快照contentHash、I4 Agent参数草案缺正式名称、I5参数引用跨地区去重覆盖、I6门禁不可拉取MinIO镜像）。下列§1～§4为基线`3272577`历史记录，非最终结论；修复以RED→GREEN逐项补齐后，须由最终HEAD新鲜门禁与新独立复审重新出具结论，用户UAT前至多Ready for user testing。
 
 ## 1. 范围与权威输入
 
@@ -64,3 +66,52 @@
 - 0020仅交付代码并在隔离库验证；对持久库/生产库执行属独立授权动作，未执行。
 - 未创建PR、未合并main、未创建Tag/Release、未部署。
 - 主工作树用户改动（AGENTS.md、playwright-report、未跟踪PRD原件）未纳入交付。
+
+## 5. 修复轮（2026-09-16，后续独立复审Important×6关闭记录）
+
+### 5.1 缺陷与修复（全部RED→GREEN）
+
+| # | 缺陷（审查基线`3272577`） | 修复 | RED证据 | GREEN证据 |
+| --- | --- | --- | --- | --- |
+| I1 | `listRuleCandidates`有效期上界写反（`as_of>=effective_to`：选中过期行、漏选窗口内行） | `effective_from<=as_of AND (to IS NULL OR to>=as_of)`，与同文件`getEffectiveRules`/`listParamsForPreview`同型 | 临时还原旧方向跑`apr-validity-window.integration.test.ts`：4失败（生效日/窗口中漏选、终止后误选、多窗口漏选） | 6/6 |
+| I2 | 候选仅按成员编号装载：非成员overlay载体（GD`R-GD-MI-RETIRE-RESTRICT`restrict→`R-220-MEDICAL-LIFETIME-GAP`）不进merge，成员误显示纯CN baseline且展开隐藏附加内容 | 装载改`rule_id∈成员 OR target_business_key∈成员`（0012 CHECK保证baseline/add目标为NULL，无假阴性面）；`RuleSetMemberView`新增`overlays`（restrict取自merge restrictions载荷、exempt按provenance三元组匹配，应用顺序）；保存校验共用同装载；页面分区渲染基础内容+overlay载体内容（载体绝不进执行顺序） | 域单测3例RED（无overlays字段）；集成`apr-overlay-carriers`2例RED（operation为baseline非restrict） | 域20/20、集成4/4 |
+| I3 | 快照`toMember`写完整Drizzle行payload：params`name/description`与rule_set`name`进入contentHash（0020前后漂移，违反NFR-004） | 统一入口`snapshotMembersContentHash`（排序→`projectSnapshotMemberForHash`剥离param name/description与rule_set name→canonical SHA-256）；创建与`release-gates.canonicalMemberHash`（compute/replay委托）共享；存储payload不动（历史快照不可变；0020前payload无显示字段→投影no-op零漂移）；规则既有name不动 | `apr-snapshot-display-hash.integration.test.ts`用例1/4 RED（仅改名哈希漂移实测两组不同哈希） | 4/4+既有snapshot 6/6 |
+| I4 | `ParamDraftSchema.name`可选且回退`param_id`、非法description静默置null（违反FR-017"编号回退仅限0020旧行"） | zod name必填trim非空无尖括号+description携带须安全；事务内服务级防线（直连`materializeDraftBundle`同样422，整体回滚含JTI与台账）；写入取校验值；Python`ParamDraft`加可选透传字段 | `materialize-param-draft-name.integration.test.ts`7例全RED（旧实现正常写入回退名） | 7/7（含四表零写入、直连防线、修正重试台账恰1、status===422断言） |
+| I5 | 参数引用反查内层键仅`ruleId`：CN与地区同编号互相覆盖 | 去重身份`jurisdictionCode ruleId`（版本比较限同地区），输出按(ruleId,jurisdictionCode)双键排序 | `param-references.test.ts`3例RED（三地区身份坍缩为1条） | 9/9 |
+| I6 | 门禁用`minio/minio:latest`（manifest denied、非确定） | 运行时从`infra/prod/docker-compose.ci.yml`解析CI批准`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e`（单一真相源，形状校验失败即抛）；digest已`docker pull`验证可用 | `apr-gate-contract.test.ts`2例RED（旧脚本含latest） | 4/4 |
+
+### 5.2 修复轮独立复审与处置
+
+- **复审A（修复范围逐项验证，只读）**：结论**Critical=0、Important=0**，I1～I6逐项"关闭"；6条Minor中3条已顺手加固（`listRuleCandidates`确定性ORDER BY→overlays挂载顺序稳定；I4测试补`.status===422`断言；gate脚本声明compose解析假设注释）。
+- **复审B（APR全量范围同类缺陷扫描）**：对I1～I6确认"修复方向正确、关闭"；另报Important×6/Minor×11，处置如下——
+  - **I-B1（已修）**：非成员replace载体下展开/详情用成员编号拼三元素身份必404。修复：视图新增`contentRuleId`（内容来源行自身编号，replace后=载体编号），页面展开URL与详情链接改用之；域单测2例（RED实证）+契约断言。
+  - **I-B2（已修）**：FR-012要求展开显示"证据"但页面无`p.evidence`渲染（以行数据变量冒充）且seed不装载evidence。修复：`seed-params`装载DSL evidence；参数展开新增"证据（引用依据）"区（title/official_url/authority/document_id/抓取日期）；契约断言钉住（不得复用行变量）。
+  - **I-B3（已修）**：FR-017"校验必须识别未补全状态"无实现。修复：`validateParamRecord`新增`display_name`检查项与`results.name_pending`（缺失/空白/编号回退→不通过）；按PRD"兼容回退不得阻止读取"不纳入valid聚合；单测2例（RED实证）。
+  - **I-B4（登记，不改代码）**：规则草案name回退（M3先例）与params口径差异。裁定依据：PRD FR-017强制对象为"规则集和参数"（§7数据模型同），`rules.name`为APR前既有业务字段；UI对回退名如实标记"名称待补充"不冒充。已记录口径，如需扩展到规则须先修订PRD。
+  - **I-B5（登记，不改代码）**：`POST /api/admin/params`、`POST /api/admin/rules`整body展开写库为APR前既有面（本仓库NRP时代引入），非本轮6项、修复将改变既有API契约。建议独立Work Item（受控字段POST白名单）。
+  - **I-B6（已修）**：I4的Core强制使Agent侧确定性校验不同步（无name提案可获批却在Core必422）。修复：`verify_bundle`新增参数草案名称/说明同口径检查（can_review=False）；`test_drafting`/`test_closed_loop`fixtures补name；新增pytest用例，10/10通过。
+  - **Minor处置**：M-B1引用索引仅published（已修+集成判别用例）；M-B2引用列表React key加地区身份（已修）；M-B9管理端默认日期统一UTC口径（已修）；M-B11 E2E草稿创建幂等复用（已修；历史断言条件式保留并记录理由——E2E承诺不改动发布状态机，"名称不可用"语义由单测覆盖）；M-B3/M-B4（快照provenance无载体键/版本胜出不对称，NRP域预存在设计）、M-B5（引擎getEffectiveRules无地区过滤，预存在潜伏、当前DSL无跨区同编号）、M-B6（非APR脚本的latest镜像）、M-B8（白名单蛇形键、预存在）、M-B10（继承链异常伪装400，排障质量）——登记为边界与后续Work Item建议，不属于本轮授权范围。
+
+### 5.3 修复轮终态门禁（2026-09-16/17，最终HEAD新鲜运行）
+
+| 验证 | 结果 |
+| --- | --- |
+| TDD RED/GREEN | 六项I1～I6与复审B四项I-B1/B2/B3/B6全部先RED后GREEN（证据见§5.1/§5.2） |
+| Node单元（`npm test`） | PASS；104文件/1057用例、0失败、0skip（修复轮净增20用例） |
+| TypeScript / ESLint | PASS；`tsc --noEmit` 0；`eslint src e2e --max-warnings 0` 0问题 |
+| 数据库门禁（`scripts/apr-db-gate.mjs`，GATE_EXIT=0） | PASS；全新apr-drill-pg（pgvector/pgvector:pg17）+双MinIO（quay.io固定digest）；migration×2/bootstrap×2/seed×2幂等+seed名称DO块核对；`test:db` **36文件/198用例全过0skip**（含修复轮全部新集成用例）；agent.migrate --with-roles×2幂等；`pytest -m integration` **131通过/0skip/138deselect**；finally清理后容器/卷/网络三类枚举`apr-*`零残留 |
+| Python门禁（services/agent） | PASS；ruff 0、mypy 36文件0错误、`pytest -m "not integration"` 138通过（+1 I-B6用例）；jieba冷编译预热方式同§3.6既载现象 |
+| Chromium E2E（APR spec） | PASS；`e2e/apr-admin-readability.spec.ts` **5/5**（全新apr_e2e_fix库+最终standalone build；含修复轮广东overlay分区展开用例与草稿创建幂等加固） |
+| Build | PASS；`npm run build`退出0（standalone） |
+| Secret / 差异 | PASS；`scan-secrets --all` 994文件零命中；`git diff --check`退出0 |
+| 门禁稳定性处置 | 前两次gate运行出现`rcl-rewrite-cli`(6→3)与`identity`(1)共4~7例失败：逐例定位为**5s执行预算超时的时序脆弱**（identity连续bcrypt计算、rcl多次tsx子进程演练；超时中断还级联污染共享库计数断言），两文件本轮零改动、断言与低负载机器一致。处置：`vitest.integration.config.ts`提升集成用例执行预算至30s（不改任何断言/skip纪律），两文件复跑19/19后第三次gate全量GATE_EXIT=0 |
+| 独立复审终局 | 复审A：Critical=0、Important=0（I1～I6逐项关闭）；复审B：I1～I6确认关闭，新增I-B1/B2/B3/B6已修复（判别力测试RED→GREEN），B4/B5与预存在Minor登记于§5.2边界 |
+
+**终态：Ready for user testing（用户人工验收前不标记Accepted）。**
+
+### 5.4 修复轮边界与未执行事项
+
+- 未连接、未写入生产`policyops`；`socila-*`容器与`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`卷未触碰（枚举记录见§5.3）。
+- 0020对持久/生产库执行、生产部署、PR、main合并、Tag/Release均未执行（待用户授权/决定）。
+- 迭代与验收任务资源（`apr-fix-pg`、`apr-e2e-fix-pg`、`apr-rag-minio-repro(-b)`、gate自建`apr-drill-*`、辅助工作树`F:/Socila-apr-fix-wt`）在提交推送后清理，见§5.3零残留记录。
+- 修复轮测试期间发现的4个非APR spec E2E失败（auth/SHV2/JRP/RCL各1）为全新验收库缺少相应feature持久化数据所致（失败点为登录或空数据，与本轮改动无交集）；APR spec全部通过。

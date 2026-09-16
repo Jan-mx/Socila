@@ -17,6 +17,8 @@ interface ScalarParamEntry {
   effective_from?: string;
   effective_to?: string | null;
   source?: string;
+  // 修复轮I-B2（APR-FR-012）：DSL证据随参数装载，展开页可显示来源证据。
+  evidence?: unknown[];
   operation?: string;
   target_business_key?: string | null;
 }
@@ -34,6 +36,7 @@ interface TableParamEntry {
   rows: unknown[];
   note?: string;
   source?: string;
+  evidence?: unknown[];
   operation?: string;
   target_business_key?: string | null;
 }
@@ -95,6 +98,7 @@ export async function seedParams(region: DiscoveredRegion) {
       effectiveFrom: p.effective_from ?? pack.as_of,
       effectiveTo: p.effective_to ?? null,
       source: p.source ?? null,
+      evidence: p.evidence ?? [],
       keyFields: null,
       valueFields: null,
       rows: null,
@@ -162,6 +166,7 @@ export async function seedParams(region: DiscoveredRegion) {
       effectiveFrom: t.effective_from ?? pack.as_of,
       effectiveTo: t.effective_to ?? null,
       source: t.source ?? null,
+      evidence: t.evidence ?? [],
       keyFields: t.key_fields,
       valueFields: t.value_fields,
       rows: t.rows,

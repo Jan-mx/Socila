@@ -55,6 +55,57 @@ describe("buildParamReferenceIndex（APR-FR-012）", () => {
   });
 });
 
+describe("buildParamReferenceIndex（修复轮I5：跨地区同编号去重身份）", () => {
+  const sameIdAcrossRegions: RuleReferenceRow[] = [
+    row({ ruleId: "R-COMMON", jurisdictionCode: "CN", version: 3, parameterRefs: ["P-X"] }),
+    row({ ruleId: "R-COMMON", jurisdictionCode: "310000", version: 1, parameterRefs: ["P-X"] }),
+    row({ ruleId: "R-COMMON", jurisdictionCode: "440000", version: 1, parameterRefs: ["P-X"] }),
+  ];
+
+  it("CN与上海存在相同ruleId时三条地区身份都保留（不按ruleId互相覆盖）", () => {
+    const refs = buildParamReferenceIndex(sameIdAcrossRegions).get("P-X");
+    expect(refs?.map((r) => `${r.jurisdictionCode}@v${r.version}`)).toEqual([
+      "310000@v1",
+      "440000@v1",
+      "CN@v3",
+    ]);
+  });
+
+  it("同地区同ruleId多版本只保留本地区最新（版本比较不跨地区串用）", () => {
+    const refs = buildParamReferenceIndex([
+      row({ ruleId: "R-COMMON", jurisdictionCode: "CN", version: 2, parameterRefs: ["P-X"] }),
+      row({ ruleId: "R-COMMON", jurisdictionCode: "CN", version: 5, parameterRefs: ["P-X"] }),
+      row({ ruleId: "R-COMMON", jurisdictionCode: "310000", version: 1, parameterRefs: ["P-X"] }),
+      // 干扰项：CN v1先出现不得覆盖CN v5（版本更大的同地区行胜出）。
+      row({ ruleId: "R-COMMON", jurisdictionCode: "CN", version: 1, parameterRefs: ["P-X"] }),
+    ]).get("P-X");
+    expect(refs).toHaveLength(2);
+    expect(refs?.find((r) => r.jurisdictionCode === "CN")?.version).toBe(5);
+    expect(refs?.find((r) => r.jurisdictionCode === "310000")?.version).toBe(1);
+  });
+
+  it("输入顺序变化不改变输出（确定性排序）", () => {
+    const forward = buildParamReferenceIndex(sameIdAcrossRegions).get("P-X");
+    const backward = buildParamReferenceIndex(
+      [...sameIdAcrossRegions].reverse(),
+    ).get("P-X");
+    expect(backward).toEqual(forward);
+  });
+
+  it("过滤组合：CN参数只剩CN、上海参数含CN与上海、广东不混入上海", () => {
+    const refs = buildParamReferenceIndex(sameIdAcrossRegions).get("P-X")!;
+    expect(
+      filterRefsForJurisdiction(refs, "CN").map((r) => r.jurisdictionCode),
+    ).toEqual(["CN"]);
+    expect(
+      filterRefsForJurisdiction(refs, "310000").map((r) => r.jurisdictionCode),
+    ).toEqual(["310000", "CN"]);
+    expect(
+      filterRefsForJurisdiction(refs, "440000").map((r) => r.jurisdictionCode),
+    ).toEqual(["440000", "CN"]);
+  });
+});
+
 describe("filterRefsForJurisdiction（地区链过滤）", () => {
   const refs = [
     { ruleId: "R-220", name: "国家医保年限", jurisdictionCode: "CN", version: 1 },

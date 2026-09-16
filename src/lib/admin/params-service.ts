@@ -101,12 +101,28 @@ export function validateParamRecord(record: ParamRecord) {
     },
   ];
 
+  // 修复轮I-B3（APR-FR-017）：校验必须识别名称未补全状态（编号回退仅限
+  // 0020迁移旧行）。检查项随结果暴露供调用方识别；不纳入valid聚合——
+  // 兼容回退不得阻止读取/写入（PRD原文），补全仍走管理端白名单。
+  const nameText = typeof record.name === "string" ? record.name.trim() : "";
+  const namePending = !(nameText.length > 0 && nameText !== record.paramId);
+  checks.push({
+    name: "display_name",
+    passed: !namePending,
+    detail: namePending
+      ? "名称仍为编号回退或缺失（名称待补充），需经管理端补齐正式中文名称"
+      : "正式中文名称已补全",
+  });
+
   return {
-    valid: checks.every((check) => check.passed),
+    valid: checks
+      .filter((check) => check.name !== "display_name")
+      .every((check) => check.passed),
     checks,
     results: {
       param_id: record.paramId,
       type: record.type,
+      name_pending: namePending,
     },
   };
 }

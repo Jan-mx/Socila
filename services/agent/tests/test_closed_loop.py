@@ -70,6 +70,7 @@ def test_real_policy_closed_loop():
                     "temp_id": "p1",
                     "param_id": "P-SH-MIN-WAGE",
                     "business_key": "P-SH-MIN-WAGE",
+                    "name": "上海市月最低工资标准",
                     "type": "number",
                     "value": 2740,
                     "unit": "元/月",

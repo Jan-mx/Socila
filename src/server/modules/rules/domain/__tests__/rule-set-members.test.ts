@@ -165,6 +165,7 @@ describe("resolveRuleSetMembers 地区继承与overlay（APR-FR-007/AC-005）", 
 });
 
 describe("resolveRuleSetMembers 有效期与缺失（APR-FR-007/AC-006）", () => {
+  // missing成员形状含overlays空数组（修复轮I2契约扩展）。
   it("as_of_date决定版本窗口", () => {
     const rows = [
       candidate({ ruleId: "R-W", version: 1, name: "窗口一", effectiveFrom: "2020-01-01", effectiveTo: "2025-12-31" }),
@@ -195,6 +196,8 @@ describe("resolveRuleSetMembers 有效期与缺失（APR-FR-007/AC-006）", () =
       version: null,
       status: null,
       operation: null,
+      overlays: [],
+      contentRuleId: null,
       missing: true,
     });
   });
@@ -228,5 +231,140 @@ describe("resolveRuleSetMembers 名称缺失回退（APR-FR-004）", () => {
     );
     expect(m.missing).toBe(false);
     expect(m.name).toBeNull();
+  });
+});
+
+describe("resolveRuleSetMembers overlays明细（修复轮I2：非成员overlay载体可见可展开）", () => {
+  it("restrict载体以精确身份进入overlays，且载体不进入成员数组", () => {
+    const members = resolveRuleSetMembers(
+      ["R-220"],
+      [
+        candidate({ ruleId: "R-220", name: "医保退休年限" }),
+        candidate({
+          ruleId: "R-GD-MI-RETIRE-RESTRICT",
+          jurisdictionCode: "440000",
+          policyPackId: "RULES:440000",
+          version: 2,
+          operation: "restrict",
+          targetBusinessKey: "R-220",
+          name: "广东退休地附加条件限制",
+          effectiveFrom: "2023-01-01",
+        }),
+      ],
+      ["CN", "440000"],
+      "2026-09-16",
+    );
+    expect(members).toHaveLength(1);
+    expect(members[0].ruleId).toBe("R-220");
+    expect(members[0].overlays).toEqual([
+      {
+        operation: "restrict",
+        ruleId: "R-GD-MI-RETIRE-RESTRICT",
+        name: "广东退休地附加条件限制",
+        jurisdictionCode: "440000",
+        version: 2,
+        effectiveFrom: "2023-01-01",
+      },
+    ]);
+  });
+
+  it("exempt载体进入overlays；纯baseline成员overlays为空数组", () => {
+    const members = resolveRuleSetMembers(
+      ["R-010", "R-900"],
+      [
+        candidate({ ruleId: "R-010", name: "被豁免规则" }),
+        candidate({
+          ruleId: "R-EX-010",
+          jurisdictionCode: "310000",
+          policyPackId: "RULES:310000",
+          operation: "exempt",
+          targetBusinessKey: "R-010",
+          name: "豁免行",
+          effectiveFrom: "2024-06-01",
+        }),
+        candidate({ ruleId: "R-900", name: "纯国家规则" }),
+      ],
+      CN_SH,
+      "2026-09-16",
+    );
+    expect(members[0].overlays).toEqual([
+      {
+        operation: "exempt",
+        ruleId: "R-EX-010",
+        name: "豁免行",
+        jurisdictionCode: "310000",
+        version: 1,
+        effectiveFrom: "2024-06-01",
+      },
+    ]);
+    expect(members[1].overlays).toEqual([]);
+  });
+
+  it("多载体按provenance应用顺序输出（restrict先登记者在前）", () => {
+    const members = resolveRuleSetMembers(
+      ["R-220"],
+      [
+        candidate({ ruleId: "R-220", name: "医保退休年限" }),
+        candidate({
+          ruleId: "R-GD-A",
+          jurisdictionCode: "440000",
+          policyPackId: "RULES:440000",
+          version: 1,
+          operation: "restrict",
+          targetBusinessKey: "R-220",
+          name: "限制一",
+        }),
+        candidate({
+          ruleId: "R-GD-B",
+          jurisdictionCode: "440000",
+          policyPackId: "RULES:440000",
+          version: 2,
+          operation: "restrict",
+          targetBusinessKey: "R-220",
+          name: "限制二",
+        }),
+      ],
+      ["CN", "440000"],
+      "2026-09-16",
+    );
+    expect(members[0].overlays.map((o) => o.ruleId)).toEqual(["R-GD-A", "R-GD-B"]);
+  });
+});
+
+describe("成员内容来源行编号（修复轮I-B1：replace载体rule_id≠成员键）", () => {
+  it("非成员replace载体生效时contentRuleId=载体自身编号（展开可精确定位内容行）", () => {
+    const [m] = resolveRuleSetMembers(
+      ["R-010"],
+      [
+        candidate({ ruleId: "R-010", name: "国家基线" }),
+        candidate({
+          ruleId: "R-APR-RPL",
+          jurisdictionCode: "310000",
+          policyPackId: "RULES:310000",
+          version: 3,
+          operation: "replace",
+          targetBusinessKey: "R-010",
+          name: "上海替换版",
+        }),
+      ],
+      CN_SH,
+      "2026-09-16",
+    );
+    expect(m.missing).toBe(false);
+    // 内容来源行是替换载体自身：展开/详情必须用载体编号+载体地区+载体版本。
+    expect(m.contentRuleId).toBe("R-APR-RPL");
+    expect(m.jurisdictionCode).toBe("310000");
+    expect(m.version).toBe(3);
+    expect(m.name).toBe("上海替换版");
+  });
+
+  it("baseline成员contentRuleId=成员编号自身", () => {
+    const [m] = resolveRuleSetMembers(
+      ["R-010"],
+      [candidate({ ruleId: "R-010", name: "国家基线" })],
+      CN_SH,
+      "2026-09-16",
+    );
+    expect(m.contentRuleId).toBe("R-010");
   });
 });

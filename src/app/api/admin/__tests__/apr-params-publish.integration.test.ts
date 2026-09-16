@@ -109,6 +109,56 @@ describe("参数与发布名称可读化（APR-FR-012/015/016，路由级）", (
       ),
     ).toBe(true);
   });
+  it("修复轮M-B1：draft/retired规则不进入参数引用列表（仅published参与反查）", async () => {
+    const { Client } = await import("pg");
+    const c = new Client({ connectionString: DRILL_URL });
+    await c.connect();
+    const draftRule = "R-APR-REF-DRAFT";
+    try {
+      await c.query(
+        `delete from rules where rule_id=$1`,
+        [draftRule],
+      );
+      await c.query(
+        `insert into rules (rule_id, jurisdiction_code, business_key, name, module,
+           dsl_version, priority, status, version, effective_from, operation,
+           parameter_refs, decision_table)
+         values ($1, '310000', $1, 'APR引用反查草稿规则', 'test', 'SOCILA-DSL-1.0', 1,
+           'draft', 1, '2024-01-01', 'add', '["P-SH-4050-SUBSIDY-RATE"]'::jsonb,
+           '{"hit_policy":"first","rows":[]}'::jsonb)`,
+        [draftRule],
+      );
+      const { GET } = await import("@/app/api/admin/params/route");
+      const res = await GET(
+        jsonRequest("/api/admin/params?jurisdiction_code=310000", "GET"),
+      );
+      const body = (await res.json()) as { params: AdminParamRow[] };
+      const rate = body.params.find(
+        (p) => p.paramId === "P-SH-4050-SUBSIDY-RATE" && p.version === 1,
+      );
+      expect(
+        rate?.referencedByRules.some((r) => r.ruleId === draftRule),
+      ).toBe(false);
+      // 翻转为published后必须出现（判别力：过滤确实由status驱动）。
+      await c.query(
+        `update rules set status='published' where rule_id=$1`,
+        [draftRule],
+      );
+      const res2 = await GET(
+        jsonRequest("/api/admin/params?jurisdiction_code=310000", "GET"),
+      );
+      const body2 = (await res2.json()) as { params: AdminParamRow[] };
+      const rate2 = body2.params.find(
+        (p) => p.paramId === "P-SH-4050-SUBSIDY-RATE" && p.version === 1,
+      );
+      expect(
+        rate2?.referencedByRules.some((r) => r.ruleId === draftRule),
+      ).toBe(true);
+    } finally {
+      await c.query(`delete from rules where rule_id=$1`, [draftRule]);
+      await c.end();
+    }
+  });
 
   it("POST创建参数缺少正式名称返回400（APR-FR-017）", async () => {
     const { POST } = await import("@/app/api/admin/params/route");

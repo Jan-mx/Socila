@@ -6,7 +6,7 @@
 
 ## 当前结论
 
-> APR进展（2026-09-16）：后台政策资产中文可读化Feature（`docs/prd/09-16-feature-admin-policy-asset-readability.md`）在功能分支`codex/apr-policy-asset-readability`（基线main@a834d32）实现完成：规则集/参数显示元数据（0020迁移+DSL人工名称逐项补全）、成员解析与选择器、发布分组/卡片/历史名称真实性。新鲜门禁与独立复审证据见`reports/feature-09-16-admin-policy-asset-readability/acceptance-report.md`§3与下文"当前任务验证（09-16 APR）"小节。0020未对持久policyops执行（须另行fresh授权）。
+> APR进展（2026-09-16）：后台政策资产中文可读化Feature（`docs/prd/09-16-feature-admin-policy-asset-readability.md`）在功能分支`codex/apr-policy-asset-readability`（基线main@a834d32）实现完成：规则集/参数显示元数据（0020迁移+DSL人工名称逐项补全）、成员解析与选择器、发布分组/卡片/历史名称真实性。新鲜门禁与独立复审证据见`reports/feature-09-16-admin-policy-asset-readability/acceptance-report.md`§3与下文"当前任务验证（09-16 APR）"小节。0020未对持久policyops执行（须另行fresh授权）。**该小节的"Critical=0、Important=0"复审结论已被后续独立复审取代（Important×6，见下文"修复轮"小节），APR当前状态为Updating。**
 
 > SHV2进展（2026-09-13）：功能分支`codex/shanghai-case-v2@a85420f`重新进入Updating/Reopened。生产MinIO bucket=0、RAG七张表=0；同步器仅登记downloaded版本，尚无DocumentTree/chunks/embeddings，Web对话未接入RAG。ensure期间冲突对象仍可能在事务外verify前留下RAG登记。`WI-20260913-01`已定义最小运行闭环；本轮只更新文档，不写MinIO/数据库、不合并目标分支。
 
@@ -797,6 +797,8 @@ PRD `docs/prd/09-15-feature-llm-autonomous-tool-routing.md`。根因（PRD §2.2
 
 ## 当前任务验证（09-16 APR 后台政策资产中文可读化，2026-09-16本地新鲜执行）
 
+> **本小节结论已被取代（历史记录保留）**：后续独立复审在基线`3272577`发现Important×6（见下文"修复轮"小节），其中"独立复审Important=0"与本小节"关键不变量"行未覆盖的政策快照contentHash缺口均失效；本小节仅描述基线时点的执行历史，不是最终结论。
+
 | 验证 | 结果 |
 | --- | --- |
 | TDD Red | 已记录；Batch1单元9文件首跑25失败/16通过（模块缺失+行为断言）；集成三套件与页面源码契约实现前Red |
@@ -810,3 +812,10 @@ PRD `docs/prd/09-15-feature-llm-autonomous-tool-routing.md`。根因（PRD §2.2
 | 关键不变量 | 显示元数据（name/description）剥离出params contentHash与payloadShape——0020补写名称零物化/快照漂移（apr-display-metadata 3例+shv2-delta/materializer镜像集成证明）；规则引擎黄金回归、发布门禁、历史重放、地区隔离语义零变化；发布历史无法精确解析显示"名称不可用"不冒充 |
 | Docker/工作树零残留 | PASS；门禁容器`apr-drill-pg`/`apr-drill-minio-a`/`apr-drill-minio-b`由脚本finally删除并容器/卷/网络枚举零残留；E2E容器`apr-e2e-pg`（含apr_drill2/apr_e2e2/apr_e2e3验收库）在交付提交`1da63e0`推送后删除，容器/卷/网络三类枚举`apr-*`残留0；`socila-*`九容器与`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`卷执行前后未触碰；辅助工作树`F:/Socila-apr-wt`在下方docs记录提交推送后删除（删除前验证clean且已完整推送） |
 | 交付 | 分支`codex/apr-policy-asset-readability`（基线main`a834d32`）单一提交`1da63e0`已推送origin（dev提交已压缩）；Gitleaks 8.29.1最终历史8提交零发现、scan-secrets 994文件零命中、0020 blob零CR且LF契约复验7/7；0020/持久数据补写/生产部署均未执行（待fresh授权）；未创建PR、未合并main、未创建Tag/Release |
+
+## 修复轮（09-16 APR 后续独立复审Important×6，2026-09-16/17完成，终态Ready for user testing）
+
+- 审查基线`3272577`（代码提交`1da63e0`）；后续独立复审结论Critical=0、Important=6，原"四轮复审Important=0/Accepted"结论作废（历史记录保留于上节，非最终结论）。
+- 六项缺陷（均已代码级核实）：I1 `rules-read.repository.listRuleCandidates`有效期上界`sql`${asOfDate}` gte effective_to`方向反（选中过期、排除仍有效窗口内行）；I2 规则集详情/保存校验候选仅按成员编号装载，非成员overlay载体（如广东`R-GD-MI-RETIRE-RESTRICT`restrict指向`R-220-MEDICAL-LIFETIME-GAP`）不进merge，成员误显示纯CN baseline且展开隐藏overlay内容；I3 `snapshot-service.toMember`写入完整Drizzle行payload，params `name/description`与rule_set `name`进入policy_snapshot成员与contentHash（0020前后哈希漂移，违反APR-NFR-004）；I4 `ParamDraftSchema.name`可选且写库回退`param_id`、非法description静默置null（违反APR-FR-017"编号回退仅限0020旧行"）；I5 `buildParamReferenceIndex`内层键仅`ruleId`，CN与地区同编号互相覆盖；I6 `scripts/apr-db-gate.mjs`使用`minio/minio:latest`（manifest inspect denied，干净环境不可复现）。
+- 修复开发工作树：`F:/Socila-apr-fix-wt`（任务专属，自origin`3272577`）；迭代用容器`apr-fix-pg`；最终门禁按`scripts/apr-db-gate.mjs`（改用仓库CI批准的`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e`）。
+- **终态（2026-09-17）**：六项I1～I6与复审再发现I-B1（replace载体contentRuleId）/I-B2（参数证据装载与展开渲染）/I-B3（校验识别名称未补全）/I-B6（Agent侧verify_bundle同口径）全部RED→GREEN修复；复审A终局Critical=0/Important=0、复审B对六项确认关闭且新增项已处置（B4/B5及预存在Minor登记于验收报告§5.2边界）。最终HEAD新鲜门禁：`npm test` 104文件/1057用例0skip、drill `test:db` 36文件/198用例0skip（GATE_EXIT=0）、pytest integration 131/0skip、ruff/mypy/pytest非集成138、tsc/eslint/build通过、APR Chromium E2E 5/5、scan-secrets 994零命中；门禁稳定性处置=集成用例执行预算提升至30s（identity连续bcrypt与rcl多次tsx子进程演练的时长脆弱，不改断言）。任务资源`apr-fix-pg`/`apr-e2e-fix-pg`/`apr-rag-minio-repro(-b)`与gate自建`apr-drill-*`清理及辅助工作树删除见最终枚举记录；0020生产执行/部署/PR/合并未执行。

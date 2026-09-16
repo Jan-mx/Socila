@@ -76,6 +76,52 @@ export function canonical(value: unknown): string {
   return JSON.stringify(sortKeys(value));
 }
 
+/**
+ * 快照哈希的"运行时/政策内容投影"（修复轮I3，APR-NFR-004）：
+ * - param：剥离 name/description（APR新增显示元数据，非政策内容）；
+ * - rule_set：剥离 name（APR新增）；description为APR前既有政策字段，保留；
+ * - rule：完整保留——name是APR前既有业务载荷字段，语义不随本修复改变。
+ * 仅作用于哈希输入；policy_snapshot_members.payload存储原样（已存快照不可变），
+ * 所有重算端（release-gates/compute/replay）共用本投影 → 创建与重算逐字节一致。
+ */
+const SNAPSHOT_HASH_DISPLAY_FIELDS: Record<string, string[]> = {
+  param: ["name", "description"],
+  rule_set: ["name"],
+};
+
+export function projectSnapshotMemberForHash(member: {
+  entityType: string;
+  payload: unknown;
+}): Record<string, unknown> {
+  const drop = SNAPSHOT_HASH_DISPLAY_FIELDS[member.entityType];
+  if (!drop || drop.length === 0) return member as Record<string, unknown>;
+  const payload = { ...(member.payload as Record<string, unknown>) };
+  for (const field of drop) delete payload[field];
+  return { ...member, payload };
+}
+
+/**
+ * 成员集合的确定性内容哈希（创建与所有重算端唯一入口）：
+ * entityType+businessKey排序 → 投影剥离显示元数据 → canonical SHA-256。
+ * 兼容创建端（payload为Record）与仓储读回端（payload为unknown）两种形状。
+ */
+export function snapshotMembersContentHash(
+  members: Array<{
+    entityType: string;
+    businessKey: string;
+    payload: unknown;
+  }>,
+): string {
+  const canonicalMembers = [...members]
+    .sort(
+      (a, b) =>
+        a.entityType.localeCompare(b.entityType) ||
+        a.businessKey.localeCompare(b.businessKey),
+    )
+    .map(projectSnapshotMemberForHash);
+  return createHash("sha256").update(canonical(canonicalMembers)).digest("hex");
+}
+
 export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
   const conflictRepo = deps.conflictRepo ?? new DrizzlePolicyConflictRepository();
   const snapshotRepo = deps.snapshotRepo ?? new DrizzlePolicySnapshotRepository();
@@ -260,14 +306,8 @@ export function createPolicySnapshotService(deps: PolicySnapshotServiceDeps) {
       // 内容哈希使用确定性排序（entityType + businessKey），与执行期重算
       // （release-gates.canonicalMemberHash）完全一致——成员顺序不再影响哈希
       // （JRP-FR-026/AC-005：每次计算重算成员规范化哈希）。
-      const canonicalMembers = [...members].sort(
-        (a, b) =>
-          a.entityType.localeCompare(b.entityType) ||
-          a.businessKey.localeCompare(b.businessKey),
-      );
-      const contentHash = createHash("sha256")
-        .update(canonical(canonicalMembers))
-        .digest("hex");
+      // 修复轮I3：统一走snapshotMembersContentHash，显示元数据不进入政策内容哈希。
+      const contentHash = snapshotMembersContentHash(members);
 
       const created = await withTransaction(async (tx) => {
         return snapshotRepo.insertSnapshot(
