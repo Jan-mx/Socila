@@ -5,6 +5,8 @@
   "params": [
     {
       "param_id": "P-SH-CONTRIB-BASE-LOWER",
+      "name": "上海市社保缴费基数下限",
+      "description": "自2026年7月1日起，本市社保缴费基数下限为7546元/月（上海市人力资源和社会保障局2026-08-24发布）。",
       "type": "number",
       "value": 7546,
       "unit": "yuan/month",
@@ -35,6 +37,8 @@
     },
     {
       "param_id": "P-SH-CONTRIB-BASE-UPPER",
+      "name": "上海市社保缴费基数上限",
+      "description": "自2026年7月1日起，本市社保缴费基数上限为37731元/月。",
       "type": "number",
       "value": 37731,
       "unit": "yuan/month",
@@ -65,6 +69,8 @@
     },
     {
       "param_id": "P-SH-PENSION-RATE-EMPLOYER",
+      "name": "上海市单位养老保险缴费比例",
+      "description": "用人单位缴纳职工基本养老保险费的比例为16%（以上海市人社局2025-01-20发布参数页为权威口径）。",
       "type": "number",
       "value": 0.16,
       "unit": "ratio",
@@ -95,6 +101,8 @@
     },
     {
       "param_id": "P-SH-MEDICAL-RATE-EMPLOYER",
+      "name": "上海市单位医疗保险缴费比例（含生育保险）",
+      "description": "用人单位缴纳职工基本医疗保险费的比例为9%，其中含生育保险缴费。",
       "type": "number",
       "value": 0.09,
       "unit": "ratio",
@@ -125,6 +133,8 @@
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-RATE-EMPLOYER",
+      "name": "上海市单位失业保险缴费比例",
+      "description": "用人单位缴纳职工失业保险费的比例为0.5%。",
       "type": "number",
       "value": 0.005,
       "unit": "ratio",
@@ -155,6 +165,8 @@
     },
     {
       "param_id": "P-SH-PENSION-RATE-FLEX",
+      "name": "上海市灵活就业人员养老保险缴费比例",
+      "description": "自2024年3月1日起，灵活就业人员缴纳职工基本养老保险费的比例为20%。",
       "type": "number",
       "value": 0.2,
       "unit": "ratio",
@@ -185,6 +197,8 @@
     },
     {
       "param_id": "P-SH-MEDICAL-RATE-FLEX",
+      "name": "上海市灵活就业人员医疗保险缴费比例",
+      "description": "自2024年3月1日起，灵活就业人员缴纳职工基本医疗保险费的比例为10%。",
       "type": "number",
       "value": 0.1,
       "unit": "ratio",
@@ -215,6 +229,8 @@
     },
     {
       "param_id": "P-SH-MI-WAITING-PERIOD-MONTHS",
+      "name": "上海市灵活就业人员医保待遇等待期月数",
+      "description": "以灵活就业人员身份首次参加或中断后重新参加本市职工医保的，设置6个月待遇等待期（沪医保规〔2025〕7号，自2025-09-10施行）。",
       "type": "number",
       "value": 6,
       "unit": "months",
@@ -245,6 +261,8 @@
     },
     {
       "param_id": "P-SH-MI-GAP-WAIVER-MONTHS",
+      "name": "上海市医保断缴恢复参保等待期豁免月数",
+      "description": "中断职工医保待遇后3个月内以灵活就业人员身份参保缴费的，不受待遇等待期限制（沪医保规〔2025〕7号）。",
       "type": "number",
       "value": 3,
       "unit": "months",
@@ -275,6 +293,8 @@
     },
     {
       "param_id": "P-SH-4050-SUBSIDY-RATE",
+      "name": "上海市4050灵活就业社保补贴比例",
+      "description": "就业困难人员灵活就业社保补贴标准，为按下限基数计算的应缴社会保险费的50%（沪人社规〔2022〕8号，有效期至2026-12-31）。",
       "type": "number",
       "value": 0.5,
       "unit": "ratio",
@@ -321,6 +341,8 @@
     },
     {
       "param_id": "P-SH-4050-MAX-YEARS-GENERAL",
+      "name": "上海市4050补贴累计最长年限（一般情形）",
+      "description": "同一名就业困难人员享受灵活就业社保补贴的期限累计一般不超过3年。",
       "type": "number",
       "value": 3,
       "unit": "years",
@@ -367,6 +389,8 @@
     },
     {
       "param_id": "P-SH-4050-NEAR-RETIRE-THRESHOLD-YEARS",
+      "name": "上海市4050补贴延长至退休的临近退休门槛年数",
+      "description": "距法定退休年龄不足5年的，补贴可延长至退休（替代此前无依据的固定最长8年推断口径）。",
       "type": "number",
       "value": 5,
       "unit": "years",
@@ -397,6 +421,8 @@
     },
     {
       "param_id": "P-SH-JOB-SUBSIDY-RATE-MINWAGE",
+      "name": "上海市单位吸纳就业困难人员岗位补贴比例（按最低工资）",
+      "description": "用人单位吸纳就业困难人员的岗位补贴，按本市月最低工资标准的50%计算。",
       "type": "number",
       "value": 0.5,
       "unit": "ratio",
@@ -443,6 +469,8 @@
     },
     {
       "param_id": "P-SH-JOB-SUBSIDY-MAX-YEARS-GENERAL",
+      "name": "上海市单位吸纳补贴累计最长年限（一般情形）",
+      "description": "用人单位吸纳就业困难人员的岗位补贴期限累计一般不超过3年。",
       "type": "number",
       "value": 3,
       "unit": "years",
@@ -473,6 +501,8 @@
     },
     {
       "param_id": "P-SH-JOB-SUBSIDY-NEAR-RETIRE-THRESHOLD-YEARS",
+      "name": "上海市单位吸纳补贴延长至退休的临近退休门槛年数",
+      "description": "补贴期满时距法定退休年龄不足2年的，最长可延长至劳动者到达法定退休年龄。",
       "type": "number",
       "value": 2,
       "unit": "years",
@@ -503,6 +533,8 @@
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER1",
+      "name": "上海市失业保险金标准（第1至12个月）",
+      "description": "2024-07-01起执行的第1至12个月失业保险金标准2255元/月（沪人社规〔2024〕13号；2025-07-01起被沪人社规〔2025〕9号替代）。",
       "type": "number",
       "value": 2255,
       "unit": "yuan/month",
@@ -533,6 +565,8 @@
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER1",
+      "name": "上海市失业保险金标准（第1至12个月）",
+      "description": "2025-07-01起执行的第1至12个月失业保险金标准2305元/月（沪人社规〔2025〕9号；2026-07-01起被沪人社规〔2026〕7号替代）。",
       "type": "number",
       "value": 2305,
       "unit": "yuan/month",
@@ -563,6 +597,8 @@
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER1",
+      "name": "上海市失业保险金标准（第1至12个月）",
+      "description": "2026-07-01起执行的第1至12个月失业保险金标准2340元/月（沪人社规〔2026〕7号，有效期至2028-06-30）。",
       "type": "number",
       "value": 2340,
       "unit": "yuan/month",
@@ -609,6 +645,8 @@
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER2",
+      "name": "上海市失业保险金标准（第13至24个月）",
+      "description": "2024-07-01起执行的第13至24个月失业保险金标准1804元/月（沪人社规〔2024〕13号）。",
       "type": "number",
       "value": 1804,
       "unit": "yuan/month",
@@ -639,6 +677,8 @@
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER2",
+      "name": "上海市失业保险金标准（第13至24个月）",
+      "description": "2025-07-01起执行的第13至24个月失业保险金标准1844元/月（沪人社规〔2025〕9号）。",
       "type": "number",
       "value": 1844,
       "unit": "yuan/month",
@@ -669,6 +709,8 @@
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-TIER2",
+      "name": "上海市失业保险金标准（第13至24个月）",
+      "description": "2026-07-01起执行的第13至24个月失业保险金标准1872元/月（沪人社规〔2026〕7号）。",
       "type": "number",
       "value": 1872,
       "unit": "yuan/month",
@@ -699,6 +741,8 @@
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED",
+      "name": "上海市失业保险金延长领取期间标准",
+      "description": "2024-07-01起执行的延长领取期间失业保险金标准1595元/月（沪人社规〔2024〕13号）。",
       "type": "number",
       "value": 1595,
       "unit": "yuan/month",
@@ -729,6 +773,8 @@
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED",
+      "name": "上海市失业保险金延长领取期间标准",
+      "description": "2025-07-01起执行的延长领取期间失业保险金标准1650元/月（沪人社规〔2025〕9号）。",
       "type": "number",
       "value": 1650,
       "unit": "yuan/month",
@@ -759,6 +805,8 @@
     },
     {
       "param_id": "P-SH-UNEMPLOYMENT-BENEFIT-EXTENDED",
+      "name": "上海市失业保险金延长领取期间标准",
+      "description": "2026-07-01起执行的延长领取期间失业保险金标准1690元/月；官方问答说明该标准不低于本市最低生活保障标准，故高于第13至24个月标准的80%（沪人社规〔2026〕7号）。",
       "type": "number",
       "value": 1690,
       "unit": "yuan/month",
@@ -805,6 +853,8 @@
     },
     {
       "param_id": "P-SH-MIN-WAGE",
+      "name": "上海市月最低工资标准",
+      "description": "2024-07-01起执行的月最低工资标准2690元/月；沪人社规〔2025〕10号载明自2025-07-01起调整至2740元。",
       "type": "number",
       "value": 2690,
       "unit": "yuan/month",
@@ -835,6 +885,8 @@
     },
     {
       "param_id": "P-SH-MIN-WAGE",
+      "name": "上海市月最低工资标准",
+      "description": "自2025年7月1日起，本市月最低工资标准为2740元（沪人社规〔2025〕10号）。",
       "type": "number",
       "value": 2740,
       "unit": "yuan/month",
@@ -881,6 +933,8 @@
     },
     {
       "param_id": "P-MI-LIFETIME-REQUIRED-YEARS",
+      "name": "上海市退休职工医保累计缴费年限要求",
+      "description": "上海退休职工享受职工医保终身待遇的条件为缴费年限（含视同缴费年限）累计超过15年。",
       "type": "number",
       "value": 15,
       "unit": "years",
@@ -911,6 +965,8 @@
     },
     {
       "param_id": "P-MI-LIFETIME-MALE-YEARS",
+      "name": "上海市医保退休最低缴费年限要求（男性）",
+      "description": "上海官方来源不按性别区分医保退休缴费年限，男性口径与累计超过15年的统一要求一致；原25年口径无依据，已按正式来源纠正为15年。",
       "type": "number",
       "value": 15,
       "unit": "years",
@@ -941,6 +997,8 @@
     },
     {
       "param_id": "P-MI-LIFETIME-FEMALE-YEARS",
+      "name": "上海市医保退休最低缴费年限要求（女性）",
+      "description": "上海官方来源不按性别区分医保退休缴费年限，女性口径与累计超过15年的统一要求一致；原20年口径无依据，已按正式来源纠正为15年。",
       "type": "number",
       "value": 15,
       "unit": "years",
@@ -971,6 +1029,8 @@
     },
     {
       "param_id": "P-SH-UI-OLDER-PENSION-FUND-WINDOW-MONTHS",
+      "name": "上海市大龄领金人员养老保险费由失业基金承担窗口月数",
+      "description": "大龄领取失业保险金人员在距法定退休年龄不足1年期间缴纳的职工养老保险费，由失业保险基金支付，退休后一次性发放（窗口月数12个月）。",
       "type": "number",
       "value": 12,
       "unit": "months",
@@ -1019,6 +1079,8 @@
   "tables": [
     {
       "param_id": "T-UNEMPLOYMENT-DURATION-BY-YEARS",
+      "name": "上海市失业保险金领取期限分档表（上海执行标准）",
+      "description": "上海执行标准：累计缴费满1年不满2年的领取2个月，以后每增加1年增加2个月，最长不超过24个月（沪人社规〔2026〕18号，自2026-08-16施行；对国家级期限分档表的显式replace）。",
       "type": "table",
       "effective_from": "2026-08-16",
       "effective_to": "2031-08-15",

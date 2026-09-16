@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-15
+> Updated: 2026-09-16
 
 ## 上下文
 
@@ -71,11 +71,12 @@ flowchart TB
 - 每个政策事实的evidence引用官方原件（document_id/artifact/content_sha256/locator/逐字excerpt）；`citation-contract.test.ts`验证摘录逐字存在于仓库内抓取原件，防伪造引用。政策含义无法从权威来源确定时不编码、转人工裁决（如四川医保退休年限待办）。
 - 广东、四川示例包（`GD-EXAMPLE-BASE`、`SC-EXAMPLE-BASE`及四个示例参数）只是测试夹具（`src/server/modules/policy/__tests__/fixtures/regional-examples.ts`），生产Seed不写入（SDL-FR-012）。
 - `Jurisdiction`保存国家、省、市、区县层级。
+- **后台政策资产中文可读化（09-16 APR）**：`rule_sets`新增必填`name`、`params`新增必填`name`与可选`description`（migration 0020；纯显示元数据，业务身份仍是rule_set_id/param_id+jurisdiction+version）。四地区DSL文件逐项携带人工中文名称/说明，Seed与受控物化入口经`src/lib/dsl/display-names.ts`（assertDisplayMeta）强制名称非空且拒绝HTML尖括号；兼容迁移对无法对应DSL的旧行以实体编号回退命名（UI标记"名称待补充"，`isFallbackName`识别）。**显示元数据不参与政策内容哈希**：params的contentHash经`manifest.policyContentOf`剥离`name`/`description`；rule_set的名称漂移排除由`shapes.ts`的`ruleSetPayloadShape`不含`name`保证（description为原有业务字段仍参与）；`payloadShapeHash`增量判定同样不含显示字段——补写名称不触发快照/批次/物化delta漂移（APR-NFR-004，契约：`apr-display-metadata.test.ts`）。规则集管理入口唯一化：规则管理页只保留规则列表（APR-FR-001），独立`/admin/rule-sets`页按持久化`rule_id[]`顺序显示成员中文名称（`src/server/modules/rules/domain/rule-set-members.ts`复用policy域`mergePolicyContext`继承链/有效期/overlay语义批量解析，单查询装载候选，禁止逐成员N+1；无法解析成员保留原位置并禁止保存），详情与更新使用`rule_set_id+jurisdiction_code+version`精确身份（缺失400、不存在404），`GET /api/admin/rule-sets/[id]/candidates`提供名称/编号搜索选择器（排除已加入与不可解析候选，保存值仍为稳定编号）。发布中心每阶段内按规则集→规则→参数可折叠分组（数量之和=阶段总数），卡片以中文名称为主、操作仍用稳定身份；发布历史按`entity_type+jurisdiction_code+entity_id+entity_version`批量精确解析名称（`src/lib/admin/publish-history-names.ts`），身份缺失或实体不存在显示"名称不可用"、绝不以当前名称冒充历史名称（APR-NFR-005）。**修复轮（复审Important×6关闭）**：①候选装载`listRuleCandidates`按`rule_id∈成员 OR target_business_key∈成员`一次批量取回（非成员restrict/exempt/replace载体进入merge语义，有效期窗口`from<=as_of AND (to IS NULL OR to>=as_of)`），成员视图携带`overlays`（生效restrict/exempt载体精确身份，按应用顺序）与`contentRuleId`（replace后=载体行编号，展开/详情精确定位内容来源），页面分区显示基础内容与生效overlay且载体绝不进入执行顺序；②政策快照内容哈希统一入口`snapshotMembersContentHash`（`snapshot-service.ts`导出）：entityType+businessKey排序→投影剥离param`name/description`与rule_set`name`→canonical SHA-256，创建与`release-gates.canonicalMemberHash`及compute/replay重算端共享同一投影，存储成员payload保持完整（已存快照不可变，0020前旧payload无显示字段→投影no-op零漂移）；③Agent新参数草案强制正式名称：zod必填trim非空无尖括号+事务内服务级防线（直连同样422整体回滚零写入含台账），Python`ParamDraft`加可选`name/description`透传且`verify_bundle`同口径识别（can_review=False）；④参数引用反查去重身份`jurisdictionCode+ruleId`（版本比较限同地区，输出双键确定排序），索引仅published规则；⑤参数校验`validateParamRecord`暴露`display_name`检查项与`name_pending`（不阻断valid聚合，FR-017识别不阻止）；⑥APR数据库门禁MinIO镜像运行时解析CI Compose批准的quay.io固定digest（单一真相源）。
 - 规则、参数、测试和政策携带business key、版本、地区、状态和有效期（params支持effective_to窗口装载）。
 - 同级冲突和重叠有效期产生Conflict，不自动裁决。
 - 发布快照保存解析后的地区继承链、版本集合、hash和provenance（provenance含operation与targetBusinessKey，NRP-AC-005）。
 - JSON DSL继续保存在JSONB，并由AJV和JSON Schema校验（`dsl/protocol/socila_dsl_v1/schema/`）。
-- **编辑字段白名单与测试隔离（09-05阶段E复审）**：管理端PATCH/PUT/POST经`src/lib/admin/entity-edit-policy.ts`白名单——受控字段（status/version/jurisdiction/businessKey/ID/policyPackId/时间戳等）与未知字段一律400，状态转换只能走publishing用例；blocked地区实体晋级被422拒绝。发布回归门禁按继承链地区加载测试（国家规则用CN测试，地方规则用目标地区+CN测试）。published完整性哈希为`to_jsonb`整行规范化哈希（UTC会话）。
+- **编辑字段白名单与测试隔离（09-05阶段E复审）**：管理端PATCH/PUT/POST经`src/lib/admin/entity-edit-policy.ts`白名单——受控字段（status/version/jurisdiction/businessKey/ID/policyPackId/时间戳等）与未知字段一律400，状态转换只能走publishing用例；blocked地区实体晋级被422拒绝。APR扩展白名单：规则集草稿允许`name`、参数草稿允许`name`/`description`（提交仍经assertDisplayMeta非空/无HTML校验），受控字段不因此放松。发布回归门禁按继承链地区加载测试（国家规则用CN测试，地方规则用目标地区+CN测试）。published完整性哈希为`to_jsonb`整行规范化哈希（UTC会话）。
 - **受控物化（09-05阶段E）**：仓库权威资产进入持久库必须经`scripts/materialize-policy-regions.ts`（默认audit；apply需授权参数+manifest哈希+目标指纹三重校验；DATABASE_URL必须进程显式设置且仅限本机policyops，禁止dotenv回退）。首次四地区物化与repair已完成；后续物化必须按现有地区/类型/业务键/有效期/版本/内容计算确定性delta，只写新增或变化实体，未变化实体不得产生新版本。事务内目标计数由当前指纹+delta计算，任一校验失败全部回滚；published行永不原地修改。
 - **draft包repair边界（WI-20260906-01/02，已验收并执行）**：目标指纹绑定全部draft包行状态和内容；repair事务内`FOR UPDATE`重校验并追加不可变`repaired`审计，原批次/成员不改写。持久库已完成0014与一次四包repair（验收报告§14～§15）；未来出现新漂移仍必须fresh audit并另行授权。
 - **分地区交付与能力级缺口（ADR-0010）**：首期候选快照为CN、上海、广东；四川保持blocked、无快照且请求不得跨地区回退。广东2030年前医保退休地市年限缺参只触发R-220的`needs_agent`/`W-MI-LOCAL-YEARS-MISSING`，其他模块继续执行；2030年起使用省级男30年、女25年。

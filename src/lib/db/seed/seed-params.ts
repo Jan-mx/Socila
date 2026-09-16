@@ -4,21 +4,30 @@ import { params } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import type { DiscoveredRegion } from "@/lib/dsl/region-manifest";
 import { parseOverlayOperation } from "@/lib/dsl/overlay-operation";
+import { assertDisplayMeta } from "@/lib/dsl/display-names";
 
 interface ScalarParamEntry {
   param_id: string;
+  // APR-FR-010/017：正式中文名称必填（缺失装载失败），说明可选。
+  name?: string;
+  description?: string | null;
   type: "number" | "boolean" | "string" | "array";
   value: unknown;
   unit?: string;
   effective_from?: string;
   effective_to?: string | null;
   source?: string;
+  // 修复轮I-B2（APR-FR-012）：DSL证据随参数装载，展开页可显示来源证据。
+  evidence?: unknown[];
   operation?: string;
   target_business_key?: string | null;
 }
 
 interface TableParamEntry {
   param_id: string;
+  // APR-FR-010/017：同上。
+  name?: string;
+  description?: string | null;
   type: "table" | "timeline";
   effective_from?: string;
   effective_to?: string | null;
@@ -27,6 +36,7 @@ interface TableParamEntry {
   rows: unknown[];
   note?: string;
   source?: string;
+  evidence?: unknown[];
   operation?: string;
   target_business_key?: string | null;
 }
@@ -77,12 +87,18 @@ export async function seedParams(region: DiscoveredRegion) {
       jurisdictionCode,
       businessKey: p.param_id,
       paramId: p.param_id,
+      // APR-FR-010/011：装载入口强制正式中文名称（缺失即装载失败）。
+      ...assertDisplayMeta(p.param_id, {
+        name: p.name,
+        description: p.description,
+      }),
       type: p.type,
       value: p.value,
       unit: p.unit ?? null,
       effectiveFrom: p.effective_from ?? pack.as_of,
       effectiveTo: p.effective_to ?? null,
       source: p.source ?? null,
+      evidence: p.evidence ?? [],
       keyFields: null,
       valueFields: null,
       rows: null,
@@ -139,12 +155,18 @@ export async function seedParams(region: DiscoveredRegion) {
       jurisdictionCode,
       businessKey: t.param_id,
       paramId: t.param_id,
+      // APR-FR-010/011：同上。
+      ...assertDisplayMeta(t.param_id, {
+        name: t.name,
+        description: t.description,
+      }),
       type: t.type,
       value: null,
       unit: null,
       effectiveFrom: t.effective_from ?? pack.as_of,
       effectiveTo: t.effective_to ?? null,
       source: t.source ?? null,
+      evidence: t.evidence ?? [],
       keyFields: t.key_fields,
       valueFields: t.value_fields,
       rows: t.rows,

@@ -54,6 +54,10 @@ export const params = pgTable("params", {
   jurisdictionCode: text("jurisdiction_code"),
   businessKey: text("business_key"),
   paramId: text("param_id").notNull(),
+  // 正式中文名称（APR-FR-010/017，migration 0020）：显示用途，业务身份仍是param_id；
+  // 旧数据迁移期以编号回退（名称待补充），新建/物化入口强制非空。
+  name: text("name").notNull(),
+  description: text("description"),
   type: text("type").notNull(),
   value: jsonb("value"),
   unit: text("unit"),
@@ -96,6 +100,9 @@ export const ruleSets = pgTable("rule_sets", {
   id: serial("id").primaryKey(),
   ruleSetId: text("rule_set_id").notNull(),
   jurisdictionCode: text("jurisdiction_code"),
+  // 正式中文名称（APR-FR-003/017，migration 0020）：显示用途，业务身份仍是rule_set_id；
+  // description继续保存详细说明。
+  name: text("name").notNull(),
   description: text("description"),
   status: text("status").notNull().default("draft"),
   effectiveFrom: date("effective_from").notNull(),

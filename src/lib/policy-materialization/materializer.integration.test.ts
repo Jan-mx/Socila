@@ -187,16 +187,19 @@ async function insertEntitySql(
   if (e.entityType === "param") {
     const r = await c.query(
       `insert into params (policy_pack_id, jurisdiction_code, business_key, param_id,
-         type, value, unit, effective_from, effective_to, source, key_fields,
+         name, description, type, value, unit, effective_from, effective_to, source, key_fields,
          value_fields, rows, note, version, status, operation, target_business_key,
          evidence)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'draft',$16,$17,$18)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'draft',$18,$19,$20)
        returning id`,
       [
         regionPackId,
         e.jurisdictionCode,
         e.businessKey,
         e.businessKey,
+        // APR显示元数据：镜像行与真实物化行一致地承载name（缺失时按0020回退=编号）。
+        (p.name as string) ?? e.businessKey,
+        (p.description as string | null) ?? null,
         (p.type as string) ?? "number",
         p.value === undefined ? null : JSON.stringify(p.value),
         (p.unit as string | null) ?? null,
@@ -217,13 +220,14 @@ async function insertEntitySql(
   }
   if (e.entityType === "rule_set") {
     const r = await c.query(
-      `insert into rule_sets (rule_set_id, jurisdiction_code, description, status,
+      `insert into rule_sets (rule_set_id, jurisdiction_code, name, description, status,
          effective_from, rules, conflict_resolution, version, operation,
          target_business_key)
-       values ($1,$2,$3,'draft',$4,$5,$6,$7,$8,$9) returning id`,
+       values ($1,$2,$3,$4,'draft',$5,$6,$7,$8,$9,$10) returning id`,
       [
         e.businessKey,
         e.jurisdictionCode,
+        (p.name as string) ?? e.businessKey,
         (p.description as string | null) ?? null,
         (p.effective_from as string) ?? "2024-01-01",
         JSON.stringify((p.rules as string[]) ?? []),
@@ -272,8 +276,8 @@ async function seedPersistentMirror(c: Client): Promise<void> {
     const isTable = id.startsWith("T-");
     await c.query(
       `insert into params (policy_pack_id, jurisdiction_code, business_key, param_id,
-         type, value, rows, status, effective_from, version, operation)
-       values ('SHANGHAI_BASE','310000',$1,$1,$2,$3,$4,'published','2024-01-01',1,'add')`,
+         name, type, value, rows, status, effective_from, version, operation)
+       values ('SHANGHAI_BASE','310000',$1,$1,$1,$2,$3,$4,'published','2024-01-01',1,'add')`,
       [
         id,
         isTable ? "table" : "number",
@@ -285,8 +289,8 @@ async function seedPersistentMirror(c: Client): Promise<void> {
     );
   }
   await c.query(
-    `insert into rule_sets (rule_set_id, jurisdiction_code, status, effective_from, rules, version, operation)
-     values ('RS-SHANGHAI-PLAN-V1','310000','published','2024-01-01',$1::jsonb,1,'add')`,
+    `insert into rule_sets (rule_set_id, jurisdiction_code, name, status, effective_from, rules, version, operation)
+     values ('RS-SHANGHAI-PLAN-V1','310000','RS-SHANGHAI-PLAN-V1','published','2024-01-01',$1::jsonb,1,'add')`,
     [JSON.stringify(LEGACY_RULE_KEYS)],
   );
 
@@ -1147,7 +1151,7 @@ describe("阶段E物化（独立nrp_e_mat库，NRP-AC-011/013/014/015）", () =>
       businessKey: "P-CN-EXTRA",
       kind: "scalar",
       contentHash: "x",
-      payload: { param_id: "P-CN-EXTRA", type: "number", value: 1, operation: "baseline" },
+      payload: { param_id: "P-CN-EXTRA", name: "物化计数篡改参数", type: "number", value: 1, operation: "baseline" },
     });
     const tamperedHash = manifestHash(tampered);
     const fpNow = (

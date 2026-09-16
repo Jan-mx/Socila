@@ -86,11 +86,11 @@ async function insertExampleRows(client: Client): Promise<void> {
             ('SC-EXAMPLE-BASE','510000','overlay',1,'published','2025-01-01')`,
   );
   await client.query(
-    `INSERT INTO params (policy_pack_id, jurisdiction_code, business_key, param_id, type, value, effective_from, status)
-     VALUES ('GD-EXAMPLE-BASE','440000','P-GD-MIN-WAGE-BASE','P-GD-MIN-WAGE-BASE','number','2300','2025-01-01','published'),
-            ('GD-EXAMPLE-BASE','440000','P-GD-MEDICAL-CAP','P-GD-MEDICAL-CAP','number','7800','2025-01-01','published'),
-            ('SC-EXAMPLE-BASE','510000','P-SC-MIN-WAGE-BASE','P-SC-MIN-WAGE-BASE','number','2100','2025-01-01','published'),
-            ('SC-EXAMPLE-BASE','510000','P-SC-MEDICAL-CAP','P-SC-MEDICAL-CAP','number','6600','2025-01-01','published')`,
+    `INSERT INTO params (policy_pack_id, jurisdiction_code, business_key, param_id, name, type, value, effective_from, status)
+     VALUES ('GD-EXAMPLE-BASE','440000','P-GD-MIN-WAGE-BASE','P-GD-MIN-WAGE-BASE','示例广东最低工资基数','number','2300','2025-01-01','published'),
+            ('GD-EXAMPLE-BASE','440000','P-GD-MEDICAL-CAP','P-GD-MEDICAL-CAP','示例广东医保封顶线基数','number','7800','2025-01-01','published'),
+            ('SC-EXAMPLE-BASE','510000','P-SC-MIN-WAGE-BASE','P-SC-MIN-WAGE-BASE','示例四川最低工资基数','number','2100','2025-01-01','published'),
+            ('SC-EXAMPLE-BASE','510000','P-SC-MEDICAL-CAP','P-SC-MEDICAL-CAP','示例四川医保封顶线基数','number','6600','2025-01-01','published')`,
   );
 }
 
@@ -102,8 +102,8 @@ async function insertControlRows(client: Client): Promise<void> {
      VALUES ('SDL-CONTROL-PACK','310000','baseline',1,'published','2025-01-01')`,
   );
   await client.query(
-    `INSERT INTO params (policy_pack_id, jurisdiction_code, business_key, param_id, type, value, effective_from, status)
-     VALUES ('SDL-CONTROL-PACK','310000','P-SDL-CONTROL-PARAM','P-SDL-CONTROL-PARAM','number','7460','2025-07-01','published')`,
+    `INSERT INTO params (policy_pack_id, jurisdiction_code, business_key, param_id, name, type, value, effective_from, status)
+     VALUES ('SDL-CONTROL-PACK','310000','P-SDL-CONTROL-PARAM','P-SDL-CONTROL-PARAM','SDL对照控制参数','number','7460','2025-07-01','published')`,
   );
 }
 
@@ -225,8 +225,8 @@ describe("0010 migration（drill DB，SDL-AC-007）", () => {
         await insertExampleRows(client);
         // P-GD-MIN-WAGE-BASE 出现在非预期地区 → 中止。
         await client.query(
-          `INSERT INTO params (policy_pack_id, jurisdiction_code, business_key, param_id, type, value, effective_from, status)
-           VALUES ('GD-EXAMPLE-BASE','510000','P-GD-MIN-WAGE-BASE','P-GD-MIN-WAGE-BASE','number','1','2025-01-01','draft')`,
+          `INSERT INTO params (policy_pack_id, jurisdiction_code, business_key, param_id, name, type, value, effective_from, status)
+           VALUES ('GD-EXAMPLE-BASE','510000','P-GD-MIN-WAGE-BASE','P-GD-MIN-WAGE-BASE','示例广东最低工资基数（异常地区）','number','1','2025-01-01','draft')`,
         );
         let aborted: Error | null = null;
         try {

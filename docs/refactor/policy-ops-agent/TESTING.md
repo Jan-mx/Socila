@@ -2,7 +2,7 @@
 
 > Author: Jan
 > Status: Active
-> Updated: 2026-09-15
+> Updated: 2026-09-16
 
 ## 测试先行
 
@@ -397,3 +397,29 @@ PRD：`docs/prd/09-15-feature-llm-autonomous-tool-routing.md`。对话Agent从�
 - **提示词新契约**：新增"来源边界"段（用户事实/规划数值仅computePlan/政策事实仅searchPolicy/画像更新updateProfile/同轮可组合不得串用）；`searchPolicy`限制表述改为"只约束政策事实部分，不排除同一轮使用用户画像、computePlan 规划结果或其他工具的合法结果"；`computePlan`规则收敛为"规划计算数值"；删除固定政策文件名称/发布日期/调整月份；画像标签只保留枚举名（worker50/cadre55）；"4050补贴"俗称改中性"就业困难人员社保补贴"。
 - **E2E**（`e2e/shv2-rag-chat.spec.ts` 29项，全套恢复29项）：新增"searchPolicy不可用时完成整个模型循环"——mock Agent检索端点对"不可用场景"查询返回500，工具失败关闭（success:false）后模型消费失败结果如实说明"暂时不可用"，页面与持久化文本均无伪造官网/文号/归档路径。
 - **新鲜门禁（2026-09-15第二轮本地）**：AI聚焦4文件/51；`npm test` 94文件/954零失败零skip；tsc 0；`eslint src e2e --max-warnings 0` 0；build退出0（1条既有warning）；全新任务专属`atr-fix-e2e-pg`（pgvector/pgvector:pg17 @127.0.0.1:55198：migration×2幂等/bootstrap/seed/vector扩展/e2e-rcl-setup 36/36/80）Chromium E2E 29/29；容器与匿名卷删除后`atr*`零残留、`socila-*`未触碰。
+
+## 后台政策资产中文可读化（APR，2026-09-16）
+
+PRD：`docs/prd/09-16-feature-admin-policy-asset-readability.md`。规则集/参数新增正式中文名称，管理端以名称为主、编号为辅；名称不参与政策内容哈希。
+
+- **单元（`npm test`）**：
+  - `src/lib/dsl/__tests__/display-names.test.ts`（APR-FR-003/010/017）：assertDisplayMeta强制名称非空/无HTML/说明规范化、DisplayMetaError指向实体编号、isFallbackName识别迁移回退。
+  - `src/server/modules/rules/domain/__tests__/rule-set-members.test.ts`（APR-FR-004/005/007、NFR-001）：成员顺序与持久化`rule_id[]`一致且不受候选输入顺序影响；CN基线继承/地区add/replace/restrict/exempt解析（复用mergePolicyContext）；as_of_date窗口选择；缺失成员保留原位置missing=true；无关地区与overlay冲突fail-closed为missing；名称空串返回null；确定性双跑一致。
+  - `src/lib/admin/__tests__/rule-selector.test.ts`（APR-FR-009）：名称/编号搜索、大小写不敏感、已加入成员排除、多版本取最新、稳定编号去重、按ruleId稳定排序。
+  - `src/lib/admin/__tests__/publish-history-names.test.ts`（APR-FR-016、NFR-005）：四元身份精确命中；v1历史绝不用v2当前名称；身份缺失/实体不存在→null；同编号跨地区不混淆。
+  - `src/lib/client/__tests__/asset-display.test.ts`（APR-FR-004/014/017）：名称为主、"名称不可用"/"名称待补充"纯文本标记；发布分组固定规则集→规则→参数且分类数量之和=阶段总数、空分组也输出。
+  - `src/lib/dsl/__tests__/apr-dsl-display-assets.test.ts`（APR-FR-011）：四地区8个DSL文件（4参数包+4规则集）逐参数条目人工中文name+description、同param_id多窗口共享同一名称、规则集文件携带与编号不同的人工名称。
+  - `src/app/admin/__tests__/apr-admin-ui-contract.test.ts`（APR-FR-001/002/005/012/014/015/016、NFR-003，源码契约）：规则管理页无规则集标签页/重复请求/编辑状态且保留搜索/筛选/行跳转；规则集页精确实体身份、成员不排序、展开与选择器、顺序调整confirm提示；参数页名称为主编号为辅、展开引用规则；发布页阶段分组、操作使用稳定身份、历史名称不可用标记。
+  - `src/lib/admin/entity-edit-policy.test.ts`（APR§9）：参数name/description、规则集name进入白名单；name+受控字段组合仍整体拒绝。
+  - **修复轮新增单元**：`params-service.test.ts`新增display_name检查项用例（I-B3：name缺失/空白/编号回退→checks含display_name不通过+results.name_pending=true，valid聚合不受影响）；`rule-set-members.test.ts`新增overlays明细3例（I2：restrict/exempt载体精确身份、载体不进成员数组、多载体按应用顺序）与contentRuleId 2例（I-B1：非成员replace载体=载体自身编号、baseline=成员编号）；`param-references.test.ts`新增跨地区去重4例（I5）；`apr-gate-contract.test.ts`（I6：门禁禁latest、digest单一真相源、任务容器清单全apr-*、生产资源零引用）。
+  - `src/lib/admin/__tests__/param-references.test.ts`（APR-FR-012）：parameter_refs对象/字符串双形状反查、同ruleId多版本去重、引用按参数行地区链过滤（CN/地区/NULL三口径）。
+  - `src/lib/policy-materialization/apr-display-metadata.test.ts`（APR-FR-017/NFR-004）：当前DSL contentHash等于剥离name/description后的哈希；补写名称前后manifest/包快照/payloadShape零漂移；规则集name不进入payloadShape而description仍参与。
+- **集成（`npm run test:db`，drill库）**：
+  - `src/app/api/admin/__tests__/apr-rule-sets.integration.test.ts`：列表名称；详情同时返回原始rules与members（来源地区/版本/操作，顺序=持久化数组）；缺身份400、错地区/版本404不猜测；as_of_date回显与非法400；缺失成员保留位置、保存含重复/缺失拒绝并指出编号、合法保存顺序原样持久化；PATCH名称校验（空/HTML拒绝，400错误文案必须来自name校验而非草稿门槛——判别力；受控组合拒绝）；选择器名称/编号搜索排除已加入；POST创建缺名称400、ghost成员拒绝创建并钉零写入、空rules放行（草稿）而PATCH空rules拒绝（不对称语义钉住）；规则name PATCH/POST反例（html/空名400+合法名200+草稿预清理与finally清理）。
+  - `src/app/api/admin/__tests__/apr-params-publish.integration.test.ts`：参数列表名称+说明+批量referencedByRules（R-510引用P-SH-4050-SUBSIDY-RATE，规则名称为中文；@310000参数引用钉行存在且只含CN/310000）；POST缺名称400；PATCH草稿name空/HTML拒绝、description HTML拒绝、合法更新放行；pipeline三类实体displayName正确；历史按精确版本解析（APR专属参数v1/v2当时名称 vs 当前名称、身份缺失null、不存在null）。
+  - `src/lib/db/__tests__/apr-0020-migration.integration.test.ts`：旧库升级（截断journal→0020）回退命名、DSL人工名称补全、NOT NULL生效、规则顺序/版本/状态零修改、SQL幂等重放与完整migrate no-op。
+  - 既有套件适配：`multi-region-seed`/`sdl-0010`/`regional-examples`/`nrp-explicit-overlay`/`snapshot-service`夹具补齐params名称（APR强制入口的行为结果）；`rcl-0019`journal断言改为0019存在且保持严格单调（0020为其后继）。
+- **修复轮集成/E2E**：`src/server/modules/rules/__tests__/apr-validity-window.integration.test.ts`（I1：生效日/窗口中/终止日/终止后/未生效/同编号多窗口6场景直测仓储）；`src/app/api/admin/__tests__/apr-overlay-carriers.integration.test.ts`（I2：GD R-220显示restrict+overlays载体身份、保存校验后语义不丢、载体撤销退回baseline、目标缺失fail-closed）；`src/server/modules/policy/__tests__/apr-snapshot-display-hash.integration.test.ts`（I3：仅改显示元数据哈希不变、值/顺序变哈希必变、创建与release-gates重算一致）；`src/server/modules/agent-integration/__tests__/materialize-param-draft-name.integration.test.ts`（I4：缺/空白/HTML名称与非法description各422且规则/参数/台账零写入、直连服务防线、合法名称trim落库、失败后同键修正成功且台账恰1）；`apr-params-publish.integration.test.ts`新增M-B1用例（draft规则不进引用列表、published出现）；`params/page.tsx`证据渲染与引用键含地区身份的源码契约（I-B2/M-B2）。E2E新增广东RS-GD-PLAN-V1展开用例：R-220行显示"地区限制"、基础内容与生效overlay分区、载体内容可见不计入执行顺序；草稿创建幂等复用（M-B11）。
+- **E2E（Chromium）**：`e2e/apr-admin-readability.spec.ts`——规则管理无重复规则集入口、侧边栏独立入口、列表中文名称与行跳转；规则集页名称为主成员、@CN继承来源、展开只读内容、名称搜索候选；参数页名称/编号/展开说明与引用规则；发布中心三分组、卡片中文名称、API分组数量对账、历史名称真实性。
+- **契约不变**：`migration-lf.contract.test.ts`钉入0020（when=1788883200000，journal max恰为0020，SQL LF）；`golden/golden-snapshot/cn-baseline-golden/guangdong/sichuan`引擎黄金回归证明名称与成员解析不改变计算结果；`planning-regression`脚本保持规则引擎轨迹零漂移；规则集顺序与执行顺序一致性由members视图位置字段与orchestrator`ruleSet.rules`数组顺序共同保证。
+- **Docker门禁**：`scripts/apr-db-gate.mjs`以任务专属`apr-drill-pg`（pgvector/pgvector:pg17，docker自动分配高位端口，仅127.0.0.1）执行migration×2/bootstrap/seed×2幂等+全量`npm run test:db`，finally无条件删除并按容器/卷/网络三类枚举验证零残留；`socila-*`容器与三个数据卷禁止触碰并在执行前后枚举核对。

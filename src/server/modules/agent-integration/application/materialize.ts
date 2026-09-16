@@ -50,6 +50,26 @@ const RuleDraftSchema = z.object({
 const ParamDraftSchema = z.object({
   temp_id: z.string(),
   param_id: z.string(),
+  // 修复轮I4（APR-FR-017）：新参数草案必须携带trim后非空、无HTML尖括号的
+  // 正式名称——编号回退只允许用于0020迁移旧行，不允许写进新草案。
+  // description仍可选，但携带时必须满足同一安全校验（不得静默吞掉非法值）。
+  name: z
+    .string()
+    .trim()
+    .min(1, "参数草案必须携带正式中文名称（APR-FR-017）")
+    .refine(
+      (v) => !v.includes("<") && !v.includes(">"),
+      "参数名称不得包含HTML尖括号",
+    ),
+  description: z
+    .string()
+    .trim()
+    .nullable()
+    .optional()
+    .refine(
+      (v) => v === null || v === undefined || (!v.includes("<") && !v.includes(">")),
+      "参数说明不得包含HTML尖括号",
+    ),
   business_key: z.string().nullable().optional(),
   type: z.string().default("number"),
   value: z.unknown(),
@@ -153,6 +173,38 @@ export async function materializeDraftBundle(
       };
     }
 
+    // 修复轮I4：路由schema之外的服务级防线（直接调用materializeDraftBundle的
+    // 内部路径同样受约束）。抛出位于事务内→规则/参数/测试/台账整体回滚：
+    // 零写入且不留脏幂等记录，修正后的同键请求可正常执行。
+    for (const p of bundle.param_drafts) {
+      const draftName =
+        typeof p.name === "string" ? p.name.trim() : "";
+      if (draftName.length === 0) {
+        throw new MaterializationRejected(
+          422,
+          "param-draft-name-missing",
+          `参数草案 ${p.param_id} 缺少正式中文名称（APR-FR-017：编号回退仅允许用于0020迁移旧行）`,
+        );
+      }
+      if (draftName.includes("<") || draftName.includes(">")) {
+        throw new MaterializationRejected(
+          422,
+          "param-draft-name-invalid",
+          `参数草案 ${p.param_id} 的名称不得包含HTML尖括号`,
+        );
+      }
+      if (
+        typeof p.description === "string" &&
+        (p.description.includes("<") || p.description.includes(">"))
+      ) {
+        throw new MaterializationRejected(
+          422,
+          "param-draft-description-invalid",
+          `参数草案 ${p.param_id} 的说明不得包含HTML尖括号`,
+        );
+      }
+    }
+
     // AC-006：基准快照已变化 → 拒绝并要求重新分析（失败抛出→JTI随事务回滚）。
     if (bundle.base_snapshot_id) {
       const { policySnapshots } = await import("@/lib/db/schema");
@@ -185,7 +237,15 @@ export async function materializeDraftBundle(
         .insert(rulesTable)
         .values({
           ruleId: r.rule_id,
-          name: r.name,
+          // 三轮复审M3：规则name与参数草案同口径——trim后非空且无HTML尖括号
+          // 才采用草案值，否则回退稳定rule_id（UI按isFallbackName标"名称待补充"）。
+          name:
+            typeof r.name === "string" &&
+            r.name.trim().length > 0 &&
+            !r.name.includes("<") &&
+            !r.name.includes(">")
+              ? r.name.trim()
+              : r.rule_id,
           module: r.module ?? "draft",
           dslVersion: "SOCILA-DSL-1.0",
           priority: r.priority ?? 0,
@@ -213,6 +273,14 @@ export async function materializeDraftBundle(
           jurisdictionCode: bundle.jurisdiction_code,
           businessKey: p.business_key ?? p.param_id,
           paramId: p.param_id,
+          // 修复轮I4（APR-FR-017）：名称/说明合法性已由schema与事务内防线双重
+          // 保证——此处直接取校验值，不再存在编号回退或静默置null的旁路。
+          name: p.name.trim(),
+          description:
+            typeof p.description === "string" &&
+            p.description.trim().length > 0
+              ? p.description.trim()
+              : null,
           type: p.type ?? "number",
           value: p.value ?? null,
           unit: p.unit ?? null,

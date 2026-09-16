@@ -1,18 +1,38 @@
 "use client";
 
+/**
+ * 参数管理页（APR-FR-012、APR-AC-008）：
+ * - 中文名称为主、编号为辅（名称缺失/待补充使用文本标记，不只靠颜色）；
+ * - 展开显示说明、表格或时间线、来源、证据、overlay操作以及引用规则；
+ * - 编辑、校验与API定位继续使用参数编号（编号即稳定业务身份）。
+ */
 import { adminFetch } from "@/lib/client/admin-fetch";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { Save, CheckCircle } from "lucide-react";
+import { ChevronDown, ChevronRight, Save, CheckCircle } from "lucide-react";
 import { RegionCoverageBanner } from "@/components/admin/RegionCoverageBanner";
 import { formatAdminStatus } from "@/lib/client/admin-labels";
+import {
+  NAME_PENDING_LABEL,
+  NAME_UNAVAILABLE_LABEL,
+  assetDisplayName,
+} from "@/lib/client/asset-display";
+
+interface ReferencingRule {
+  ruleId: string;
+  name: string;
+  jurisdictionCode: string | null;
+  version: number;
+}
 
 interface Param {
   id: number;
   paramId: string;
+  name: string | null;
+  description: string | null;
   jurisdictionCode: string | null;
   policyPackId: string;
   type: string;
@@ -25,8 +45,12 @@ interface Param {
   keyFields: string[] | null;
   valueFields: string[] | null;
   note: string | null;
+  evidence: unknown;
   version: number;
   status: string;
+  operation: string | null;
+  targetBusinessKey: string | null;
+  referencedByRules?: ReferencingRule[];
 }
 
 interface GroupedParams {
@@ -42,6 +66,14 @@ const TYPE_LABELS: Record<string, string> = {
   timeline: "时间线参数",
 };
 
+const OPERATION_LABELS: Record<string, string> = {
+  baseline: "国家基线",
+  add: "地区新增",
+  replace: "地区替换",
+  restrict: "地区限制",
+  exempt: "地区豁免",
+};
+
 /** 行式参数（编辑用textarea渲染JSON）；其余读取value（审查缺陷3）。 */
 function isRowType(type: string): boolean {
   return type === "table" || type === "timeline";
@@ -54,11 +86,146 @@ function statusVariant(s: string): "published" | "draft" | "retired" | "info" {
   return "info";
 }
 
+/** 参数展开区：说明、表格/时间线、来源、证据、overlay操作、引用规则（APR-FR-012）。 */
+function ParamExpanded({ p }: { p: Param }) {
+  const refs = p.referencedByRules ?? [];
+  const hasRows = Array.isArray(p.rows) && p.rows.length > 0;
+  // 修复轮I-B2（APR-FR-012）：展开必须显示证据（引用依据），而非复用行数据变量。
+  const evidenceItems = Array.isArray(p.evidence) ? (p.evidence as unknown[]) : [];
+  return (
+    <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 px-5 py-4 text-sm sm:px-6">
+      <div>
+        <p className="text-xs font-medium text-slate-500">正式说明</p>
+        <p className="mt-1 text-slate-800">
+          {p.description ?? "（该参数未填写说明；名称回退状态请通过编辑补齐）"}
+        </p>
+      </div>
+
+      {p.note ? (
+        <div>
+          <p className="text-xs font-medium text-slate-500">维护备注</p>
+          <p className="mt-1 text-slate-600">{p.note}</p>
+        </div>
+      ) : null}
+
+      {isRowType(p.type) ? (
+        <div>
+          <p className="text-xs font-medium text-slate-500">
+            表格 / 时间线数据
+          </p>
+          {hasRows ? (
+            <pre className="mt-1 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700">
+              {JSON.stringify(p.rows, null, 2)}
+            </pre>
+          ) : (
+            <p className="mt-1 text-xs text-slate-500">（无行数据）</p>
+          )}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-600">
+        <span>
+          <span className="font-medium text-slate-500">来源：</span>
+          {p.source ?? "-"}
+        </span>
+        <span>
+          <span className="font-medium text-slate-500">参数包：</span>
+          {p.policyPackId}
+        </span>
+        <span>
+          <span className="font-medium text-slate-500">Overlay 操作：</span>
+          {p.operation
+            ? `${OPERATION_LABELS[p.operation] ?? p.operation}${
+                p.targetBusinessKey ? `（目标 ${p.targetBusinessKey}）` : ""
+              }`
+            : "-"}
+        </span>
+      </div>
+
+      <div>
+        <p className="text-xs font-medium text-slate-500">证据（引用依据）</p>
+        {evidenceItems.length === 0 ? (
+          <p className="mt-1 text-xs text-slate-500">（无证据记录）</p>
+        ) : (
+          <ul className="mt-1 space-y-1">
+            {evidenceItems.map((item, i) => {
+              const ev = item as Record<string, unknown>;
+              const title =
+                typeof ev.title === "string"
+                  ? ev.title
+                  : String(ev.document_id ?? `证据${i + 1}`);
+              const url =
+                typeof ev.official_url === "string" ? ev.official_url : null;
+              const authority =
+                typeof ev.authority === "string" ? ev.authority : null;
+              const docId =
+                typeof ev.document_id === "string" ? ev.document_id : null;
+              const fetchedAt =
+                typeof ev.fetched_at === "string" ? ev.fetched_at : null;
+              return (
+                <li key={`${title}-${i}`} className="text-xs text-slate-700">
+                  {url ? (
+                    <a
+                      className="text-primary underline underline-offset-2"
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {title}
+                    </a>
+                  ) : (
+                    <span>{title}</span>
+                  )}
+                  <span className="ml-2 text-slate-500">
+                    {[
+                      authority,
+                      docId,
+                      fetchedAt ? `抓取于 ${fetchedAt.slice(0, 10)}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div>
+        <p className="text-xs font-medium text-slate-500">引用该规则的参数（只读）</p>
+        {refs.length === 0 ? (
+          <p className="mt-1 text-xs text-slate-500">当前没有规则引用该参数编号</p>
+        ) : (
+          <ul className="mt-1 space-y-1">
+            {refs.map((ref) => {
+              const display = assetDisplayName(ref.name, ref.ruleId);
+              return (
+                <li key={`${ref.jurisdictionCode ?? ""}-${ref.ruleId}-${ref.version}`} className="text-xs text-slate-700">
+                  {display.primary}
+                  <span className="ml-2 font-mono text-slate-500">
+                    {ref.ruleId} @ {ref.jurisdictionCode ?? "-"} · v{ref.version}
+                  </span>
+                  {display.unavailable ? (
+                    <span className="ml-2 text-slate-500">（{NAME_UNAVAILABLE_LABEL}）</span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ParamsPage() {
   const [grouped, setGrouped] = useState<GroupedParams>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState<Record<number, boolean>>({});
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [msg, setMsg] = useState<{
     id: number;
     type: "ok" | "err";
@@ -69,9 +236,13 @@ export default function ParamsPage() {
 
   const fetchParams = (jur = "") => {
     setLoading(true);
+    setLoadError(null);
     const query = jur ? `?jurisdiction_code=${jur}` : "";
     fetch(`/api/admin/params${query}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data: { params?: Param[] }) => {
         const g: GroupedParams = {};
         for (const p of data.params ?? []) {
@@ -80,7 +251,10 @@ export default function ParamsPage() {
         }
         setGrouped(g);
       })
-      .catch(() => setGrouped({}))
+      .catch(() => {
+        setGrouped({});
+        setLoadError("参数列表加载失败，请重试");
+      })
       .finally(() => setLoading(false));
   };
 
@@ -103,7 +277,7 @@ export default function ParamsPage() {
 
   const showMsg = (id: number, type: "ok" | "err", text: string) => {
     setMsg({ id, type, text });
-    setTimeout(() => setMsg(null), 3000);
+    setTimeout(() => setMsg(null), 5000);
   };
 
   const handleSave = async (p: Param) => {
@@ -120,17 +294,18 @@ export default function ParamsPage() {
     }
     setSaving((prev) => ({ ...prev, [p.id]: true }));
     try {
-      // 审查缺陷3+6：按类型契约写字段；携带jurisdiction_code+version精确身份。
+      // 审查缺陷3+6：按类型契约写字段；编辑与API定位继续用编号。
       const body: Record<string, unknown> = isRowType(p.type)
         ? { rows: parsed }
         : { value: parsed };
       const res = await adminFetch(
         `/api/admin/params/${p.paramId}?jurisdiction_code=${p.jurisdictionCode ?? ""}&version=${p.version}`,
         {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
       const json = await res.json();
       if (res.ok) {
         showMsg(p.id, "ok", "已保存");
@@ -139,7 +314,7 @@ export default function ParamsPage() {
           delete next[p.id];
           return next;
         });
-        fetchParams();
+        fetchParams(jurisdictionFilter);
       } else {
         showMsg(p.id, "err", json.error ?? "保存失败");
       }
@@ -152,8 +327,9 @@ export default function ParamsPage() {
     const res = await adminFetch(
       `/api/admin/params/${p.paramId}/validate?jurisdiction_code=${p.jurisdictionCode ?? ""}&version=${p.version}`,
       {
-      method: "POST",
-    });
+        method: "POST",
+      },
+    );
     const json = await res.json();
     showMsg(
       p.id,
@@ -176,6 +352,7 @@ export default function ParamsPage() {
             setJurisdictionFilter(e.target.value);
             fetchParams(e.target.value);
           }}
+          aria-label="按地区筛选参数"
           className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm"
         >
           <option value="">全部地区</option>
@@ -185,9 +362,16 @@ export default function ParamsPage() {
           <option value="510000">四川</option>
         </select>
       </div>
+      {loadError ? (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700" role="alert">
+          {loadError}
+        </p>
+      ) : null}
       <section className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm sm:px-6">
         <h1 className="text-2xl font-semibold text-slate-900">参数管理</h1>
-        <p className="mt-1 text-sm text-slate-600">政策参数版本化维护（按类型分组）</p>
+        <p className="mt-1 text-sm text-slate-600">
+          政策参数版本化维护（以中文名称为主，编号为稳定业务身份）
+        </p>
       </section>
 
       {Object.keys(TYPE_LABELS).map((type) => {
@@ -204,23 +388,65 @@ export default function ParamsPage() {
                   const isEditing = p.id in editing;
                   const editVal = getEditValue(p);
                   const msgMatch = msg?.id === p.id;
+                  const isOpen = expanded[p.id] ?? false;
+                  const display = assetDisplayName(p.name, p.paramId);
                   return (
                     <div key={p.id} className="px-5 py-4 sm:px-6">
                       <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">
                           <div className="mb-1 flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-sm font-medium text-slate-900">{p.paramId}</span>
+                            <span className="text-sm font-medium text-slate-900">
+                              {display.primary}
+                            </span>
+                            {display.unavailable ? (
+                              <span className="text-xs text-slate-600">
+                                （{NAME_UNAVAILABLE_LABEL}）
+                              </span>
+                            ) : display.pending ? (
+                              <span className="text-xs text-slate-600">
+                                （{NAME_PENDING_LABEL}）
+                              </span>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpanded((prev) => ({
+                                  ...prev,
+                                  [p.id]: !isOpen,
+                                }))
+                              }
+                              aria-expanded={isOpen}
+                              aria-label={`${isOpen ? "收起" : "展开"}参数 ${p.paramId} 的说明与关联信息`}
+                              className="inline-flex cursor-pointer items-center gap-0.5 text-xs text-slate-500 hover:text-slate-700"
+                            >
+                              {isOpen ? (
+                                <ChevronDown size={13} />
+                              ) : (
+                                <ChevronRight size={13} />
+                              )}
+                              详情
+                            </button>
+                          </div>
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-xs text-slate-500">
+                              {p.paramId}
+                            </span>
                             <Badge variant={statusVariant(p.status)}>
                               {formatAdminStatus(p.status)}
                             </Badge>
                             <span className="text-xs text-slate-500">v{p.version}</span>
-                            <span className="font-mono text-xs text-slate-400">@{p.jurisdictionCode ?? "-"}</span>
-                            {p.unit && <span className="text-xs text-slate-500">单位: {p.unit}</span>}
+                            <span className="font-mono text-xs text-slate-400">
+                              @{p.jurisdictionCode ?? "-"}
+                            </span>
+                            {p.unit && (
+                              <span className="text-xs text-slate-500">
+                                单位: {p.unit}
+                              </span>
+                            )}
+                            <span className="text-xs text-slate-500">
+                              有效期：{p.effectiveFrom} ~ {p.effectiveTo ?? "长期"}
+                            </span>
                           </div>
-                          <p className="mb-2 text-xs text-slate-500">
-                            有效期：{p.effectiveFrom} ~ {p.effectiveTo ?? "长期"}
-                            {p.note && ` · ${p.note}`}
-                          </p>
 
                           {!isRowType(type) ? (
                             <Input
@@ -232,6 +458,7 @@ export default function ParamsPage() {
                                 }))
                               }
                               className="max-w-xs text-sm"
+                              aria-label={`参数 ${p.paramId} 的当前值`}
                             />
                           ) : (
                             <textarea
@@ -243,6 +470,7 @@ export default function ParamsPage() {
                                   [p.id]: e.target.value,
                                 }))
                               }
+                              aria-label={`参数 ${p.paramId} 的行数据（JSON）`}
                               spellCheck={false}
                             />
                           )}
@@ -252,6 +480,7 @@ export default function ParamsPage() {
                               className={`mt-1 text-xs ${
                                 msg.type === "ok" ? "text-emerald-700" : "text-red-600"
                               }`}
+                              role={msg.type === "err" ? "alert" : "status"}
                             >
                               {msg.text}
                             </p>
@@ -281,6 +510,7 @@ export default function ParamsPage() {
                           </Button>
                         </div>
                       </div>
+                      {isOpen ? <ParamExpanded p={p} /> : null}
                     </div>
                   );
                 })}

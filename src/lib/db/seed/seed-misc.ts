@@ -4,9 +4,12 @@ import { ruleSets, tests } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import type { DiscoveredRegion } from "@/lib/dsl/region-manifest";
 import { parseOverlayOperation } from "@/lib/dsl/overlay-operation";
+import { assertDisplayMeta } from "@/lib/dsl/display-names";
 
 interface RuleSetFile {
   rule_set_id: string;
+  // APR-FR-003/017：规则集正式中文名称必填。
+  name?: string;
   description?: string;
   status: string;
   effective_from: string;
@@ -67,6 +70,8 @@ export async function seedMisc(region: DiscoveredRegion) {
   const ruleSetData = {
     jurisdictionCode,
     ruleSetId: ruleSet.rule_set_id,
+    // APR-FR-003/017：装载入口强制正式中文名称（缺失即装载失败）。
+    ...assertDisplayMeta(ruleSet.rule_set_id, { name: ruleSet.name }),
     description: ruleSet.description ?? null,
     status: ruleSet.status,
     effectiveFrom: ruleSet.effective_from,
