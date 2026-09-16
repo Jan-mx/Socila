@@ -808,5 +808,5 @@ PRD `docs/prd/09-15-feature-llm-autonomous-tool-routing.md`。根因（PRD §2.2
 | Secret / 差异 / 案例库 | PASS；scan-secrets --all 988文件零命中；`git diff --check`退出0；案例库`--check` ok；diff 65文件全属APR范围 |
 | 独立复审（三轮+第四轮确认） | 第一轮Critical×1经od字节核实为误报（反例URL为斜杠非法日期`2026/01/01`，非重复断言），Important×2修复；第二轮Critical 0/Important 1（F1 PATCH判别力）修复+Minor×5全部处置（含规则name写路径统一校验、创建/编辑成员校验对齐、引用按地区链过滤、死入口删除）；第三轮Critical 0/Important 0/Minor 4（全部加固：maxBuffer、网络枚举、测试预清理、文档补记）；第四轮结论Critical=0、Important=0 |
 | 关键不变量 | 显示元数据（name/description）剥离出params contentHash与payloadShape——0020补写名称零物化/快照漂移（apr-display-metadata 3例+shv2-delta/materializer镜像集成证明）；规则引擎黄金回归、发布门禁、历史重放、地区隔离语义零变化；发布历史无法精确解析显示"名称不可用"不冒充 |
-| Docker/工作树零残留 | 门禁容器`apr-drill-pg`/`apr-drill-minio-a`/`apr-drill-minio-b`由脚本finally删除并容器/卷/网络枚举零残留；E2E容器`apr-e2e-pg`与辅助工作树`F:/Socila-apr-wt`在提交推送后清理（结果记于下方交付行） |
-| 交付 | 分支`codex/apr-policy-asset-readability`（基线main`a834d32`）单一提交；0020/持久数据补写/生产部署均未执行（待fresh授权）；未创建PR、未合并main、未创建Tag/Release |
+| Docker/工作树零残留 | PASS；门禁容器`apr-drill-pg`/`apr-drill-minio-a`/`apr-drill-minio-b`由脚本finally删除并容器/卷/网络枚举零残留；E2E容器`apr-e2e-pg`（含apr_drill2/apr_e2e2/apr_e2e3验收库）在交付提交`1da63e0`推送后删除，容器/卷/网络三类枚举`apr-*`残留0；`socila-*`九容器与`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`卷执行前后未触碰；辅助工作树`F:/Socila-apr-wt`在下方docs记录提交推送后删除（删除前验证clean且已完整推送） |
+| 交付 | 分支`codex/apr-policy-asset-readability`（基线main`a834d32`）单一提交`1da63e0`已推送origin（dev提交已压缩）；Gitleaks 8.29.1最终历史8提交零发现、scan-secrets 994文件零命中、0020 blob零CR且LF契约复验7/7；0020/持久数据补写/生产部署均未执行（待fresh授权）；未创建PR、未合并main、未创建Tag/Release |

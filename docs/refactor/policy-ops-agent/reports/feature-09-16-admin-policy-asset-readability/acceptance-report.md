@@ -52,11 +52,11 @@
 - **§3.8 ESLint**：`npx eslint src e2e --max-warnings 0`退出0（0 error/0 warning）。
 - **§3.9 Build**：`npm run build`退出0，仅1条既有citation-verifier动态fs访问warning（历史基线，非本Feature引入）。
 - **§3.10 Chromium E2E**：`e2e/apr-admin-readability.spec.ts` 4/4通过（全新apr_e2e3库：迁移+Jan引导+seed，standalone最终构建，Chromium）。覆盖APR-AC-001/002/003/004/005/007/008/009/010/011；其中阶段分组数量对账以API级`Σ分类=阶段总数`与`全部实体displayName非null`断言。
-- **§3.11 Secret扫描**：`node scripts/scan-secrets.mjs --all` 988候选文件零命中。
+- **§3.11 Secret扫描**：`node scripts/scan-secrets.mjs --all` 988候选文件零命中（squash提交时含docs状态同步复跑为994文件零命中，见"交付记录"段）。
 - **§3.12 差异检查**：`git diff --check main`退出0；61→65文件全部位于APR范围（复审用git diff+grep验证无无关文件、diff新增行凭据形态正则零命中）。
 - **§3.13 案例库/引用契约**：`npx tsx scripts/rcl-case-library-v2-doc.ts --check`通过（manifestHash `d4a2b01c…`、problems=[]）；citation-contract/dsl-layout/region-manifest等DSL契约在§3.3单元套件全过。
 - **§3.14 独立复审**：四轮。第一轮：Critical×1（反例URL"两次相同"断言经od字节级核实为误报——第二条实际为斜杠非法日期`2026/01/01`，测试有效且有判别力）＋Important×2（params/rule-sets的name/description写路径缺assertDisplayMeta、验收报告占位）＋Minor×6（候选状态显示、引用按地区链过滤、getLatestRuleSetVersion死入口删除、E2E数量对账与TESTING文件数、ARCHITECTURE机制表述、跨键载体约束——均修复）；第二轮：Critical 0／Important×1（rules实体name同口径缺口）／Minor×5（agent草案HTML回退、POST/PATCH成员校验不对称、e2e头注释、条件化断言钉住、报告回填）——全部修复；第三轮：Critical 0／Important×2（F1 PATCH反例判别力重写为"先建草稿→400文案须来自name校验"模式；文档占位）／Minor×3（门禁maxBuffer/枚举吞错/日志、空rules语义钉、TESTING补记）——全部修复；第四轮确认：**Critical=0、Important=0、Minor×4**（①§3回填——本报告即执行；②脚本加固——已实施；③F1测试预清理+重复断言删除——已实施；④文档补记——TESTING.md/ARCHITECTURE.md已记录）全部关闭。
-- **Docker零残留（AGENTS口径）**：`scripts/apr-db-gate.mjs` finally删除任务容器`apr-drill-pg`/`apr-drill-minio-a`/`apr-drill-minio-b`后按容器/卷/网络三类枚举，`apr-*`零残留；`socila-*`九容器与`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`卷执行前后未触碰。E2E容器`apr-e2e-pg`（含apr_drill2/apr_e2e2/apr_e2e3验收库）与辅助工作树`F:/Socila-apr-wt`在提交推送后清理，清理结果记录于`PROGRESS.md`。
+- **Docker零残留（AGENTS口径）**：`scripts/apr-db-gate.mjs` finally删除任务容器`apr-drill-pg`/`apr-drill-minio-a`/`apr-drill-minio-b`后按容器/卷/网络三类枚举，`apr-*`零残留；`socila-*`九容器与`socila_pg-data`/`socila_minio-data`/`socila_caddy-data`卷执行前后未触碰。E2E容器`apr-e2e-pg`（含apr_drill2/apr_e2e2/apr_e2e3验收库）在交付提交`1da63e0`推送后删除，容器/卷/网络三类枚举`apr-*`残留0，`socila-*`九容器与三数据卷执行前后未触碰；辅助工作树`F:/Socila-apr-wt`在docs记录提交推送后删除（删除前验证clean且已完整推送）。交付记录：squash后单一提交`1da63e0`（feat: add APR Chinese display metadata for admin policy assets: 后台政策资产中文可读化，72文件）已推送origin分支`codex/apr-policy-asset-readability`；提交前staged全量diff逐文件核对属APR范围、新增行凭据正则仅命中隔离测试容器默认弱口令构造参数（非真实凭据）、`git diff --cached --check`退出0、`scan-secrets --all`994文件零命中、0020 blob零CR、LF契约测试自最终HEAD复验7/7；Gitleaks 8.29.1对最终历史（8提交/10.94MB）扫描零发现。
 
 ## 4. 边界与未执行事项
 
